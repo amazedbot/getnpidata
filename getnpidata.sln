@@ -1,0 +1,60 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34902.65
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "getnpidata", "getnpidata.vbproj", "{23111089-B5B6-43D9-AF5A-88E03C162FC4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Snowflake_access", "..\Snowflake_access\Snowflake_access.csproj", "{859CE6C5-96F1-4973-8648-FF55CF8E7E7E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UpdateAzureDB", "..\UpdateAzureDB\UpdateAzureDB.csproj", "{EBD47BA4-6ACE-4B91-ABFC-6BA1B5731F6E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestAzureDB", "..\TestAzureDB\TestAzureDB.csproj", "{00D032F2-1DD2-4643-8613-2D7D683245E8}"
+EndProject
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "getnpidata_SqlServer", "..\getnpidata_SqlServer\getnpidata_SqlServer.vbproj", "{A84A1C71-DB5A-4730-B854-70B00375E606}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnowFlake_Load", "..\SnowFlake_Load\SnowFlake_Load.csproj", "{AE1F2DFE-5C82-451D-BC97-B9E4EDCEEC5E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{6260E6F2-2FB6-4E5E-A0CF-63C28E025656}"
+	ProjectSection(SolutionItems) = preProject
+		npidata.cs = npidata.cs
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{23111089-B5B6-43D9-AF5A-88E03C162FC4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{23111089-B5B6-43D9-AF5A-88E03C162FC4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{23111089-B5B6-43D9-AF5A-88E03C162FC4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{23111089-B5B6-43D9-AF5A-88E03C162FC4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{859CE6C5-96F1-4973-8648-FF55CF8E7E7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{859CE6C5-96F1-4973-8648-FF55CF8E7E7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{859CE6C5-96F1-4973-8648-FF55CF8E7E7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{859CE6C5-96F1-4973-8648-FF55CF8E7E7E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EBD47BA4-6ACE-4B91-ABFC-6BA1B5731F6E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EBD47BA4-6ACE-4B91-ABFC-6BA1B5731F6E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EBD47BA4-6ACE-4B91-ABFC-6BA1B5731F6E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EBD47BA4-6ACE-4B91-ABFC-6BA1B5731F6E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{00D032F2-1DD2-4643-8613-2D7D683245E8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{00D032F2-1DD2-4643-8613-2D7D683245E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{00D032F2-1DD2-4643-8613-2D7D683245E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{00D032F2-1DD2-4643-8613-2D7D683245E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A84A1C71-DB5A-4730-B854-70B00375E606}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A84A1C71-DB5A-4730-B854-70B00375E606}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A84A1C71-DB5A-4730-B854-70B00375E606}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A84A1C71-DB5A-4730-B854-70B00375E606}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AE1F2DFE-5C82-451D-BC97-B9E4EDCEEC5E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AE1F2DFE-5C82-451D-BC97-B9E4EDCEEC5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AE1F2DFE-5C82-451D-BC97-B9E4EDCEEC5E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AE1F2DFE-5C82-451D-BC97-B9E4EDCEEC5E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {85AD705F-A96D-4279-888E-972128E72ADA}
+	EndGlobalSection
+EndGlobal
