@@ -31,6 +31,9 @@ Module Module1
 
         Using db As New DB(sMySqlConnectionString)
             Console.WriteLine()
+            ' Need the following to insert data from file? Otherwise, you have to run this from MySQL Workbench on the database.
+            db.PerformSQLcommand("SET GLOBAL local_infile = 1;")
+
             'db.TruncateTable(sTableName)
             For Each url As String In ZipFilelist
                 Debug.WriteLine(url)
