@@ -108,8 +108,11 @@ Sibling projects referenced by the `.sln` that are not present and are out of sc
   - Monthly deactivations: `NPPES_Deactivated_NPI_Report_<MMDDYY>_V2.zip` (contains an .xlsx)
 - Each data zip contains `npidata_pfile_*.csv`, `othername_pfile_*.csv`, `pl_pfile_*.csv`, `endpoint_pfile_*.csv`, matching `*_fileheader.csv` files, and a Readme PDF. Match inner names case-insensitively. **Endpoints are out of scope** (skip them, but log it).
 - The `npidata` CSV has ~330 columns, every field double-quoted, and dates as `MM/DD/YYYY`. Treat the header row as the source of truth for column order.
-- **Header → DB column rule** (matches the existing schema): replace each run of non-alphanumeric characters with `_` and trim `_`. Examples: `Provider Organization Name (Legal Business Name)` → `Provider_Organization_Name_Legal_Business_Name`, `Employer Identification Number (EIN)` → `Employer_Identification_Number_EIN`. Verify against a real V2 header before relying on it.
-- **Field lengths:** take them from the V2 Readme PDF inside the zip. Until verified, size name/LBN columns generously (e.g., first name 50, LBN/org names 150, `Authorized_Official_Credential_Text` 255).
+- **Header → DB column rule** (matches the existing schema): replace each run of non-alphanumeric characters with `_` and trim `_`. Examples: `Provider Organization Name (Legal Business Name)` → `Provider_Organization_Name_Legal_Business_Name`, `Employer Identification Number (EIN)` → `Employer_Identification_Number_EIN`. **Verified against the real V2 headers (weekly 092826_100426):** all 330 `npidata` columns match in order, given these aliases (`HeaderMapper`): the suffix `_If_outside_U_S` is dropped (`… Country Code (If outside U.S.)` → `…_Country_Code`; the full name would also exceed MySQL's 64-character limit); V2's `Provider Sex Code` → `Provider_Gender_Code`; and `pl_pfile`'s `Provider Secondary Practice Location Address- Address Line 1/2` → `Provider_Secondary_Practice_Location_Address_Line_1/2`. An unmapped header fails the load (new CMS columns need a migration).
+- **Field lengths (V2 Readme):** LBN and other organization name 100, first names 35, last names 35, middle 20, credential 20, addresses 55, city/state 40, postal 20. Raw `npidata` stores everything as TEXT anyway (§6.1).
+- **CSV format (verified):** `\n` line endings, every field double-quoted. Per the Readme, double quotes inside values are replaced by single quotes, so no escaping occurs. The data file's header equals its `_fileheader.csv`.
+- **NPI_Files.html** links are single-quoted relative hrefs with a `./` prefix (`href='./NPPES_…_V2.zip'`).
+- **Deactivation report:** one `.xlsx` with a title row (`NPPES Deactivated Records as of …`), a header row, then NPI (text) + date (text `MM/DD/YYYY`). It is the **full current list** (355,330 NPIs on 2026-09-14, back to 2005), not a delta.
 - **NPPES has no county field.** County comes from the ZIP crosswalk (§6.3).
 
 ---
@@ -157,11 +160,14 @@ getnpidata/
 
 | Table | Notes |
 |---|---|
-| `npidata` | 1 row per NPI, all ~330 CSV columns (varchar; raw dates kept as text). PK `NPI`. Add `Is_Deactivated TINYINT`, `Loaded_From` |
-| `other_names` | from `othername_pfile`. Unique key on (NPI, name, type code, created date) using `<=>`-safe logic or NOT NULL defaults |
+| `npidata` | 1 row per NPI, all 330 CSV columns, **all TEXT** utf8mb4 except `NPI CHAR(10)` PK (migration 002). Raw dates kept as text; empty → NULL. `Is_Deactivated TINYINT`, `Loaded_From`. No secondary indexes (search uses the projection). InnoDB's worst-case row-size check rejects 330 columns even as TEXT (counts 40 B each), so DDL creating/altering it runs with `innodb_strict_mode=OFF`. Real rows always fit (long TEXT goes off-page with a 20-byte pointer, so even a full row is ~7.3 KB). The loader's DB user therefore needs `SESSION_VARIABLES_ADMIN` |
+| `other_names` | from `othername_pfile`. No unique key needed: the loader **replaces** rows (whole table monthly, per NPI weekly) instead of de-duplicating, which removes defect #5 by construction |
 | `practice_locations` | from `pl_pfile` (secondary locations). Add surrogate `id` |
-| `nppes_deactivated_npi_report` | NPI, deactivation date (exists in 2021 dump) |
-| `downlog` | **extend:** `filename` UNIQUE, `kind` (monthly/weekly/deactivation), `file_date`, `status` (Downloading/Loading/Completed/Failed), `started_at`, `completed_at`, `rows_loaded`, `error` |
+| `nppes_deactivated_npi_report` | NPI, deactivation date. **Replaced in full** by each report (staging + RENAME), so reactivated NPIs drop out |
+| `downlog` | **extended (003):** `filename` UNIQUE, `kind` (Monthly/Weekly/Deactivation), `file_date`, `status` (Downloading/Loading/Completed/Failed; VB-era rows = `Legacy`, which does not count as done), `started_at`, `completed_at`, `rows_loaded`, `error` |
+| `schema_migrations` | version, name, sha256, applied_at; written by `Npi.Loader migrate` |
+
+**Deactivation flag rule** (`Deactivations.ApplyAsync`): `Is_Deactivated = 1` when the NPI has a deactivation date (report date, else `NPI_Deactivation_Date`) and no `NPI_Reactivation_Date` on or after it. An empty `NPI_Deactivation_Date` is filled from the report. It is recomputed after every monthly and deactivation load (all rows) and every weekly (that week's NPIs). Date comparisons use `YYYYMMDD` strings built with SUBSTRING, because `STR_TO_DATE` errors on malformed values in strict SQL mode.
 | `extractlog` | keep (zip, extracted file, rows) |
 | `*_staging` | per-load staging tables, created `LIKE` the target, dropped after swap |
 
@@ -221,12 +227,15 @@ Commands (`Npi.Loader <command>`): `migrate`, `run` (default; does everything ne
 2. **Bookkeeping:** a file counts as done only when `downlog.status = 'Completed'`. Failed or partial entries are retried on the next run. Use parameterized SQL everywhere.
 3. **Download:** stream to `WorkFolder` via a temp name, rename on success, and verify the zip opens. Retry with backoff. Never report success on failure. Delete zips after a successful load (keep the last one with a config flag).
 4. **Bulk load:** stream each CSV straight from the zip entry into `MySqlBulkLoader` (`SourceStream`, `Local = true`). Use `FIELDS TERMINATED BY ',' ENCLOSED BY '"' ESCAPED BY ''` and the line terminator detected from the header. Build the column list from the **header row** (§4 mapping). Load the raw text into a staging table, and convert dates/empties to NULL **in SQL**, not by rewriting the CSV in C#. This removes defects #1 and #2 by construction.
+   *As built:* `MySqlBulkLoader` can't emit `ESCAPED BY ''` (it omits the clause, and MySQL then defaults to `\`). So the escape character is **U+0001**, which never occurs in NPPES text and disables escaping in practice; the backslash fixture test guards this. Columns load into user variables: `(@c0, …) SET col = NULLIF(@c0, '')`, and DATE columns use `STR_TO_DATE(…, '%m/%d/%Y')`. `LOAD DATA LOCAL` downgrades errors to warnings (short rows, truncation, duplicate keys), so **any warning fails the load**.
 5. **Monthly full:** load `npidata_staging`, `other_names_staging` and `practice_locations_staging`. Sanity-check the row counts (e.g., ≥ 95% of the current count). Then atomically `RENAME TABLE npidata TO npidata_old, npidata_staging TO npidata` (same for the other tables) and drop the `_old` tables.
 6. **Weekly:** load into staging, then `INSERT … ON DUPLICATE KEY UPDATE` **only where the incoming `Last_Update_Date` ≥ the existing one** (compare as dates). For other names and practice locations: delete the rows for the NPIs present in the weekly file, then insert theirs.
 7. **Deactivations:** read the xlsx with ExcelDataReader (register CodePages). Find the first row whose first cell is a 10-digit NPI (don't hard-code 2 header rows). Upsert into `nppes_deactivated_npi_report`, then set `npidata.Is_Deactivated = 1` and the deactivation date.
+   *As built:* the report is the full current list, so it **replaces** the table (staging + RENAME, with the same ≥ 95% sanity check) instead of upserting; flags follow the rule in §6.1. Only the newest report on the page is loaded, and likewise only the newest monthly.
 8. `local_infile`: do **not** run `SET GLOBAL`. Check `@@local_infile`; if it's off, fail with a clear message telling the owner how to enable it in `my.ini`.
 9. **Logging:** Serilog rolling file `logs/getnpidata-YYYYMMDD.log`, kept 60 days. Write a summary line per file (rows, duration). Exit code 0 means everything completed; non-zero means something failed.
 10. **Parity check:** run both loaders against `npi_test` with the same files and compare counts and spot rows. Then delete `legacy/`.
+   *As built:* the VB loader can't run on this PC (it needs Visual Studio/MSBuild for .NET Framework 4.8.1, and its load branches are commented out). Parity is therefore checked against the **VB-loaded data restored in `npi_test`**: load the same CMS files with the C# loader and compare counts and spot rows (§12).
 
 ### Stage 2 — Reference data
 NUCC → `taxonomy_codes` (upsert; only when the version changed), HUD → `zip_county` (quarterly), Census → `county`, Gazetteer → `zip_centroid`. All idempotent, all called by `run` when stale.
@@ -283,7 +292,10 @@ dotnet run --project src/Npi.Loader -- run
 dotnet run --project src/Npi.Web          # https://localhost:5001
 dotnet user-secrets --project src/Npi.Loader set "ConnectionStrings:LocalMySql" "server=localhost;database=npi_test;user=…;password=…;AllowLoadLocalInfile=true"
 dotnet user-secrets --project src/Npi.Loader list          # shows the local MySQL logins (secrets!)
+$env:NPI_TEST_MYSQL = "server=localhost;user=npi_dev;password=…"   # enables the MySQL integration tests
 ```
+
+Loader configuration: `src/Npi.Loader/appsettings.json` holds the defaults. Overrides come from `appsettings.Local.json` (git-ignored), user-secrets (loaded in every environment, because Task Scheduler runs the loader as the owner's account), or environment variables with the prefix `NPI_` (e.g. `NPI_ConnectionStrings__LocalMySql`). Exit codes: 0 = all completed, 1 = something failed, 2 = bad command line. The loader's DB user needs all privileges on its database plus `SESSION_VARIABLES_ADMIN` (§6.1); the integration tests also create and drop `npi_test_it_*` databases.
 
 Local MySQL on a new loader PC: `winget install Oracle.MySQL --version 8.4.9`, then run `deploy/setup-local-mysql.ps1` from an elevated PowerShell and set a root password right away.
 The legacy VB project builds only with Visual Studio/MSBuild on Windows (.NET Framework 4.8.1): open `legacy/getnpidata-vb/getnpidata-legacy.sln`. `legacy/Directory.Build.props` and `legacy/Directory.Packages.props` are deliberately empty so the repo-root net10.0 settings don't leak into it.
