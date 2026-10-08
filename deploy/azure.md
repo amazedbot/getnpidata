@@ -69,8 +69,12 @@ Store the passwords in a password manager. Never commit them.
   `Server=<server>.mysql.database.azure.com;Database=npi;User ID=npi_web;Password=<…>;SslMode=Required`.
   App Service exposes it as `MYSQLCONNSTR_RemoteMySql`, which ASP.NET Core reads as
   `ConnectionStrings:RemoteMySql`.
-- **Configuration → Application settings:** `ASPNETCORE_ENVIRONMENT=Production`; later
-  `Api__RequireKey=false` (Stage 5).
+- **Configuration → Application settings:** `ASPNETCORE_ENVIRONMENT=Production` and
+  `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`, so the API rate limiter sees each client's IP instead of the
+  App Service front end's. API settings (Stage 5; defaults in `src/Npi.Web/appsettings.json`):
+  `Api__PermitLimit` (requests per client IP per window, default 60) and `Api__WindowSeconds` (default 60).
+  To require API keys later: `Api__RequireKey=true` plus one or more `Api__Keys__0`, `Api__Keys__1`, …
+  (secrets; the site refuses to start when keys are required but none are set).
 - **Configuration → General:** HTTPS only = On, Always On = On, minimum TLS 1.2.
 - **Health check:** path `/health`.
 - **Custom domain:** optional; add a CNAME + managed certificate once the owner picks a name.
