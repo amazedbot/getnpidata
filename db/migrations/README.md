@@ -50,5 +50,5 @@ the same 22 tables as the restored backup. As found (later migrations fix some o
 - Unrelated or obsolete tables are included because they exist: `animals`, `dicomhosts`,
   `taxonomy_codes_old`. Dropping them needs the owner's OK.
 
-The 2021 dump in [`../reference/workplace_20210830.sql`](../reference/workplace_20210830.sql) is
-kept only as history.
+An older 2021 schema dump (V1 widths, missing several tables) was kept in `db/reference/` until
+the 2026 repository cleanup; it is still in git history.
