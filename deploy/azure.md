@@ -13,7 +13,7 @@ loader PC publishes the search projection to the Azure database; the site reads 
 | Resource | Suggested name | Settings |
 |---|---|---|
 | Resource group | `rg-getnpidata` | Region: East US |
-| MySQL Flexible Server | `getnpidata-mysql` (globally unique) | Burstable **B1ms**, MySQL **8.0**, 32 GB storage with auto-grow, 7-day backups, public access |
+| MySQL Flexible Server | `getnpidata-mysql` (globally unique) | Burstable **B1ms**, MySQL **8.4** LTS (8.0 reached end of life in April 2026; the local server is 8.4 too), 32 GB storage with auto-grow, 7-day backups, public access |
 | Database | `npi` | `utf8mb4` / `utf8mb4_0900_ai_ci` |
 | App Service plan | `plan-getnpidata` | Linux, **B1** |
 | Web app | `getnpidata` (globally unique; becomes `<name>.azurewebsites.net`) | Runtime .NET 10, HTTPS only, Always On, health check `/health` |
@@ -47,7 +47,7 @@ Public access with firewall rules:
 |---|---|---|
 | `require_secure_transport` | `ON` (default) | TLS required; clients use `SslMode=Required` |
 | `local_infile` | `ON` | Only if the first full publish uses `LOAD DATA LOCAL` (Stage 6.1) |
-| `character_set_server` | `utf8mb4` (8.0 default) | |
+| `character_set_server` | `utf8mb4` (default) | |
 
 ### Users (least privilege)
 
@@ -107,7 +107,7 @@ $homeIp = "<owner home IP>"
 az group create -n $rg -l $loc
 
 az mysql flexible-server create -g $rg -n $db -l $loc `
-  --tier Burstable --sku-name Standard_B1ms --version 8.0.21 `
+  --tier Burstable --sku-name Standard_B1ms --version 8.4 `
   --storage-size 32 --storage-auto-grow Enabled --backup-retention 7 `
   --admin-user npiadmin --admin-password "<strong password>" --public-access $homeIp
 az mysql flexible-server firewall-rule create -g $rg -n $db --rule-name allow-azure `
