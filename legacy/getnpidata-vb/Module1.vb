@@ -1,14 +1,17 @@
 ﻿Option Strict On
 
-Imports MySql.Data.MySqlClient
-Imports System.Net
+Imports System.Configuration
+Imports System.Globalization
 Imports System.IO
 Imports System.IO.Compression
+Imports System.Net
+Imports System.Text
+'Imports System.Text.RegularExpressions
 Imports System.Windows.Forms
 Imports ExcelDataReader
-Imports System.Configuration
-
-
+Imports MySql.Data.MySqlClient
+Imports System.Text.RegularExpressions
+Imports Microsoft.VisualBasic.FileIO
 
 
 Module Module1
@@ -21,6 +24,7 @@ Module Module1
         Dim sMySqlConnectionString = ConfigurationManager.ConnectionStrings("MySQL_connection").ConnectionString
 
         Dim sTableName As String = "npidata"
+        ' https://download.cms.gov/nppes/NPI_Files.html More info on the files. Some are full replacement, some are incremental. Some are deactivations. Some are other names.
         Dim myURIbase As String = "https://download.cms.gov/nppes/"
         Dim myFilename As String = "NPI_Files.html"
         Dim myUri As New Uri(myURIbase + myFilename)
@@ -35,6 +39,7 @@ Module Module1
             db.PerformSQLcommand("SET GLOBAL local_infile = 1;")
 
             'db.TruncateTable(sTableName)
+            Dim LoadCtr As Integer = 1
             For Each url As String In ZipFilelist
                 Debug.WriteLine(url)
                 Dim uri As New Uri(url)
@@ -42,18 +47,17 @@ Module Module1
                 ' Check for _V2 for Monthly file. Only use that one (?)
                 If Not NPIfileSeen(filename, sMySqlConnectionString) Then ' If Zip file wasn't seen already.
                     Dim FileLocation = GetNPIdata(myURIbase, filename)
-                    Dim startPath = Path.GetDirectoryName(FileLocation)
-                    Dim UnzipPath = startPath + "\Unzips"
+                    ' Dim startPath = Path.GetDirectoryName(FileLocation)
+                    Dim UnzipPath As String = ConfigurationManager.AppSettings("UnzipFolderName")
+                    'Dim UnzipPath = startPath + "\Unzips"
                     Dim ZipPath = Path.GetDirectoryName(FileLocation) + "\" + filename
 
                     Console.WriteLine()
                     Console.WriteLine("Unzipping starting on: " + ZipPath + " ...")
                     Dim FileList = UnZip(ZipPath, UnzipPath, sMySqlConnectionString)
                     Console.WriteLine("Done Unzipping.")
-                    Dim LoadCtr As Integer = 1
+
                     ' Dim values = {"_Weekly", "_fileHeader", "endpoint_", "pl_pfile_", "othername_"}
-                    ' Todo: pl_pfile is practice locations. Make another table for it. 
-                    ' Todo: othername_pfile is other names. Make another table for it.
                     ' Todo: endpoint_pfile are endpoints. Make another table for it.
 
                     For Each Fullname In FileList
@@ -62,9 +66,9 @@ Module Module1
                         ' TODO: Add support for these skipped files.
                         If Fullname.Contains("_Weekly") OrElse
                            Fullname.Contains("_fileheader") OrElse
-                           Fullname.Contains("endpoint_") OrElse
-                           Fullname.Contains("pl_pfile_") OrElse
-                           Fullname.Contains("othername_") Then
+                           Fullname.Contains("endpoint_") Then
+                            'Fullname.Contains("pl_pfile_") Then
+
 
                             ' If values.Any(Function(s) Fullname.Contains(s)) Then
                             ' skip any in values list.
@@ -78,24 +82,38 @@ Module Module1
                         ' TODO: Remember csv files also? Right now, we are assuming that they were not seen.
 
                         ' https://stackoverflow.com/questions/61813776/if-strings-contains-multiple-values
-                        If filename.Contains("NPPES_Data_Dissemination_") And FindAnyInString(filename, Months) And Fullname.Contains("npidata_pfile_") Then
-                            'If filename.Contains("NPPES_Data_Dissemination_") And FindAnyInString(filename, Months) And Fullname.Contains("npidata_pfile_") And (Not Fullname.Contains("_Weekly") And Not Fullname.Contains("_fileHeader") And Not Fullname.Contains("endpoint_") And Not Fullname.Contains("pl_pfile_")) Then ' And Fullname.Contains(".csv") 
-                            ' Contains Full Replacement File.
-                            Console.WriteLine("Loading Full Replacement File. Truncating destination. LoadCtr= " + LoadCtr.ToString)
-                            LoadFile(Fullname, sTableName, "npidata_temp", False, True, db, foutTemplateName)
+                        'If filename.Contains("NPPES_Data_Dissemination_") And FindAnyInString(filename, Months) And Fullname.Contains("npidata_pfile_") Then
+                        '    'If filename.Contains("NPPES_Data_Dissemination_") And FindAnyInString(filename, Months) And Fullname.Contains("npidata_pfile_") And (Not Fullname.Contains("_Weekly") And Not Fullname.Contains("_fileHeader") And Not Fullname.Contains("endpoint_") And Not Fullname.Contains("pl_pfile_")) Then ' And Fullname.Contains(".csv") 
+                        '    ' Contains Full Replacement File.
+                        '    Console.WriteLine("Loading Full Replacement File. Truncating destination. LoadCtr= " + LoadCtr.ToString)
+                        '    LoadFile(Fullname, sTableName, "npidata_temp", False, True, db, foutTemplateName)
 
-                        ElseIf filename.Contains("NPPES_Data_Dissemination_") And filename.Contains("_Weekly.zip") And Not Fullname.Contains("_fileHeader") And Fullname.Contains(".csv") And Fullname.Contains("npidata_pfile_") Then ' And Not Fullname.Contains("_FileHeader") Then ' 
-                            ' Contains Weekly Incremental File. Same structure as full, but don't truncate main table. 
-                            Console.WriteLine("Loading Incremental File. NOT Truncating destination. LoadCtr= " + LoadCtr.ToString)
-                            LoadFile(Fullname, sTableName, "npidata_temp", True, False, db, foutTemplateName)
+                        'ElseIf filename.Contains("NPPES_Data_Dissemination_") And filename.Contains("_Weekly.zip") And Not Fullname.Contains("_fileHeader") And Fullname.Contains(".csv") And Fullname.Contains("npidata_pfile_") Then
+                        '    ' Contains Weekly Incremental File. Same structure as full, but don't truncate main table. 
+                        '    Console.WriteLine("Loading Incremental File. NOT Truncating destination. LoadCtr= " + LoadCtr.ToString)
+                        '    LoadFile(Fullname, sTableName, "npidata_temp", True, False, db, foutTemplateName)
 
-                        ElseIf filename.Contains("NPPES_Deactivated_NPI_Report_") And filename.Contains(".zip") Then ' And Fullname.Contains(".xlsx")
-                            ' Deactivations 
-                            Console.WriteLine("Deactivations. LoadCtr= " + LoadCtr.ToString)
-                            PrepareNPIDeactivations(filename, sMySqlConnectionString)
-                            UpdateNPIDataWithDeactivations(sTableName, sMySqlConnectionString) ' Updates them with deactivation date.
+                        'ElseIf filename.Contains("NPPES_Deactivated_NPI_Report_") And filename.Contains(".zip") Then ' And Fullname.Contains(".xlsx")
+                        '    ' Deactivations 
+                        '    Console.WriteLine("Deactivations. LoadCtr= " + LoadCtr.ToString)
+                        '    PrepareNPIDeactivations(filename, sMySqlConnectionString)
+                        '    UpdateNPIDataWithDeactivations(sTableName, sMySqlConnectionString) ' Updates them with deactivation date.
+
+                        'Else
+                        If filename.Contains("NPPES_Data_Dissemination_") And Fullname.Contains("othername_pfile_") And Not Fullname.Contains("_fileHeader") And Fullname.Contains(".csv") Then
+                            ' Other Names
+                            Console.WriteLine("Other Names. LoadCtr= " + LoadCtr.ToString)
+                            LoadOtherNames(Fullname, db)
+
+                            'Else
+                            'If filename.Contains("NPPES_Data_Dissemination_") And Fullname.Contains("pl_pfile_") And Not Fullname.Contains("_fileHeader") And Fullname.Contains(".csv") Then
+                            '    ' Practice Locations. 
+                            '    Console.WriteLine("Practice Locations. LoadCtr= " + LoadCtr.ToString)
+                            '    ' truncate only on LoadCtr = 1?
+                            '    ' Dim TruncateDestination As Boolean = (LoadCtr = 1)
+                            '    LoadPracticeLocations(Fullname, db)
                         Else
-                            Console.WriteLine("Skipping file: " + Fullname + " In zip file:" + filename + " LoadCtr= " + LoadCtr.ToString)
+                                Console.WriteLine("Skipping file: " + Fullname + " In zip file:" + filename + " LoadCtr= " + LoadCtr.ToString)
                         End If
                         LoadCtr += 1
                     Next
@@ -116,6 +134,80 @@ Module Module1
 #End If
     End Sub
 
+    Sub LoadOtherNames(FullFileName As String, db As DB)
+        db.TruncateTable("other_names_temp")
+        Console.WriteLine("Bulk Loading: Reading " + FullFileName + " into table other_names_temp")
+        Dim count As Int32 = BulkLoad(db.SconnStr, FullFileName, "other_names_temp", New Integer() {3}, "MM/dd/yyyy")
+        Console.WriteLine(count.ToString + " rows loaded into other_names_temp")
+
+        ' https://oneuptime.com/blog/post/2026-03-31-mysql-fix-error-1292-incorrect-datetime-value/view
+        db.PerformSQLcommand("SET SESSION sql_mode = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', @@sql_mode, ','), ',NO_ZERO_DATE,', ','));")
+        Console.WriteLine("Updated sql_mode to remove NO_ZERO_DATE. Running UPDATE on other_names_temp for Created_Date")
+        db.PerformSQLcommand("UPDATE other_names_temp
+                                SET Created_Date = NULL
+                                WHERE Created_Date = '0000-00-00';")
+
+        Console.WriteLine("Inserting rows into other_names from other_names_temp")
+        db.PerformSQLcommand("INSERT INTO other_names  (NPI ,
+                                                        Provider_Other_Organization_Name,
+						                               `Provider_Other_Organization_Name_Type_Code`,
+						                               `Created_Date`)                           
+				            SELECT DISTINCT    `NPI` ,
+								               `Provider_Other_Organization_Name`,
+								               `Provider_Other_Organization_Name_Type_Code`,
+								               `Created_Date`
+				            FROM other_names_temp t
+                            WHERE NOT EXISTS
+                            (SELECT *
+                            FROM other_names n
+						    WHERE n.NPI = t.NPI
+							 AND n.Provider_Other_Organization_Name = t.Provider_Other_Organization_Name
+                             AND n.Provider_Other_Organization_Name_Type_Code = t.Provider_Other_Organization_Name_Type_Code
+                             AND n.Created_Date = t.Created_Date);") ' Copy to main table
+    End Sub
+
+    Sub LoadPracticeLocations(FullFileName As String, db As DB)
+        db.TruncateTable("practice_locations_temp") ' table without ID, AUTO_INCREMENT, and PRIMARY KEY. This is a temp table for bulk load.
+        Console.WriteLine("Bulk Loading: Reading " + FullFileName + " into table practice_locations_temp")
+        Dim count As Int32 = BulkLoad(db.SconnStr, FullFileName, "practice_locations_temp")
+        Console.WriteLine(count.ToString + " rows loaded into practice_locations_temp")
+        Console.WriteLine("Inserting rows into practice_locations from practice_locations_temp")
+        db.PerformSQLcommand("INSERT INTO practice_locations (`NPI`,
+                                               `Provider_Secondary_Practice_Location_Address_Line_1` ,
+                                               `Provider_Secondary_Practice_Location_Address_Line_2` ,
+                                               `Provider_Secondary_Practice_Location_Address_City_Name` ,
+                                               `Provider_Secondary_Practice_Location_Address_State_Name` ,
+                                               `Provider_Secondary_Practice_Location_Address_Postal_Code` ,
+                                               `Provider_Secondary_Practice_Location_Address_Country_Code` ,
+                                               `Provider_Secondary_Practice_Location_Address_Telephone_Number` ,
+                                               `Provider_Secondary_Practice_Location_Address_Telephone_Extension`  ,
+                                               `Provider_Practice_Location_Address_Fax_Number`)
+                                        SELECT DISTINCT `NPI`,
+                                               `Provider_Secondary_Practice_Location_Address_Line_1` ,
+                                               `Provider_Secondary_Practice_Location_Address_Line_2` ,
+                                               `Provider_Secondary_Practice_Location_Address_City_Name` ,
+                                               `Provider_Secondary_Practice_Location_Address_State_Name` ,
+                                               `Provider_Secondary_Practice_Location_Address_Postal_Code` ,
+                                               `Provider_Secondary_Practice_Location_Address_Country_Code` ,
+                                               `Provider_Secondary_Practice_Location_Address_Telephone_Number` ,
+                                               `Provider_Secondary_Practice_Location_Address_Telephone_Extension`  ,
+                                               `Provider_Practice_Location_Address_Fax_Number`  
+                                FROM practice_locations_temp t
+                                WHERE NOT EXISTS 
+									(SELECT *
+                                    FROM practice_locations pl
+                                    WHERE  pl.NPI = t.NPI and 
+										   pl.Provider_Secondary_Practice_Location_Address_Line_1 = t.Provider_Secondary_Practice_Location_Address_Line_1 and 
+                                           pl.Provider_Secondary_Practice_Location_Address_Line_2 = t.Provider_Secondary_Practice_Location_Address_Line_2 and
+                                           pl.Provider_Secondary_Practice_Location_Address_City_Name = t.Provider_Secondary_Practice_Location_Address_City_Name and 
+                                           pl.Provider_Secondary_Practice_Location_Address_State_Name = t.Provider_Secondary_Practice_Location_Address_State_Name and
+                                           pl.Provider_Secondary_Practice_Location_Address_Postal_Code = t.Provider_Secondary_Practice_Location_Address_Postal_Code and
+                                           pl.Provider_Secondary_Practice_Location_Address_Country_Code = t.Provider_Secondary_Practice_Location_Address_Country_Code and
+                                           pl.Provider_Secondary_Practice_Location_Address_Telephone_Number = t.Provider_Secondary_Practice_Location_Address_Telephone_Number and 
+                                           pl.Provider_Secondary_Practice_Location_Address_Telephone_Extension = t.Provider_Secondary_Practice_Location_Address_Telephone_Extension and
+                                           pl.Provider_Practice_Location_Address_Fax_Number = t.Provider_Practice_Location_Address_Fax_Number) 
+                                     ;") ' Copy to main table
+    End Sub
 
     Sub LoadFile(FullFileName As String, PermTableName As String, TempTableName As String, AvoidDupes As Boolean, TruncateDestination As Boolean, db As DB, foutTemplateName As String)
 
@@ -402,6 +494,216 @@ Module Module1
         End Using
         DeleteFiles(csvPartFileList)
     End Sub
+
+    'BulkLoad(db.SconnStr, FullFileName, "other_names", cols)
+    'Sub BulkLoad(sConnectionString As String, fileName As String, tableName As String, cols As List(Of String))
+    ' https://stackoverflow.com/questions/42627806/mysqlbulkloader-from-datatable-vb-net
+    ' https://mysqlconnector.net/api/mysqlconnector/mysqlbulkloadertype/
+    'Dim cols As New List(Of String)(New String() {"NPI",
+    '                                            "Provider_Other_Organization_Name",
+    '                                            "Provider_Other_Organization_Name_Type_Code",
+    '                                            "Created_Date"})
+
+    'Dim fileName_formatted = Reformat_Dates(sConnectionString, fileName)
+
+    'Using MySqlConnectionObject As New MySqlConnection(sConnectionString + ";AllowLoadLocalInfile=True")
+    '    Dim bulk = New MySqlBulkLoader(MySqlConnectionObject) With {
+    '        .TableName = tableName,
+    '        .FieldTerminator = ",",
+    '        .LineTerminator = "\n",    ' == LF vbLf
+    '        .FieldQuotationCharacter = Chr(34),
+    '        .Local = True}
+
+    '    bulk.Columns.Clear()
+    '    For Each s In cols
+    '        bulk.Columns.Add(s)         ' specify col order in file
+    '    Next
+    '    Console.WriteLine()
+    '    ' bulk.FileName = fileName
+    '    bulk.FileName = fileName_formatted
+    '    ' delete files...
+    '    bulk.NumberOfLinesToSkip = 1 ' header row? Yes
+    '    Dim rows = bulk.Load()
+    '    Console.Write(rows.ToString + " rows loaded...")
+    '    Console.WriteLine()
+
+    'End Using
+    'End Sub
+
+    Function BulkLoad(connectionString As String, csvPath As String, tableName As String, Optional ByVal dateColumnIndexes As Integer() = Nothing, Optional ByVal sourceDateFormat As String = Nothing) As Int32
+
+
+        Using parser As New TextFieldParser(csvPath)
+            Dim sb As New StringBuilder()
+            Dim count As Integer = 0
+            parser.TextFieldType = FieldType.Delimited
+            parser.SetDelimiters(",")
+            parser.HasFieldsEnclosedInQuotes = True
+
+            Dim headers() As String = parser.ReadFields() ' Skip header row
+
+            While Not parser.EndOfData
+
+
+                Dim cols() As String = parser.ReadFields()
+
+
+
+                If dateColumnIndexes IsNot Nothing Then
+                    For Each idx As Integer In dateColumnIndexes
+                        If idx >= 0 AndAlso idx < cols.Count Then
+                            ' Remove any leading/trailing quotes and empty entries
+                            'cols(idx) = cols(idx).Replace("""", "").Trim()
+
+                            Dim parsedDate As Date
+                            If Date.TryParseExact(cols(idx), sourceDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, parsedDate) Then
+                                ' Convert to MySQL DATE format
+                                cols(idx) = parsedDate.ToString("yyyy-MM-dd")
+                            ElseIf DateTime.TryParse(cols(idx), CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, parsedDate) Then
+                                cols(idx) = parsedDate.ToString("yyyy-MM-dd")
+                            Else
+                                ' MySQL NULL representation in bulk load
+                                cols(idx) = "\N"
+                            End If
+                        End If
+                    Next
+                End If
+                'For Each field As String In cols
+                '    Console.WriteLine(field)
+                'Next
+                sb.AppendLine(String.Join(",", cols))
+
+            End While
+            ' Convert processed CSV to bytes
+            Dim csvBytes() As Byte = Encoding.UTF8.GetBytes(sb.ToString())
+
+            Using conn As New MySqlConnection(connectionString)
+                conn.Open()
+                ' MySqlBulkLoader only accepts file paths, so we create a temp file
+                Dim tempFile As String = Path.GetTempFileName()
+                File.WriteAllBytes(tempFile, csvBytes)
+                Try
+                    Dim bulk As New MySqlBulkLoader(conn) With {
+                        .TableName = tableName,
+                        .FieldTerminator = ",",
+                        .LineTerminator = "\n",    ' == CR/LF vbCrLf
+                        .FieldQuotationCharacter = Chr(34),
+                        .NumberOfLinesToSkip = 0,
+                        .Local = True,
+                        .FileName = tempFile
+                    }
+                    count = bulk.Load()
+                    Console.WriteLine($"Inserted {count} rows into {tableName}.")
+
+                Finally
+                    ' Clean up temp file
+                    If File.Exists(tempFile) Then
+                        File.Delete(tempFile)
+                    End If
+                End Try
+                Return count
+            End Using
+        End Using
+
+        'Return count
+    End Function
+
+    Function BulkLoad(connectionString As String, csvPath As String, tableName As String) As Int32 ', Optional ByVal dateColumnIndexes As Integer() = Nothing, Optional ByVal sourceDateFormat As String = Nothing) As Int32
+
+        ' Read original CSV
+        Dim lines() As String = File.ReadAllLines(csvPath)
+        Dim sb As New StringBuilder()
+        Dim count As Integer = 0
+        Dim cols As List(Of String)
+
+        For Each line As String In lines
+            If String.IsNullOrWhiteSpace(line) Then Continue For
+
+            cols = SplitCsvLine(line)
+            'If dateColumnIndexes IsNot Nothing Then
+            '    For Each idx As Integer In dateColumnIndexes
+            '        If idx >= 0 AndAlso idx < cols.Count Then
+            '            ' Remove any leading/trailing quotes and empty entries
+            '            cols(idx) = cols(idx).Replace("""", "").Trim()
+
+            '            Dim parsedDate As Date
+            '            If Date.TryParseExact(cols(idx), sourceDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, parsedDate) Then
+            '                ' Convert to MySQL DATE format
+            '                cols(idx) = parsedDate.ToString("yyyy-MM-dd")
+            '            ElseIf DateTime.TryParse(cols(idx), CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, parsedDate) Then
+            '                cols(idx) = parsedDate.ToString("yyyy-MM-dd")
+            '            Else
+            '                ' MySQL NULL representation in bulk load
+            '                cols(idx) = "\N"
+            '            End If
+            '        End If
+            '    Next
+            'End If
+            sb.AppendLine(String.Join(",", cols))
+        Next
+
+        ' Convert processed CSV to bytes
+        Dim csvBytes() As Byte = Encoding.UTF8.GetBytes(sb.ToString())
+
+        Using conn As New MySqlConnection(connectionString)
+            conn.Open()
+
+            ' MySqlBulkLoader only accepts file paths, so we create a temp file
+            Dim tempFile As String = Path.GetTempFileName()
+            File.WriteAllBytes(tempFile, csvBytes)
+
+            Try
+                Dim bulk As New MySqlBulkLoader(conn) With {
+                    .TableName = tableName,
+                    .FieldTerminator = ",",
+                    .LineTerminator = "\n",    ' == CR/LF vbCrLf
+                    .FieldQuotationCharacter = Chr(34),
+                    .NumberOfLinesToSkip = 1, ' changed from 0
+                    .Local = True,
+                    .FileName = tempFile
+                }
+
+                count = bulk.Load()
+                Console.WriteLine($"Inserted {count} rows into {tableName}.")
+
+            Finally
+                ' Clean up temp file
+                If File.Exists(tempFile) Then
+                    File.Delete(tempFile)
+                End If
+            End Try
+            Return count
+        End Using
+
+    End Function
+
+
+    ''' <summary>
+    ''' Splits a CSV line into columns, respecting quoted fields.
+    ''' </summary>
+    ''' <param name="csvLine">A single line from a CSV file.</param>
+    ''' <returns>List of column values as strings.</returns>
+    Function SplitCsvLine(csvLine As String) As List(Of String)
+        Dim columns As New List(Of String)()
+
+        If String.IsNullOrEmpty(csvLine) Then
+            Return columns
+        End If
+
+        ' Regex pattern: match quoted fields or unquoted fields
+        Dim pattern As String = "(?<=^|,)(?:""(?<val>(?:[^""]|"""")*)""|(?<val>[^,]*))"
+        Dim matches As MatchCollection = Regex.Matches(csvLine, pattern)
+
+        For Each m As Match In matches
+            ' Replace double double-quotes with a single double-quote
+            Dim value As String = m.Groups("val").Value.Replace("""""", """")
+            columns.Add(value)
+        Next
+
+        Return columns
+    End Function
+
+
 
     Function SplitCSVFile(fileNameIn As String, fileNameOut As String, linesToWrite As Integer) As List(Of String)
         Dim SplitFileList As New List(Of String)
@@ -992,7 +1294,7 @@ Module Module1
 
         Public Sub Dispose() Implements IDisposable.Dispose
             ' TODO
-            'conn = Nothing
+            ' conn = Nothing
         End Sub
 
     End Class
