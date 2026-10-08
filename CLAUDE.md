@@ -1,27 +1,51 @@
 # CLAUDE.md — getnpidata
 
-This file is the brief for any Claude Code session working in this repo. Read it fully before changing anything. It records decisions the owner has already made; do not re-ask them. Open items are listed in §11. Ask the owner about those, and about anything new and ambiguous.
+This file is the brief for any Claude Code session working in this repo. Read it fully before changing anything. It
+records decisions the owner has already made; do not re-ask them. Open items are in §11; ask the owner about those,
+and about anything new and ambiguous. The user-facing description of the service is in [README.md](README.md).
+
+**The repository is public.** Never put private details in tracked files or commit messages: no passwords, tokens or
+keys, no personal names, e-mail addresses, home paths (`C:\Users\<name>`), machine names, LAN or home IP addresses,
+or private hosts.
+
+**Section numbers are referenced from code comments and from the (immutable) migration files** ("CLAUDE.md §6.2",
+"§7 Stage 1.4", "§11 item 6"). Keep the numbering stable; add new material inside existing sections or at the end.
+
+## Status (Oct 2026)
+
+| Stage | State |
+|---|---|
+| 0 Repo hygiene, schema baseline | Done |
+| 1 C# loader (replaced the VB loader) | Done |
+| 2 Reference data (NUCC, HUD, Census) | Done |
+| 3 Search projection + `Npi.Core` search service | Done |
+| 4 Website | Done |
+| 5 REST API + `Npi.Client` | Done |
+| 6 Publish to Azure, deploy, Task Scheduler | **Not started. Wait for the owner to say "start Stage 6"** (§11 item 2) |
+
+On the loader PC, `workplace` holds the full data (current through 2026-10-04, 9,482,099 active providers). The site
+runs locally against it for LAN use while Azure is pending.
 
 ---
 
 ## 1. What this project is
 
-**Goal:** a public website and REST API for searching every US healthcare provider (medical, dental, etc.) in the CMS NPPES registry. Example query: "all Chiropractors in Suffolk County, NY", shown in a paged grid and downloadable as CSV.
-
-**Pipeline:**
+**Goal:** a public website and REST API for searching every US healthcare provider (medical, dental, etc.) in the
+CMS NPPES registry. Example query: "all Chiropractors in Suffolk County, NY", shown in a paged grid and downloadable
+as CSV.
 
 ```
-CMS NPPES files ──► Loader (Windows PC, scheduled) ──► Local MySQL (full data, system of record)
-                                                          │
-                                         build search projection (slim tables)
-                                                          │
-                                       Publisher (diff sync) ──► Azure Database for MySQL (search tables only)
-                                                                          │
-                                                   ASP.NET Core site + /api/v1 (Azure App Service, same region)
+CMS NPPES files ──► Npi.Loader (Windows PC, scheduled) ──► local MySQL `workplace` (full raw data, system of record)
+                                                              │
+                                                build search projection (slim tables)
+                                                              │
+                                    Npi.Loader publish (diff sync) ──► Azure Database for MySQL (search tables only)
+                                                                               │
+                                                    Npi.Web: site + /api/v1 (Azure App Service, same region)
 ```
 
-- **Data source:** https://download.cms.gov/nppes/NPI_Files.html, downloaded from https://download.cms.gov/nppes/<file>.zip
-- **Repo:** https://github.com/amazedbot/getnpidata. The old remotes (`[old GitHub remote]`, `[old GitLab remote]`) are history only. Never push to them.
+- **Data source:** https://download.cms.gov/nppes/NPI_Files.html; files at `https://download.cms.gov/nppes/<file>.zip`.
+- **Repo:** https://github.com/amazedbot/getnpidata (`origin`). It is the only remote; never push anywhere else.
 
 ---
 
@@ -30,357 +54,396 @@ CMS NPPES files ──► Loader (Windows PC, scheduled) ──► Local MySQL (
 | Topic | Decision |
 |---|---|
 | Website | ASP.NET Core on **.NET 10 (LTS)**, Razor Pages. Not .NET 8: its support ends Nov 2026 |
-| Language | **C#** for all new code. The legacy VB loader is ported to C# (see §5) and then deleted |
-| Loader runtime | C# .NET 10 console app, runs on the owner's Windows PC next to the local MySQL. Scheduled with **Windows Task Scheduler** |
-| Hosting | **Azure App Service** (Linux, .NET 10) + **Azure Database for MySQL – Flexible Server** (Burstable B1ms to start, MySQL 8), both in the **same region** (East US unless the owner says otherwise). GoDaddy is no longer used |
-| Access | Public site. API public too, protected by rate limiting; build it so an API-key requirement can be switched on later via config |
+| Language | **C#** for all code. The legacy VB loader was ported and then deleted (§3) |
+| Loader runtime | C# .NET 10 console app on the owner's Windows PC next to the local MySQL, scheduled with **Windows Task Scheduler** |
+| Local database | **MySQL 8.4 LTS** (8.0 reached end of life in April 2026) |
+| Hosting | **Azure App Service** (Linux, .NET 10) + **Azure Database for MySQL – Flexible Server** (Burstable B1ms to start, MySQL 8.4), both in **East US** |
+| Azure provisioning | The **owner creates the resources in the Azure portal** following `deploy/azure.md`. Claude Code does not provision. No custom domain for now (default `*.azurewebsites.net`) |
+| Access | Public site. API public too, protected by rate limiting; an API-key requirement can be switched on via config (built, off) |
 | County search | ZIP→county via the **HUD USPS ZIP-COUNTY crosswalk**. A ZIP matches **every** county it overlaps ("match any") |
-| Specialty search | Match **all 15** taxonomy slots. UI dropdown by NUCC **Classification** (e.g., "Chiropractor"); optional dependent Specialization dropdown |
+| Specialty search | Match **all 15** taxonomy slots. UI dropdown by NUCC **Classification**, optional dependent Specialization |
 | Addresses searched | Primary practice location + secondary practice locations (`pl_pfile`). Not the mailing address |
-| Filters | Specialty, state, county, city, ZIP, **ZIP + radius (miles)**, name (last/first or org), NPI, entity type (individual/org), gender, credential |
+| Filters | Specialty, state, county, city, ZIP, **ZIP + radius (miles)**, name (last/first or org), NPI, entity type, gender, credential |
 | Deactivated NPIs | **Flagged** in the DB (not deleted) and **never** returned by the site or API |
 | Grid/CSV columns | Summary columns (§7.3). CSV is **streamed**, with **no row cap** |
 | NUCC taxonomy | Loader refreshes `taxonomy_codes` automatically |
 | Load cycle | Full monthly replace + weekly incremental updates. The site must stay up during reloads |
 | Schema changes | Allowed: widen columns for V2, utf8mb4, new tables and indexes |
 | Logging | Log file only (no email/alerts). Non-zero exit code on failure |
-| Repo cleanup | Remove the sibling projects from the solution; delete the nested `getnpidata/getnpidata/` copy |
-| Git | Claude Code may create branches and commit on its own (see §10) |
+| Git | Claude Code may create branches, commit, open PRs and merge when CI is green (§10) |
 
 ---
 
-## 3. Current state of the repo (as received, Oct 2026)
+## 3. History: the legacy VB loader
 
-```
-getnpidata/                    ← repo root (VB.NET, .NET Framework 4.8.1 console, VS2022)
-  Module1.vb                   ← ALL loader logic (~1300 lines, partially commented out mid-debug)
-  getnpidata.vbproj / .sln     ← .sln also references 8 sibling projects NOT in the repo
-  App.config                   ← connection strings + UnzipFolderName (C:\Users\[user]\Downloads\Unzips)
-  My Project/Settings.settings ← an old db_connection setting (placeholder password)
-  packages.config              ← MySql.Data 9.6, ExcelDataReader 3.8, plus unused Azure/SqlClient/WebView2 packages
-  workplace_20210830.sql       ← 2021 schema dump (V1 field lengths, MISSING several tables, see §6)
-  npidata.cs                   ← empty placeholder class (solution item). Delete
-  getnpidata_TemporaryKey.pfx  ← ClickOnce signing key. Delete, and drop ClickOnce publish settings
-  .github/copilot-instructions.md ← Azure Copilot rules, irrelevant. Delete
-  getnpidata/getnpidata/       ← OLD nested copy with its own .git (GitLab). Delete (decided)
-  bin/ obj/ .vs/ packages/     ← build output. Must stay git-ignored
-```
+### 3.1 What it was
 
-> **Stage 0 (Oct 2026) restructured this, and Stage 1 deleted the VB project after the parity check (it remains in git history).** During Stage 0 the VB project lived in `legacy/getnpidata-vb/` (own `getnpidata-legacy.sln`, ClickOnce settings removed, passwords replaced by placeholders), the 2021 dump is in `db/reference/`, and the root `getnpidata.sln` holds only the new projects (§5). The tree above is kept as the record of what was received.
+The repo started as a VB.NET (.NET Framework 4.8.1) console app. In the owner's environment it loaded NPPES files
+into MySQL; its load branches were half commented out. Stage 0 removed unrelated sibling projects, a nested old copy,
+a ClickOnce key and stale files. Stage 1 ported the loader to C#, checked parity against the VB-loaded data, and
+deleted the VB project. It remains in git history before the `stage-1-loader` merge, under `legacy/getnpidata-vb/`.
 
-Sibling projects referenced by the `.sln` that are not present and are out of scope: Snowflake_access, UpdateAzureDB, TestAzureDB, getnpidata_SqlServer, SnowFlake_Load, npidata_loadToSnowflakeStage, npidata_loadToSnowFlakeStageODBC, npidata_LoadTableFromStage.
+### 3.2 Known defects of the VB loader (each has a regression test; code comments cite them as "legacy defect #N")
 
-### 3.1 What the legacy VB loader does
-
-1. Scrapes `NPI_Files.html` with the WinForms **`WebBrowser`** (IE) control and collects every `.zip` href.
-2. For each zip not yet in `downlog`, it immediately inserts it into `downlog`. It then downloads the zip with `WebClient` to the working directory and unzips the `.csv` files (excluding `_FileHeader`) and the deactivation `.xlsx` into `UnzipFolderName`, logging each one to `extractlog`.
-3. Per extracted file, **only the other-names branch is currently active** (the owner was debugging it). Everything else is commented out:
-   - Monthly `npidata_pfile` → `LoadFile(... truncate=True)`: split the CSV into 100k-line chunks under `C:\temp\short.csv<n>.csv`, `MySqlBulkLoader` into `npidata_temp`, `TRUNCATE npidata`, then `INSERT … SELECT`.
-   - Weekly `npidata_pfile` → `UPDATE … JOIN` on NPI, then insert new NPIs.
-   - `othername_pfile` → `other_names_temp` → `INSERT … WHERE NOT EXISTS` into `other_names` (date column reformatted MM/dd/yyyy → yyyy-MM-dd).
-   - `pl_pfile` → `practice_locations_temp` → `INSERT … WHERE NOT EXISTS` into `practice_locations`.
-   - Deactivation xlsx → `NPPES_Deactivated_NPI_Report` → `UPDATE npidata SET NPI_Deactivation_Date`.
-4. Runs `SET GLOBAL local_infile = 1` at start (needs admin privileges; works locally only).
-
-### 3.2 Known defects in the legacy code. Do NOT carry these into the port
-
-1. **Silent row loss:** `SplitCSVFile` calls `sw.WriteLine(sr.ReadLine(), True)`, which treats each data line as a *format string*. Any line containing `{` or `}` throws, and the bare `Catch` sleeps and drops it.
-2. **Column shifting:** both newer `BulkLoad` functions parse with quote awareness, then `String.Join(",", cols)` *without re-quoting*. Any value containing a comma (common in org names and addresses) shifts the columns.
-3. **No retry after failure:** `NPIfileSeen` writes to `downlog` *before* processing. A crash means that file is skipped forever.
-4. **False success:** `GetNPIdata` swallows download exceptions, prints "Successfully Downloaded", and returns the **exe path**. The caller assumes CWD = exe directory.
-5. **NULL never equals NULL:** the `other_names` dedupe uses `n.Created_Date = t.Created_Date`, which is never true for NULL dates, so re-runs insert duplicates. `practice_locations` has the same pattern.
-6. **Deactivation branch** passes the zip *name*, not the extracted xlsx path, to the Excel reader. It also skips exactly 2 header rows by assumption.
-7. **Case-sensitive file matching:** `"_FileHeader"` in `UnZip` vs `"_fileheader"` in `Main`.
-8. **Old file naming:** V1 is gone (§4). V2 widened the first-name and legal-business-name fields beyond the 2021 schema (`varchar(20)` / `varchar(70)`).
-9. **Weekly before monthly:** weeklies older than the monthly they follow can overwrite newer data (no `Last_Update_Date` guard).
-10. **Unsafe SQL:** filenames and table names are concatenated into SQL (`NPIfileSeen`, `DoesTableExist`).
-11. **Site outage during monthly load:** `TRUNCATE npidata` before reload leaves the table empty for the duration.
-12. **Minor:** the module-level `sMySqlConnectionString` is shadowed by a local; `LoadCtr` is meaningless; `FindAnyInString`/`GetMonthNamesInList` are unused; `DB.Dispose` does nothing; DEBUG builds wait on `Console.ReadLine()`.
+1. **Silent row loss:** each CSV line was used as a *format string*; lines with `{` or `}` threw and were dropped.
+2. **Column shifting:** values were split with quote awareness, then re-joined with commas *without re-quoting*, so a comma inside a value shifted the columns.
+3. **No retry after failure:** a file was logged in `downlog` *before* processing, so a crash skipped it forever.
+4. **False success:** download exceptions were swallowed and reported as "Successfully Downloaded".
+5. **NULL never equals NULL:** the `other_names` / `practice_locations` dedupe compared nullable dates with `=`, so re-runs inserted duplicates.
+6. **Deactivation report:** the zip *name* was passed to the Excel reader, and exactly 2 header rows were skipped by assumption.
+7. **Case-sensitive file matching:** `"_FileHeader"` vs `"_fileheader"`.
+8. **Old file naming / widths:** V1 names and widths; V2 widened first-name and legal-business-name fields.
+9. **Weekly before monthly:** older weeklies could overwrite newer data (no `Last_Update_Date` guard).
+10. **Unsafe SQL:** file and table names concatenated into SQL.
+11. **Site outage during monthly load:** `TRUNCATE npidata` before the reload left the table empty.
+12. **Minor:** shadowed connection string, meaningless counters, unused helpers, a DEBUG `Console.ReadLine()`.
 
 ---
 
-## 4. Source data facts (verified against the CMS page, Oct 2026)
+## 4. Source data facts (verified against the CMS page and real files, Oct 2026)
 
 - **V1 retired 03/03/2026.** Only V2 files are published. Accept only `_V2` names.
 - Files on `NPI_Files.html` (match by regex, case-insensitive, on the href file name):
   - Monthly full: `NPPES_Data_Dissemination_<MonthName>_<YYYY>_V2.zip`, ~1.1 GB zipped, roughly 10 GB of CSV unzipped
   - Weekly incremental: `NPPES_Data_Dissemination_<MMDDYY>_<MMDDYY>_Weekly_V2.zip` (~6–8 MB; the page keeps about 4)
   - Monthly deactivations: `NPPES_Deactivated_NPI_Report_<MMDDYY>_V2.zip` (contains an .xlsx)
-- Each data zip contains `npidata_pfile_*.csv`, `othername_pfile_*.csv`, `pl_pfile_*.csv`, `endpoint_pfile_*.csv`, matching `*_fileheader.csv` files, and a Readme PDF. Match inner names case-insensitively. **Endpoints are out of scope** (skip them, but log it).
-- The `npidata` CSV has ~330 columns, every field double-quoted, and dates as `MM/DD/YYYY`. Treat the header row as the source of truth for column order.
-- **Header → DB column rule** (matches the existing schema): replace each run of non-alphanumeric characters with `_` and trim `_`. Examples: `Provider Organization Name (Legal Business Name)` → `Provider_Organization_Name_Legal_Business_Name`, `Employer Identification Number (EIN)` → `Employer_Identification_Number_EIN`. **Verified against the real V2 headers (weekly 092826_100426):** all 330 `npidata` columns match in order, given these aliases (`HeaderMapper`): the suffix `_If_outside_U_S` is dropped (`… Country Code (If outside U.S.)` → `…_Country_Code`; the full name would also exceed MySQL's 64-character limit); V2's `Provider Sex Code` → `Provider_Gender_Code`; and `pl_pfile`'s `Provider Secondary Practice Location Address- Address Line 1/2` → `Provider_Secondary_Practice_Location_Address_Line_1/2`. An unmapped header fails the load (new CMS columns need a migration).
-- **Field lengths (V2 Readme):** LBN and other organization name 100, first names 35, last names 35, middle 20, credential 20, addresses 55, city/state 40, postal 20. Raw `npidata` stores everything as TEXT anyway (§6.1).
-- **CSV format (verified):** `\n` line endings, every field double-quoted. Per the Readme, double quotes inside values are replaced by single quotes, so no escaping occurs. The data file's header equals its `_fileheader.csv`.
-- **NPI_Files.html** links are single-quoted relative hrefs with a `./` prefix (`href='./NPPES_…_V2.zip'`).
-- **Deactivation report:** one `.xlsx` with a title row (`NPPES Deactivated Records as of …`), a header row, then NPI (text) + date (text `MM/DD/YYYY`). It is the **full current list** (355,330 NPIs on 2026-09-14, back to 2005), not a delta.
+- Links are single-quoted relative hrefs with a `./` prefix (`href='./NPPES_…_V2.zip'`).
+- Each data zip contains `npidata_pfile_*.csv`, `othername_pfile_*.csv`, `pl_pfile_*.csv`, `endpoint_pfile_*.csv`, matching `*_fileheader.csv` files and a Readme PDF. Match inner names case-insensitively. **Endpoints are out of scope** (skipped and logged).
+- **CSV format:** `\n` line endings, every field double-quoted, dates `MM/DD/YYYY`. Per the Readme, double quotes inside values are replaced by single quotes, so no escaping occurs. The data file's header equals its `_fileheader.csv`. The header row is the source of truth for column order.
+- **Header → DB column rule:** replace each run of non-alphanumeric characters with `_` and trim `_` (`Provider Organization Name (Legal Business Name)` → `Provider_Organization_Name_Legal_Business_Name`). All 330 `npidata` columns match in order, given these aliases (`HeaderMapper`):
+  - the suffix `_If_outside_U_S` is dropped (the full name would also exceed MySQL's 64-character limit);
+  - V2's `Provider Sex Code` → `Provider_Gender_Code`;
+  - `pl_pfile`'s `Provider Secondary Practice Location Address- Address Line 1/2` → `Provider_Secondary_Practice_Location_Address_Line_1/2`.
+
+  An unmapped header fails the load; new CMS columns need a migration.
+- **Field lengths (V2 Readme):** LBN and other organization name 100, first/last names 35, middle 20, credential 20, addresses 55, city/state 40, postal 20.
+- **Deactivation report:** one `.xlsx` with a title row, a header row, then NPI (text) + date (text `MM/DD/YYYY`). It is the **full current list** (355,330 NPIs on 2026-09-14, back to 2005), not a delta.
 - **NPPES has no county field.** County comes from the ZIP crosswalk (§6.3).
 
 ---
 
-## 5. Target solution layout
+## 5. Solution layout and configuration
 
 ```
 getnpidata/
+  README.md                ← user-facing description of the service (keep it current with capabilities)
   CLAUDE.md
-  getnpidata.sln                      ← only the projects below
-  global.json                         ← pins the .NET 10 SDK band; selects Microsoft.Testing.Platform for `dotnet test`
-  Directory.Build.props               ← net10.0, nullable, implicit usings (src/ adds warnings-as-errors)
-  Directory.Packages.props            ← central package versions (no Version= in project files)
+  getnpidata.sln
+  global.json              ← pins the .NET 10 SDK band; selects Microsoft.Testing.Platform for `dotnet test`
+  Directory.Build.props    ← net10.0, nullable, implicit usings, central package management
+  Directory.Packages.props ← central package versions (no Version= in project files)
   src/
-    Npi.Core/        (net10.0 classlib) models, search filter + SQL builder, DB access, CSV writer
-    Npi.Loader/      (net10.0 console) discover → download → load → reference data → projection → publish
-    Npi.Web/         (net10.0 ASP.NET Core) Razor Pages UI + /api/v1 endpoints in ONE deployable app
-    Npi.Client/      (netstandard2.0 classlib) typed .NET client for /api/v1 (packable as Npi.Client.nupkg)
+    Directory.Build.props  ← warnings as errors, AnalysisLevel latest-recommended
+    Npi.Core/     (net10.0 classlib)  search filter, validation, SQL builder, search/detail/lookup services, CSV writer
+    Npi.Loader/   (net10.0 console)   discover → download → load → reference data → projection (→ publish, Stage 6)
+    Npi.Web/      (net10.0 ASP.NET)   Razor Pages site + /api/v1 in ONE deployable app
+    Npi.Client/   (netstandard2.0)    typed .NET client for /api/v1 (packable as Npi.Client.nupkg)
   tests/
-    Npi.Core.Tests/    (xUnit)  query builder, filters, CSV
-    Npi.Loader.Tests/  (xUnit)  file-name classification, header mapping, fixture loads
-    Npi.Web.Tests/     (xUnit)  query-string binding, API behaviour (WebApplicationFactory, no database)
-    Npi.Client.Tests/  (xUnit)  the typed client against the in-memory API + client/server contract checks
-    fixtures/          tiny hand-made CSV/XLSX files with nasty values (commas, quotes, { }, backslashes, empty dates, unicode)
-  db/
-    migrations/        numbered idempotent .sql files (001_baseline.sql, 002_…), applied by the loader's `migrate` command
-    reference/         workplace_20210830.sql (2021 schema dump, reference only, never applied)
+    Npi.Core.Tests/    query builder, input formats, SQL identifiers
+    Npi.Loader.Tests/  file classification, header mapping, downloads, deactivation report, migrations; MySQL integration tests
+    Npi.Web.Tests/     query-string binding, API behaviour (WebApplicationFactory, no database)
+    Npi.Client.Tests/  the client against the in-memory API + client/server contract checks
+    fixtures/          real V2 headers, NPI_Files.html, reference-data excerpts (byte-exact; see .gitattributes)
+  db/migrations/           numbered .sql files (001–016) + README, embedded in and applied by `Npi.Loader migrate`.
+                           Applied migrations are checksummed: never edit one, add a new one instead.
   deploy/
-    register-task.ps1  Task Scheduler registration
-    azure.md           Azure setup + deploy notes
-  .github/workflows/   CI (build+test on PR) and deploy-to-App-Service on merge
-  (legacy/getnpidata-vb/ held the VB project until Stage 1 parity; deleted 2026-10-08, still in git history before that commit)
+    azure.md               Azure setup + deploy notes
+    setup-local-mysql.ps1  configures a local MySQL 8.4 for the loader
+    register-task.ps1      (Stage 6) Task Scheduler registration
+  .github/workflows/ci.yml build + test on every PR and push to master
 ```
 
-**Tests** use **xUnit v3** on **Microsoft.Testing.Platform** (MTP). The .NET 10 SDK no longer runs xunit.v3 4.x through VSTest, so `global.json` opts `dotnet test` into MTP. Consequences: run tests with `dotnet test` or `dotnet test --solution getnpidata.sln` (not `dotnet test getnpidata.sln`); a test project with zero tests fails (exit code 8); no `Microsoft.NET.Test.Sdk` / `xunit.runner.visualstudio` packages are needed.
+**Tests** use **xUnit v3** on **Microsoft.Testing.Platform** (MTP). The .NET 10 SDK no longer runs xunit.v3 4.x
+through VSTest, so `global.json` opts `dotnet test` into MTP. Consequences:
+- run tests with `dotnet test` or `dotnet test --solution getnpidata.sln`, not `dotnet test getnpidata.sln`;
+- a test project with zero tests fails (exit code 8);
+- no `Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio` packages are needed.
 
-**Libraries:** `MySqlConnector` (not Oracle `MySql.Data`; it is async and supports `MySqlBulkLoader.SourceStream`), `Dapper`, `ExcelDataReader` (+ `System.Text.Encoding.CodePages`), `CsvHelper`, `Serilog` (+ File sink), `AngleSharp` or a strict regex for href scraping, `Microsoft.AspNetCore.OpenApi` (built-in OpenAPI) + Swagger UI or Scalar for the docs page, built-in ASP.NET Core rate limiting and output caching.
+**Libraries:**
 
-**Config & secrets:** `appsettings.json` holds non-secret defaults. Connection strings, the HUD token and the Azure credentials go in **user-secrets (loader/dev) / environment variables / `appsettings.Local.json` (git-ignored)**, and in **App Service → Configuration** for production. **Never commit a real password or token.** The HUD token has already been issued to the owner. If it is missing on your machine, ask the owner to set it (`dotnet user-secrets --project src/Npi.Loader set "HudApiToken" "<token>"`); never paste it into a tracked file. Connection names: `LocalMySql`, `RemoteMySql`. Settings: `WorkFolder` (downloads/temp, default `%ProgramData%\getnpidata\work`), `LogFolder`, `HudApiToken`.
+| Area | Libraries |
+|---|---|
+| Database | `MySqlConnector` (async, `MySqlBulkLoader.SourceStream`), `Dapper` |
+| Files | `ExcelDataReader` (+ `System.Text.Encoding.CodePages`), `CsvHelper` |
+| Logging and config | `Serilog` (+ File/Console sinks), Microsoft.Extensions.Configuration |
+| Web | `Microsoft.AspNetCore.OpenApi`, `Swashbuckle.AspNetCore.SwaggerUI`, the built-in rate limiting and output caching |
+| Client | `System.Text.Json` |
+| Tests | `Microsoft.AspNetCore.Mvc.Testing` |
+
+**Config & secrets:**
+- **Where things go.** `appsettings.json` holds non-secret defaults. Secrets go in user-secrets (loader and dev), environment variables or the git-ignored `appsettings.Local.json`; in production, in App Service → Configuration. **Never commit a real password, token or API key.**
+- **Names.** Connection strings are `LocalMySql` (loader) and `RemoteMySql` (site; publisher in Stage 6). Settings: `WorkFolder` (default `%ProgramData%\getnpidata\work`), `LogFolder` (default `%ProgramData%\getnpidata\logs`), `HudApiToken`, and `Api:*` for the site (§7 Stage 5).
+- **The HUD token** has been issued to the owner. If it's missing, ask the owner to run `dotnet user-secrets --project src/Npi.Loader set "HudApiToken" "<token>"`, and never paste it into a tracked file.
 
 ---
 
 ## 6. Database design
 
-**Local MySQL 8** (database `workplace` on the owner's PC) holds the full raw data and the search projection. **Azure Database for MySQL** holds only the search projection plus reference tables. It requires TLS (`SslMode=Required`) and firewall rules for the owner's home IP and the App Service outbound IPs (or "Allow Azure services"). Use utf8mb4 everywhere and InnoDB.
+**Local MySQL** (database `workplace` on the loader PC) holds the full raw data and the search projection.
+**Azure Database for MySQL** will hold only the search projection plus reference tables. It requires TLS
+(`SslMode=Required`) and firewall rules (see `deploy/azure.md`). utf8mb4 everywhere, InnoDB.
 
 ### 6.1 Raw tables (local only)
 
 | Table | Notes |
 |---|---|
-| `npidata` | 1 row per NPI, all 330 CSV columns, **all TEXT** utf8mb4 except `NPI CHAR(10)` PK (migration 002). Raw dates kept as text; empty → NULL. `Is_Deactivated TINYINT`, `Loaded_From`. No secondary indexes (search uses the projection). InnoDB's worst-case row-size check rejects 330 columns even as TEXT (counts 40 B each), so DDL creating/altering it runs with `innodb_strict_mode=OFF`. Real rows always fit (long TEXT goes off-page with a 20-byte pointer, so even a full row is ~7.3 KB). The loader's DB user therefore needs `SESSION_VARIABLES_ADMIN` |
-| `other_names` | from `othername_pfile`. No unique key needed: the loader **replaces** rows (whole table monthly, per NPI weekly) instead of de-duplicating, which removes defect #5 by construction |
-| `practice_locations` | from `pl_pfile` (secondary locations). Add surrogate `id` |
+| `npidata` | 1 row per NPI, all 330 CSV columns, **all TEXT** utf8mb4 except the `NPI CHAR(10)` PK (migration 002). Raw dates are kept as text; empty → NULL. Adds `Is_Deactivated TINYINT` and `Loaded_From`. No secondary indexes (search uses the projection). InnoDB's worst-case row-size check rejects 330 columns even as TEXT, so DDL creating or altering it runs with `innodb_strict_mode=OFF`, and the loader's DB user needs `SESSION_VARIABLES_ADMIN`. Real rows always fit (~7.3 KB at most) |
+| `other_names` | from `othername_pfile`. No unique key: the loader **replaces** rows (whole table monthly, per NPI weekly), which removes defect #5 by construction |
+| `practice_locations` | from `pl_pfile` (secondary locations), surrogate `ID` |
 | `nppes_deactivated_npi_report` | NPI, deactivation date. **Replaced in full** by each report (staging + RENAME), so reactivated NPIs drop out |
-| `downlog` | **extended (003):** `filename` UNIQUE, `kind` (Monthly/Weekly/Deactivation), `file_date`, `status` (Downloading/Loading/Completed/Failed; VB-era rows = `Legacy`, which does not count as done), `started_at`, `completed_at`, `rows_loaded`, `error` |
+| `downlog` | (003) `filename` UNIQUE, `kind` (Monthly/Weekly/Deactivation), `file_date`, `status` (Downloading/Loading/Completed/Failed; VB-era rows = `Legacy`, which does not count as done), `started_at`, `completed_at`, `rows_loaded`, `error` |
+| `extractlog` | zip, extracted file, rows |
 | `schema_migrations` | version, name, sha256, applied_at; written by `Npi.Loader migrate` |
+| `*_staging` | per-load staging tables, created `LIKE` the target, dropped after the swap |
 
-**Deactivation flag rule** (`Deactivations.ApplyAsync`): `Is_Deactivated = 1` when the NPI has a deactivation date (report date, else `NPI_Deactivation_Date`) and no `NPI_Reactivation_Date` on or after it. An empty `NPI_Deactivation_Date` is filled from the report. It is recomputed after every monthly and deactivation load (all rows) and every weekly (that week's NPIs). Date comparisons use `YYYYMMDD` strings built with SUBSTRING, because `STR_TO_DATE` errors on malformed values in strict SQL mode.
-| `extractlog` | keep (zip, extracted file, rows) |
-| `*_staging` | per-load staging tables, created `LIKE` the target, dropped after swap |
+**Deactivation flag rule** (`Deactivations.ApplyAsync`):
+- **When it's set:** `Is_Deactivated = 1` when the NPI has a deactivation date (the report date, else `NPI_Deactivation_Date`) and no `NPI_Reactivation_Date` on or after it. An empty `NPI_Deactivation_Date` is filled from the report.
+- **When it's recomputed:** for all rows after every monthly and deactivation load, and for that week's NPIs after every weekly.
+- **Date comparisons** use `YYYYMMDD` strings built with SUBSTRING, because `STR_TO_DATE` errors on malformed values in strict SQL mode.
 
-**Actual schema (owner's backup, 2026-10-07)** is in `db/migrations/001_baseline.sql`, with a faithful copy and caveats in `db/migrations/README.md`. Key facts for Stage 1:
-- `npidata`: 330 columns, all `varchar` (dates as text, empty values as `''`, not NULL). **V1 widths** (first name 20, LBN 70) and **latin1**, although `downlog` shows V2 files were loaded, so long V2 values were probably truncated. No `Is_Deactivated`/`Loaded_From`. Secondary indexes on entity type, taxonomy 1 and 2, last name, first name, mailing state and mailing country.
-- `other_names` (ID, NPI, org name, type code, Created_Date DATE) and `practice_locations` (ID + 10 `Provider_Secondary_Practice_Location_*` columns) already have surrogate IDs, an NPI index and **no unique key**. Their `_temp` tables exist too.
-- `downlog` is only (id, filename, received_date), latin1. Its last entries are the September 2026 monthly, the 091426 deactivation report and the 090726–091326 weekly. Because of defect #3 and the commented-out branches, a `downlog` row does **not** prove the file was loaded.
-- `nppes_deactivated_npi_report`, `statelookup` and `us_city_populations` are **empty**. `taxonomy_codes` (879 rows; Display_Name and Section included) lacks Effective/Deactivation dates.
-- NPPES code tables exist with seed rows: `entity_types`, `gender_codes`, `state_codes` (60), `country_codes` (236), `other_provider_name_type_codes`, `other_provider_identifier_issuer_codes`, `sole_proprietor_codes`, `subpart_codes`.
-- Unrelated or obsolete: `animals`, `dicomhosts`, `taxonomy_codes_old` (empty). Leave them alone; dropping them needs the owner's OK. There is no `npidata_dev`.
+**Baseline schema:** the owner's backup (2026-10-07) is captured in `db/migrations/001_baseline.sql`, with caveats in
+`db/migrations/README.md`. It used V1 widths and latin1 for several tables; migrations 002–006 fixed that. The
+NPPES code tables (`entity_types`, `gender_codes`, `state_codes`, `country_codes`, …) came with seed rows.
+Unrelated or obsolete tables (`animals`, `dicomhosts`, `taxonomy_codes_old`) are left alone; dropping them needs the
+owner's OK.
 
 ### 6.2 Search projection (local, then published to Azure)
 
-| Table | Columns (indicative) | Key indexes |
+Built by `Npi.Loader project` (migrations 011–016). Deactivated NPIs are **excluded**; their flag stays in local `npidata`.
+
+| Table | Columns | Key indexes |
 |---|---|---|
-| `provider` | npi PK, entity_type (1=individual, 2=org), last/first/middle name, prefix/suffix, credential, org_name, gender, primary_taxonomy_code, phone, enumeration_date DATE, last_update_date DATE, row_hash | (last_name, first_name), (org_name), (credential) |
+| `provider` | npi PK, entity_type (1 = individual, 2 = org), last/first/middle name, prefix/suffix, credential, `credential_key` (upper-cased letters/digits, "M.D." = "MD"), org_name, `sort_name` ("LAST, FIRST MIDDLE" or org name; default sort), gender, primary_taxonomy_code, phone, enumeration_date, last_update_date, row_hash | (sort_name), (last_name, first_name), (org_name), (credential_key) |
 | `provider_taxonomy` | npi, slot 1–15, taxonomy_code, is_primary, license_no, license_state | (taxonomy_code, npi) |
-| `provider_location` | id, npi, is_primary, address1, address2, city, state, zip5, zip4, phone | (state, city), (zip5), (npi) |
-| `zip_county` | zip5, county_fips, res_ratio, bus_ratio, tot_ratio, year, quarter | PK (zip5, county_fips), (county_fips) |
-| `county` | county_fips PK, state, county_name | (state, county_name) |
-| `zip_centroid` | zip5 PK, lat, lon (Census ZCTA Gazetteer) | — |
-| `taxonomy_codes` | existing NUCC table + `Display_Name` | (Classification) |
-| `data_version` | as-of date of the monthly/weekly/deactivation files, published_at | — |
+| `provider_location` | id, npi, is_primary, address1/2, city, state, zip5, zip4, postal_code (raw), country_code, phone. zip5/zip4 only for US addresses | (state, city), (zip5), (npi) |
+| `provider_other_name` | npi, name, type_code (for the detail page) | (npi) |
+| `provider_search` | taxonomy_code, state, city, zip5, npi: provider_taxonomy × provider_location reduced to the searched columns (~13M rows) | PK (taxonomy_code, state, city, zip5, npi), (taxonomy_code, zip5, npi) |
+| `zip_county` | zip5, county_fips, res/bus/oth/tot ratios, year, quarter | PK (zip5, county_fips), (county_fips) |
+| `county` | county_fips PK, state, county_name, source | (state, county_name) |
+| `zip_centroid` | zip5 PK, lat, lon (Census ZCTA) | — |
+| `taxonomy_codes` | NUCC codes + `Display_Name`, `Nucc_Version` | (Classification) |
+| `reference_data` | source, version, source_url, rows_loaded, loaded_at, checked_at | — |
+| `data_version` | one row (id = 1): as_of_date (newest last_update_date), latest monthly/weekly/deactivation file, NUCC/HUD/Census versions, provider_count, projected_at (UTC), published_at (UTC) | — |
 
-Deactivated NPIs are **excluded** from the projection, since they are never shown. Their flag stays in local `npidata`.
-
-*As built (Stage 3, migrations 011–015):*
-- `provider` adds `sort_name` ("LAST, FIRST MIDDLE" or the organization name; indexed, the default sort) and `credential_key` (credential upper-cased, letters and digits only, so "M.D." = "MD"; indexed).
-- `provider_location` adds `postal_code` (raw) and `country_code`. zip5/zip4 are parsed only for US addresses.
-- New `provider_other_name` (npi, name, type_code) feeds the detail page, because Azure only gets the projection.
-- `data_version` is a single row (id = 1): as_of_date = newest `last_update_date` in the projection, the latest monthly/weekly/deactivation files, the NUCC/HUD/Census versions, provider_count, projected_at, published_at.
-- `row_hash` = MD5 over the provider's columns **and** all its taxonomy/location/other-name rows (ordered by content), so a child-only change still changes the hash.
-- New `provider_search` (taxonomy_code, state, city, zip5, npi), migration 016. It is provider_taxonomy × provider_location reduced to the searched columns (~14M rows), with PK (taxonomy_code, state, city, zip5, npi) and KEY (taxonomy_code, zip5, npi). "Specialty + state/city/county/ZIP/radius" is one index range read. It derives from the published child tables, so Stage 6 can rebuild it on Azure instead of transferring it.
-- `project` builds all five tables in `*_staging`, checks ≥ 95% of the current provider count, and swaps them in with one RENAME. `run` rebuilds when `data_version.projected_at` is older than the newest completed downlog or reference load.
+- **Change detection:** `row_hash` = MD5 over the provider's columns **and** all its taxonomy/location/other-name rows, ordered by content, so a change in a child row alone still changes the hash.
+- **Rebuilding on Azure:** `provider_search` derives from the published child tables, so Stage 6 can rebuild it on Azure instead of transferring it.
+- **Build process:** `project` builds all five tables in `*_staging`, checks ≥ 95% of the current provider count, and swaps them in with one RENAME. `run` rebuilds when `data_version.projected_at` is older than the newest completed downlog or reference load.
 
 ### 6.3 Reference data sources
 
-- **NUCC taxonomy CSV:** linked from https://www.nucc.org (Code Sets → Taxonomy → CSV). The file name is versioned (`nucc_taxonomy_<ver>.csv`), so discover the link. Updated twice a year; refresh it when the version changes.
-  *Verified (Oct 2026):* page `…/provider-taxonomy-mainmenu-40/csv-mainmenu-57` lists every release as `/images/stories/CSV/nucc_taxonomy_<ver>.csv`; the newest is the highest number (`261` = 26.1, 883 codes, 245 classifications). Columns: Code, Grouping, Classification, Specialization, Definition, Notes, Display Name, Section; UTF-8 (one U+FFFD in the source). `run` fetches the page each time and reloads when the version changes. The load is an **upsert**, and retired codes keep their last `Nucc_Version`.
-- **HUD USPS ZIP-COUNTY crosswalk:** API `https://www.huduser.gov/hudapi/public/usps?type=<n>&query=All`, header `Authorization: Bearer <HudApiToken>`. The type for zip-county is believed to be **2**; confirm in HUD docs. Updated quarterly. Token is configured as `HudApiToken` (secret, see §5). Returns county **GEOID (FIPS)**, not names.
-  *Verified:* **type=2 is zip-county**. The response is `{"data":{"year","quarter","crosswalk_type":"zip-county","results":[{zip,geoid,city,state,res_ratio,bus_ratio,oth_ratio,tot_ratio}]}}`, about 7.8 MB. 2026 Q2 has 54,570 rows, 39,484 ZIPs, and 11,379 ZIPs in more than one county. 9 rows carry a 2-digit state-level geoid (AS, PW, FM, MH, plus TX 77352) and are skipped. The version can only be seen by downloading everything, so `run` re-downloads at most every `HudRefreshDays` (14) and replaces `zip_county` only when year/quarter changes.
-- **County names:** Census national county file (e.g., `https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt`).
-  *As built:* names come primarily from the **Census Gazetteer counties file** (`…/gazetteer/<year>_Gazetteer/<year>_Gaz_counties_national.zip`, newest year from the directory listing). It has current boundaries: HUD already uses Connecticut's 2022 planning regions (09110…09190), which the 2020 file lacks. The 2020 codes file above is the **fallback** for FIPS the Gazetteer lacks (GU, MP, VI, AS), with `county.source` recording which file supplied each name. Both are pipe-delimited UTF-8.
-- **ZIP centroids (radius search):** Census Gazetteer ZCTA file (`…/gazetteer/<year>_Gazetteer/<year>_Gaz_zcta_national.zip`). ZCTA ≈ ZIP. ZIPs without a ZCTA can't use radius search; say so in the UI.
-  *Verified:* the 2026 file has 33,791 ZCTAs; columns GEOID, …, INTPTLAT, INTPTLONG (internal point). Loaded together with the counties as one `census_gazetteer` version.
-- **Versions** of all reference sources are tracked in `reference_data` (source, version, source_url, rows_loaded, loaded_at, checked_at). `zip_county`, `county` and `zip_centroid` are replaced in full via staging + atomic RENAME, with the same ≥ 95% row check as NPPES. Any MySQL warning fails a load.
+- **NUCC taxonomy CSV:** the page `…/provider-taxonomy-mainmenu-40/csv-mainmenu-57` on nucc.org lists every release as `/images/stories/CSV/nucc_taxonomy_<ver>.csv`.
+  - The newest release is the highest number (`261` = 26.1: 883 codes, 245 classifications). UTF-8.
+  - `run` fetches the page each time and reloads when the version changes.
+  - The load is an **upsert**; retired codes keep their last `Nucc_Version`.
+- **HUD USPS ZIP–COUNTY crosswalk:** `https://www.huduser.gov/hudapi/public/usps?type=2&query=All` (type 2 = zip-county), header `Authorization: Bearer <HudApiToken>`.
+  - It returns county **FIPS (geoid)**, not names: about 54,570 rows, and 11,379 ZIPs lie in more than one county.
+  - 9 rows with a 2-digit state-level geoid are skipped.
+  - The version (year/quarter) is only visible after downloading everything. So `run` re-downloads at most every `HudRefreshDays` (14) and replaces `zip_county` only when the quarter changes.
+- **County names:** primarily the **Census Gazetteer counties file** (`…/gazetteer/<year>_Gazetteer/<year>_Gaz_counties_national.zip`, newest year from the directory listing).
+  - It has current boundaries, including Connecticut's 2022 planning regions, which HUD uses.
+  - The 2020 national county codes file is the fallback for FIPS the Gazetteer lacks (GU, MP, VI, AS); `county.source` records which file supplied each name.
+- **ZIP centroids (radius search):** Census Gazetteer ZCTA file (33,791 ZCTAs in 2026; INTPTLAT/INTPTLONG). It's loaded together with the counties as one `census_gazetteer` version. ZIPs without a ZCTA can't use radius search, and the validation message says so.
+- **Loading:** `zip_county`, `county` and `zip_centroid` are replaced in full via staging + atomic RENAME, with the same ≥ 95% row check as NPPES. Any MySQL warning fails a load.
 
 ---
 
-## 7. Stage plan
+## 7. Stage plan and as-built notes
 
-Work stage by stage, one branch per stage (§10). At the end of each stage, update §12 (Progress log) in this file.
+Work stage by stage, one branch per stage (§10). At the end of each stage, update the Status table and §12.
 
-### Stage 0 — Repo hygiene & discovery
-1. Make sure `origin` = `https://github.com/amazedbot/getnpidata`. Check that `.gitignore` covers `bin/ obj/ .vs/ packages/ *.user appsettings.Local.json logs/ work/`.
-2. Delete `getnpidata/getnpidata/` (the nested repo), `npidata.cs`, `getnpidata_TemporaryKey.pfx`, `.github/copilot-instructions.md`. Remove the 8 sibling projects and the "Solution Items" folder from the `.sln`.
-3. Move the VB project to `legacy/getnpidata-vb/`. Strip its unused packages only if that's needed to keep it building; otherwise leave it.
-4. Create the `src/` and `tests/` skeleton (§5), add the projects to the `.sln`, and get `dotnet build` + `dotnet test` green.
-5. When the test DB backup arrives: restore it locally as `npi_test`, dump its schema to `db/migrations/001_baseline.sql`, and record the row counts in §12.
-6. Write `deploy/azure.md`: the resources to create (resource group, MySQL Flexible Server, App Service plan + web app, same region), firewall rules, server parameters (`require_secure_transport=ON`; `local_infile=ON` if bulk publish is used), and app settings. Provisioning is done by the owner in the portal, or by Claude Code via `az` CLI **only with the owner's OK** (it costs money).
+### Stage 0 — Repo hygiene & discovery (done)
+Old copies, unrelated projects and stale files were removed. The `src/` + `tests/` skeleton, CI and `deploy/azure.md` were created. The owner's backup was restored as `npi_test`, and its schema became `db/migrations/001_baseline.sql`.
 
-### Stage 1 — C# loader (parity with, and replacement for, the VB loader)
-Commands (`Npi.Loader <command>`): `migrate`, `run` (default; does everything new), `discover` (dry-run list), `load-file <zip>` (manual), `reference` (NUCC/HUD/Census), `project`, `publish`.
+### Stage 1 — C# loader (done)
+Commands (`Npi.Loader <command>`): `run` (default), `migrate`, `discover`, `load-file <zip>`, `reference`, `project`, `publish` (Stage 6; currently exits 1 "not implemented").
 
-1. **Discover:** `HttpClient` GET of `NPI_Files.html`. Extract the hrefs and classify them by regex (V2 only):
+1. **Discover:** `HttpClient` GET of `NPI_Files.html`. Hrefs are classified by regex, V2 only:
    - `^NPPES_Data_Dissemination_(?<month>[A-Za-z]+)_(?<year>\d{4})_V2\.zip$` → monthly
    - `^NPPES_Data_Dissemination_(?<from>\d{6})_(?<to>\d{6})_Weekly_V2\.zip$` → weekly
    - `^NPPES_Deactivated_NPI_Report_(?<date>\d{6})_V2\.zip$` → deactivation
-   - Anything else → log a warning and ignore it.
-   Order: the newest unprocessed monthly first, then weeklies in chronological order, then deactivations.
-2. **Bookkeeping:** a file counts as done only when `downlog.status = 'Completed'`. Failed or partial entries are retried on the next run. Use parameterized SQL everywhere.
-3. **Download:** stream to `WorkFolder` via a temp name, rename on success, and verify the zip opens. Retry with backoff. Never report success on failure. Delete zips after a successful load (keep the last one with a config flag).
-4. **Bulk load:** stream each CSV straight from the zip entry into `MySqlBulkLoader` (`SourceStream`, `Local = true`). Use `FIELDS TERMINATED BY ',' ENCLOSED BY '"' ESCAPED BY ''` and the line terminator detected from the header. Build the column list from the **header row** (§4 mapping). Load the raw text into a staging table, and convert dates/empties to NULL **in SQL**, not by rewriting the CSV in C#. This removes defects #1 and #2 by construction.
-   *As built:* `MySqlBulkLoader` can't emit `ESCAPED BY ''` (it omits the clause, and MySQL then defaults to `\`). So the escape character is **U+0001**, which never occurs in NPPES text and disables escaping in practice; the backslash fixture test guards this. Columns load into user variables: `(@c0, …) SET col = NULLIF(@c0, '')`, and DATE columns use `STR_TO_DATE(…, '%m/%d/%Y')`. `LOAD DATA LOCAL` downgrades errors to warnings (short rows, truncation, duplicate keys), so **any warning fails the load**.
-5. **Monthly full:** load `npidata_staging`, `other_names_staging` and `practice_locations_staging`. Sanity-check the row counts (e.g., ≥ 95% of the current count). Then atomically `RENAME TABLE npidata TO npidata_old, npidata_staging TO npidata` (same for the other tables) and drop the `_old` tables.
-6. **Weekly:** load into staging, then `INSERT … ON DUPLICATE KEY UPDATE` **only where the incoming `Last_Update_Date` ≥ the existing one** (compare as dates). For other names and practice locations: delete the rows for the NPIs present in the weekly file, then insert theirs.
-7. **Deactivations:** read the xlsx with ExcelDataReader (register CodePages). Find the first row whose first cell is a 10-digit NPI (don't hard-code 2 header rows). Upsert into `nppes_deactivated_npi_report`, then set `npidata.Is_Deactivated = 1` and the deactivation date.
-   *As built:* the report is the full current list, so it **replaces** the table (staging + RENAME, with the same ≥ 95% sanity check) instead of upserting; flags follow the rule in §6.1. Only the newest report on the page is loaded, and likewise only the newest monthly.
-8. `local_infile`: do **not** run `SET GLOBAL`. Check `@@local_infile`; if it's off, fail with a clear message telling the owner how to enable it in `my.ini`.
-9. **Logging:** Serilog rolling file `logs/getnpidata-YYYYMMDD.log`, kept 60 days. Write a summary line per file (rows, duration). Exit code 0 means everything completed; non-zero means something failed.
-10. **Parity check:** run both loaders against `npi_test` with the same files and compare counts and spot rows. Then delete `legacy/`.
-   *As built:* the VB loader can't run on this PC (it needs Visual Studio/MSBuild for .NET Framework 4.8.1, and its load branches are commented out). Parity is therefore checked against the **VB-loaded data restored in `npi_test`**: load the same CMS files with the C# loader and compare counts and spot rows (§12).
 
-### Stage 2 — Reference data
-NUCC → `taxonomy_codes` (upsert; only when the version changed), HUD → `zip_county` (quarterly), Census → `county`, Gazetteer → `zip_centroid`. All idempotent, all called by `run` when stale.
+   Anything else is logged and ignored. Order: the newest unprocessed monthly, then the weeklies chronologically, then the newest deactivation report. Only the newest monthly and the newest report are loaded.
+2. **Bookkeeping:** a file counts as done only when `downlog.status = 'Completed'`, so failed or partial files are retried. All SQL is parameterized.
+3. **Download:** streamed to `WorkFolder` under a temp name, renamed on success, and the zip is verified to open. Retries with backoff (`DownloadAttempts`). Never reports success on failure. `KeepLastZip` keeps the newest zip.
+4. **Bulk load:** each CSV is streamed straight from the zip entry into `MySqlBulkLoader` (`SourceStream`, `Local = true`), with the column list taken from the header row (§4), into a staging table. Dates and empties are converted in SQL, never by rewriting the CSV (defects #1, #2).
+   - `MySqlBulkLoader` can't emit `ESCAPED BY ''`, so the escape character is **U+0001**, which never occurs in NPPES text; a backslash fixture test guards this.
+   - Values load into user variables (`SET col = NULLIF(@c0, '')`); DATE columns use `STR_TO_DATE(…, '%m/%d/%Y')`.
+   - `LOAD DATA LOCAL` downgrades errors to warnings, so **any warning fails the load**.
+5. **Monthly full:** `npidata`, `other_names` and `practice_locations` load into `*_staging`. After the ≥ `MinRowRatio` (95%) check, they are swapped in atomically with one RENAME (defect #11).
+6. **Weekly:** upsert into `npidata` only where the incoming `Last_Update_Date` ≥ the stored one (compared as dates; defect #9). Other names and practice locations of those NPIs are replaced. One transaction.
+7. **Deactivations:** ExcelDataReader reads the report; data starts at the first row whose first cell is a 10-digit NPI (defect #6). The report is the full list, so it **replaces** the table (staging + RENAME, ≥ 95% check), then flags follow §6.1.
+8. **`local_infile`:** the loader never runs `SET GLOBAL`. It checks `@@local_infile` and fails with instructions for `my.ini` if it's off.
+9. **Logging and exit codes:** a Serilog rolling file `getnpidata-YYYYMMDD.log` in `LogFolder`, kept 60 days, with a summary line per file (rows, duration). Exit code 0 = all completed, 1 = something failed, 2 = bad command line.
+10. **Parity:** the VB loader couldn't run on the loader PC, so parity was checked against the VB-loaded data restored from the owner's backup (§12, Stage 1). `legacy/` was deleted afterwards.
 
-### Stage 3 — Search projection + `Npi.Core` search service
-1. `project` builds `provider`, `provider_taxonomy` (unpivot the 15 slots, skip blanks) and `provider_location` (primary practice address from `npidata` plus each `practice_locations` row; normalize zip5/zip4). Exclude deactivated NPIs. Compute `row_hash` per row for the publisher.
-2. `SearchFilter` record: Classification, Specialization, TaxonomyCode, State, CountyFips, City, Zip5, RadiusMiles, LastName, FirstName, OrgName, Npi, EntityType, Gender, Credential, Sort, Page, PageSize.
-3. **SQL builder** (parameterized only; sort columns whitelisted):
-   - Specialty → `EXISTS (SELECT 1 FROM provider_taxonomy t JOIN taxonomy_codes c … WHERE t.npi = p.npi AND c.Classification = @cls [AND c.Specialization = @spec])`
-   - Location filters apply to `provider_location`, where **any** location of the NPI matches. County → `l.zip5 IN (SELECT zip5 FROM zip_county WHERE county_fips = @fips)`. Radius → bounding box on `zip_centroid`, then a haversine filter.
-   - Name → prefix match (`LIKE @x%`), case-insensitive collation. No leading wildcards.
-   - Return one row per NPI. The grid shows the **matching** location (the first by is_primary desc).
-4. **Validation:** require at least one filter. NPI must be 10 digits; ZIP must be 5 digits; radius 1–100 miles; page size ≤ 200.
-5. **Performance target:** < 2 s for "Classification + county" and "Classification + state" on full data. Check with `EXPLAIN` and add indexes as needed. Record the results in §12.
+Configuration order: `appsettings.json` → `appsettings.Local.json` → user-secrets (loaded in every environment, because Task Scheduler runs the loader as the owner's account) → environment variables with the prefix `NPI_`.
 
-*As built (`Npi.Core.Search`):*
-- **Flow:** `SearchValidation.Normalize` → `TaxonomyCatalog.ResolveAsync` (Classification/Specialization → taxonomy codes, cached hourly, so the `(taxonomy_code, npi)` index drives the query) → `SearchQuery` (parameterized SQL; sort whitelist `name|npi|credential|city|state|zip|lastUpdate|enumeration`, `-` prefix = descending) → `SearchService`.
-- **Driver:** the most selective filter becomes a derived table of candidate NPIs, and MySQL is pinned to start from it with `/*+ JOIN_ORDER(c, p) */`. Priority: NPI → specialty + location (`provider_search`) → specialty (`provider_taxonomy`) → name prefix → location (`provider_location`) → credential. The other filters check the candidates. Without the pin, MySQL scanned the whole `sort_name` index to satisfy `ORDER BY … LIMIT` ("smith" + NY: > 30 s).
-- **Queries:** the page's NPIs **with the total** via `COUNT(*) OVER ()` (a separate count only for a page past the end), then the matching location per NPI (primary first), the county name (the filtered county, else the ZIP's largest-share county) and the primary specialty. `SearchAllAsync` streams every match for the CSV export.
-- **Extra limits:** paging stops at the first 10,000 rows (`MaxResultWindow`, use the CSV beyond that). Text filters are at most 60 characters. LIKE wildcards in names are escaped. A radius ZIP with no Census centroid is a validation error.
+### Stage 2 — Reference data (done)
+NUCC → `taxonomy_codes` (upsert, only when the version changed), HUD → `zip_county` (quarterly), Census Gazetteer → `county` + `zip_centroid`. All idempotent; `run` refreshes them when stale, and `reference` forces a reload. Details in §6.3.
 
-### Stage 4 — Website (`Npi.Web`, Razor Pages)
-- `/`: search form. Dropdowns: Classification (cached), Specialization (dependent), State → County (dependent, from `county`). Text inputs for the other filters.
-- Results grid: server-side paging and sorting, page size 50, total count, "Download CSV" button carrying the same query string.
-- `/provider/{npi}`: detail page (all taxonomies, all practice locations, other names).
-- `/export.csv`: streams via `MySqlDataReader` + CsvHelper straight to `Response.Body` (no buffering, no cap). UTF-8 with BOM for Excel. File name `npi_search_<yyyyMMdd>.csv`. Long command timeout.
-- Footer: "Data as of <data_version>", source attribution to CMS NPPES, and a note that the data is public NPPES information.
-- Simple, accessible, mobile-friendly. No heavy JS grid framework unless needed.
+### Stage 3 — Search projection + `Npi.Core` search service (done)
+1. **Projection:** `project` builds the §6.2 tables:
+   - the 15 taxonomy slots are unpivoted, skipping blanks;
+   - locations are the primary practice address plus each `practice_locations` row, with zip5/zip4 normalized;
+   - deactivated NPIs are excluded, and `row_hash` is computed.
+2. **`SearchFilter`:** Classification, Specialization, TaxonomyCode, State, CountyFips, City, Zip5, RadiusMiles, LastName, FirstName, OrgName, Npi, EntityType, Gender, Credential, Sort, Page, PageSize.
+3. **SQL builder (`SearchQuery`):** parameterized only; the sort whitelist is `name|npi|credential|city|state|zip|lastUpdate|enumeration`, and a `-` prefix means descending.
+   - **Specialty:** `TaxonomyCatalog.ResolveAsync` maps Classification/Specialization to taxonomy codes, cached hourly.
+   - **Location:** **any** location of the NPI matches. County = `zip5 IN (zip_county for the FIPS)`. Radius = a bounding box on `zip_centroid`, then haversine.
+   - **Names:** prefix match (`LIKE x%`), wildcards escaped, no leading wildcards.
+   - **Driver:** the most selective filter becomes a derived table of candidate NPIs, and MySQL is pinned to start from it with `/*+ JOIN_ORDER(c, p) */`. Priority: NPI → specialty + location (`provider_search`) → specialty (`provider_taxonomy`) → name prefix → location (`provider_location`) → credential. The other filters check the candidates. Without the pin, MySQL scanned the whole `sort_name` index to satisfy `ORDER BY … LIMIT`.
+   - **Queries:** first, the page's NPIs with the total via `COUNT(*) OVER ()`; a separate count runs only for a page past the end. Then, per NPI: the matching location (primary first), the county name (the filtered county, else the ZIP's largest-share county) and the primary specialty. `SearchAllAsync` streams every match for CSV.
+   - **Broad searches** (§11 item 6): location-only searches are counted first, without a join. At ≥ 200,000 matches (`BroadSearchThreshold`), the page walks the sort index (`FORCE INDEX FOR ORDER BY`, with `NO_SEMIJOIN` on the location EXISTS).
+4. **Validation (`SearchValidation`):**
+   - At least one filter.
+   - NPI 10 digits, ZIP 5 digits, radius 1–100 miles (needs a ZIP with a centroid), page size 1–200.
+   - Text filters at most 60 characters.
+   - Paging stops at 10,000 rows (`MaxResultWindow`; use the CSV beyond that).
+   - A 30 s search timeout (`SearchTimeoutSeconds`); past it the user is told the search is too broad and to add a filter or download the CSV.
+5. **Performance target:** < 2 s for "Classification + county" and "Classification + state" on full data. **Met** (§12): Chiropractor + Suffolk 0.27 s, Chiropractor + NY 0.08 s.
 
-*As built:*
-- **Search form:** a GET form, so every search URL is shareable. `Npi.Web.Search.SearchQueryString` maps the §7 Stage 5 parameter names (`classification`, `specialization`, `taxonomy`, `state`, `county`, `city`, `zip`, `radius`, `lastName`, `firstName`, `orgName`, `npi`, `entityType`, `gender`, `credential`, `sort`, `page`, `pageSize`) to `SearchFilter` and back. The page, `/export.csv` and the API share it.
-- **Dropdowns:** they are filled server-side, and `wwwroot/js/search.js` reloads the dependent lists from `/lookup/specializations?classification=` and `/lookup/counties?state=`. Radius is enabled only with a 5-digit ZIP, and empty fields are left out of the URL. The page works without JavaScript.
-- **Grid:** sortable headers (with `aria-sort`), previous/next paging, the total, and Download CSV.
-- **Detail and export:** `/provider/{npi}` returns 404 for unknown or deactivated NPIs. `/export.csv` validates first (RFC 7807 400), then streams through `SearchAllAsync` + `ProviderCsv` with no row cap.
-- **Footer:** "Data as of" plus the active provider count from `data_version`, and source attribution.
-- **Network access:** the launch profile binds `0.0.0.0` (http 5000, https 5001), so other devices on the LAN can reach the site. Windows Firewall needs an inbound allow rule for the port, which the owner adds; the dev HTTPS certificate is only trusted for localhost, so LAN clients use http.
-- **Local dev:** the site reads `ConnectionStrings:RemoteMySql` (on this PC: `workplace` via the read-only `npi_web` login, §11 item 4); point it elsewhere, e.g. `npi_test`, with `dotnet user-secrets --project src/Npi.Web set "ConnectionStrings:RemoteMySql" "…"` and run with `ASPNETCORE_ENVIRONMENT=Development`.
+### Stage 4 — Website (`Npi.Web`, Razor Pages) (done)
+- **Search form:** a GET form, so every search URL is shareable. `Npi.Web.Search.SearchQueryString` maps the API parameter names (`classification`, `specialization`, `taxonomy`, `state`, `county`, `city`, `zip`, `radius`, `lastName`, `firstName`, `orgName`, `npi`, `entityType`, `gender`, `credential`, `sort`, `page`, `pageSize`) to `SearchFilter` and back. The page, `/export.csv` and the API all use it.
+- **Dropdowns:** filled server-side. `wwwroot/js/search.js` reloads the dependent lists from `/lookup/specializations?classification=` and `/lookup/counties?state=`. Radius is enabled only with a 5-digit ZIP, and empty fields are left out of the URL. The page works without JavaScript and doesn't scroll sideways at 375 px.
+- **Grid:** sortable headers (with `aria-sort`), previous/next paging, page size 50, the total, and Download CSV.
+- **Detail:** `/provider/{npi}` shows all taxonomies with licenses, all practice locations and other names. 404 for unknown or deactivated NPIs.
+- **Export:** `/export.csv` and `/api/v1/providers.csv` share `CsvExport`. It validates first (400 problem), then streams `SearchAllAsync` through `ProviderCsv` with no cap. UTF-8 with BOM, named `npi_search_<yyyyMMdd>.csv`.
+- **Footer:** "Data as of", the active provider count from `data_version`, source attribution, and a note that this is public NPPES data.
+- **Network:** the launch profile binds `0.0.0.0` (http 5000, https 5001). LAN clients need a Windows Firewall inbound rule for the port, which the owner adds. They use http, because the dev certificate is trusted only for localhost.
+- **Connection:** the site reads `ConnectionStrings:RemoteMySql`. Locally that's `workplace` via a read-only login (§8), run with `ASPNETCORE_ENVIRONMENT=Development`.
 
 #### 7.3 Summary columns (grid & CSV)
-NPI, Entity Type, Name (Last, First Middle Suffix *or* Organization), Credential, Primary Specialty (Classification – Specialization), Address 1, Address 2, City, State, ZIP, County, Phone, Gender, Enumeration Date, Last Update Date.
+NPI, Entity Type, Name (Last, First Middle Suffix *or* Organization), Credential, Primary Specialty (Classification –
+Specialization), Address 1, Address 2, City, State, ZIP, County, Phone, Gender, Enumeration Date, Last Update Date.
 
-### Stage 5 — REST API (`/api/v1`, same app)
-- `GET /api/v1/providers?classification=&specialization=&taxonomy=&state=&county=&city=&zip=&radius=&lastName=&firstName=&orgName=&npi=&entityType=&gender=&credential=&sort=&page=&pageSize=` → `{ items, page, pageSize, totalCount, dataAsOf }`
-- `GET /api/v1/providers/{npi}` → full detail (404 if unknown or deactivated)
-- `GET /api/v1/providers.csv?...`: same filters, streamed CSV
-- `GET /api/v1/taxonomy/classifications`, `GET /api/v1/taxonomy/classifications/{c}/specializations`
-- `GET /api/v1/states`, `GET /api/v1/states/{st}/counties`
-- `GET /api/v1/meta`: data versions
-- RFC 7807 problem details on errors. OpenAPI/Swagger at `/swagger`. Per-IP rate limiting (fixed window, configurable). CORS open for GET. An optional `X-Api-Key` check behind config flag `Api:RequireKey` (default false).
-- The API and pages use the **same** `Npi.Core` search service, so results are identical.
-- Optional: a small `Npi.Client` (netstandard2.0) typed client, or NSwag-generated, so .NET apps can consume the API.
+### Stage 5 — REST API (`/api/v1`, same app) and `Npi.Client` (done)
 
-*As built (`src/Npi.Web/Api`):*
-- **Endpoints:** all eight above, in one route group with rate limiting, CORS and the key filter. `/providers` returns `SearchResult` (`items`, `page`, `pageSize`, `totalCount`, `dataAsOf`); items are the §7.3 summary columns plus `entityTypeName`. `/providers.csv` and the site's `/export.csv` share `CsvExport` (byte-identical output). `/providers/{npi}` returns `ProviderDetail`. `/meta` returns `dataAsOf` as a date and `projectedAt`/`publishedAt` in UTC. Unknown NPI, classification or state → 404 problem.
-- **One parser:** the API reads the query string with the page's `SearchQueryString.Parse`. `SearchQueryString.Parameters` lists every parameter once; it feeds the OpenAPI document and maps validation errors to parameter names (`radius`, not `RadiusMiles`). A test checks the table against the parser.
+**Endpoints** (`src/Npi.Web/Api`), all in one route group with rate limiting, CORS and the key filter:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /providers?…` | `SearchResult` `{ items, page, pageSize, totalCount, dataAsOf }`; items are the §7.3 columns plus `entityTypeName` |
+| `GET /providers.csv?…` | Every match as CSV, streamed (byte-identical to `/export.csv`) |
+| `GET /providers/{npi}` | `ProviderDetail`; 404 problem if unknown or deactivated |
+| `GET /taxonomy/classifications` | All classifications |
+| `GET /taxonomy/classifications/{c}/specializations` | Specializations; 404 if the classification is unknown |
+| `GET /states` | States and territories |
+| `GET /states/{st}/counties` | Counties with FIPS; 404 if the state is unknown |
+| `GET /meta` | `dataAsOf` as a date; `projectedAt`/`publishedAt` in UTC |
+
+- **Same results as the page:** the API and the pages use the same `Npi.Core` services and the same parser (`SearchQueryString.Parse`). `SearchQueryString.Parameters` lists every parameter once; it feeds the OpenAPI document and maps validation errors to parameter names (`radius`, not `RadiusMiles`). Tests check the table against the parser.
 - **Errors:** everything under `/api` answers with RFC 7807 problem details, including unhandled errors and empty 404/405s (`UseExceptionHandler` + `UseStatusCodePages` for `/api` only; the pages keep `/Error`).
-- **Docs:** OpenAPI at `/openapi/v1.json` (Microsoft.AspNetCore.OpenApi, API routes only), Swagger UI at `/swagger` (Swashbuckle.AspNetCore.SwaggerUI).
-- **Rate limiting:** a fixed window per client IP, `Api:PermitLimit` requests per `Api:WindowSeconds` (default 60 per 60 s), across all of `/api/v1`. Over the limit → 429 problem with `Retry-After`. The pages and `/lookup/*` are not limited. On App Service set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` (deploy/azure.md).
-- **CORS:** any origin, GET only. **Output cache:** the taxonomy, state/county and meta lookups are cached for 10 minutes.
-- **API key:** `Api:RequireKey` (default false) + `Api:Keys` (secrets). The `X-Api-Key` header is compared in fixed time against every key. Keys required but none configured → the site fails at startup.
-- **`Npi.Client`** (netstandard2.0, hand-written, System.Text.Json): `NpiClient` with one method per endpoint (`SearchProvidersAsync(ProviderSearch)`, `DownloadProvidersCsvAsync`, `GetProviderAsync` → null on 404, the lookups, `GetMetaAsync`), `NpiApiException` (status, title, detail, errors by parameter name, `RetryAfter`), optional API key, own or injected `HttpClient`. Dates are `DateTime` (netstandard2.0 has no `DateOnly`). Contract tests fail when the server adds a field or parameter the client lacks. Usage in `src/Npi.Client/README.md`; `dotnet pack src/Npi.Client` builds the package (not published to nuget.org).
+- **Docs:** OpenAPI at `/openapi/v1.json` (API routes only), Swagger UI at `/swagger`.
+- **Rate limiting:** a fixed window per client IP, `Api:PermitLimit` requests per `Api:WindowSeconds` (default 60 per 60 s), across all of `/api/v1`. Over the limit → 429 problem with `Retry-After`. The pages and `/lookup/*` are not limited. On App Service, set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`.
+- **CORS:** any origin, GET only.
+- **Output cache:** the lookups and `/meta`, 10 minutes.
+- **API key:** `Api:RequireKey` (default false) plus `Api:Keys` (secrets). The `X-Api-Key` header is compared in fixed time against every key. Keys required but none configured → the site fails at startup.
+- **`Npi.Client`** (netstandard2.0, hand-written, System.Text.Json):
+  - `NpiClient`: one method per endpoint. `GetProviderAsync` returns null on 404.
+  - `ProviderSearch`: the filters, one property per API parameter.
+  - `NpiApiException`: status, title, detail, errors by parameter name, `RetryAfter`.
+  - Optional API key; its own `HttpClient` or an injected one. Dates are `DateTime`, because netstandard2.0 has no `DateOnly`.
+  - Contract tests fail when the server gains a field or parameter the client lacks.
+  - Usage is in `src/Npi.Client/README.md`. `dotnet pack src/Npi.Client` builds the package (not published to nuget.org).
 
-### Stage 6 — Publish to Azure & deploy
-1. **Publisher** (`Npi.Loader publish`): connect to `RemoteMySql`. Apply migrations remotely. Sync the projection tables **by diff**: compare local `row_hash` with a local `publish_state(npi, hash)` table, then batch-upsert changed rows (multi-row `INSERT … ON DUPLICATE KEY UPDATE`, ~1000 rows per batch, in transactions) and delete removed NPIs. For child tables, replace all rows for each changed NPI. Reference tables are replaced in full only when their version changes. Update `data_version` last. This keeps the site up and keeps nightly transfers small. For the **first** full publish, bulk-load into `_staging` tables with `LOAD DATA LOCAL` (enable the `local_infile` server parameter on Azure) and swap with `RENAME TABLE`. Fall back to batched inserts if that's unavailable.
-2. **Deploy the site:** GitHub Actions workflow builds, runs the tests and deploys `src/Npi.Web` to App Service on merge to the default branch. Use OIDC federated credentials or a publish profile stored as a GitHub secret. The production connection string lives in App Service Configuration (connection string `RemoteMySql`), never in the repo. Turn on HTTPS-only and Always On (B1 or higher). Health check endpoint: `/health`. Document everything in `deploy/azure.md`.
-3. **Cost guard:** start at App Service B1 + MySQL B1ms with 20–32 GB storage. Measure the projection size and query times, and scale up only if the §7 Stage 3 targets aren't met. Report monthly cost estimates to the owner before any scale-up.
-4. **Scheduling:** `deploy/register-task.ps1` registers a Task Scheduler task that runs `Npi.Loader run && Npi.Loader publish` **daily at ~02:30**. The loader skips files already completed, so daily runs are safe and catch weeklies and monthlies promptly. Task settings: run whether the user is logged on or not, wake the computer, run as soon as possible after a missed start, stop after 12 h, don't start a new instance if one is running.
+### Stage 6 — Publish to Azure & deploy (not started; wait for the owner)
+1. **Publisher** (`Npi.Loader publish`): connect to `RemoteMySql` and apply the migrations remotely.
+   - **Diff sync:** compare local `row_hash` with a local `publish_state(npi, hash)` table. Batch-upsert changed rows with multi-row `INSERT … ON DUPLICATE KEY UPDATE` (~1000 rows per batch, in transactions), and delete removed NPIs.
+   - **Child tables:** replace all rows of each changed NPI.
+   - **Reference tables:** replaced in full, only when their version changes.
+   - **Order:** update `data_version` last. This keeps the site up and nightly transfers small.
+   - **First full publish:** bulk-load into `_staging` with `LOAD DATA LOCAL` (enable the `local_infile` server parameter on Azure) and swap with `RENAME TABLE`. Fall back to batched inserts if that isn't available.
+   - **`provider_search`:** rebuild it on Azure from the published child tables instead of transferring it.
+2. **Deploy the site:** a GitHub Actions workflow builds, tests and deploys `src/Npi.Web` to App Service on merge to `master`.
+   - Authentication: OIDC federated credentials, or a publish profile stored as a GitHub secret.
+   - The production connection string lives in App Service Configuration (`RemoteMySql`), never in the repo.
+   - Turn on HTTPS-only and Always On; health check `/health`. Document everything in `deploy/azure.md`.
+3. **Cost guard:** start at App Service B1 + MySQL B1ms with 20–32 GB storage (≈ $30/month). Before the owner creates anything, measure the projection size and give a monthly cost estimate. Scale up only if the Stage 3 targets aren't met, and report the new cost first.
+4. **Scheduling:** `deploy/register-task.ps1` registers a Task Scheduler task that runs `Npi.Loader run && Npi.Loader publish` **daily at ~02:30**.
+   - The loader skips files already completed, so daily runs are safe.
+   - Task settings: run whether the user is logged on or not; wake the computer; run as soon as possible after a missed start; stop after 12 h; don't start a new instance while one runs.
+   - The task uses the loader's scoped login (§8).
 
 ---
 
-## 8. Commands
+## 8. Commands and environment
 
 ```powershell
 dotnet build getnpidata.sln
-dotnet test
+dotnet test                                         # MySQL integration tests run only when NPI_TEST_MYSQL is set
 dotnet run --project src/Npi.Loader -- discover
 dotnet run --project src/Npi.Loader -- migrate
 dotnet run --project src/Npi.Loader -- run
-dotnet run --project src/Npi.Web          # listens on all interfaces: https://<this-PC>:5001, http://<this-PC>:5000
-dotnet user-secrets --project src/Npi.Loader set "ConnectionStrings:LocalMySql" "server=localhost;database=npi_test;user=…;password=…;AllowLoadLocalInfile=true"
-dotnet user-secrets --project src/Npi.Loader list          # shows the local MySQL logins (secrets!)
-$env:NPI_TEST_MYSQL = "server=localhost;user=npi_dev;password=…"   # enables the MySQL integration tests
+dotnet run --project src/Npi.Web                    # all interfaces: http://<this-PC>:5000, https://<this-PC>:5001; API docs at /swagger
+dotnet pack src/Npi.Client -o <folder>              # Npi.Client.<version>.nupkg
+dotnet user-secrets --project src/Npi.Loader list   # shows the local MySQL logins (secrets!)
+$env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables the MySQL integration tests
 ```
 
-Loader configuration: `src/Npi.Loader/appsettings.json` holds the defaults. Overrides come from `appsettings.Local.json` (git-ignored), user-secrets (loaded in every environment, because Task Scheduler runs the loader as the owner's account), or environment variables with the prefix `NPI_` (e.g. `NPI_ConnectionStrings__LocalMySql`). Exit codes: 0 = all completed, 1 = something failed, 2 = bad command line. The loader's DB user needs all privileges on its database plus `SESSION_VARIABLES_ADMIN` (§6.1); the integration tests also create and drop `npi_test_it_*` databases.
+**Loader PC setup:**
+- **Install:** `winget install Oracle.MySQL --version 8.4.9`, then run `deploy/setup-local-mysql.ps1` from an elevated PowerShell, and set a root password right away.
+- **What the script configures:** bind to 127.0.0.1 only, `local_infile=ON`, binary logging off, a large buffer pool.
 
-Local MySQL on a new loader PC: `winget install Oracle.MySQL --version 8.4.9`, then run `deploy/setup-local-mysql.ps1` from an elevated PowerShell and set a root password right away.
-The legacy VB project was deleted in Stage 1 (2026-10-08) after the parity check. To look at it, check out a commit before `stage-1-loader` was merged (it lived in `legacy/getnpidata-vb/`).
+**MySQL logins on the loader PC:** each one is scoped, with its password kept only in the owner's user-secrets.
+
+| Login | Privileges | Used by | User-secret |
+|---|---|---|---|
+| Loader login | All privileges on `workplace` + `SESSION_VARIABLES_ADMIN` | The loader and the scheduled task | Npi.Loader `ConnectionStrings:LocalMySql` |
+| Test login | All privileges on `npi_test` and `npi\_test\_%` | Integration tests (`NPI_TEST_MYSQL`); `npi_test` is the scratch copy of the data | Npi.Loader `NpiTestMySql` |
+| Admin | root | Admin tasks only | Npi.Loader `LocalMySqlAdmin` |
+| Site login | `SELECT` on `workplace` only | The local site | Npi.Web `ConnectionStrings:RemoteMySql` |
+
+**Working from a Claude Code session on the loader PC:**
+- Claude's shells may see a private `%APPDATA%`, so they can't read or write the owner's user-secrets. Scripts that need the secrets run in the owner's Terminal panel. They read `secrets.json` there, write any MySQL client option file to a temp path, and delete it afterwards.
+- Windows PowerShell 5.1 redirection (`*>`) writes UTF-16, so decode before grepping.
+- A running site locks `src/Npi.Web/bin`. Stop it before building the solution, or build to another `OutDir`.
 
 ---
 
 ## 9. Conventions & guardrails
 
-- C# 14 (the net10.0 default), nullable enabled, warnings as errors in `src/`. Async all the way down. `CancellationToken` everywhere in the loader and web.
-- **All SQL parameterized.** Table/column identifiers come only from whitelists or the validated header mapping, backtick-quoted.
+- C# 14 (the net10.0 default), nullable enabled, warnings as errors in `src/`. Async all the way down, with a `CancellationToken` everywhere in the loader and web.
+- **All SQL parameterized.** Table and column identifiers come only from whitelists or the validated header mapping, backtick-quoted.
 - Never run destructive SQL (TRUNCATE/DROP/RENAME, mass DELETE) against anything but `npi_test` without the owner's explicit OK. Production (`workplace`, Azure) changes go through migrations and the loader/publisher only.
-- Tests: every bug class in §3.2 gets a regression test using `tests/fixtures`. Integration tests read the connection string from env var `NPI_TEST_MYSQL` and are skipped when it's not set.
-- Do not download the 1.1 GB monthly file in tests. Use fixtures, or a weekly file (~7 MB) for manual end-to-end runs.
-- Keep this CLAUDE.md current: if a decision changes or a fact turns out wrong, fix it here in the same commit.
+- **Never edit an applied migration** (its checksum is verified); add a new numbered one.
+- Tests: every defect class in §3.2 has a regression test using `tests/fixtures`. Integration tests read `NPI_TEST_MYSQL` and are skipped when it's not set (as in CI).
+- Don't download the 1.1 GB monthly file in tests. Use fixtures, or a weekly file (~7 MB) for manual end-to-end runs.
+- Keep this file and README.md current. If a decision changes, a fact turns out wrong, or a capability is added, fix it here (and in README.md if users see it) in the same commit.
 
 ## 10. Git workflow
 
-- Branch per stage: `stage-0-cleanup`, `stage-1-loader`, `stage-2-reference`, `stage-3-search`, `stage-4-web`, `stage-5-api`, `stage-6-deploy`. Smaller topic branches are fine.
-- Commit early and often with clear messages. Push the branch. Open a PR to the default branch with a summary and a test evidence section. Merge when green and the stage is complete (the owner has authorized Claude Code to commit and create branches).
-- Never commit secrets, data files, zips, logs or build output. If a secret is ever found in history, tell the owner to rotate it.
+- Use one branch per stage or topic (`stage-6-deploy`, …), commit early with clear messages, and push.
+- Open a PR to `master` with a summary and a test evidence section, and merge when CI is green and the work is complete.
+- Never commit secrets, private details (see the top of this file), data files, zips, logs or build output.
+- If a secret is ever found in history, tell the owner to rotate it.
 
-## 11. Open items (ask the owner / verify)
+## 11. Open items
 
-1. ~~**Test DB backup**~~ **Done 2026-10-07:** restored as `npi_test` on this PC; schema in `001_baseline.sql`; row counts in §12.
-2. **Azure setup (blocks Stage 6):** does the owner have an Azure subscription? Which region? Who creates the resources: the owner in the portal, or Claude Code via `az` with approval? Custom domain name for the site? Measure the projection size locally after Stage 3 and report it with a cost estimate. **Answered 2026-10-08:** no subscription yet (the owner will create one); region **East US**; the **owner creates the resources in the portal** (Claude Code follows `deploy/azure.md` and does not provision); **no custom domain** for now (default `*.azurewebsites.net`). Stage 6 waits until the owner says to start; the projection size + cost estimate is still due then.
-3. **HUD API token:** issued. Must be present as the `HudApiToken` secret on the loader machine (never in the repo).
-4. ~~Local MySQL~~ **Done 2026-10-07:** this PC is the loader PC. **MySQL 8.4.9 LTS**, Windows service `MySQL84`, installed by `deploy/setup-local-mysql.ps1`. It binds to 127.0.0.1 only, with `local_infile=ON`, binary logging off, an 8 GB buffer pool and `my.ini` in `C:\ProgramData\MySQL\MySQL Server 8.4\`. The owner's old server was 8.0.37 (end of life April 2026). Logins (2026-10-08) are kept in user-secrets. Npi.Loader: `ConnectionStrings:LocalMySql` = `npi_loader` (all privileges on `workplace` + `SESSION_VARIABLES_ADMIN`; the loader and the scheduled task use it), `NpiTestMySql` = `npi_dev` (all privileges on `npi_test` and `npi\_test\_%`; source of `NPI_TEST_MYSQL` for the integration tests) and `LocalMySqlAdmin` = root. Npi.Web: `ConnectionStrings:RemoteMySql` = `npi_web` (SELECT on `workplace` only) for the local site; production uses the Azure connection string. The owner should copy the root password into a password manager.
-5. Whether the API should require keys at launch (default: no, rate-limited). *Built in Stage 5:* off by default; turn on with `Api:RequireKey=true` and `Api:Keys` (§7 Stage 5).
-6. ~~**Broad location-only searches are slow**~~ **Resolved in Stage 4:** they are counted first, without a join. At ≥ 200,000 matches, the page walks the sort index (`FORCE INDEX FOR ORDER BY`, with `NO_SEMIJOIN` on the location EXISTS). State CA alone went from 19.7 s to 2.6 s, State NY 1.4 s. Still slow but under the 30 s search timeout (`SearchTimeoutSeconds`; past it the user sees "too broad, add a filter or download the CSV"): a whole state sorted by a non-indexed column (CA by last update 17.7 s), and state + entity type only (TX organizations 13 s). Old note: "State CA" alone (1.2M matches) takes ~20 s, because the windowed count and the sort cover every match. Options: a separate cheap count plus a `sort_name`-index page plan for broad searches (careful: the same plan is slow for sparse ones); show "1,000,000+" instead of an exact total; or require a second filter for whole-state searches. The Stage 3 targets are met (§12).
+1. ~~Test DB backup~~ Done 2026-10-07 (restored as `npi_test`, schema in `001_baseline.sql`).
+2. **Stage 6 (waits for the owner's go-ahead).** The owner has no Azure subscription yet and will create one, then the resources in the portal (East US, no custom domain).
+   - When the owner says to start: measure the projection size and give the cost estimate first.
+   - Then build the publisher, the deploy workflow and `deploy/register-task.ps1` (§7 Stage 6).
+3. **HUD API token:** issued. It must be present as the `HudApiToken` user-secret on the loader PC (never in the repo).
+4. ~~Local MySQL~~ Done 2026-10-07 (MySQL 8.4.9 on the loader PC, §8).
+5. **API keys at launch:** off (rate-limited only). The owner can switch them on with `Api:RequireKey=true` + `Api:Keys`.
+6. ~~Broad location-only searches are slow~~ Resolved in Stage 4 (§7 Stage 3.3, "Broad searches"): State CA 19.7 s → 2.6 s.
+   - Still slow but under the 30 s timeout: a whole state sorted by a non-indexed column (CA by last update, 17.7 s), and state + entity type only (TX organizations, 13 s).
+7. **Git history rewritten (2026-10-08, owner's request).** Old credentials, personal identities and private hosts were scrubbed from every commit, and all branches were force-pushed, so every commit ID changed. Clones made before that date must be re-cloned; never push old history back. GitHub still serves the pre-rewrite commits by their exact ID through its pull-request refs until GitHub Support purges them. Rotating any exposed credentials is still the owner's job.
 
 ## 12. Progress log
 
 | Date | Stage | Notes |
 |---|---|---|
-| 2026-10-07 | — | CLAUDE.md created from analysis of the VB loader + owner Q&A. No code changed yet. |
-| 2026-10-07 | — | Hosting changed from GoDaddy to Azure App Service + Azure Database for MySQL; target .NET 10 LTS. |
-| 2026-10-07 | 0 | Branch `stage-0-cleanup`. `origin` → amazedbot. Owner's uncommitted VB work committed first (passwords → placeholders). Nested copy (sent to Recycle Bin), `npidata.cs`, `.pfx`, copilot instructions removed. VB → `legacy/getnpidata-vb/`. Installed .NET SDK 10.0.401 + gh via winget. Skeleton `src/` + `tests/` (xunit.v3 on MTP), CI workflow, `deploy/azure.md`. `dotnet build` 0 warnings; `dotnet test` 29/29 pass; `/health` returns Healthy. **Pending:** 0.5 (test DB backup → `001_baseline.sql`, row counts). |
-| 2026-10-07 | 0.5 | Owner's backup `workplace.zip` (23 per-table mysqldumps from MySQL 8.0.37, 11.8 GB of SQL, dump-completed trailers present) restored into `npi_test` on local **MySQL 8.4.9** in about 35 min (`npidata` alone 1,973 s). 8.1 GB on disk, `npidata.ibd` 7.8 GB. `npidata` needed `innodb_strict_mode=OFF` (row size > 8126 on 8.4; see `db/migrations/README.md`). `001_baseline.sql` was verified: applying it twice to an empty DB gives 22 tables whose `SHOW CREATE TABLE` matches the restored DB exactly. **Row counts** (`COUNT(*)`, equal to the tuple counts streamed from the zip): npidata **9,726,865**; practice_locations 1,244,942; other_names 856,161; practice_locations_temp 11,935; extractlog 2,752; other_names_temp 2,587; taxonomy_codes 879; country_codes 236; downlog 93; state_codes 60; animals 8; other_provider_name_type_codes 5; gender_codes 4; sole_proprietor_codes 3; subpart_codes 3; entity_types 2; other_provider_identifier_issuer_codes 2. Empty: nppes_deactivated_npi_report, statelookup, us_city_populations, taxonomy_codes_old, dicomhosts. **Stage 0 complete.** |
-| 2026-10-08 | 1 | Branch `stage-1-loader`. C# loader built: `migrate`, `discover`, `run`, `load-file` (`reference`/`project`/`publish` exit 1 "not implemented" until Stages 2–6). Migrations 002–005 applied to `npi_test`; 002 rebuilt the 9.7M-row `npidata` in 451 s. **Live end-to-end `run` against CMS, 22 min, 6/6 files Completed, exit 0:** September 2026 monthly (1.16 GB download in 16 s; npidata 9,798,758 rows loaded in 814 s, other_names 862,485, practice_locations 1,259,509; ≥ 95% check, atomic swap, deactivation flags; 17 min 20 s total), weeklies 090726–100426 (11–14 s each, ~30–43k NPIs each), deactivation report 091426 (355,330 NPIs, 3 min 29 s). No MySQL warnings on any load. After the run: npidata 9,839,369 rows, newest Last_Update_Date 2026-10-04, 357,270 flagged deactivated; other_names 864,191; practice_locations 1,270,671. V2 widths matter: 360 LBNs > 70 chars and 232 first names > 20 chars (V1 would truncate them). **Parity** against the VB-loaded data (deterministic sample of 1,928 NPIs saved as `npi_test.parity_before` before the load): none missing; for the 1,823 whose Last_Update_Date was unchanged, last/first name, LBN, practice address/city/state/ZIP, taxonomy 1, enumeration date and gender match exactly. Only 3 NPIs differ, each with one *more* other-name/practice-location row in the C# load (the VB loader's child-table branches were half-disabled). 98 report NPIs are correctly not flagged: all were reactivated in later weeklies (newest 10/02/2026). Tests: 107 unit + 6 MySQL integration, all passing locally (integration skipped in CI). `legacy/` deleted after parity. **Stage 1 complete.** |
-| 2026-10-08 | 2 | Branch `stage-2-reference`. `reference` command (forced reload) and `run` (reloads only when a source's version changed) refresh NUCC → `taxonomy_codes` (upsert, `Nucc_Version`), HUD → `zip_county`, Census Gazetteer → `county` + `zip_centroid`, with versions in `reference_data`. Migrations 006–010. HUD key confirmed in the owner's user-secrets (length checked only). **Live load on `npi_test`, ~8 s:** NUCC 261 = 883 codes (245 classifications; all 879 previous codes still listed); HUD 2026Q2 = 54,561 ZIP/county pairs (9 state-level rows skipped); Census 2026 = 3,236 counties (14 territory counties from the 2020 codes file, CT's retired counties left out) and 33,791 ZIP centroids. Every HUD county FIPS has a name. 5,759 HUD ZIPs have no centroid (no radius search for them). Spot check of the brief's example via raw npidata (taxonomy slot 1, primary location only): **941 active chiropractors in Suffolk County, NY**. Tests: 117 unit + 11 MySQL integration (128/128 locally). Scratch table `parity_before` dropped. **Stage 2 complete.** |
-| 2026-10-08 | 3 | Branch `stage-3-search`. `project` command; projection tables `provider`, `provider_taxonomy`, `provider_location`, `provider_other_name`, `provider_search`, plus `data_version` (migrations 011–016). `Npi.Core.Search`: SearchFilter, validation, parameterized SearchQuery with driver selection, SearchService (page + windowed total, matching location, county, specialty; streamed `SearchAllAsync` for CSV), TaxonomyCatalog. **Full build on `npi_test`: 35 min 19 s.** It produced 9,482,099 providers, 12,308,777 taxonomy rows, 10,745,988 locations (9,482,099 primary + 1,263,889 secondary), 812,104 other names and 13,229,632 search rows. Step times: provider 428 s, taxonomy 288 s, primary locations 338 s, secondary 47 s, other names 13 s, provider_search 381 s, row_hash 612 s. Data found on the way: CMS writes the literal text "NULL" in ~16,500 license state codes (treated as empty for that column only). **Benchmark (SearchService, warm, full data):** Chiropractor + Suffolk County 961 matches **0.28 s**; Chiropractor + NY 7,962 **0.08 s**; Chiropractor + CA 18,539 0.18 s; Family Medicine + TX 20,602 0.20 s; Internal Medicine + Los Angeles County 15,149 1.1 s; Nurse Practitioner + CA 42,880 0.43 s; Dentist within 10 mi of 10001 11,333 0.78 s; "smith" + NY 2,460 0.49 s; Chiropractor + NY sorted by city 0.17 s, page 20 0.08 s. Not a target and still slow: State CA alone (1.2M) 19.7 s, see §11 item 6. The first design (EXISTS subqueries, separate count) took 1.5–13.6 s and timed out on "smith" + NY, which led to `provider_search`, the driver + JOIN_ORDER and the windowed count. Tests: 176/176 (MySQL integration included). **Stage 3 complete.** |
-| 2026-10-08 | 4 | Branch `stage-4-web`. Razor Pages site in `Npi.Web`: search form (Classification → Specialization and State → County dropdowns, city/ZIP/radius, names, NPI, type, gender, credential), sortable paged grid with total and Download CSV, `/provider/{npi}` detail (taxonomies with licenses, all practice locations, other names; 404 for unknown/deactivated), `/export.csv` (validated, then streamed, UTF-8 BOM, `npi_search_<yyyyMMdd>.csv`, no cap), footer "Data as of October 4, 2026 · 9,482,099 active providers". Core: `ProviderDetailService`, `GeographyCatalog` (states, counties, data_version), `ProviderCsv`. Broad-search plan (§11 item 6) and a 30 s search timeout. **Checked in the browser against `npi_test`:** Chiropractor + Suffolk County, NY = 961 results / 20 pages, matching the CSV (962 lines); Dentist within 10 mi of 11701 = 1,250; dependent dropdowns load (NY 62 counties, CT planning regions); bad ZIP on /export.csv = 400 problem; unknown NPI = 404; at 375 px the page doesn't scroll sideways (fixed a `<select>` overflow). **Benchmark (warm):** Chiropractor + Suffolk 0.26 s, + NY 0.08 s; State CA 2.6 s; State NY 1.4 s; ZIP 10001 0.07 s; Houston TX 0.9 s; all organizations 1.9 s. New `tests/Npi.Web.Tests` (query string binding). Tests: 190/190 with MySQL. **Stage 4 complete.** |
-| 2026-10-08 | — | **`workplace` created on this PC** (owner's OK). It did not exist on the loader PC, so the owner's backup `workplace.zip` was restored as `workplace` (05:33–06:06), then `migrate` (16 migrations, 8 min) and `run` (06:14–07:08, exit 0) ran with the root login for that process only (`npi_dev` still has no grant on `workplace`; the Stage 6 scheduled task needs one, or its own login). All 6 files Completed: September monthly 11,920,752 rows in 17 min, 4 weeklies, deactivation report 355,330. Result identical to `npi_test`: npidata 9,839,369 (357,270 deactivated), provider 9,482,099, provider_search 13,229,632, taxonomy_codes 883, zip_county 54,561; data as of 2026-10-04; projection 32 min 47 s. The web site still reads `npi_test`. |
-| 2026-10-08 | — | Separate logins (owner's request): `npi_loader` (all on `workplace`) became the loader's `LocalMySql`; `npi_web` (SELECT on `workplace`) is the local site's `RemoteMySql`; `npi_dev`/`npi_test` moved to `NpiTestMySql` for the tests. Random passwords, generated and stored in user-secrets in the owner's terminal. Checked: `npi_web` cannot create tables; `run` with `npi_loader` = no new files, everything current; the site on `workplace` returns the same 961 chiropractors in Suffolk County. |
-| 2026-10-08 | 5 | Branch `stage-5-api`. REST API `/api/v1` in `Npi.Web` (`src/Npi.Web/Api`): providers (search, CSV, detail), taxonomy classifications/specializations, states/counties, meta. RFC 7807 problem details everywhere under `/api`, OpenAPI `/openapi/v1.json` + Swagger UI `/swagger`, per-IP fixed-window rate limit (60/min default, 429 + Retry-After), CORS for GET, 10-minute output cache on lookups, optional `X-Api-Key` switch (`Api:RequireKey`, off). Same parser and services as the page. **Checked against `workplace`:** Chiropractor + Suffolk = 961 via the API, same as the page; `/api/v1/providers.csv` byte-identical to `/export.csv` (962 lines); warm timings Chiropractor + Suffolk 0.27 s, "smith" + NY 0.50 s, Dentist within 10 mi of 10001 0.89 s, State CA 3.6 s (first queries after the fresh load ~5 s while the buffer pool warmed); unknown NPI/classification/state → 404 problems; bad parameters → 400 keyed by parameter name. New API tests (no database): validation, 404, key on/off/misconfigured, rate limit, CORS, OpenAPI paths and parameters. Tests: 207/207 with MySQL. **Stage 5 complete.** |
-| 2026-10-08 | 5 | Branch `stage-5-client` (owner's request). Optional `Npi.Client` built: netstandard2.0 typed client for all eight `/api/v1` endpoints, plus `tests/Npi.Client.Tests` (16 tests: query string, parameter names against the server parser, models against the server records, errors, 404 → null, API key, 429 `RetryAfter`, base-address path prefix). Checked against the live site on `workplace`: meta, Suffolk County FIPS 36103, 961 chiropractors, detail, unknown NPI → null, CSV 962 lines, unknown classification → `NpiApiException` with `[classification]`. `dotnet pack` → `Npi.Client.1.0.0.nupkg`. Tests: 223/223 with MySQL. |
+| 2026-10-07 | — | CLAUDE.md created from analysis of the VB loader + owner Q&A. Hosting changed from GoDaddy to Azure App Service + Azure Database for MySQL; target .NET 10 LTS. |
+| 2026-10-07 | 0 | **Cleanup.** Owner's uncommitted VB work committed first (passwords → placeholders); nested old copy, `npidata.cs`, ClickOnce `.pfx`, Copilot instructions and 8 missing sibling projects removed; VB moved to `legacy/`. **Setup.** .NET SDK 10.0.401 + gh installed; `src/` + `tests/` skeleton (xunit.v3 on MTP), CI workflow, `deploy/azure.md`. 29/29 tests. |
+| 2026-10-07 | 0.5 | **Restore.** Owner's backup (23 per-table mysqldumps from MySQL 8.0.37, 11.8 GB of SQL) restored into `npi_test` on local MySQL 8.4.9 in ~35 min (8.1 GB on disk). `npidata` needed `innodb_strict_mode=OFF`. **Baseline.** `001_baseline.sql` verified: applying it twice to an empty DB gives 22 tables matching the restore. **Row counts:** npidata 9,726,865; practice_locations 1,244,942; other_names 856,161; taxonomy_codes 879; downlog 93. |
+| 2026-10-08 | 1 | **Loader.** C# loader (`migrate`, `discover`, `run`, `load-file`); migrations 002–005 (002 rebuilt npidata in 451 s). **Live run against CMS:** 22 min, 6/6 files, exit 0. September monthly: 1.16 GB download in 16 s, 9,798,758 npidata rows in 814 s. Weeklies 090726–100426: 11–14 s each. Deactivation report 091426: 355,330 NPIs. No MySQL warnings. Result: npidata 9,839,369, newest update 2026-10-04, 357,270 deactivated; V2 widths matter (360 LBNs > 70 chars, 232 first names > 20). **Parity** on a 1,928-NPI sample: none missing; the compared fields match for all 1,823 unchanged NPIs; 3 NPIs have one more child row in the C# load (the VB branches were half-disabled). `legacy/` deleted. 113 tests. |
+| 2026-10-08 | 2 | **Reference data:** `reference` + automatic refresh in `run`; migrations 006–010. **Live load ~8 s:** NUCC 261 = 883 codes; HUD 2026Q2 = 54,561 ZIP/county pairs; Census 2026 = 3,236 counties + 33,791 ZIP centroids. 5,759 HUD ZIPs have no centroid. Raw-data spot check: 941 chiropractors in Suffolk County, NY (slot 1, primary location only). 128 tests. |
+| 2026-10-08 | 3 | **Projection:** `project` + migrations 011–016. Full build 35 min: 9,482,099 providers, 12,308,777 taxonomy rows, 10,745,988 locations, 812,104 other names, 13,229,632 search rows. CMS writes the literal "NULL" in ~16,500 license states (treated as empty). **Benchmarks (warm):** Chiropractor + Suffolk 961 matches 0.28 s; Chiropractor + NY 0.08 s; Dentist within 10 mi of 10001 0.78 s; "smith" + NY 0.49 s. The first design (EXISTS subqueries) took 1.5–13.6 s, which led to `provider_search`, the driver + JOIN_ORDER and the windowed count. 176 tests. |
+| 2026-10-08 | 4 | **Website:** search form, sortable paged grid, CSV export, provider detail, footer. Broad-search plan: State CA 19.7 s → 2.6 s, NY 1.4 s; 30 s timeout. **Browser checks:** Chiropractor + Suffolk = 961 results, matching the CSV (962 lines); Dentist within 10 mi of 11701 = 1,250; bad ZIP → 400; unknown NPI → 404; mobile overflow fixed. **Network:** launch profile bound to 0.0.0.0 for LAN access. 190 tests. |
+| 2026-10-08 | — | **`workplace` created** on the loader PC (owner's OK) from the owner's backup, then `migrate` + `run` (all 6 files, exit 0, projection 33 min). Same counts as `npi_test`. Scoped MySQL logins created for the loader, the site and the tests (§8), with random passwords stored only in the owner's user-secrets. The site now reads `workplace`. |
+| 2026-10-08 | 5 | **REST API** `/api/v1` with RFC 7807 errors, OpenAPI + Swagger UI, per-IP rate limit, CORS, output cache, optional API key. **Checked against `workplace`:** same results as the page; CSV byte-identical to `/export.csv`. Warm timings: Chiropractor + Suffolk 0.27 s, "smith" + NY 0.50 s, Dentist within 10 mi of 10001 0.89 s, State CA 3.6 s. 207 tests. |
+| 2026-10-08 | 5 | **`Npi.Client`:** typed netstandard2.0 client + `tests/Npi.Client.Tests` (16 tests, including client/server contract checks). Checked against the live site: every call works; it packs into `Npi.Client.1.0.0.nupkg`. 223 tests. |
+| 2026-10-08 | — | **Owner's Azure answers** recorded (§2, §11 item 2). |
+| 2026-10-08 | — | **Repository cleanup.** Removed `db/reference/` (the 2021 schema dump, superseded by `001_baseline.sql`; still in history); replaced the Visual Studio template `.gitignore`/`.gitattributes` with project-specific ones; rewrote README.md as the user-facing description of the service; reorganized this file (section numbers kept, because code and migrations cite them) and removed private details. |
+| 2026-10-08 | — | **History rewrite** (owner's request): `git filter-branch` over all 33 commits; only the blobs containing private strings changed (all other files byte-identical), and all personal author/committer identities were mapped to the owner's GitHub noreply address. All 8 branches force-pushed; local repo re-pointed and pruned. The repo now commits with the noreply address. See §11 item 7. |

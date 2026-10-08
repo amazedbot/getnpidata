@@ -4,9 +4,9 @@ Production runs on **Azure App Service (Linux, .NET 10)** and **Azure Database f
 Server**, both in the **same region** (East US unless the owner decides otherwise). The local
 loader PC publishes the search projection to the Azure database; the site reads only from it.
 
-> **Provisioning costs money.** The owner creates these resources in the portal, or Claude Code
-> runs the `az` commands below **only after the owner says OK** (CLAUDE.md §7 Stage 0.6).
-> Open questions (subscription, region, custom domain) are tracked in CLAUDE.md §11 item 2.
+> **Provisioning costs money.** The owner creates these resources in the Azure portal (decided
+> Oct 2026: East US, default `*.azurewebsites.net` address, no custom domain yet). The `az`
+> commands in §6 are a scripted equivalent and are run only with the owner's OK.
 
 ## 1. Resources
 
