@@ -11,6 +11,25 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="ExcelDataReader" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" />
+    <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Migrations ship inside the assembly, so the exe and the tests always use the same SQL. -->
+    <EmbeddedResource Include="..\..\db\migrations\*.sql" LogicalName="migrations/%(Filename)%(Extension)" />
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Npi.Loader.Tests" />
   </ItemGroup>
 
