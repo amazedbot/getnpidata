@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="CsvHelper" />
     <PackageReference Include="Dapper" />
     <PackageReference Include="ExcelDataReader" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />

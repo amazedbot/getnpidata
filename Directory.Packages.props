@@ -5,6 +5,7 @@
     <PackageVersion Include="MySqlConnector" Version="2.6.2" />
     <PackageVersion Include="Dapper" Version="2.1.89" />
     <PackageVersion Include="ExcelDataReader" Version="3.9.0" />
+    <PackageVersion Include="CsvHelper" Version="33.1.0" />
 
     <!-- Configuration and logging -->
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />

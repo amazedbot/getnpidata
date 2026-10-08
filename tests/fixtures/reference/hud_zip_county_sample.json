@@ -1,0 +1,160 @@
+{
+ "data": {
+  "year": "2026",
+  "quarter": "2",
+  "input": "all",
+  "crosswalk_type": "zip-county",
+  "results": [
+   {
+    "zip": "00501",
+    "geoid": "36103",
+    "city": "HOLTSVILLE",
+    "state": "NY",
+    "res_ratio": 0,
+    "bus_ratio": 1,
+    "oth_ratio": 0,
+    "tot_ratio": 1
+   },
+   {
+    "zip": "00601",
+    "geoid": "72001",
+    "city": "ADJUNTAS",
+    "state": "PR",
+    "res_ratio": 0.9974515800203874,
+    "bus_ratio": 0.9949367088607595,
+    "oth_ratio": 0.9879518072289156,
+    "tot_ratio": 0.9970528928183652
+   },
+   {
+    "zip": "00601",
+    "geoid": "72081",
+    "city": "ADJUNTAS",
+    "state": "PR",
+    "res_ratio": 0.0025484199796126403,
+    "bus_ratio": 0.005063291139240506,
+    "oth_ratio": 0.012048192771084338,
+    "tot_ratio": 0.002947107181634869
+   },
+   {
+    "zip": "00602",
+    "geoid": "72117",
+    "city": "AGUADA",
+    "state": "PR",
+    "res_ratio": 0.0005828476269775188,
+    "bus_ratio": 0,
+    "oth_ratio": 0,
+    "tot_ratio": 0.0005287009063444109
+   },
+   {
+    "zip": "00602",
+    "geoid": "72005",
+    "city": "AGUADA",
+    "state": "PR",
+    "res_ratio": 0,
+    "bus_ratio": 0.0010141987829614604,
+    "oth_ratio": 0,
+    "tot_ratio": 7.552870090634441e-05
+   },
+   {
+    "zip": "00602",
+    "geoid": "72003",
+    "city": "AGUADA",
+    "state": "PR",
+    "res_ratio": 0.9994171523730225,
+    "bus_ratio": 0.9989858012170385,
+    "oth_ratio": 1,
+    "tot_ratio": 0.9993957703927493
+   },
+   {
+    "zip": "00820",
+    "geoid": "78010",
+    "city": "CHRISTIANSTED",
+    "state": "VI",
+    "res_ratio": 1,
+    "bus_ratio": 1,
+    "oth_ratio": 1,
+    "tot_ratio": 1
+   },
+   {
+    "zip": "06103",
+    "geoid": "09110",
+    "city": "HARTFORD",
+    "state": "CT",
+    "res_ratio": 1,
+    "bus_ratio": 1,
+    "oth_ratio": 1,
+    "tot_ratio": 1
+   },
+   {
+    "zip": "11701",
+    "geoid": "36059",
+    "city": "AMITYVILLE",
+    "state": "NY",
+    "res_ratio": 0.0022056796250344637,
+    "bus_ratio": 0,
+    "oth_ratio": 0,
+    "tot_ratio": 0.001877787340583679
+   },
+   {
+    "zip": "11701",
+    "geoid": "36103",
+    "city": "AMITYVILLE",
+    "state": "NY",
+    "res_ratio": 0.9977943203749655,
+    "bus_ratio": 1,
+    "oth_ratio": 1,
+    "tot_ratio": 0.9981222126594164
+   },
+   {
+    "zip": "11735",
+    "geoid": "36103",
+    "city": "FARMINGDALE",
+    "state": "NY",
+    "res_ratio": 0.16783391695847924,
+    "bus_ratio": 0.7382528127068166,
+    "oth_ratio": 0.5327613104524181,
+    "tot_ratio": 0.30230703153761196
+   },
+   {
+    "zip": "11735",
+    "geoid": "36059",
+    "city": "FARMINGDALE",
+    "state": "NY",
+    "res_ratio": 0.8321660830415207,
+    "bus_ratio": 0.2617471872931833,
+    "oth_ratio": 0.4672386895475819,
+    "tot_ratio": 0.697692968462388
+   },
+   {
+    "zip": "77352",
+    "geoid": "48",
+    "city": "LIVINGSTON",
+    "state": "TX",
+    "res_ratio": 1,
+    "bus_ratio": 1,
+    "oth_ratio": 1,
+    "tot_ratio": 1
+   },
+   {
+    "zip": "96799",
+    "geoid": "60",
+    "city": "PAGO PAGO",
+    "state": "AS",
+    "res_ratio": 0,
+    "bus_ratio": 0,
+    "oth_ratio": 1,
+    "tot_ratio": 1
+   },
+   {
+    "zip": "96910",
+    "geoid": "66010",
+    "city": "HAGATNA",
+    "state": "GU",
+    "res_ratio": 1,
+    "bus_ratio": 1,
+    "oth_ratio": 1,
+    "tot_ratio": 1
+   }
+  ]
+ }
+}
