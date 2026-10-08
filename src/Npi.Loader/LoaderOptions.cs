@@ -19,6 +19,27 @@ public sealed class LoaderOptions
 
     public int DownloadAttempts { get; set; } = 4;
 
+    /// <summary>NUCC taxonomy CSV page; the newest nucc_taxonomy_&lt;ver&gt;.csv link on it is loaded.</summary>
+    public string NuccPageUrl { get; set; } = "https://www.nucc.org/index.php/code-sets-mainmenu-41/provider-taxonomy-mainmenu-40/csv-mainmenu-57";
+
+    /// <summary>A NUCC release with fewer codes than this is rejected as broken (26.1 has 883).</summary>
+    public int MinTaxonomyCodes { get; set; } = 500;
+
+    /// <summary>HUD USPS crosswalk API; type=2 is ZIP → county.</summary>
+    public string HudApiUrl { get; set; } = "https://www.huduser.gov/hudapi/public/usps?type=2&query=All";
+
+    /// <summary>HUD API token (secret: user-secrets or environment only).</summary>
+    public string HudApiToken { get; set; } = "";
+
+    /// <summary>How often <c>run</c> downloads the HUD crosswalk to see whether a new quarter is out.</summary>
+    public int HudRefreshDays { get; set; } = 14;
+
+    /// <summary>Census Gazetteer directory; the newest &lt;year&gt;_Gazetteer folder is used.</summary>
+    public string GazetteerBaseUrl { get; set; } = "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/";
+
+    /// <summary>Census 2020 county codes; fallback names for county FIPS the Gazetteer lacks (territories).</summary>
+    public string CountyCodes2020Url { get; set; } = "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt";
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");
