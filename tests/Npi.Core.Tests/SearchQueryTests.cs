@@ -185,6 +185,36 @@ public class SearchQueryTests
         Assert.Equal(from, query.From);
     }
 
+    // §11 item 6: a whole-state search can match over a million providers. Those searches count first
+    // and, when huge, page by walking the sort index instead of sorting every match.
+    [Theory]
+    [InlineData("state", true, "SELECT p.npi FROM provider p FORCE INDEX FOR ORDER BY (ix_provider_sort) WHERE p.gender = @gender AND EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state) ORDER BY p.sort_name ASC, p.npi LIMIT @take OFFSET @skip")]
+    [InlineData("attributes", true, "SELECT p.npi FROM provider p FORCE INDEX FOR ORDER BY (ix_provider_sort) WHERE p.entity_type = @entityType ORDER BY p.sort_name ASC, p.npi LIMIT @take OFFSET @skip")]
+    [InlineData("specialty", false, null)]
+    [InlineData("name", false, null)]
+    public void Possibly_huge_searches_get_a_sort_index_plan(string kind, bool mayBeBroad, string? indexOrderSql)
+    {
+        var (filter, codes) = kind switch
+        {
+            "state" => (new SearchFilter { State = "CA", Gender = "F" }, (string[]?)null),
+            "attributes" => (new SearchFilter { EntityType = 2 }, null),
+            "specialty" => (new SearchFilter { Classification = "Chiropractor", State = "CA" }, ["111N00000X"]),
+            _ => (new SearchFilter { LastName = "smith", State = "CA" }, null),
+        };
+
+        var query = new SearchQuery(SearchValidation.Normalize(filter), codes, null);
+
+        Assert.Equal(mayBeBroad, query.MayBeBroad);
+        if (mayBeBroad)
+        {
+            Assert.Equal(indexOrderSql, query.IndexOrderPageSql);
+        }
+    }
+
+    [Fact]
+    public void Sorts_without_an_index_have_no_sort_index_plan() =>
+        Assert.Null(new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "CA", Sort = "-lastUpdate" }), null, null).IndexOrderPageSql);
+
     [Fact]
     public void The_page_query_starts_from_the_driver_and_returns_the_total()
     {

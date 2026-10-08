@@ -1,0 +1,75 @@
+@page "/provider/{npi}"
+@using System.Globalization
+@model ProviderModel
+@{
+    var p = Model.Provider;
+    ViewData["Title"] = p.Name;
+}
+
+<p><a href="javascript:history.back()">‹ Back to results</a></p>
+
+<h1>@p.Name@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</h1>
+
+<dl class="facts">
+    <dt>NPI</dt><dd>@p.Npi</dd>
+    <dt>Type</dt><dd>@p.EntityTypeName</dd>
+    @if (p.Gender is not null)
+    {
+        <dt>Gender</dt><dd>@(p.Gender == "F" ? "Female" : p.Gender == "M" ? "Male" : p.Gender)</dd>
+    }
+    <dt>Enumerated</dt><dd>@p.EnumerationDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>
+    <dt>Last updated</dt><dd>@p.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>
+</dl>
+
+<h2>Specialties</h2>
+<div class="table-wrap">
+    <table>
+        <thead><tr><th scope="col">Taxonomy</th><th scope="col">Classification</th><th scope="col">Specialization</th><th scope="col">Primary</th><th scope="col">License</th><th scope="col">License state</th></tr></thead>
+        <tbody>
+            @foreach (var t in p.Taxonomies)
+            {
+                <tr>
+                    <td><a href="/?taxonomy=@t.Code">@t.Code</a></td>
+                    <td>@t.Classification</td>
+                    <td>@t.Specialization</td>
+                    <td>@(t.IsPrimary ? "Yes" : "")</td>
+                    <td>@t.LicenseNumber</td>
+                    <td>@t.LicenseState</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<h2>Practice locations</h2>
+<div class="table-wrap">
+    <table>
+        <thead><tr><th scope="col">Location</th><th scope="col">Address</th><th scope="col">City</th><th scope="col">State</th><th scope="col">ZIP</th><th scope="col">Phone</th></tr></thead>
+        <tbody>
+            @foreach (var l in p.Locations)
+            {
+                <tr>
+                    <td>@(l.IsPrimary ? "Primary" : "Secondary")</td>
+                    <td>@l.Address1@if (l.Address2 is not null){<br />@l.Address2}</td>
+                    <td>@l.City</td>
+                    <td>@l.State</td>
+                    <td>@l.Zip@if (l.CountryCode is not null && l.CountryCode != "US"){<span class="muted"> (@l.CountryCode)</span>}</td>
+                    <td>@Format.Phone(l.Phone)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (p.OtherNames.Count > 0)
+{
+    <h2>Other names</h2>
+    <ul>
+        @foreach (var n in p.OtherNames)
+        {
+            <li>@n</li>
+        }
+    </ul>
+}
+
+<p class="muted">Verify details with the official <a href="https://npiregistry.cms.hhs.gov/provider-view/@p.Npi">NPPES NPI Registry</a>.</p>

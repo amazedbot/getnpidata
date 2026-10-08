@@ -30,6 +30,8 @@ public sealed class SearchQuery
     private readonly List<string> _remaining = [];
     private readonly bool _hasLocationFilter;
     private readonly List<string> _locationTemplates = []; // "{0}" = table alias
+    private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
+    private string? _driverKind;
 
     /// <param name="taxonomyCodes">The codes the Classification/Specialization/TaxonomyCode filters resolved to, or null for no specialty filter.</param>
     /// <param name="radiusCenter">The ZIP centroid for a radius search.</param>
@@ -93,37 +95,53 @@ public sealed class SearchQuery
         AddLocationFilters(filter, radiusCenter);
         _hasLocationFilter = _locationTemplates.Count > 0;
 
+        // For a possibly huge search (no specialty, name, NPI or credential), the sort-index plan needs
+        // every condition on p itself.
+        _broadWhere.AddRange(providerTemplates.Select(t => Format(t.Template, "p")));
+        if (_hasLocationFilter)
+        {
+            // NO_SEMIJOIN: check each provider as the sort index is walked. Otherwise MySQL materializes
+            // every matching NPI (1.2M for CA) and sorts them, which is what this plan exists to avoid.
+            _broadWhere.Add($"EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM provider_location l WHERE l.npi = p.npi AND {Location("l")})");
+        }
+
         // Pick the driver: the filter expected to match the fewest providers.
         var drivenBy = new HashSet<string>();
         if (filter.Npi is not null)
         {
             _driver = "SELECT @npi AS npi";
+            _driverKind = "npi";
         }
         else if (taxonomyCodes is not null && _hasLocationFilter)
         {
             _driver = $"SELECT DISTINCT s.npi FROM provider_search s WHERE s.taxonomy_code IN @taxonomyCodes AND {Location("s")}";
             drivenBy.Add("taxonomy");
             drivenBy.Add("location");
+            _driverKind = "search";
         }
         else if (taxonomyCodes is not null)
         {
             _driver = "SELECT DISTINCT t.npi FROM provider_taxonomy t WHERE t.taxonomy_code IN @taxonomyCodes";
+            _driverKind = "taxonomy";
             drivenBy.Add("taxonomy");
         }
         else if (providerTemplates.Any(t => t.Kind == "name"))
         {
             _driver = "SELECT d.npi FROM provider d WHERE " + string.Join(" AND ", providerTemplates.Where(t => t.Kind == "name").Select(t => Format(t.Template, "d")));
             drivenBy.Add("name");
+            _driverKind = "name";
         }
         else if (_hasLocationFilter)
         {
             _driver = $"SELECT DISTINCT l.npi FROM provider_location l WHERE {Location("l")}";
+            _driverKind = "location";
             drivenBy.Add("location");
         }
         else if (providerTemplates.Any(t => t.Kind == "credential"))
         {
             _driver = "SELECT d.npi FROM provider d WHERE " + Format(providerTemplates.First(t => t.Kind == "credential").Template, "d");
             drivenBy.Add("credential");
+            _driverKind = "credential";
         }
 
         _remaining.AddRange(providerTemplates.Where(t => !drivenBy.Contains(t.Kind)).Select(t => Format(t.Template, "p")));
@@ -162,7 +180,45 @@ public sealed class SearchQuery
 
     private string Hint => _driver is null ? "" : "/*+ JOIN_ORDER(c, p) */ ";
 
-    public string CountSql => $"SELECT {Hint}COUNT(*) {From}";
+    /// <summary>
+    /// The match count. A location-only search with nothing else to check counts straight from the
+    /// location index: every provider_location row belongs to a projected provider, so joining
+    /// provider (a million random lookups for a whole state) adds nothing.
+    /// </summary>
+    public string CountSql => _driverKind == "location" && _remaining.Count == 0
+        ? $"SELECT COUNT(DISTINCT l.npi) FROM provider_location l WHERE {Location("l")}"
+        : $"SELECT {Hint}COUNT(*) {From}";
+
+    /// <summary>
+    /// True when the search can match a large share of all providers: only location and/or
+    /// gender/entity filters (§11 item 6). Count first; above <see cref="SearchFilter.BroadSearchThreshold"/>
+    /// use <see cref="IndexOrderPageSql"/>.
+    /// </summary>
+    public bool MayBeBroad => _driverKind is null or "location";
+
+    /// <summary>
+    /// The page read in sort-index order (name or NPI sorts only, else null). Fast when matches are
+    /// dense: walking the index finds 50 of them quickly. Slow when they are sparse, hence the count first.
+    /// </summary>
+    public string? IndexOrderPageSql
+    {
+        get
+        {
+            var index = _sort.Key switch
+            {
+                SearchSort.Name => "ix_provider_sort",
+                SearchSort.Npi => "PRIMARY",
+                _ => null,
+            };
+            if (index is null)
+            {
+                return null;
+            }
+
+            var where = _broadWhere.Count > 0 ? " WHERE " + string.Join(" AND ", _broadWhere) : "";
+            return $"SELECT p.npi FROM provider p FORCE INDEX FOR ORDER BY ({index}){where} ORDER BY {OrderBy} LIMIT @take OFFSET @skip";
+        }
+    }
 
     /// <summary>The NPIs of the requested page in sort order, each with the total match count (column Total).</summary>
     public string PageSql => $"SELECT {Hint}p.npi AS Npi, COUNT(*) OVER () AS Total {From} ORDER BY {OrderBy} LIMIT @take OFFSET @skip";
