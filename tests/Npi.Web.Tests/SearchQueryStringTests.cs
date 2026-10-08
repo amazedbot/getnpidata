@@ -62,4 +62,35 @@ public class SearchQueryStringTests
     [InlineData("?entityType=2", true)]
     public void Only_real_filters_start_a_search(string qs, bool expected) =>
         Assert.Equal(expected, SearchQueryString.HasAnyFilter(Query(qs)));
+
+    [Fact]
+    public void Parameter_table_matches_the_parser()
+    {
+        // Every documented parameter sets its SearchFilter property, so the OpenAPI document can't drift from Parse.
+        foreach (var p in SearchQueryString.Parameters)
+        {
+            var (filter, errors) = SearchQueryString.Parse(Query($"?{p.Name}={(p.IsInteger ? "7" : "x")}"));
+            Assert.Empty(errors);
+            var value = typeof(SearchFilter).GetProperty(p.Field)!.GetValue(filter);
+            var unset = typeof(SearchFilter).GetProperty(p.Field)!.GetValue(new SearchFilter());
+            Assert.True(!Equals(value, unset), $"{p.Name} does not set {p.Field}");
+        }
+
+        Assert.Equal(SearchQueryString.Parameters.Count, SearchQueryString.Parameters.Select(p => p.Name).Distinct().Count());
+    }
+
+    [Fact]
+    public void Validation_errors_use_parameter_names()
+    {
+        var errors = SearchQueryString.ByParameterName(new Dictionary<string, string[]>
+        {
+            [nameof(SearchFilter.RadiusMiles)] = ["bad radius"],
+            [nameof(SearchFilter.Zip5)] = ["bad zip"],
+            ["filter"] = ["need a filter"],
+        });
+
+        Assert.Equal(["bad radius"], errors["radius"]);
+        Assert.Equal(["bad zip"], errors["zip"]);
+        Assert.Equal(["need a filter"], errors["filter"]);
+    }
 }

@@ -56,6 +56,40 @@ public static class SearchQueryString
         return (filter, errors);
     }
 
+    /// <summary>One query parameter: its name, whether it is a whole number, the <see cref="SearchFilter"/> property and a description.</summary>
+    public sealed record Parameter(string Name, bool IsInteger, string Field, string Description);
+
+    /// <summary>Every search parameter, in display order. Feeds the OpenAPI document and maps validation errors back to parameter names.</summary>
+    public static readonly IReadOnlyList<Parameter> Parameters =
+    [
+        new("classification", false, nameof(SearchFilter.Classification), "NUCC classification, e.g. \"Chiropractor\" (GET /api/v1/taxonomy/classifications). Matches any of the provider's 15 taxonomies."),
+        new("specialization", false, nameof(SearchFilter.Specialization), "NUCC specialization within the classification (GET /api/v1/taxonomy/classifications/{c}/specializations)."),
+        new("taxonomy", false, nameof(SearchFilter.TaxonomyCode), "NUCC taxonomy code, e.g. 111N00000X."),
+        new("state", false, nameof(SearchFilter.State), "Two-letter state code of any practice location."),
+        new("county", false, nameof(SearchFilter.CountyFips), "Five-digit county FIPS code (GET /api/v1/states/{st}/counties). A ZIP matches every county it overlaps."),
+        new("city", false, nameof(SearchFilter.City), "Practice location city (exact, case-insensitive)."),
+        new("zip", false, nameof(SearchFilter.Zip5), "Five-digit practice location ZIP."),
+        new("radius", true, nameof(SearchFilter.RadiusMiles), "Miles around zip (1-100). Needs a ZIP with a Census ZCTA centroid."),
+        new("lastName", false, nameof(SearchFilter.LastName), "Last name prefix (individuals)."),
+        new("firstName", false, nameof(SearchFilter.FirstName), "First name prefix (individuals)."),
+        new("orgName", false, nameof(SearchFilter.OrgName), "Organization name prefix."),
+        new("npi", false, nameof(SearchFilter.Npi), "Ten-digit NPI."),
+        new("entityType", true, nameof(SearchFilter.EntityType), "1 = individual, 2 = organization."),
+        new("gender", false, nameof(SearchFilter.Gender), "F or M (individuals)."),
+        new("credential", false, nameof(SearchFilter.Credential), "Credential, punctuation ignored (\"M.D.\" = \"MD\")."),
+        new("sort", false, nameof(SearchFilter.Sort), "name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix - for descending."),
+        new("page", true, nameof(SearchFilter.Page), "Page number, from 1. Paging stops at the first 10,000 matches; use the CSV beyond that."),
+        new("pageSize", true, nameof(SearchFilter.PageSize), "Results per page, 1-200 (default 50)."),
+    ];
+
+    private static readonly Dictionary<string, string> FieldToParameter =
+        Parameters.ToDictionary(p => p.Field, p => p.Name, StringComparer.Ordinal);
+
+    /// <summary>Validation errors keyed by query parameter name ("radius") instead of filter property ("RadiusMiles"). Other keys, like "filter", are kept.</summary>
+    public static Dictionary<string, string[]> ByParameterName(IEnumerable<KeyValuePair<string, string[]>> errors) =>
+        errors.GroupBy(e => FieldToParameter.TryGetValue(e.Key, out var name) ? name : e.Key)
+            .ToDictionary(g => g.Key, g => g.SelectMany(e => e.Value).ToArray());
+
     /// <summary>True when the query string contains any search filter (paging/sorting alone don't count).</summary>
     public static bool HasAnyFilter(IQueryCollection q) => FilterKeys.Any(k => Text(q, k) is not null);
 
