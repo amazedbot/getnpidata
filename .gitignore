@@ -361,3 +361,15 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# ---- getnpidata ----
+# Local config and secrets (connection strings, HUD token) never go in git
+appsettings.Local.json
+appsettings.*.Local.json
+# Loader working folders, logs and downloaded data
+[Ww]ork/
+[Ll]ogs/
+*.log
+*.zip
+# NPPES data dumps; only hand-made fixtures under tests/fixtures are tracked
+*.xlsx
+!tests/fixtures/**

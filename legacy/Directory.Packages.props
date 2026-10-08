@@ -1,0 +1,3 @@
+<Project>
+  <!-- Intentionally empty: the legacy VB project uses packages.config, not central package management. -->
+</Project>
