@@ -182,7 +182,8 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             log.Information("Skipping {Rows:N0} weekly rows older than the stored ones", stale);
         }
 
-        var upserted = await connection.ExecuteAsync(new CommandDefinition(
+        var applied = await Database.CountAsync(connection, "npidata_staging", ct, tx);
+        await connection.ExecuteAsync(new CommandDefinition(
             $"""
             INSERT INTO `npidata` ({columnList})
             SELECT {columnList} FROM `npidata_staging` s
@@ -205,7 +206,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
 
         var flagged = await Deactivations.ApplyAsync(connection, scopeTable: "npidata_staging", ct, tx);
         await tx.CommitAsync(ct);
-        log.Information("Weekly applied: {Rows:N0} npidata rows inserted/updated, {Flagged:N0} deactivation flags changed",
-            upserted, flagged);
+        log.Information("Weekly applied: {Rows:N0} NPIs inserted or updated, {Flagged:N0} rows had their deactivation flag or date changed",
+            applied, flagged);
     }
 }
