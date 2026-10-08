@@ -19,10 +19,14 @@ internal sealed class TestDatabase : IAsyncDisposable
     {
         _serverConnectionString = serverConnectionString;
         Name = name;
-        Database = new Database(new MySqlConnectionStringBuilder(serverConnectionString) { Database = name }.ConnectionString);
+        ConnectionString = new MySqlConnectionStringBuilder(serverConnectionString) { Database = name }.ConnectionString;
+        Database = new Database(ConnectionString);
     }
 
     public string Name { get; }
+
+    /// <summary>Plain connection string to the scratch database (for Npi.Core services).</summary>
+    public string ConnectionString { get; }
 
     public Database Database { get; }
 
@@ -47,6 +51,12 @@ internal sealed class TestDatabase : IAsyncDisposable
     {
         await using var connection = await Database.OpenAsync(CancellationToken.None);
         return (await connection.QueryAsync<T>(sql, param)).ToList();
+    }
+
+    public async Task ExecuteAsync(string sql, object? param = null)
+    {
+        await using var connection = await Database.OpenAsync(CancellationToken.None);
+        await connection.ExecuteAsync(sql, param);
     }
 
     public async Task<T> ScalarAsync<T>(string sql, object? param = null)
