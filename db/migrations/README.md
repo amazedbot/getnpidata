@@ -22,6 +22,11 @@ Rules:
 | `003_downlog_status.sql` | `downlog` bookkeeping: kind, file_date, status (existing rows → `Legacy`), timings, rows, error; `filename` UNIQUE. |
 | `004_extractlog_rows.sql` | `extractlog.rows_loaded`. |
 | `005_deactivated_report_utf8mb4.sql` | `nppes_deactivated_npi_report` → utf8mb4. |
+| `006_taxonomy_codes_utf8mb4.sql` | `taxonomy_codes` → utf8mb4, Specialization widened to 150, `Nucc_Version`, index (Classification, Specialization). |
+| `007_zip_county.sql` | HUD ZIP → county crosswalk table. |
+| `008_county.sql` | County names (Gazetteer, 2020 codes fallback). |
+| `009_zip_centroid.sql` | ZCTA centroids for radius search. |
+| `010_reference_data.sql` | Loaded version of each reference source. |
 
 ## 001_baseline.sql
 

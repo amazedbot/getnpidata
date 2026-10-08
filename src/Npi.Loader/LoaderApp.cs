@@ -3,6 +3,7 @@ using Dapper;
 using Npi.Loader.Db;
 using Npi.Loader.Load;
 using Npi.Loader.Nppes;
+using Npi.Loader.Reference;
 using Serilog;
 
 namespace Npi.Loader;
@@ -45,12 +46,6 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             log.Information("Skip {File}: {Reason}", skipped.FileName, skipped.Reason);
         }
 
-        if (plan.Files.Count == 0)
-        {
-            log.Information("Nothing new to load");
-            return 0;
-        }
-
         var downloader = new Downloader(http, log, options.DownloadAttempts);
         var failures = 0;
         foreach (var planned in plan.Files)
@@ -60,8 +55,24 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             failures += ok ? 0 : 1;
         }
 
-        log.Information("Run finished: {Ok} completed, {Failed} failed", plan.Files.Count - failures, failures);
-        return failures == 0 ? 0 : 1;
+        if (plan.Files.Count == 0)
+        {
+            log.Information("No new NPPES files");
+        }
+
+        // Stage 2: reference data, reloaded only when its published version changed.
+        var referenceOk = await new ReferenceLoader(options, database, http, log).RefreshAllAsync(force: false, ct);
+
+        log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}",
+            plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED");
+        return failures == 0 && referenceOk ? 0 : 1;
+    }
+
+    /// <summary>The <c>reference</c> command: reload NUCC, HUD and Census data even if unchanged.</summary>
+    public async Task<int> ReferenceAsync(CancellationToken ct)
+    {
+        await EnsureReadyAsync(ct);
+        return await new ReferenceLoader(options, database, http, log).RefreshAllAsync(force: true, ct) ? 0 : 1;
     }
 
     public async Task<int> LoadFileAsync(string zipPath, CancellationToken ct)
