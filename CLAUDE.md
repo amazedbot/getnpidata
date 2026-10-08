@@ -165,7 +165,13 @@ getnpidata/
 | `extractlog` | keep (zip, extracted file, rows) |
 | `*_staging` | per-load staging tables, created `LIKE` the target, dropped after swap |
 
-The **2021 dump lacks** `other_names`, `other_names_temp`, `practice_locations`, `practice_locations_temp` and `extractlog`. When the owner's test DB backup arrives, first run `mysqldump --no-data` on it into `db/migrations/001_baseline.sql`. Until then, infer those tables from the column lists in `Module1.vb` (`LoadOtherNames`, `LoadPracticeLocations`). Other 2021 tables: `statelookup` (State, StateName), `taxonomy_codes` (NUCC), `us_city_populations`, `npidata_dev` (drop), `dicomhosts` (unrelated, leave alone).
+**Actual schema (owner's backup, 2026-10-07)** is in `db/migrations/001_baseline.sql`, with a faithful copy and caveats in `db/migrations/README.md`. Key facts for Stage 1:
+- `npidata`: 330 columns, all `varchar` (dates as text, empty values as `''`, not NULL). **V1 widths** (first name 20, LBN 70) and **latin1**, although `downlog` shows V2 files were loaded, so long V2 values were probably truncated. No `Is_Deactivated`/`Loaded_From`. Secondary indexes on entity type, taxonomy 1 and 2, last name, first name, mailing state and mailing country.
+- `other_names` (ID, NPI, org name, type code, Created_Date DATE) and `practice_locations` (ID + 10 `Provider_Secondary_Practice_Location_*` columns) already have surrogate IDs, an NPI index and **no unique key**. Their `_temp` tables exist too.
+- `downlog` is only (id, filename, received_date), latin1. Its last entries are the September 2026 monthly, the 091426 deactivation report and the 090726–091326 weekly. Because of defect #3 and the commented-out branches, a `downlog` row does **not** prove the file was loaded.
+- `nppes_deactivated_npi_report`, `statelookup` and `us_city_populations` are **empty**. `taxonomy_codes` (879 rows; Display_Name and Section included) lacks Effective/Deactivation dates.
+- NPPES code tables exist with seed rows: `entity_types`, `gender_codes`, `state_codes` (60), `country_codes` (236), `other_provider_name_type_codes`, `other_provider_identifier_issuer_codes`, `sole_proprietor_codes`, `subpart_codes`.
+- Unrelated or obsolete: `animals`, `dicomhosts`, `taxonomy_codes_old` (empty). Leave them alone; dropping them needs the owner's OK. There is no `npidata_dev`.
 
 ### 6.2 Search projection (local, then published to Azure)
 
@@ -276,7 +282,10 @@ dotnet run --project src/Npi.Loader -- migrate
 dotnet run --project src/Npi.Loader -- run
 dotnet run --project src/Npi.Web          # https://localhost:5001
 dotnet user-secrets --project src/Npi.Loader set "ConnectionStrings:LocalMySql" "server=localhost;database=npi_test;user=…;password=…;AllowLoadLocalInfile=true"
+dotnet user-secrets --project src/Npi.Loader list          # shows the local MySQL logins (secrets!)
 ```
+
+Local MySQL on a new loader PC: `winget install Oracle.MySQL --version 8.4.9`, then run `deploy/setup-local-mysql.ps1` from an elevated PowerShell and set a root password right away.
 The legacy VB project builds only with Visual Studio/MSBuild on Windows (.NET Framework 4.8.1): open `legacy/getnpidata-vb/getnpidata-legacy.sln`. `legacy/Directory.Build.props` and `legacy/Directory.Packages.props` are deliberately empty so the repo-root net10.0 settings don't leak into it.
 
 ---
@@ -298,10 +307,10 @@ The legacy VB project builds only with Visual Studio/MSBuild on Windows (.NET Fr
 
 ## 11. Open items (ask the owner / verify)
 
-1. **Test DB backup:** the owner is sending it. Restore as `npi_test` and dump the schema (Stage 0.5). Until then, inferred DDL is provisional.
+1. ~~**Test DB backup**~~ **Done 2026-10-07:** restored as `npi_test` on this PC; schema in `001_baseline.sql`; row counts in §12.
 2. **Azure setup (blocks Stage 6):** does the owner have an Azure subscription? Which region? Who creates the resources: the owner in the portal, or Claude Code via `az` with approval? Custom domain name for the site? Measure the projection size locally after Stage 3 and report it with a cost estimate.
 3. **HUD API token:** issued. Must be present as the `HudApiToken` secret on the loader machine (never in the repo).
-4. Local MySQL version and whether `local_infile` is enabled in `my.ini` on the owner's PC.
+4. ~~Local MySQL~~ **Done 2026-10-07:** this PC is the loader PC. **MySQL 8.4.9 LTS**, Windows service `MySQL84`, installed by `deploy/setup-local-mysql.ps1`. It binds to 127.0.0.1 only, with `local_infile=ON`, binary logging off, an 8 GB buffer pool and `my.ini` in `C:\ProgramData\MySQL\MySQL Server 8.4\`. The owner's old server was 8.0.37 (end of life April 2026). Logins are kept in Npi.Loader user-secrets: `ConnectionStrings:LocalMySql` = `npi_dev` (all privileges on `npi_test` only) and `LocalMySqlAdmin` = root. The owner should copy the root password into a password manager.
 5. Whether the API should require keys at launch (default: no, rate-limited).
 
 ## 12. Progress log
@@ -311,3 +320,4 @@ The legacy VB project builds only with Visual Studio/MSBuild on Windows (.NET Fr
 | 2026-10-07 | — | CLAUDE.md created from analysis of the VB loader + owner Q&A. No code changed yet. |
 | 2026-10-07 | — | Hosting changed from GoDaddy to Azure App Service + Azure Database for MySQL; target .NET 10 LTS. |
 | 2026-10-07 | 0 | Branch `stage-0-cleanup`. `origin` → amazedbot. Owner's uncommitted VB work committed first (passwords → placeholders). Nested copy (sent to Recycle Bin), `npidata.cs`, `.pfx`, copilot instructions removed. VB → `legacy/getnpidata-vb/`. Installed .NET SDK 10.0.401 + gh via winget. Skeleton `src/` + `tests/` (xunit.v3 on MTP), CI workflow, `deploy/azure.md`. `dotnet build` 0 warnings; `dotnet test` 29/29 pass; `/health` returns Healthy. **Pending:** 0.5 (test DB backup → `001_baseline.sql`, row counts). |
+| 2026-10-07 | 0.5 | Owner's backup `workplace.zip` (23 per-table mysqldumps from MySQL 8.0.37, 11.8 GB of SQL, dump-completed trailers present) restored into `npi_test` on local **MySQL 8.4.9** in about 35 min (`npidata` alone 1,973 s). 8.1 GB on disk, `npidata.ibd` 7.8 GB. `npidata` needed `innodb_strict_mode=OFF` (row size > 8126 on 8.4; see `db/migrations/README.md`). `001_baseline.sql` was verified: applying it twice to an empty DB gives 22 tables whose `SHOW CREATE TABLE` matches the restored DB exactly. **Row counts** (`COUNT(*)`, equal to the tuple counts streamed from the zip): npidata **9,726,865**; practice_locations 1,244,942; other_names 856,161; practice_locations_temp 11,935; extractlog 2,752; other_names_temp 2,587; taxonomy_codes 879; country_codes 236; downlog 93; state_codes 60; animals 8; other_provider_name_type_codes 5; gender_codes 4; sole_proprietor_codes 3; subpart_codes 3; entity_types 2; other_provider_identifier_issuer_codes 2. Empty: nppes_deactivated_npi_report, statelookup, us_city_populations, taxonomy_codes_old, dicomhosts. **Stage 0 complete.** |
