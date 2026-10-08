@@ -57,7 +57,7 @@ Namespace My
         <Global.System.Configuration.ApplicationScopedSettingAttribute(),  _
          Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
          Global.System.Configuration.SpecialSettingAttribute(Global.System.Configuration.SpecialSetting.ConnectionString),  _
-         Global.System.Configuration.DefaultSettingValueAttribute("server=localhost;userid=root;password=secret;database=workplace;AllowLoadLocalInf"& _ 
+         Global.System.Configuration.DefaultSettingValueAttribute("server=localhost;userid=root;password=[password];database=workplace;AllowLoadLocalInf"& _ 
             "ile=true;Connection Timeout=6000;")>  _
         Public ReadOnly Property db_connection() As String
             Get
