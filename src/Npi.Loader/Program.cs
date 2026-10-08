@@ -44,9 +44,9 @@ Console.CancelKeyPress += (_, e) =>
 try
 {
     Log.Information("Npi.Loader {Command} {Arguments}", invocation.Command, string.Join(" ", invocation.Arguments));
-    if (invocation.Command is LoaderCommand.Project or LoaderCommand.Publish)
+    if (invocation.Command is LoaderCommand.Publish)
     {
-        Log.Error("Command {Command} is not implemented yet (CLAUDE.md §7, Stages 3–6)", invocation.Command);
+        Log.Error("Command {Command} is not implemented yet (CLAUDE.md §7, Stage 6)", invocation.Command);
         return 1;
     }
 
@@ -66,6 +66,7 @@ try
         LoaderCommand.Run => await app.RunAsync(cts.Token),
         LoaderCommand.LoadFile => await app.LoadFileAsync(invocation.Arguments[0], cts.Token),
         LoaderCommand.Reference => await app.ReferenceAsync(cts.Token),
+        LoaderCommand.Project => await app.ProjectAsync(cts.Token),
         _ => throw new InvalidOperationException($"Unhandled command {invocation.Command}"),
     };
 }

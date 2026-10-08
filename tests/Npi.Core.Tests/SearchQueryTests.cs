@@ -1,0 +1,210 @@
+using Npi.Core.Search;
+
+namespace Npi.Core.Tests;
+
+public class SearchQueryTests
+{
+    [Fact]
+    public void A_search_needs_at_least_one_filter()
+    {
+        var ex = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter()));
+
+        Assert.Contains("filter", ex.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData(nameof(SearchFilter.Npi), "123")]
+    [InlineData(nameof(SearchFilter.Zip5), "1170")]
+    [InlineData(nameof(SearchFilter.State), "New York")]
+    [InlineData(nameof(SearchFilter.CountyFips), "3610")]
+    [InlineData(nameof(SearchFilter.TaxonomyCode), "111N")]
+    [InlineData(nameof(SearchFilter.Gender), "Q")]
+    [InlineData(nameof(SearchFilter.Sort), "password")]
+    public void Malformed_values_are_rejected(string field, string value)
+    {
+        var filter = field switch
+        {
+            nameof(SearchFilter.Npi) => new SearchFilter { Npi = value },
+            nameof(SearchFilter.Zip5) => new SearchFilter { Zip5 = value },
+            nameof(SearchFilter.State) => new SearchFilter { State = value },
+            nameof(SearchFilter.CountyFips) => new SearchFilter { CountyFips = value },
+            nameof(SearchFilter.TaxonomyCode) => new SearchFilter { TaxonomyCode = value },
+            nameof(SearchFilter.Gender) => new SearchFilter { Gender = value },
+            _ => new SearchFilter { State = "NY", Sort = value },
+        };
+
+        var ex = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(filter));
+
+        Assert.Contains(field, ex.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData(0, "11701")]
+    [InlineData(101, "11701")]
+    [InlineData(10, null)]
+    public void Radius_must_be_1_to_100_miles_with_a_zip(int radius, string? zip)
+    {
+        var ex = Assert.Throws<SearchValidationException>(() =>
+            SearchValidation.Normalize(new SearchFilter { State = "NY", Zip5 = zip, RadiusMiles = radius }));
+
+        Assert.Contains(nameof(SearchFilter.RadiusMiles), ex.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(1, 201)]
+    [InlineData(0, 50)]
+    [InlineData(201, 50)] // past the 10,000-row paging window
+    public void Paging_is_bounded(int page, int pageSize)
+    {
+        Assert.Throws<SearchValidationException>(() =>
+            SearchValidation.Normalize(new SearchFilter { State = "NY", Page = page, PageSize = pageSize }));
+    }
+
+    [Fact]
+    public void Specialization_needs_a_classification() =>
+        Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { State = "NY", Specialization = "Pediatrics" }));
+
+    [Fact]
+    public void Values_are_trimmed_and_codes_upper_cased()
+    {
+        var f = SearchValidation.Normalize(new SearchFilter { State = " ny ", TaxonomyCode = "111n00000x", LastName = "  smith ", City = " " });
+
+        Assert.Equal(("NY", "111N00000X", "smith", (string?)null), (f.State, f.TaxonomyCode, f.LastName, f.City));
+    }
+
+    [Fact]
+    public void User_input_only_travels_as_parameters()
+    {
+        const string evil = "x' OR 1=1; DROP TABLE provider; --";
+        var filter = SearchValidation.Normalize(new SearchFilter
+        {
+            LastName = evil[..30], FirstName = "Ann", OrgName = "Acme", City = evil[..20], Credential = "M.D.",
+            State = "NY", Gender = "F", EntityType = 1,
+        });
+
+        var query = new SearchQuery(filter, ["111N00000X"], null);
+
+        foreach (var sql in new[] { query.CountSql, query.PageSql, query.LocationsSql, query.AllSql })
+        {
+            Assert.DoesNotContain("DROP", sql, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Acme", sql, StringComparison.Ordinal);
+            Assert.DoesNotContain("111N00000X", sql, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("p.last_name LIKE @lastName", query.CountSql, StringComparison.Ordinal);
+        Assert.Contains("s.city = @city", query.CountSql, StringComparison.Ordinal);
+        Assert.Equal("MD%", query.Parameters.Get<string>("credential")); // punctuation-insensitive credential prefix
+    }
+
+    [Theory]
+    [InlineData("O'Br", "O'Br%")]
+    [InlineData("100%", @"100\%%")]
+    [InlineData("A_B", @"A\_B%")]
+    [InlineData(@"C:\x", @"C:\\x%")]
+    public void Name_prefixes_escape_like_wildcards(string input, string expected) => Assert.Equal(expected, SearchQuery.Prefix(input));
+
+    [Fact]
+    public void Specialty_matches_any_slot_and_location_filters_any_location()
+    {
+        var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Chiropractor", CountyFips = "36103" });
+
+        var query = new SearchQuery(filter, ["111N00000X", "111NI0013X"], null);
+
+        // Specialty + location is answered by provider_search in one index range read.
+        Assert.Equal("FROM (SELECT DISTINCT s.npi FROM provider_search s WHERE s.taxonomy_code IN @taxonomyCodes AND " +
+            "s.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips)) c JOIN provider p ON p.npi = c.npi", query.From);
+        Assert.Equal(["111N00000X", "111NI0013X"], query.Parameters.Get<string[]>("taxonomyCodes"));
+    }
+
+    [Fact]
+    public void A_classification_with_no_codes_matches_nothing_but_stays_valid_sql()
+    {
+        var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Nothing" }), [], null);
+
+        Assert.Equal(["-"], query.Parameters.Get<string[]>("taxonomyCodes"));
+    }
+
+    [Fact]
+    public void Radius_uses_a_bounding_box_then_the_great_circle_distance()
+    {
+        var filter = SearchValidation.Normalize(new SearchFilter { Zip5 = "11701", RadiusMiles = 10 });
+
+        var query = new SearchQuery(filter, null, new GeoPoint(40.682177, -73.414596));
+
+        Assert.Contains("c.lat BETWEEN @latMin AND @latMax", query.From, StringComparison.Ordinal);
+        Assert.Contains("ASIN(SQRT(", query.From, StringComparison.Ordinal);
+        Assert.DoesNotContain("zip5 = @zip5", query.From, StringComparison.Ordinal);
+        Assert.Equal(40.682177 - 10 / 69.0, query.Parameters.Get<double>("latMin"), 6);
+        Assert.True(query.Parameters.Get<double>("lonMax") - -73.414596 > 10 / 69.0); // longitude degrees are shorter
+    }
+
+    [Theory]
+    [InlineData(null, "p.sort_name ASC, p.npi")]
+    [InlineData("name", "p.sort_name ASC, p.npi")]
+    [InlineData("-lastUpdate", "p.last_update_date DESC, p.npi")]
+    [InlineData("NPI", "p.npi ASC")]
+    public void Sorting_comes_from_a_whitelist(string? sort, string orderBy)
+    {
+        var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "NY", Sort = sort }), null, null);
+
+        Assert.Equal(orderBy, query.OrderBy);
+    }
+
+    [Fact]
+    public void Location_sorts_use_the_matching_location()
+    {
+        var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "NY", Sort = "-city" }), null, null);
+
+        Assert.StartsWith("(SELECT ml.city FROM provider_location ml WHERE ml.npi = p.npi AND ml.state = @state ORDER BY ml.is_primary DESC, ml.id LIMIT 1) DESC", query.OrderBy, StringComparison.Ordinal);
+    }
+
+    // The most selective filter drives the query (Stage 3.5): it becomes the derived table c, and the
+    // remaining filters check the candidates.
+    [Theory]
+    [InlineData("npi", "FROM (SELECT @npi AS npi) c JOIN provider p ON p.npi = c.npi WHERE p.last_name LIKE @lastName")]
+    [InlineData("taxonomy", "FROM (SELECT DISTINCT t.npi FROM provider_taxonomy t WHERE t.taxonomy_code IN @taxonomyCodes) c JOIN provider p ON p.npi = c.npi WHERE p.last_name LIKE @lastName")]
+    [InlineData("name", "FROM (SELECT d.npi FROM provider d WHERE d.last_name LIKE @lastName) c JOIN provider p ON p.npi = c.npi WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state)")]
+    [InlineData("location", "FROM (SELECT DISTINCT l.npi FROM provider_location l WHERE l.state = @state) c JOIN provider p ON p.npi = c.npi WHERE p.gender = @gender")]
+    [InlineData("credential", "FROM (SELECT d.npi FROM provider d WHERE d.credential_key LIKE @credential) c JOIN provider p ON p.npi = c.npi WHERE p.entity_type = @entityType")]
+    [InlineData("attributes", "FROM provider p WHERE p.entity_type = @entityType AND p.gender = @gender")]
+    public void The_most_selective_filter_drives_the_query(string driver, string from)
+    {
+        var (filter, codes) = driver switch
+        {
+            "npi" => (new SearchFilter { Npi = "1234567893", LastName = "Smith" }, (string[]?)null),
+            "taxonomy" => (new SearchFilter { Classification = "Chiropractor", LastName = "Smith" }, ["111N00000X"]),
+            "name" => (new SearchFilter { LastName = "Smith", State = "NY" }, null),
+            "location" => (new SearchFilter { State = "NY", Gender = "F" }, null),
+            "credential" => (new SearchFilter { Credential = "MD", EntityType = 1 }, null),
+            _ => (new SearchFilter { EntityType = 1, Gender = "F" }, null),
+        };
+
+        var query = new SearchQuery(SearchValidation.Normalize(filter), codes, null);
+
+        Assert.Equal(from, query.From);
+    }
+
+    [Fact]
+    public void The_page_query_starts_from_the_driver_and_returns_the_total()
+    {
+        var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "NY" }), null, null);
+
+        Assert.StartsWith("SELECT /*+ JOIN_ORDER(c, p) */ p.npi AS Npi, COUNT(*) OVER () AS Total FROM (", query.PageSql, StringComparison.Ordinal);
+        Assert.EndsWith("ORDER BY p.sort_name ASC, p.npi LIMIT @take OFFSET @skip", query.PageSql, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(1, "SMITH", "JOHN", "Q", "JR", null, "SMITH, JOHN Q JR")]
+    [InlineData(1, "SMITH", null, null, null, null, "SMITH")]
+    [InlineData(2, null, null, null, null, "ACME CLINIC, LLC", "ACME CLINIC, LLC")]
+    public void Names_display_as_last_first_middle_suffix_or_organization(int type, string? last, string? first, string? middle, string? suffix, string? org, string expected) =>
+        Assert.Equal(expected, ProviderNames.Display(type, last, first, middle, suffix, org));
+
+    [Theory]
+    [InlineData("11701", "1234", null, "11701-1234")]
+    [InlineData("11701", null, null, "11701")]
+    [InlineData(null, null, "M5V 2T6", "M5V 2T6")]
+    public void Zips_display_as_zip_plus_four(string? zip5, string? zip4, string? postal, string expected) =>
+        Assert.Equal(expected, ProviderNames.Zip(zip5, zip4, postal));
+}
