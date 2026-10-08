@@ -61,3 +61,9 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# Test fixtures are byte-exact samples of CMS files (LF line endings, exact
+# encoding). Never convert them.
+###############################################################################
+tests/fixtures/** -text
