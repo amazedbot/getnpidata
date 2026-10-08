@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Npi.Core.Search;
+using Npi.Web.Api;
 using Npi.Web.Search;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,47 +24,47 @@ builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddRazorPages();
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
+builder.AddApi();
 
 var app = builder.Build();
 
+static bool IsApi(HttpContext http) => http.Request.Path.StartsWithSegments("/api");
+
+// The API answers errors with RFC 7807 problem details, including empty 404/405 responses; the pages keep their HTML error page.
+app.UseWhen(IsApi, api =>
+{
+    api.UseExceptionHandler();
+    api.UseStatusCodePages();
+});
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error");
+    app.UseWhen(http => !IsApi(http), pages => pages.UseExceptionHandler("/Error"));
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseCors();
+app.UseRateLimiter();
+app.UseOutputCache();
 app.UseAuthorization();
 
 app.MapStaticAssets();
 app.MapRazorPages().WithStaticAssets();
 app.MapHealthChecks("/health");
 
-// Streamed CSV of every match, no row cap (CLAUDE.md §7 Stage 4). Same query string as the search page.
-app.MapGet("/export.csv", async (HttpContext http, SearchService search, CancellationToken ct) =>
+// REST API (CLAUDE.md §7 Stage 5) and its docs: OpenAPI at /openapi/v1.json, Swagger UI at /swagger.
+app.MapApi();
+app.MapOpenApi();
+app.UseSwaggerUI(o =>
 {
-    var (filter, errors) = SearchQueryString.Parse(http.Request.Query);
-    if (errors.Count > 0)
-    {
-        return Results.ValidationProblem(errors);
-    }
-
-    try
-    {
-        // Validate before the response starts, so a bad search is a 400, not a broken download.
-        SearchValidation.Normalize(filter with { Page = 1, PageSize = SearchFilter.DefaultPageSize });
-    }
-    catch (SearchValidationException ex)
-    {
-        return Results.ValidationProblem(ex.Errors.ToDictionary(e => e.Key, e => e.Value));
-    }
-
-    http.Response.ContentType = "text/csv; charset=utf-8";
-    http.Response.Headers.ContentDisposition = $"attachment; filename=\"npi_search_{DateTime.UtcNow:yyyyMMdd}.csv\"";
-    await ProviderCsv.WriteAsync(search.SearchAllAsync(filter with { Page = 1, PageSize = SearchFilter.DefaultPageSize }, ct), http.Response.Body, ct);
-    return Results.Empty;
+    o.SwaggerEndpoint(ApiOpenApi.DocumentUrl, "getnpidata API v1");
+    o.RoutePrefix = "swagger";
+    o.DocumentTitle = "getnpidata API";
 });
+
+// Streamed CSV of every match, no row cap (CLAUDE.md §7 Stage 4). Same query string as the search page.
+app.MapGet("/export.csv", CsvExport.HandleAsync);
 
 // Dependent dropdowns on the search page.
 app.MapGet("/lookup/specializations", async ([FromQuery] string? classification, TaxonomyCatalog taxonomy, CancellationToken ct) =>
