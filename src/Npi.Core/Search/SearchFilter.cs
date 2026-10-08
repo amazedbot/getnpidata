@@ -12,6 +12,12 @@ public sealed record SearchFilter
     /// <summary>Paging is meant for browsing; past this many rows, use the CSV export.</summary>
     public const int MaxResultWindow = 10_000;
 
+    /// <summary>A location-only search with at least this many matches is paged in sort-index order (see SearchQuery.MayBeBroad).</summary>
+    public const int BroadSearchThreshold = 200_000;
+
+    /// <summary>A page that can't be found within this many seconds is reported as too broad, not left hanging.</summary>
+    public const int SearchTimeoutSeconds = 30;
+
     /// <summary>NUCC Classification, e.g. "Chiropractor". Matches any of the provider's 15 taxonomy slots.</summary>
     public string? Classification { get; init; }
 
