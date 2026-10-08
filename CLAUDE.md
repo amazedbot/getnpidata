@@ -285,6 +285,7 @@ NUCC → `taxonomy_codes` (upsert; only when the version changed), HUD → `zip_
 - **Grid:** sortable headers (with `aria-sort`), previous/next paging, the total, and Download CSV.
 - **Detail and export:** `/provider/{npi}` returns 404 for unknown or deactivated NPIs. `/export.csv` validates first (RFC 7807 400), then streams through `SearchAllAsync` + `ProviderCsv` with no row cap.
 - **Footer:** "Data as of" plus the active provider count from `data_version`, and source attribution.
+- **Network access:** the launch profile binds `0.0.0.0` (http 5000, https 5001), so other devices on the LAN can reach the site. Windows Firewall needs an inbound allow rule for the port, which the owner adds; the dev HTTPS certificate is only trusted for localhost, so LAN clients use http.
 - **Local dev:** the site reads `ConnectionStrings:RemoteMySql`; point it at `npi_test` with `dotnet user-secrets --project src/Npi.Web set "ConnectionStrings:RemoteMySql" "…"` and run with `ASPNETCORE_ENVIRONMENT=Development`.
 
 #### 7.3 Summary columns (grid & CSV)
@@ -317,7 +318,7 @@ dotnet test
 dotnet run --project src/Npi.Loader -- discover
 dotnet run --project src/Npi.Loader -- migrate
 dotnet run --project src/Npi.Loader -- run
-dotnet run --project src/Npi.Web          # https://localhost:5001
+dotnet run --project src/Npi.Web          # listens on all interfaces: https://<this-PC>:5001, http://<this-PC>:5000
 dotnet user-secrets --project src/Npi.Loader set "ConnectionStrings:LocalMySql" "server=localhost;database=npi_test;user=…;password=…;AllowLoadLocalInfile=true"
 dotnet user-secrets --project src/Npi.Loader list          # shows the local MySQL logins (secrets!)
 $env:NPI_TEST_MYSQL = "server=localhost;user=npi_dev;password=…"   # enables the MySQL integration tests
