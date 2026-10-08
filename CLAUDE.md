@@ -428,7 +428,7 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 5. **API keys at launch:** off (rate-limited only). The owner can switch them on with `Api:RequireKey=true` + `Api:Keys`.
 6. ~~Broad location-only searches are slow~~ Resolved in Stage 4 (§7 Stage 3.3, "Broad searches"): State CA 19.7 s → 2.6 s.
    - Still slow but under the 30 s timeout: a whole state sorted by a non-indexed column (CA by last update, 17.7 s), and state + entity type only (TX organizations, 13 s).
-7. **Git history from before this project** may hold old credentials and personal metadata. The owner was advised (2026-10-08) to rotate any such credentials. Removing them from history needs a rewrite and force-push, which only the owner can approve.
+7. **Git history rewritten (2026-10-08, owner's request).** Old credentials, personal identities and private hosts were scrubbed from every commit, and all branches were force-pushed, so every commit ID changed. Clones made before that date must be re-cloned; never push old history back. GitHub still serves the pre-rewrite commits by their exact ID through its pull-request refs until GitHub Support purges them. Rotating any exposed credentials is still the owner's job.
 
 ## 12. Progress log
 
@@ -446,3 +446,4 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 | 2026-10-08 | 5 | **`Npi.Client`:** typed netstandard2.0 client + `tests/Npi.Client.Tests` (16 tests, including client/server contract checks). Checked against the live site: every call works; it packs into `Npi.Client.1.0.0.nupkg`. 223 tests. |
 | 2026-10-08 | — | **Owner's Azure answers** recorded (§2, §11 item 2). |
 | 2026-10-08 | — | **Repository cleanup.** Removed `db/reference/` (the 2021 schema dump, superseded by `001_baseline.sql`; still in history); replaced the Visual Studio template `.gitignore`/`.gitattributes` with project-specific ones; rewrote README.md as the user-facing description of the service; reorganized this file (section numbers kept, because code and migrations cite them) and removed private details. |
+| 2026-10-08 | — | **History rewrite** (owner's request): `git filter-branch` over all 33 commits; only the blobs containing private strings changed (all other files byte-identical), and all personal author/committer identities were mapped to the owner's GitHub noreply address. All 8 branches force-pushed; local repo re-pointed and pruned. The repo now commits with the noreply address. See §11 item 7. |
