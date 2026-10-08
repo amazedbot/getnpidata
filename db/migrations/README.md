@@ -27,6 +27,9 @@ Rules:
 | `008_county.sql` | County names (Gazetteer, 2020 codes fallback). |
 | `009_zip_centroid.sql` | ZCTA centroids for radius search. |
 | `010_reference_data.sql` | Loaded version of each reference source. |
+| `011_provider.sql` … `014_provider_other_name.sql` | Search projection: provider, provider_taxonomy, provider_location, provider_other_name. |
+| `015_data_version.sql` | What the projection was built from ("Data as of"). |
+| `016_provider_search.sql` | (taxonomy_code, state, city, zip5, npi) accelerator for specialty + location searches. |
 
 ## 001_baseline.sql
 
