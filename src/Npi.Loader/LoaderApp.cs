@@ -3,6 +3,7 @@ using Dapper;
 using Npi.Loader.Db;
 using Npi.Loader.Load;
 using Npi.Loader.Nppes;
+using Npi.Loader.Projection;
 using Npi.Loader.Reference;
 using Serilog;
 
@@ -63,9 +64,37 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         // Stage 2: reference data, reloaded only when its published version changed.
         var referenceOk = await new ReferenceLoader(options, database, http, log).RefreshAllAsync(force: false, ct);
 
-        log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}",
-            plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED");
-        return failures == 0 && referenceOk ? 0 : 1;
+        // Stage 3: rebuild the search projection when anything it is built from changed.
+        var projectionOk = true;
+        var projection = new ProjectionBuilder(database, log, options.MinRowRatio);
+        if (await projection.IsStaleAsync(ct))
+        {
+            try
+            {
+                await projection.BuildAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Building the search projection failed");
+                projectionOk = false;
+            }
+        }
+        else
+        {
+            log.Information("Search projection is current");
+        }
+
+        log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; projection {Projection}",
+            plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED");
+        return failures == 0 && referenceOk && projectionOk ? 0 : 1;
+    }
+
+    /// <summary>The <c>project</c> command: rebuild the search projection now.</summary>
+    public async Task<int> ProjectAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
     }
 
     /// <summary>The <c>reference</c> command: reload NUCC, HUD and Census data even if unchanged.</summary>
