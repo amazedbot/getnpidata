@@ -1,7 +1,215 @@
 @page
+@using System.Globalization
+@using Npi.Core.Search
+@model IndexModel
 @{
     ViewData["Title"] = "Search providers";
+    var f = Model.Filter;
 }
 
 <h1>Search US healthcare providers</h1>
-<p>Search is coming in Stage 4.</p>
+<p class="lede">Search every active provider in the CMS NPPES registry by specialty, location, name or NPI.</p>
+
+<form method="get" action="/" class="search" id="search-form">
+    @if (Model.Errors.TryGetValue("filter", out var general))
+    {
+        <p class="error" role="alert">@string.Join(" ", general)</p>
+    }
+
+    <fieldset>
+        <legend>Specialty</legend>
+        <div class="field">
+            <label for="classification">Classification</label>
+            <select id="classification" name="classification" data-dependent="specialization" data-source="/lookup/specializations?classification=">
+                <option value="">Any</option>
+                @foreach (var c in Model.Classifications)
+                {
+                    <option value="@c" selected="@(string.Equals(c, f.Classification, StringComparison.OrdinalIgnoreCase))">@c</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.Classification))</span>
+        </div>
+        <div class="field">
+            <label for="specialization">Specialization</label>
+            <select id="specialization" name="specialization" disabled="@(Model.Specializations.Count == 0)">
+                <option value="">Any</option>
+                @foreach (var s in Model.Specializations)
+                {
+                    <option value="@s" selected="@(string.Equals(s, f.Specialization, StringComparison.OrdinalIgnoreCase))">@s</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.Specialization))</span>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Location</legend>
+        <div class="field">
+            <label for="state">State</label>
+            <select id="state" name="state" data-dependent="county" data-source="/lookup/counties?state=">
+                <option value="">Any</option>
+                @foreach (var s in Model.States)
+                {
+                    <option value="@s.Code" selected="@(string.Equals(s.Code, f.State, StringComparison.OrdinalIgnoreCase))">@s.Name</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.State))</span>
+        </div>
+        <div class="field">
+            <label for="county">County</label>
+            <select id="county" name="county" disabled="@(Model.Counties.Count == 0)">
+                <option value="">Any</option>
+                @foreach (var c in Model.Counties)
+                {
+                    <option value="@c.Fips" selected="@(c.Fips == f.CountyFips)">@c.Name</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.CountyFips))</span>
+        </div>
+        <div class="field">
+            <label for="city">City</label>
+            <input id="city" name="city" value="@f.City" maxlength="60" autocomplete="address-level2" />
+        </div>
+        <div class="field narrow">
+            <label for="zip">ZIP</label>
+            <input id="zip" name="zip" value="@f.Zip5" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code" />
+            <span class="field-error">@Model.Error(nameof(SearchFilter.Zip5))</span>
+        </div>
+        <div class="field narrow">
+            <label for="radius">Within</label>
+            <select id="radius" name="radius">
+                <option value="">ZIP only</option>
+                @foreach (var r in IndexModel.RadiusChoices)
+                {
+                    <option value="@r" selected="@(r == f.RadiusMiles)">@r miles</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.RadiusMiles))</span>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Provider</legend>
+        <div class="field">
+            <label for="lastName">Last name starts with</label>
+            <input id="lastName" name="lastName" value="@f.LastName" maxlength="60" />
+        </div>
+        <div class="field">
+            <label for="firstName">First name starts with</label>
+            <input id="firstName" name="firstName" value="@f.FirstName" maxlength="60" />
+        </div>
+        <div class="field">
+            <label for="orgName">Organization starts with</label>
+            <input id="orgName" name="orgName" value="@f.OrgName" maxlength="60" />
+        </div>
+        <div class="field narrow">
+            <label for="npi">NPI</label>
+            <input id="npi" name="npi" value="@f.Npi" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" />
+            <span class="field-error">@Model.Error(nameof(SearchFilter.Npi))</span>
+        </div>
+        <div class="field narrow">
+            <label for="entityType">Type</label>
+            <select id="entityType" name="entityType">
+                <option value="">Any</option>
+                <option value="1" selected="@(f.EntityType == 1)">Individual</option>
+                <option value="2" selected="@(f.EntityType == 2)">Organization</option>
+            </select>
+        </div>
+        <div class="field narrow">
+            <label for="gender">Gender</label>
+            <select id="gender" name="gender">
+                <option value="">Any</option>
+                <option value="F" selected="@(f.Gender == "F")">Female</option>
+                <option value="M" selected="@(f.Gender == "M")">Male</option>
+            </select>
+        </div>
+        <div class="field narrow">
+            <label for="credential">Credential</label>
+            <input id="credential" name="credential" value="@f.Credential" maxlength="60" placeholder="e.g. MD" />
+        </div>
+    </fieldset>
+
+    <div class="actions">
+        <button type="submit">Search</button>
+        <a href="/" class="secondary">Clear</a>
+    </div>
+</form>
+
+@if (Model.Result is { } result)
+{
+    <section aria-labelledby="results-heading" class="results">
+        <div class="results-head">
+            <h2 id="results-heading">@result.TotalCount.ToString("N0", CultureInfo.InvariantCulture) provider@(result.TotalCount == 1 ? "" : "s") found</h2>
+            @if (result.TotalCount > 0)
+            {
+                <a class="button" href="@Model.CsvLink" download>Download CSV</a>
+            }
+        </div>
+
+        @if (result.TotalCount > 0)
+        {
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Search results, page @result.Page of @Model.PageCount</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Npi)"><a href="@Model.SortLink(SearchSort.Npi)">NPI</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Name)"><a href="@Model.SortLink(SearchSort.Name)">Name</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Credential)"><a href="@Model.SortLink(SearchSort.Credential)">Credential</a></th>
+                            <th scope="col">Primary specialty</th>
+                            <th scope="col">Address</th>
+                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.City)"><a href="@Model.SortLink(SearchSort.City)">City</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.State)"><a href="@Model.SortLink(SearchSort.State)">State</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Zip)"><a href="@Model.SortLink(SearchSort.Zip)">ZIP</a></th>
+                            <th scope="col">County</th>
+                            <th scope="col">Phone</th>
+                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.LastUpdate)"><a href="@Model.SortLink(SearchSort.LastUpdate)">Updated</a></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in result.Items)
+                        {
+                            <tr>
+                                <td><a href="/provider/@p.Npi">@p.Npi</a></td>
+                                <td>@p.Name <span class="muted">(@p.EntityTypeName)</span></td>
+                                <td>@p.Credential</td>
+                                <td>@p.PrimarySpecialty</td>
+                                <td>@p.Address1@if (p.Address2 is not null){<br />@p.Address2}</td>
+                                <td>@p.City</td>
+                                <td>@p.State</td>
+                                <td>@p.Zip</td>
+                                <td>@p.County</td>
+                                <td>@Npi.Web.Pages.Format.Phone(p.Phone)</td>
+                                <td>@p.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <nav class="pager" aria-label="Result pages">
+                @if (result.Page > 1)
+                {
+                    <a href="@Model.PageLink(result.Page - 1)" rel="prev">‹ Previous</a>
+                }
+                <span>Page @result.Page of @Model.PageCount.ToString("N0", CultureInfo.InvariantCulture)</span>
+                @if (result.Page < Model.PageCount && (long)result.Page * result.PageSize < SearchFilter.MaxResultWindow)
+                {
+                    <a href="@Model.PageLink(result.Page + 1)" rel="next">Next ›</a>
+                }
+            </nav>
+            @if (result.TotalCount > SearchFilter.MaxResultWindow)
+            {
+                <p class="muted">Browsing is limited to the first @SearchFilter.MaxResultWindow.ToString("N0", CultureInfo.InvariantCulture) results. Narrow the search, or download the CSV for all of them.</p>
+            }
+        }
+        else
+        {
+            <p>No active providers match. Try fewer filters.</p>
+        }
+    </section>
+}
+
+@section Scripts {
+    <script src="~/js/search.js" asp-append-version="true"></script>
+}

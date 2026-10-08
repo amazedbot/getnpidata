@@ -2,8 +2,11 @@
     --fg: #1b1f24;
     --muted: #57606a;
     --bg: #ffffff;
+    --panel: #f6f8fa;
     --accent: #0b5cad;
+    --accent-fg: #ffffff;
     --border: #d0d7de;
+    --error: #b42318;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -11,10 +14,15 @@
         --fg: #e6edf3;
         --muted: #9da7b3;
         --bg: #0d1117;
+        --panel: #161b22;
         --accent: #58a6ff;
+        --accent-fg: #0d1117;
         --border: #30363d;
+        --error: #ff7b72;
     }
 }
+
+* { box-sizing: border-box; }
 
 body {
     margin: 0;
@@ -25,25 +33,100 @@ body {
 }
 
 header, main, footer {
-    max-width: 72rem;
+    max-width: 90rem;
     margin: 0 auto;
     padding: 0 1rem;
 }
 
 header {
+    display: flex;
+    gap: 1rem;
+    align-items: baseline;
     padding-block: 1rem;
     border-bottom: 1px solid var(--border);
 }
 
-.brand {
-    font-weight: 600;
-    color: var(--fg);
-    text-decoration: none;
+.brand { font-weight: 600; color: var(--fg); text-decoration: none; }
+a { color: var(--accent); }
+.muted { color: var(--muted); }
+.lede { color: var(--muted); margin-top: -0.5rem; }
+
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+form.search {
+    display: grid;
+    gap: 1rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
 }
 
-a {
-    color: var(--accent);
+fieldset {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    border: 0;
+    margin: 0;
+    padding: 0;
 }
+
+legend { font-weight: 600; margin-bottom: 0.25rem; }
+
+/* min-width: 0 lets a field shrink below its <select>'s longest option, which would otherwise
+   push the form past a phone's width. */
+.field { display: flex; flex-direction: column; min-width: 0; flex: 1 1 12rem; }
+.field.narrow { flex: 1 1 8rem; }
+.field input, .field select { width: 100%; max-width: 100%; }
+
+@media (max-width: 40rem) {
+    .field, .field.narrow { flex-basis: 100%; }
+    header { flex-wrap: wrap; gap: 0 1rem; }
+}
+label { font-size: 0.875rem; color: var(--muted); }
+
+input, select, button, .button {
+    font: inherit;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+select:disabled { opacity: 0.6; }
+
+button, .button {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.actions { display: flex; gap: 1rem; align-items: center; }
+.error, .field-error { color: var(--error); }
+.field-error { font-size: 0.8rem; min-height: 0; }
+
+.results-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
+th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: var(--panel); white-space: nowrap; }
+th a { color: var(--fg); }
+th[aria-sort="ascending"] a::after { content: " ▲"; }
+th[aria-sort="descending"] a::after { content: " ▼"; }
+tbody tr:hover { background: var(--panel); }
+
+.pager { display: flex; gap: 1rem; justify-content: center; padding: 1rem 0; }
+
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; }
 
 footer {
     margin-top: 3rem;
