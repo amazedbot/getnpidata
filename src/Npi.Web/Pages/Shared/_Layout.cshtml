@@ -1,3 +1,8 @@
+@using System.Globalization
+@inject Npi.Core.Search.GeographyCatalog Geography
+@{
+    var version = await Geography.GetDataVersionAsync(Context.RequestAborted);
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,16 +12,26 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
+    <a class="skip" href="#main">Skip to content</a>
     <header>
         <a class="brand" href="/">getnpidata</a>
+        <span class="muted">US healthcare provider search</span>
     </header>
-    <main>
+    <main id="main">
         @RenderBody()
     </main>
     <footer>
         <p>
-            Source: <a href="https://download.cms.gov/nppes/NPI_Files.html">CMS NPPES</a>.
-            This is public NPPES information.
+            Data as of <strong>@(version?.AsOfDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown")</strong>
+            @if (version is not null)
+            {
+                <span>· @version.ProviderCount.ToString("N0", CultureInfo.InvariantCulture) active providers</span>
+            }
+        </p>
+        <p>
+            Source: <a href="https://download.cms.gov/nppes/NPI_Files.html">CMS NPPES</a> data dissemination files.
+            This is public NPPES information; deactivated NPIs are not shown. Counties via the HUD USPS ZIP–County crosswalk,
+            specialties via the NUCC Health Care Provider Taxonomy.
         </p>
     </footer>
     @await RenderSectionAsync("Scripts", required: false)

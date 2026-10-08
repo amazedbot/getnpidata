@@ -23,16 +23,47 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
     private sealed record PageRow(string Npi, long Total);
 
     /// <summary>Validates the filter and returns one page of results with the total count.</summary>
+    /// <exception cref="SearchValidationException">Invalid filter, or a search too broad to answer within <see cref="SearchFilter.SearchTimeoutSeconds"/>.</exception>
     public async Task<SearchResult> SearchAsync(SearchFilter filter, CancellationToken ct)
+    {
+        try
+        {
+            return await SearchPageAsync(filter, ct);
+        }
+        catch (MySqlException ex) when (ex.ErrorCode is MySqlErrorCode.CommandTimeoutExpired or MySqlErrorCode.QueryInterrupted && !ct.IsCancellationRequested)
+        {
+            throw new SearchValidationException(new Dictionary<string, string[]>
+            {
+                ["filter"] = ["This search matches too many providers to page through quickly. Add a specialty, city or name, or download the CSV."],
+            });
+        }
+    }
+
+    private async Task<SearchResult> SearchPageAsync(SearchFilter filter, CancellationToken ct)
     {
         await using var connection = await OpenAsync(ct);
         var query = await PrepareAsync(connection, filter, ct);
-        var page = (await connection.QueryAsync<PageRow>(new CommandDefinition(query.PageSql, query.Parameters, cancellationToken: ct))).ToList();
-        // The total comes with the page (COUNT(*) OVER ()); only a page past the end needs a separate count.
-        var total = page.Count > 0 ? page[0].Total
-            : query.Filter.Page == 1 ? 0
-            : await connection.ExecuteScalarAsync<long>(new CommandDefinition(query.CountSql, query.Parameters, cancellationToken: ct));
-        var items = await SummarizeAsync(connection, query, page.Select(r => r.Npi).ToList(), ct);
+        long total;
+        List<string> npis;
+        if (query.MayBeBroad && query.IndexOrderPageSql is { } indexOrderSql
+            && (total = await connection.ExecuteScalarAsync<long>(new CommandDefinition(query.CountSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct)))
+               >= SearchFilter.BroadSearchThreshold)
+        {
+            // Huge result (e.g. a whole state): matches are dense, so walking the sort index is fast,
+            // while sorting a million rows for one page is not (CLAUDE.md §11 item 6).
+            npis = (await connection.QueryAsync<string>(new CommandDefinition(indexOrderSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct))).ToList();
+        }
+        else
+        {
+            var page = (await connection.QueryAsync<PageRow>(new CommandDefinition(query.PageSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct))).ToList();
+            // The total comes with the page (COUNT(*) OVER ()); only a page past the end needs a separate count.
+            total = page.Count > 0 ? page[0].Total
+                : query.Filter.Page == 1 ? 0
+                : await connection.ExecuteScalarAsync<long>(new CommandDefinition(query.CountSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct));
+            npis = page.Select(r => r.Npi).ToList();
+        }
+
+        var items = await SummarizeAsync(connection, query, npis, ct);
         var asOf = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
             "SELECT as_of_date FROM data_version WHERE id = 1", cancellationToken: ct));
         return new SearchResult(items, query.Filter.Page, query.Filter.PageSize, total, asOf is null ? null : DateOnly.FromDateTime(asOf.Value));
@@ -48,7 +79,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         // The NPI list streams from an unbuffered reader on a second connection, so memory stays flat.
         await using var listConnection = await OpenAsync(ct);
         var batch = new List<string>(batchSize);
-        await using var reader = await listConnection.ExecuteReaderAsync(new CommandDefinition(query.AllSql, query.Parameters, cancellationToken: ct));
+        await using var reader = await listConnection.ExecuteReaderAsync(new CommandDefinition(query.AllSql, query.Parameters, commandTimeout: 3600, cancellationToken: ct));
         while (await reader.ReadAsync(ct))
         {
             batch.Add(reader.GetString(0));
