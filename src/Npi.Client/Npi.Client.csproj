@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Typed .NET client for the getnpidata REST API (/api/v1). netstandard2.0, so .NET Framework 4.6.2+ and every modern .NET can use it. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Npi.Client</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>Npi.Client</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Typed client for the getnpidata API: search US healthcare providers in the CMS NPPES registry.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Self-explanatory model properties (City, State, …) carry no XML comment. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
