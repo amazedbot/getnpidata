@@ -34,6 +34,7 @@ public sealed class Database(string connectionString)
             AllowLoadLocalInfile = true,  // MySqlBulkLoader with Local = true
             AllowUserVariables = true,    // LOAD DATA ... (@c0, @c1) SET col = NULLIF(@c0, '')
             DefaultCommandTimeout = 0,    // monthly loads and table rebuilds run for many minutes
+            UseAffectedRows = true,       // UPDATE returns rows actually changed, not rows matched
             CharacterSet = "utf8mb4",
         };
         if (string.IsNullOrEmpty(builder.Database))

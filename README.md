@@ -19,7 +19,6 @@ CMS NPPES files → Npi.Loader (Windows PC, scheduled) → local MySQL → searc
 | `tests/` | xUnit v3 tests (Microsoft.Testing.Platform) |
 | `db/migrations` | Numbered idempotent SQL migrations |
 | `deploy/` | Azure and Task Scheduler setup |
-| `legacy/getnpidata-vb` | The original VB.NET loader, kept until the C# loader reaches parity |
 
 ## Build
 
