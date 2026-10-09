@@ -9,8 +9,8 @@ namespace Npi.Core.Search;
 /// </summary>
 public sealed class CredentialCatalog(string connectionString, TimeSpan? maxAge = null, int minProviders = CredentialCatalog.MinProviders) : IDisposable
 {
-    /// <summary>Credentials held by fewer providers are left out of the list (they are typos and one-offs).</summary>
-    public const int MinProviders = 25;
+    /// <summary>Credentials held by fewer providers nationwide are left out of the list (owner's choice: typos, one-offs, job titles).</summary>
+    public const int MinProviders = 100;
 
     private readonly TimeSpan _maxAge = maxAge ?? TimeSpan.FromHours(1);
     private readonly SemaphoreSlim _lock = new(1, 1);

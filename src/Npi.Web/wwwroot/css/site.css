@@ -182,3 +182,16 @@ button.secondary, .button.secondary { background: var(--bg); color: var(--accent
 .leaflet-container .pin-content a { color: #0b5cad; }
 .leaflet-container .pin-content .muted { color: #57606a; }
 .leaflet-tooltip.pin-tooltip { width: 20rem; max-width: 80vw; white-space: normal; }
+
+/* Credential box: type to narrow the list (combo.js). */
+.combo { position: relative; }
+.combo-list {
+    position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 100%; width: max-content; max-width: min(22rem, 90vw);
+    max-height: 18rem; overflow-y: auto; margin: 2px 0 0; padding: 0.25rem 0; list-style: none;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+.combo-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0.6rem; cursor: pointer; }
+.combo-list li[aria-selected="true"], .combo-list li:hover { background: var(--panel); }
+.combo-list li .muted { font-size: 0.8rem; }
+.combo-list li.empty { cursor: default; color: var(--muted); }
+.combo-list.align-right { left: auto; right: 0; }
