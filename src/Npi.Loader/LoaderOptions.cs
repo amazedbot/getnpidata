@@ -85,6 +85,12 @@ public sealed class LoaderOptions
     /// <summary>Overture places below this confidence (0–1) are ignored.</summary>
     public double OverturePlaceMinConfidence { get; set; } = 0.6;
 
+    /// <summary>
+    /// <c>geocode</c> and <c>overture</c> skip rebuilding the map tables (a 20-minute step), for scripts that run several of
+    /// them and rebuild once at the end (environment variable NPI_SkipMapBuild=true).
+    /// </summary>
+    public bool SkipMapBuild { get; set; }
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");

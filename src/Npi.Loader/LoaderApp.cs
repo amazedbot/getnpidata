@@ -113,7 +113,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         // A backlog of millions takes hours: build the map table first so the map page works meanwhile, with
         // not-yet-geocoded addresses at their ZIP centroid.
         var map = new MapBuilder(database, log, options.MinRowRatio);
-        if (await map.IsStaleAsync(ct))
+        if (!options.SkipMapBuild && await map.IsStaleAsync(ct))
         {
             await map.BuildAsync(ct);
         }
@@ -121,13 +121,34 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         return await RefreshMapAsync(maxBatches: 0, ct) ? 0 : 1;
     }
 
-    /// <summary>The <c>overture</c> command: place one county's practice addresses with Overture data, then rebuild the map tables.</summary>
-    public async Task<int> OvertureAsync(string countyFips, CancellationToken ct)
+    /// <summary>
+    /// The <c>overture</c> command: place practice addresses with Overture data, then rebuild the map tables. The area is a
+    /// 5-digit county FIPS, a 2-letter state code, or null for every state.
+    /// </summary>
+    public async Task<int> OvertureAsync(string? area, CancellationToken ct)
     {
         await EnsureMigratedAsync(ct);
-        await new OvertureMatcher(database, http, log, options).MatchCountyAsync(countyFips, ct);
-        await new MapBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
-        return 0;
+        var matcher = new OvertureMatcher(database, http, log, options);
+        var ok = true;
+        if (area is null)
+        {
+            ok = (await matcher.MatchAllAsync(ct)).Failed.Count == 0;
+        }
+        else if (area.Length == 2)
+        {
+            await matcher.MatchStateAsync(area, ct);
+        }
+        else
+        {
+            await matcher.MatchCountyAsync(area, ct);
+        }
+
+        if (!options.SkipMapBuild)
+        {
+            await new MapBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        }
+
+        return ok ? 0 : 1;
     }
 
     private async Task<bool> RefreshMapAsync(int maxBatches, CancellationToken ct, string? countyFips = null)
@@ -138,7 +159,11 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             var outcome = await new AddressGeocoder(database, census, log, options.GeocodeBatchSize, options.GeocodeParallelism)
                 .GeocodePendingAsync(maxBatches, ct, countyFips);
             var map = new MapBuilder(database, log, options.MinRowRatio);
-            if (outcome.Geocoded > 0 || await map.IsStaleAsync(ct))
+            if (options.SkipMapBuild)
+            {
+                log.Information("Map table not rebuilt (SkipMapBuild)");
+            }
+            else if (outcome.Geocoded > 0 || await map.IsStaleAsync(ct))
             {
                 await map.BuildAsync(ct);
             }

@@ -63,6 +63,29 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
     {
         var watch = Stopwatch.StartNew();
         await using var connection = await database.OpenAsync(ct);
+
+        // INSERT … SELECT under REPEATABLE READ locks every row it reads, which would block the geocoder and the Overture
+        // matcher from saving into address_geocode / address_point for the whole build. READ COMMITTED reads without locks.
+        await Database.ExecuteAsync(connection, "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED", ct);
+
+        // Both builds would use provider_map_staging: wait for another process's build of this database to finish first.
+        if (await connection.ExecuteScalarAsync<long?>(new CommandDefinition("SELECT GET_LOCK(CONCAT('getnpidata.', DATABASE(), '.provider_map'), 7200)", cancellationToken: ct)) != 1)
+        {
+            throw new TimeoutException("Another provider_map build is still running after 2 hours.");
+        }
+
+        try
+        {
+            return await BuildLockedAsync(connection, watch, ct);
+        }
+        finally
+        {
+            await connection.ExecuteScalarAsync<long?>(new CommandDefinition("SELECT RELEASE_LOCK(CONCAT('getnpidata.', DATABASE(), '.provider_map'))", cancellationToken: CancellationToken.None));
+        }
+    }
+
+    private async Task<long> BuildLockedAsync(MySqlConnector.MySqlConnection connection, Stopwatch watch, CancellationToken ct)
+    {
         var counts = await TableSwap.ReplaceAsync(connection, ["provider_map", "provider_map_specialty"], minRowRatio, async () =>
         {
             await Database.ExecuteAsync(connection, FillSql, ct);

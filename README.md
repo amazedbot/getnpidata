@@ -207,7 +207,7 @@ by parameter and `RetryAfter`. Build the NuGet package with `dotnet pack src/Npi
 | [NUCC Health Care Provider Taxonomy](https://www.nucc.org/) | Specialty names (classification / specialization) | When NUCC publishes a new version (twice a year) |
 | [HUD USPS ZIP–County crosswalk](https://www.huduser.gov/portal/datasets/usps_crosswalk.html) | ZIP → county | Quarterly |
 | [Census Gazetteer files](https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html) | County names, ZIP centroids for radius search | Yearly |
-| [Overture Maps](https://overturemaps.org/) addresses (US DOT National Address Database) and places | Map pins at the building: address points, the addresses of places (hospitals, campuses), building names | Per area with `Npi.Loader overture` (Suffolk County, NY so far) |
+| [Overture Maps](https://overturemaps.org/) addresses (US DOT National Address Database) and places | Map pins at the building: address points, the addresses of places (hospitals, campuses), building names | `Npi.Loader overture` (every state), when a new release is out |
 | [Census Geocoder](https://geocoding.geo.census.gov/) (batch) | Map pins where Overture has no match: estimated along the street | New addresses with each load; each address once |
 | [HHS-OIG LEIE](https://oig.hhs.gov/exclusions/) | Exclusions from federal health programs | Monthly |
 | [CMS Opt Out Affidavits, Order and Referring](https://data.cms.gov/) | Medicare opt-out, order/refer eligibility | Monthly / weekly |
@@ -301,7 +301,7 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `reference` | Force-refresh NUCC, HUD and Census reference data |
 | `datasets [name]` | Force-reload the enrichment datasets (OIG, CMS, HRSA, Census, Open Payments), or just one. `run` reloads each when its publisher releases a new version |
 | `project` | Rebuild the search tables now |
-| `overture <county>` | Place a county's practice addresses at their building with Overture Maps data (read in place from its public files, only that area), then rebuild the map tables. The whole country is the next step |
+| `overture [area]` | Place practice addresses at their building with Overture Maps data (read in place from its public files, one state's area at a time), then rebuild the map tables: every state, one state (`NY`) or one county (`36103`) |
 | `geocode [county]` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. With a 5-digit county FIPS (e.g. `36103`), only that county's addresses. `run` geocodes up to 200,000 new addresses per run |
 | `publish` | Sync the search tables to Azure *(planned)* |
 

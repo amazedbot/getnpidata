@@ -47,9 +47,9 @@ public static class LoaderCommandLine
           project          Rebuild the search projection tables
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses
-          overture <county>
-                           Place a county's practice addresses at their building with Overture Maps data
-                           (address points, places), then rebuild the map tables
+          overture [area]  Place practice addresses at their building with Overture Maps data (address
+                           points, places), then rebuild the map tables: every state, or one state
+                           (NY) or county (5-digit FIPS)
           publish          Sync the search projection to Azure
         """;
 
@@ -75,17 +75,18 @@ public static class LoaderCommandLine
             return new LoaderInvocation(command, rest);
         }
 
-        if (command == LoaderCommand.Overture && rest.Length != 1)
+        if (command == LoaderCommand.Overture && rest.Length == 1 && rest[0].Length == 2 && rest[0].All(char.IsAsciiLetter))
         {
-            error = "Command 'overture' needs a 5-digit county FIPS code, e.g. 36103 (the whole country isn't enabled yet).";
-            return null;
+            return new LoaderInvocation(command, [rest[0].ToUpperInvariant()]);
         }
 
         if (command is LoaderCommand.Geocode or LoaderCommand.Overture && rest.Length == 1)
         {
             if (rest[0].Length != 5 || !rest[0].All(char.IsAsciiDigit))
             {
-                error = $"Command '{args[0]}' takes a 5-digit county FIPS code, e.g. 36103.";
+                error = command == LoaderCommand.Overture
+                    ? "Command 'overture' takes a state code (NY) or a 5-digit county FIPS code (36103), or nothing for every state."
+                    : "Command 'geocode' takes an optional 5-digit county FIPS code, e.g. 36103.";
                 return null;
             }
 

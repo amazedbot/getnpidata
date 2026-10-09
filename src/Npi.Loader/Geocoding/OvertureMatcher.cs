@@ -42,31 +42,81 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
     }
 
     /// <summary>Matches the practice addresses of one county (5-digit FIPS) and stores the matches.</summary>
-    public async Task<OvertureOutcome> MatchCountyAsync(string countyFips, CancellationToken ct)
+    public async Task<OvertureOutcome> MatchCountyAsync(string countyFips, CancellationToken ct) =>
+        await MatchAreaAsync(await FindLatestReleaseAsync(ct), $"county {countyFips}",
+            "l.`zip5` IN (SELECT z.`zip5` FROM `zip_county` z WHERE z.`county_fips` = @area)",
+            "z.`county_fips` = @area", countyFips, ct);
+
+    /// <summary>Matches the practice addresses of one state or territory (2-letter code).</summary>
+    public async Task<OvertureOutcome> MatchStateAsync(string state, CancellationToken ct) =>
+        await MatchStateAsync(await FindLatestReleaseAsync(ct), state, ct);
+
+    /// <summary>
+    /// Every state and territory, one at a time (a state's area is read from S3 once; only the points its addresses can
+    /// use are kept in memory). A state that fails is logged and skipped; rerunning redoes it.
+    /// </summary>
+    /// <returns>The outcomes of the states that completed, and the states that failed.</returns>
+    public async Task<(IReadOnlyList<OvertureOutcome> Done, IReadOnlyList<string> Failed)> MatchAllAsync(CancellationToken ct)
     {
-        var watch = Stopwatch.StartNew();
         var release = await FindLatestReleaseAsync(ct);
         await using var connection = await database.OpenAsync(ct);
-        var candidates = (await connection.QueryAsync<Candidate>(new CommandDefinition(
-            """
-            SELECT l.`addr_key` AS AddrKey, MIN(l.`address1`) AS Address1, MIN(l.`city`) AS City, MIN(l.`zip5`) AS Zip5
-            FROM `provider_location` l
-            WHERE l.`addr_key` IS NOT NULL AND l.`zip5` IN (SELECT z.`zip5` FROM `zip_county` z WHERE z.`county_fips` = @fips)
-            GROUP BY l.`addr_key`
-            """, new { fips = countyFips }, cancellationToken: ct))).ToList();
-        var box = await connection.QuerySingleAsync<Box>(new CommandDefinition(
-            """
-            SELECT MIN(CAST(c.lat AS DOUBLE)) AS South, MIN(CAST(c.lon AS DOUBLE)) AS West, MAX(CAST(c.lat AS DOUBLE)) AS North, MAX(CAST(c.lon AS DOUBLE)) AS East
-            FROM zip_county z JOIN zip_centroid c ON c.zip5 = z.zip5 WHERE z.county_fips = @fips
-            """, new { fips = countyFips }, cancellationToken: ct));
-        if (candidates.Count == 0 || box is not { South: { } s, West: { } w, North: { } n, East: { } e })
+        var states = (await connection.QueryAsync<string>(new CommandDefinition(
+            "SELECT DISTINCT `state` FROM `county` ORDER BY `state`", cancellationToken: ct))).ToList();
+        var done = new List<OvertureOutcome>();
+        var failed = new List<string>();
+        var watch = Stopwatch.StartNew();
+        foreach (var (state, i) in states.Select((x, i) => (x, i + 1)))
         {
-            throw new InvalidOperationException($"County {countyFips} has no practice addresses or no ZIP centroids.");
+            try
+            {
+                done.Add(await MatchStateAsync(release, state, ct));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Overture: state {State} failed; rerun `overture {State}` later", state, state);
+                failed.Add(state);
+            }
+
+            log.Information("Overture: {Done} of {Total} states done in {Minutes:N0} min", i, states.Count, watch.Elapsed.TotalMinutes);
         }
 
-        log.Information("Overture {Release}: placing {Count:N0} practice addresses of county {Fips}", release, candidates.Count, countyFips);
-        var index = await Task.Run(() => LoadIndex(release, s - MarginDegrees, w - MarginDegrees, n + MarginDegrees, e + MarginDegrees), ct);
-        log.Information("Overture area loaded: {Points:N0} address keys, {Places:N0} places in {Seconds:N0}s", index.Points, index.Places, watch.Elapsed.TotalSeconds);
+        log.Information("Overture, all states: placed {Matched:N0} of {Count:N0} addresses ({Share:P1}) in {Minutes:N0} min; failed: {Failed}",
+            done.Sum(o => o.Matched), done.Sum(o => o.Addresses), done.Sum(o => o.Addresses) == 0 ? 0 : (double)done.Sum(o => o.Matched) / done.Sum(o => o.Addresses),
+            watch.Elapsed.TotalMinutes, failed.Count == 0 ? "none" : string.Join(", ", failed));
+        return (done, failed);
+    }
+
+    private Task<OvertureOutcome> MatchStateAsync(string release, string state, CancellationToken ct) =>
+        MatchAreaAsync(release, $"state {state}", "l.`state` = @area",
+            "z.`county_fips` IN (SELECT k.`county_fips` FROM `county` k WHERE k.`state` = @area)", state, ct);
+
+    /// <param name="locationFilter">SQL condition on provider_location <c>l</c> selecting the area's addresses (parameter @area).</param>
+    /// <param name="zipFilter">SQL condition on zip_county <c>z</c> selecting the area's ZIPs, whose centroids give the bounding box.</param>
+    private async Task<OvertureOutcome> MatchAreaAsync(string release, string label, string locationFilter, string zipFilter, string area, CancellationToken ct)
+    {
+        var watch = Stopwatch.StartNew();
+        await using var connection = await database.OpenAsync(ct);
+        var candidates = (await connection.QueryAsync<Candidate>(new CommandDefinition(
+            $"""
+            SELECT l.`addr_key` AS AddrKey, MIN(l.`address1`) AS Address1, MIN(l.`city`) AS City, MIN(l.`zip5`) AS Zip5
+            FROM `provider_location` l
+            WHERE l.`addr_key` IS NOT NULL AND {locationFilter}
+            GROUP BY l.`addr_key`
+            """, new { area }, cancellationToken: ct))).ToList();
+        var box = await connection.QuerySingleAsync<Box>(new CommandDefinition(
+            $"""
+            SELECT MIN(CAST(c.lat AS DOUBLE)) AS South, MIN(CAST(c.lon AS DOUBLE)) AS West, MAX(CAST(c.lat AS DOUBLE)) AS North, MAX(CAST(c.lon AS DOUBLE)) AS East
+            FROM zip_county z JOIN zip_centroid c ON c.zip5 = z.zip5 WHERE {zipFilter}
+            """, new { area }, cancellationToken: ct));
+        if (candidates.Count == 0 || box is not { South: { } s, West: { } w, North: { } n, East: { } e })
+        {
+            log.Information("Overture {Release}: {Area} has no practice addresses or no ZIP centroids; skipped", release, label);
+            return new OvertureOutcome(release, 0, 0, 0, 0);
+        }
+
+        log.Information("Overture {Release}: placing {Count:N0} practice addresses of {Area}", release, candidates.Count, label);
+        var index = await Task.Run(() => LoadIndex(release, candidates, s - MarginDegrees, w - MarginDegrees, n + MarginDegrees, e + MarginDegrees), ct);
+        log.Information("Overture {Area} loaded: {Points:N0} usable address keys of {Places:N0} places read, in {Seconds:N0}s", label, index.Points, index.Places, watch.Elapsed.TotalSeconds);
 
         var matches = new List<(string Key, PointMatch Match)>();
         foreach (var c in candidates)
@@ -88,20 +138,20 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
             VALUES ('overture', @version, @url, @rows, @now, @now) AS new
             ON DUPLICATE KEY UPDATE `version` = new.`version`, `source_url` = new.`source_url`, `rows_loaded` = new.`rows_loaded`,
               `loaded_at` = new.`loaded_at`, `checked_at` = new.`checked_at`
-            """, ct, param: new { version = $"{release} county {countyFips}", url = options.OvertureBaseUrl + release, rows = outcome.Matched, now });
-        log.Information("Overture placed {Matched:N0} of {Count:N0} addresses ({Share:P1}): {Address:N0} by address point, {Place:N0} by place address, {Name:N0} by place name, in {Seconds:N0}s",
-            outcome.Matched, outcome.Addresses, (double)outcome.Matched / outcome.Addresses, outcome.ByAddress, outcome.ByPlace, outcome.ByPlaceName, watch.Elapsed.TotalSeconds);
+            """, ct, param: new { version = $"{release} {label}", url = options.OvertureBaseUrl + release, rows = outcome.Matched, now });
+        log.Information("Overture placed {Matched:N0} of {Count:N0} addresses of {Area} ({Share:P1}): {Address:N0} by address point, {Place:N0} by place address, {Name:N0} by place name, in {Seconds:N0}s",
+            outcome.Matched, outcome.Addresses, label, (double)outcome.Matched / outcome.Addresses, outcome.ByAddress, outcome.ByPlace, outcome.ByPlaceName, watch.Elapsed.TotalSeconds);
         return outcome;
     }
 
-    private OvertureIndex LoadIndex(string release, double south, double west, double north, double east)
+    private OvertureIndex LoadIndex(string release, IReadOnlyList<Candidate> candidates, double south, double west, double north, double east)
     {
-        var index = new OvertureIndex();
+        var index = new OvertureIndex(candidates.Select(c => (c.Address1, c.City, c.Zip5)));
         var root = options.OvertureBaseUrl + release;
         var inBox = FormattableString.Invariant($"bbox.xmin BETWEEN {west} AND {east} AND bbox.ymin BETWEEN {south} AND {north}");
         using var duck = new DuckDBConnection("DataSource=:memory:");
         duck.Open();
-        Execute(duck, "INSTALL httpfs; LOAD httpfs; SET s3_region = 'us-west-2';");
+        Execute(duck, "INSTALL httpfs; LOAD httpfs; SET s3_region = 'us-west-2'; SET memory_limit = '2GB';");
 
         using (var command = duck.CreateCommand())
         {
