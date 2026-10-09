@@ -17,7 +17,9 @@ public sealed record CredentialMap(IReadOnlyDictionary<string, IReadOnlyList<str
 /// for display and the credential filter), <c>credential_list</c> (each standard credential with its provider count,
 /// for the dropdown) and <c>credential_search</c> (credential × practice location, for credential + location searches). Works on the ~170k distinct raw values, not the ~5M providers; staging + RENAME.
 /// </summary>
-public sealed class CredentialBuilder(Database database, ILogger log, double minRowRatio, int minProvidersForKnown = CredentialBuilder.MinProvidersForKnown)
+/// <param name="minListed">Credentials held by fewer providers are not listed; their holders get an "Other" row instead.</param>
+public sealed class CredentialBuilder(Database database, ILogger log, double minRowRatio, int minProvidersForKnown = CredentialBuilder.MinProvidersForKnown,
+    int minListed = CredentialCatalog.MinProviders)
 {
     public const string Source = "credentials";
 
@@ -140,6 +142,15 @@ public sealed class CredentialBuilder(Database database, ILogger log, double min
                 INSERT INTO `provider_credential_staging` (`npi`, `ord`, `credential`)
                 SELECT p.`npi`, m.`ord`, m.`credential` FROM `provider` p JOIN `credential_map_staging` m ON m.`raw` = p.`credential`
                 """, ct);
+            // "Other": everyone holding a credential too rare for the list, so the list can offer them as one entry.
+            await Database.ExecuteAsync(connection,
+                """
+                INSERT INTO `provider_credential_staging` (`npi`, `ord`, `credential`)
+                SELECT DISTINCT c.`npi`, @otherOrd, @other
+                FROM `provider_credential_staging` c
+                JOIN (SELECT `credential` FROM `provider_credential_staging` GROUP BY `credential` HAVING COUNT(DISTINCT `npi`) < @minListed) rare
+                  ON rare.`credential` = c.`credential`
+                """, ct, param: new { otherOrd = Credentials.OtherOrd, other = Credentials.Other, minListed });
             await Database.ExecuteAsync(connection,
                 "INSERT INTO `credential_list_staging` (`credential`, `providers`) SELECT `credential`, COUNT(DISTINCT `npi`) FROM `provider_credential_staging` GROUP BY `credential`",
                 ct);
