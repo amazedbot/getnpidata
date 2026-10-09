@@ -70,6 +70,13 @@ public static class ApiEndpoints
         api.MapGet("/taxonomy/classifications/{classification}/specializations", GetSpecializationsAsync)
             .WithName("ListSpecializations").WithTags("Lookups").WithSummary("Specializations of one classification").CacheOutput(CachePolicy);
 
+        api.MapGet("/credentials", async (CredentialCatalog credentials, CancellationToken ct) =>
+                TypedResults.Ok(await credentials.GetAllAsync(ct)))
+            .WithName("ListCredentials").WithTags("Lookups")
+            .WithSummary("Standardized credentials with provider counts")
+            .WithDescription($"Credentials as standardized from NPPES's free text (\"M.D.\" and \"MD\" are both MD; \"MD, PhD\" counts for both), held by at least {CredentialCatalog.MinProviders} active providers, most common first. Pass one as the credential search parameter.")
+            .CacheOutput(CachePolicy);
+
         api.MapGet("/states", async (GeographyCatalog geography, CancellationToken ct) =>
                 TypedResults.Ok(await geography.GetStatesAsync(ct)))
             .WithName("ListStates").WithTags("Lookups").WithSummary("States and territories with counties").CacheOutput(CachePolicy);

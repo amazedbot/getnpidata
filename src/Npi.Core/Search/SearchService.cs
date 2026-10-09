@@ -7,7 +7,7 @@ namespace Npi.Core.Search;
 /// Provider search over the projection tables (CLAUDE.md §7 Stage 3). Shared by the web pages, the
 /// CSV export and /api/v1, so all three return the same results.
 /// </summary>
-public sealed class SearchService(string connectionString, TaxonomyCatalog taxonomy)
+public sealed class SearchService(string connectionString, TaxonomyCatalog taxonomy, CredentialCatalog? credentials = null)
 {
     // Types must match what MySqlConnector returns exactly (Dapper maps records by constructor): TINYINT → sbyte.
     private sealed record ProviderRow(
@@ -52,7 +52,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         var f = SearchValidation.Normalize(
             filter with { State = null, CountyFips = null, City = null, Zip5 = null, RadiusMiles = null, Sort = null, Page = 1, PageSize = SearchFilter.DefaultPageSize },
             requireFilter: false);
-        var query = new SearchQuery(f, await taxonomy.ResolveAsync(f, ct), radiusCenter: null, areaSearch: true);
+        var query = new SearchQuery(f, await taxonomy.ResolveAsync(f, ct), radiusCenter: null, areaSearch: true, credential: await ResolveCredentialAsync(f, ct));
         var p = new DynamicParameters(query.Parameters);
         p.Add("cells", bounds.Cells);
         p.Add("box", bounds.Polygon);
@@ -283,8 +283,18 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 : new GeoPoint(point.Value.Lat, point.Value.Lon);
         }
 
-        return new SearchQuery(f, codes, center);
+        return new SearchQuery(f, codes, center, credential: await ResolveCredentialAsync(f, ct));
     }
+
+    private async Task<string?> ResolveCredentialAsync(SearchFilter f, CancellationToken ct) =>
+        f.Credential is null || credentials is null ? null : await credentials.ResolveAsync(f.Credential, ct);
+
+    /// <summary>The standardized credentials of the NPIs (Stage 5.5 item 12), e.g. "MD, PhD", by NPI.</summary>
+    internal static async Task<Dictionary<string, string>> StandardCredentialsAsync(MySqlConnection connection, IEnumerable<string> npis, CancellationToken ct) =>
+        (await connection.QueryAsync<(string Npi, string Credential)>(new CommandDefinition(
+            "SELECT npi, credential FROM provider_credential WHERE npi IN @npis ORDER BY npi, ord", new { npis }, cancellationToken: ct)))
+        .GroupBy(r => r.Npi)
+        .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(r => r.Credential)), StringComparer.Ordinal);
 
     private async Task<IReadOnlyList<ProviderSummary>> SummarizeAsync(MySqlConnection connection, SearchQuery query, List<string> npis, CancellationToken ct)
     {
@@ -323,6 +333,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             }
         }
 
+        var standardCredentials = await StandardCredentialsAsync(connection, npis, ct);
         var flags = (await connection.QueryAsync<FlagRow>(new CommandDefinition(EnrichmentSql.FlagsSql, new { npis }, cancellationToken: ct)))
             .ToDictionary(f => f.Npi, f => new ProviderFlags(f.Excluded != 0, f.OptedOut != 0, f.OrderRefer != 0, f.AcceptsAssignment != 0, f.Telehealth != 0,
                 f.BilledMedicare != 0));
@@ -341,7 +352,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 p.Npi,
                 p.EntityType,
                 ProviderNames.Display(p.EntityType, p.LastName, p.FirstName, p.MiddleName, p.NameSuffix, p.OrgName),
-                p.Credential,
+                standardCredentials.GetValueOrDefault(npi) ?? p.Credential,
                 ProviderNames.Specialty(specialty?.Classification, specialty?.Specialization) ?? p.PrimaryTaxonomyCode,
                 l?.Address1,
                 l?.Address2,

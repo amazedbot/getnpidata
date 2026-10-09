@@ -40,7 +40,11 @@ public sealed class SearchQuery
     /// A map search (<see cref="AreaSql"/>): a specialty is then looked up by grid cell in provider_map_specialty
     /// (parameter @cells), which is far more selective than every provider of the specialty nationwide.
     /// </param>
-    public SearchQuery(SearchFilter filter, IReadOnlyCollection<string>? taxonomyCodes, GeoPoint? radiusCenter, bool areaSearch = false)
+    /// <param name="credential">
+    /// The standardized credential the Credential filter resolved to (Stage 5.5 item 12): matched exactly against
+    /// provider_credential. Null: a prefix match on the raw credential ("M" → MD, MS …).
+    /// </param>
+    public SearchQuery(SearchFilter filter, IReadOnlyCollection<string>? taxonomyCodes, GeoPoint? radiusCenter, bool areaSearch = false, string? credential = null)
     {
         Filter = filter;
         _sort = SearchSortOrder.TryParse(filter.Sort, out var sort)
@@ -72,7 +76,12 @@ public sealed class SearchQuery
             providerTemplates.Add(("name", "{0}.org_name LIKE @orgName"));
         }
 
-        if (filter.Credential is not null)
+        if (credential is not null)
+        {
+            Parameters.Add("credentialExact", credential);
+            providerTemplates.Add(("credential", "EXISTS (SELECT 1 FROM provider_credential pc WHERE pc.npi = {0}.npi AND pc.credential = @credentialExact)"));
+        }
+        else if (filter.Credential is not null)
         {
             var key = new string(filter.Credential.ToUpperInvariant().Where(char.IsAsciiLetterOrDigit).ToArray());
             Parameters.Add("credential", Prefix(key));
@@ -179,6 +188,21 @@ public sealed class SearchQuery
             _driverKind = "taxonomy";
             drivenBy.Add("taxonomy");
         }
+        else if (credential is not null && areaSearch)
+        {
+            // A map search for a credential reads only the grid cells in view, as for a specialty.
+            _driver = "SELECT DISTINCT c.npi FROM provider_map_credential c WHERE c.credential = @credentialExact AND c.cell IN @cells";
+            drivenBy.Add("credential");
+            _driverKind = "credential";
+        }
+        else if (credential is not null && _hasLocationFilter && !areaSearch)
+        {
+            // Like specialty + location: one index range on (credential, state, city, zip5).
+            _driver = $"SELECT DISTINCT s.npi FROM credential_search s WHERE s.credential = @credentialExact AND {Location("s")}";
+            drivenBy.Add("credential");
+            drivenBy.Add("location");
+            _driverKind = "search";
+        }
         else if (providerTemplates.Any(t => t.Kind == "name"))
         {
             _driver = "SELECT d.npi FROM provider d WHERE " + string.Join(" AND ", providerTemplates.Where(t => t.Kind == "name").Select(t => Format(t.Template, "d")));
@@ -197,7 +221,9 @@ public sealed class SearchQuery
         }
         else if (providerTemplates.Any(t => t.Kind == "credential"))
         {
-            _driver = "SELECT d.npi FROM provider d WHERE " + Format(providerTemplates.First(t => t.Kind == "credential").Template, "d");
+            _driver = credential is not null
+                ? "SELECT pc.npi FROM provider_credential pc WHERE pc.credential = @credentialExact"
+                : "SELECT d.npi FROM provider d WHERE " + Format(providerTemplates.First(t => t.Kind == "credential").Template, "d");
             drivenBy.Add("credential");
             _driverKind = "credential";
         }
@@ -209,7 +235,9 @@ public sealed class SearchQuery
         }
 
         _remaining.AddRange(providerTemplates.Where(t => !drivenBy.Contains(t.Kind)).Select(t => Format(t.Template, "p")));
-        _remainingNpiOnly.AddRange(providerTemplates.Where(t => t.Kind == "flag" && !drivenBy.Contains(t.Kind)).Select(t => t.Template));
+        // NPI-level checks (dataset flags, the standardized credential) don't need the provider row, so a count can skip that join.
+        _remainingNpiOnly.AddRange(providerTemplates.Where(t => (t.Kind == "flag" || (t.Kind == "credential" && credential is not null)) && !drivenBy.Contains(t.Kind))
+            .Select(t => t.Template));
         if (taxonomyCodes is not null && !drivenBy.Contains("taxonomy"))
         {
             _remaining.Add("EXISTS (SELECT 1 FROM provider_taxonomy t WHERE t.npi = p.npi AND t.taxonomy_code IN @taxonomyCodes)");

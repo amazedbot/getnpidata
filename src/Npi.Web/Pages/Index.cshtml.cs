@@ -5,7 +5,7 @@ using Npi.Web.Search;
 namespace Npi.Web.Pages;
 
 /// <summary>The search form and results grid (CLAUDE.md §7 Stage 4). A GET form, so every search has a shareable URL.</summary>
-public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, GeographyCatalog geography, AreaService areas) : PageModel
+public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, GeographyCatalog geography, AreaService areas, CredentialCatalog credentials) : PageModel
 {
     public static readonly int[] RadiusChoices = [5, 10, 25, 50, 100];
 
@@ -31,7 +31,11 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
     public CountyFacts? County { get; private set; }
 
     /// <summary>The specialty and provider fields, shared with the map page.</summary>
-    public FilterFields Fields => new(Filter, Classifications, Specializations, Errors);
+    public FilterFields Fields => new(Filter, Classifications, Specializations, Errors) { Credentials = Credentials, SelectedCredential = SelectedCredential };
+
+    private string? SelectedCredential { get; set; }
+
+    public IReadOnlyList<CredentialInfo> Credentials { get; private set; } = [];
 
     public long PageCount => Result is null ? 0 : Math.Max(1, (Result.TotalCount + Result.PageSize - 1) / Result.PageSize);
 
@@ -41,6 +45,8 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
         Filter = filter;
         Classifications = await taxonomy.GetClassificationsAsync(ct);
         States = await geography.GetStatesAsync(ct);
+        Credentials = await credentials.GetAllAsync(ct);
+        SelectedCredential = filter.Credential is null ? null : await credentials.ResolveAsync(filter.Credential, ct);
         if (filter.Classification is not null)
         {
             Specializations = await taxonomy.GetSpecializationsAsync(filter.Classification, ct);

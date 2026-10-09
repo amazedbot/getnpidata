@@ -40,7 +40,18 @@
     </div>
     <div class="field narrow">
         <label for="credential">Credential</label>
-        <input id="credential" name="credential" value="@Model.Filter.Credential" maxlength="60" placeholder="e.g. MD" />
+        <select id="credential" name="credential">
+            <option value="">Any</option>
+            @{ var selectedCredential = Model.SelectedCredential ?? Model.Filter.Credential; }
+            @if (selectedCredential is { } typed && !Model.Credentials.Any(c => string.Equals(c.Credential, typed, StringComparison.OrdinalIgnoreCase)))
+            {
+                <option value="@typed" selected>@typed</option>
+            }
+            @foreach (var c in Model.Credentials)
+            {
+                <option value="@c.Credential" selected="@(string.Equals(c.Credential, selectedCredential, StringComparison.OrdinalIgnoreCase))">@c.Credential (@c.Providers.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))</option>
+            }
+        </select>
     </div>
 </fieldset>
 

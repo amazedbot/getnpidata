@@ -346,6 +346,29 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Credentials_are_standardized_for_display_search_and_the_dropdown()
+    {
+        await using var db = await SeededAsync();
+        await new CredentialBuilder(db.Database, Logger.None, 0.95, minProvidersForKnown: 1).BuildAsync(_ct);
+        Assert.Equal([(A, "DC"), (B, "MD"), (E, "MD"), (E, "PhD")],
+            await db.QueryAsync<(string, string)>("SELECT npi, credential FROM provider_credential ORDER BY npi, ord"));
+
+        var catalog = new CredentialCatalog(db.ConnectionString, minProviders: 1);
+        Assert.Equal([new CredentialInfo("MD", 2), new CredentialInfo("DC", 1), new CredentialInfo("PhD", 1)], await catalog.GetAllAsync(_ct));
+
+        var search = new SearchService(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString), catalog);
+        Assert.Equal([B, E], await Npis(search, new SearchFilter { Credential = "M.D." }));   // exact: MD, whatever was typed
+        Assert.Equal([E], await Npis(search, new SearchFilter { Credential = "phd" }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { Credential = "DC", State = "NY" }));
+        Assert.Equal([B, E], await Npis(search, new SearchFilter { Credential = "M" }));      // not a credential: prefix of the raw text
+
+        // The grid, CSV and detail page show the standard spelling.
+        var e = (await search.SearchAsync(new SearchFilter { Npi = E }, _ct)).Items.Single();
+        Assert.Equal("MD, PhD", e.Credential);
+        Assert.Equal("DC", (await new ProviderDetailService(db.ConnectionString).GetAsync(A, _ct))?.Credential);
+    }
+
+    [Fact]
     public async Task Bulk_lookup_keeps_request_order_and_reports_each_npi()
     {
         await using var db = await SeededAsync();

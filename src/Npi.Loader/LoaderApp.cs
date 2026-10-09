@@ -89,6 +89,21 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             log.Information("Search projection is current");
         }
 
+        // Stage 5.5 item 12: standardized credentials, rebuilt after each projection.
+        var credentials = new CredentialBuilder(database, log, options.MinRowRatio);
+        if (projectionOk && await credentials.IsStaleAsync(ct))
+        {
+            try
+            {
+                await credentials.BuildAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Building the standardized credentials failed");
+                projectionOk = false;
+            }
+        }
+
         // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
 
@@ -192,6 +207,15 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     {
         await EnsureMigratedAsync(ct);
         await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
+    }
+
+    /// <summary>The <c>credentials</c> command: rebuild the standardized credential tables now.</summary>
+    public async Task<int> CredentialsAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         return 0;
     }
 

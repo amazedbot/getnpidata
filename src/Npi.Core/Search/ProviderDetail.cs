@@ -287,10 +287,11 @@ public sealed class ProviderDetailService(string connectionString)
             ORDER BY f.kind, Name
             """, new { npi }, cancellationToken: ct));
 
+        var standardCredential = (await SearchService.StandardCredentialsAsync(connection, [npi], ct)).GetValueOrDefault(npi);
         return new ProviderDetail(
             p.Npi, p.EntityType,
             ProviderNames.Display(p.EntityType, p.LastName, p.FirstName, p.MiddleName, p.NameSuffix, p.OrgName),
-            p.NamePrefix, p.Credential, p.Gender,
+            p.NamePrefix, standardCredential ?? p.Credential, p.Gender,
             p.EnumerationDate is null ? null : DateOnly.FromDateTime(p.EnumerationDate.Value),
             p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value),
             taxonomies.Select(t => new ProviderTaxonomy(t.Slot, t.Code, t.Classification, t.Specialization, t.IsPrimary != 0, t.LicenseNo, t.LicenseState)).ToList(),

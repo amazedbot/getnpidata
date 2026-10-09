@@ -46,6 +46,9 @@ Rules:
 | `048_provider_map_specialty.sql` | Specialty × 0.1° grid cell → NPI, for specialty map searches. |
 | `049_address_point.sql` | Building-level locations from Overture Maps (address points, place addresses, place names). |
 | `050_provider_map_source.sql` | `provider_map.source`: how each point was placed (instant ADD COLUMN with a default). |
+| `051_credentials.sql` | Standardized credentials (item 12): raw → standard map, provider credentials, the dropdown list. |
+| `052_credential_search.sql` | Credential × practice location, for fast credential + location searches. |
+| `053_provider_map_credential.sql` | Credential × map grid cell → NPI, for credential map searches. |
 
 ## 001_baseline.sql
 

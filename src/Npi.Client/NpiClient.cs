@@ -131,6 +131,10 @@ public sealed class NpiClient : IDisposable
     public Task<IReadOnlyList<string>> GetSpecializationsAsync(string classification, CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<string>>($"api/v1/taxonomy/classifications/{Segment(classification, nameof(classification))}/specializations", cancellationToken);
 
+    /// <summary>Standardized credentials with provider counts, most common first; pass one as <see cref="ProviderSearch.Credential"/>.</summary>
+    public Task<IReadOnlyList<CredentialInfo>> GetCredentialsAsync(CancellationToken cancellationToken = default) =>
+        GetJsonAsync<IReadOnlyList<CredentialInfo>>("api/v1/credentials", cancellationToken);
+
     /// <summary>States and territories.</summary>
     public Task<IReadOnlyList<StateInfo>> GetStatesAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<StateInfo>>("api/v1/states", cancellationToken);

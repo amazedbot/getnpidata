@@ -72,7 +72,7 @@ At least one filter is required. Filters combine with AND.
 | `npi` | Exact ten-digit NPI | `1003000126` |
 | `entityType` | `1` = individual, `2` = organization | `2` |
 | `gender` | `F` or `M` (individuals) | `F` |
-| `credential` | Credential; punctuation and case are ignored (`M.D.` = `MD`) | `DC` |
+| `credential` | A standardized credential (`GET /api/v1/credentials`; the search form's dropdown). It matches however the provider wrote it: `MD` finds "M.D.", "MD", "MD, PhD". Other text is a prefix of the credential as written, punctuation ignored | `PharmD` |
 | `excluded` | `true`: only providers on the HHS-OIG exclusion list (matched by NPI); `false`: leave them out | `false` |
 | `optedOut` | `true`: only practitioners with an active Medicare opt-out; `false`: leave them out | `false` |
 | `orderRefer` | `true`: only providers eligible to order or refer in Medicare | `true` |
@@ -117,6 +117,9 @@ addresses are not searched. Each result row shows the location that matched.
   `npi_search_<yyyyMMdd>.csv`.
 - **Footer**: the date the data is current through and the number of active providers.
 
+Credentials are shown standardized ("M.D." and "MD" both show as MD; "M.S., CCC-SLP" as "MS, CCC-SLP"), and the
+search form's Credential filter is a dropdown of every credential held by at least 25 providers, with counts.
+
 Grid and CSV columns: NPI, Entity Type, Name, Credential, Primary Specialty, Address 1, Address 2, City, State, ZIP,
 County, Phone, Gender, Enumeration Date, Last Update Date, then the flags OIG Excluded, Medicare Opt-Out, Medicare
 Order/Refer, Accepts Medicare Assignment, Telehealth and Billed Medicare.
@@ -135,6 +138,7 @@ problem documents. CORS is open for GET, so browser apps on any site can call it
 | `POST /api/v1/providers/lookup.csv` | The same, as CSV |
 | `GET /api/v1/taxonomy/classifications` | All NUCC classifications |
 | `GET /api/v1/taxonomy/classifications/{classification}/specializations` | Specializations of one classification |
+| `GET /api/v1/credentials` | Standardized credentials with provider counts (`credential`, `providers`), most common first |
 | `GET /api/v1/states` | States and territories (`code`, `name`) |
 | `GET /api/v1/states/{state}/counties` | Counties with their FIPS codes (`fips`, `name`) |
 | `GET /api/v1/counties/{fips}` | County population and the shortage areas in force |
@@ -300,7 +304,8 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `load-file <zip>` | Load one NPPES zip manually |
 | `reference` | Force-refresh NUCC, HUD and Census reference data |
 | `datasets [name]` | Force-reload the enrichment datasets (OIG, CMS, HRSA, Census, Open Payments), or just one. `run` reloads each when its publisher releases a new version |
-| `project` | Rebuild the search tables now |
+| `project` | Rebuild the search tables now (and the standardized credentials) |
+| `credentials` | Rebuild the standardized credential tables (from the 173k ways providers wrote 1,753 credentials) |
 | `overture [area]` | Place practice addresses at their building with Overture Maps data (read in place from its public files, one state's area at a time), then rebuild the map tables: every state, one state (`NY`) or one county (`36103`) |
 | `geocode [county]` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. With a 5-digit county FIPS (e.g. `36103`), only that county's addresses. `run` geocodes up to 200,000 new addresses per run |
 | `publish` | Sync the search tables to Azure *(planned)* |
