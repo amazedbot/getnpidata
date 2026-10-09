@@ -28,6 +28,7 @@ public sealed class SearchQuery
     private readonly SearchSortOrder _sort;
     private readonly string? _driver;
     private readonly List<string> _remaining = [];
+    private readonly List<string> _remainingNpiOnly = []; // dataset flags: need only the NPI, so the count can skip the provider join
     private readonly bool _hasLocationFilter;
     private readonly List<string> _locationTemplates = []; // "{0}" = table alias
     private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
@@ -90,12 +91,19 @@ public sealed class SearchQuery
         foreach (var (value, exists) in new[]
                  {
                      (filter.Excluded, EnrichmentSql.Excluded), (filter.OptedOut, EnrichmentSql.OptedOut), (filter.OrderRefer, EnrichmentSql.OrderRefer),
+                     (filter.AcceptsAssignment, EnrichmentSql.AcceptsAssignment), (filter.Telehealth, EnrichmentSql.Telehealth),
                  })
         {
             if (value is not null)
             {
                 providerTemplates.Add(("flag", value.Value ? exists : "NOT " + exists));
             }
+        }
+
+        if (filter.MinYears is not null)
+        {
+            Parameters.Add("maxGraduationYear", DateTime.UtcNow.Year - filter.MinYears.Value);
+            providerTemplates.Add(("flag", EnrichmentSql.MinYears));
         }
 
         if (taxonomyCodes is not null)
@@ -115,6 +123,23 @@ public sealed class SearchQuery
             // NO_SEMIJOIN: check each provider as the sort index is walked. Otherwise MySQL materializes
             // every matching NPI (1.2M for CA) and sorts them, which is what this plan exists to avoid.
             _broadWhere.Add($"EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM provider_location l WHERE l.npi = p.npi AND {Location("l")})");
+        }
+
+        // Positive Care Compare filters, on alias cc (cc_clinician). They narrow a location driver, or drive on their own.
+        var careCompare = new List<string>();
+        if (filter.AcceptsAssignment == true)
+        {
+            careCompare.Add("cc.accepts_assignment = 1");
+        }
+
+        if (filter.Telehealth == true)
+        {
+            careCompare.Add("cc.telehealth = 1");
+        }
+
+        if (filter.MinYears is not null)
+        {
+            careCompare.Add("cc.graduation_year <= @maxGraduationYear");
         }
 
         // Pick the driver: the filter expected to match the fewest providers.
@@ -151,7 +176,11 @@ public sealed class SearchQuery
         }
         else if (_hasLocationFilter)
         {
-            _driver = $"SELECT DISTINCT l.npi FROM provider_location l WHERE {Location("l")}";
+            // With Care Compare filters, join them into the location scan: checking them afterwards means a
+            // provider join per location match (950k for NY) instead of one cc_clinician lookup each.
+            _driver = careCompare.Count == 0
+                ? $"SELECT DISTINCT l.npi FROM provider_location l WHERE {Location("l")}"
+                : $"SELECT DISTINCT l.npi FROM provider_location l JOIN cc_clinician cc ON cc.npi = l.npi WHERE {Location("l")} AND {string.Join(" AND ", careCompare)}";
             _driverKind = "location";
             drivenBy.Add("location");
         }
@@ -161,8 +190,15 @@ public sealed class SearchQuery
             drivenBy.Add("credential");
             _driverKind = "credential";
         }
+        else if (careCompare.Count > 0)
+        {
+            // At most the 1.6M Care Compare clinicians, instead of every provider.
+            _driver = "SELECT cc.npi FROM cc_clinician cc WHERE " + string.Join(" AND ", careCompare);
+            _driverKind = "carecompare";
+        }
 
         _remaining.AddRange(providerTemplates.Where(t => !drivenBy.Contains(t.Kind)).Select(t => Format(t.Template, "p")));
+        _remainingNpiOnly.AddRange(providerTemplates.Where(t => t.Kind == "flag" && !drivenBy.Contains(t.Kind)).Select(t => t.Template));
         if (taxonomyCodes is not null && !drivenBy.Contains("taxonomy"))
         {
             _remaining.Add("EXISTS (SELECT 1 FROM provider_taxonomy t WHERE t.npi = p.npi AND t.taxonomy_code IN @taxonomyCodes)");
@@ -203,9 +239,27 @@ public sealed class SearchQuery
     /// location index: every provider_location row belongs to a projected provider, so joining
     /// provider (a million random lookups for a whole state) adds nothing.
     /// </summary>
-    public string CountSql => _driverKind == "location" && _remaining.Count == 0
-        ? $"SELECT COUNT(DISTINCT l.npi) FROM provider_location l WHERE {Location("l")}"
-        : $"SELECT {Hint}COUNT(*) {From}";
+    public string CountSql
+    {
+        get
+        {
+            if (_driverKind == "location" && _remaining.Count == 0)
+            {
+                return $"SELECT COUNT(DISTINCT l.npi) FROM provider_location l WHERE {Location("l")}";
+            }
+
+            // Only NPI-level checks left (dataset flags): count the candidates without joining provider,
+            // which costs a random lookup per candidate (950k for a whole state). Only for drivers drawn from
+            // projection tables; the NPI, flag and Care Compare drivers can list NPIs that aren't projected.
+            if (_driverKind is "location" or "search" or "taxonomy" or "name" or "credential" && _remaining.Count == _remainingNpiOnly.Count)
+            {
+                var flags = _remainingNpiOnly.Count > 0 ? " WHERE " + string.Join(" AND ", _remainingNpiOnly.Select(t => Format(t, "c"))) : "";
+                return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";
+            }
+
+            return $"SELECT {Hint}COUNT(*) {From}";
+        }
+    }
 
     /// <summary>
     /// True when the search can match a large share of all providers: only location and/or

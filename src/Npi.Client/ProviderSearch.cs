@@ -62,6 +62,15 @@ public sealed class ProviderSearch
     /// <summary>true: only providers eligible to order or refer in Medicare; false: only those who aren't.</summary>
     public bool? OrderRefer { get; set; }
 
+    /// <summary>true: only clinicians who accept Medicare assignment (Care Compare); false: everyone else.</summary>
+    public bool? AcceptsAssignment { get; set; }
+
+    /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
+    public bool? Telehealth { get; set; }
+
+    /// <summary>At least this many years since graduation (Care Compare), 1–70.</summary>
+    public int? MinYears { get; set; }
+
     /// <summary>name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix "-" for descending.</summary>
     public string? Sort { get; set; }
 
@@ -106,6 +115,9 @@ public sealed class ProviderSearch
         AddBool("excluded", Excluded);
         AddBool("optedOut", OptedOut);
         AddBool("orderRefer", OrderRefer);
+        AddBool("acceptsAssignment", AcceptsAssignment);
+        AddBool("telehealth", Telehealth);
+        AddInt("minYears", MinYears);
         Add("sort", Sort);
         AddInt("page", Page);
         AddInt("pageSize", PageSize);

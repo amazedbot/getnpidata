@@ -93,6 +93,38 @@
      "accessURL": "https://cms.test/api"
     }
    ]
+  },
+  {
+   "title": "Hospital Enrollments : 2026-08-01",
+   "modified": "2026-08-17",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-07-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospital_Enrollments_2026.07.31.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Skilled Nursing Facility Enrollments : 2026-08-01",
+   "modified": "2026-08-17",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-07-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/SNF_Enrollments_2026.07.31.csv",
+     "mediaType": "text/csv"
+    }
+   ]
   }
  ]
 }

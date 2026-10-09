@@ -35,7 +35,8 @@ public class ClientTests
     {
         Classification = "Chiropractor", Specialization = "Sports Physician", Taxonomy = "111NS0005X", State = "NY", County = "36103",
         City = "Babylon", Zip = "11702", Radius = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", Npi = "1234567893",
-        EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, Sort = "-city", Page = 3, PageSize = 100,
+        EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true, Telehealth = false,
+        MinYears = 10, Sort = "-city", Page = 3, PageSize = 100,
     };
 
     [Fact]
@@ -56,8 +57,8 @@ public class ClientTests
         {
             Classification = "Chiropractor", Specialization = "Sports Physician", TaxonomyCode = "111NS0005X", State = "NY", CountyFips = "36103",
             City = "Babylon", Zip5 = "11702", RadiusMiles = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", Npi = "1234567893",
-            EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, Sort = "-city", Page = 3,
-            PageSize = 100,
+            EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true,
+            Telehealth = false, MinYears = 10, Sort = "-city", Page = 3, PageSize = 100,
         }, filter);
 
         // And the client covers every parameter the server documents.
@@ -83,6 +84,10 @@ public class ClientTests
     [InlineData(typeof(Server.OigExclusion), typeof(OigExclusion))]
     [InlineData(typeof(Server.MedicareOptOut), typeof(MedicareOptOut))]
     [InlineData(typeof(Server.MedicareOrderReferring), typeof(MedicareOrderReferring))]
+    [InlineData(typeof(Server.ProviderCareCompare), typeof(ProviderCareCompare))]
+    [InlineData(typeof(Server.GroupPractice), typeof(GroupPractice))]
+    [InlineData(typeof(Server.FacilityAffiliation), typeof(FacilityAffiliation))]
+    [InlineData(typeof(Server.CertifiedFacility), typeof(CertifiedFacility))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
         static IEnumerable<string> Names(Type t) =>

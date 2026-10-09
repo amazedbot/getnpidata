@@ -132,6 +132,32 @@
     <fieldset>
         <legend>Medicare &amp; compliance</legend>
         <div class="field">
+            <label for="acceptsAssignment">Accepts Medicare assignment</label>
+            <select id="acceptsAssignment" name="acceptsAssignment">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.AcceptsAssignment == true)">Yes</option>
+                <option value="false" selected="@(f.AcceptsAssignment == false)">No / unknown</option>
+            </select>
+        </div>
+        <div class="field narrow">
+            <label for="telehealth">Telehealth</label>
+            <select id="telehealth" name="telehealth">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.Telehealth == true)">Offers telehealth</option>
+            </select>
+        </div>
+        <div class="field narrow">
+            <label for="minYears">Years in practice</label>
+            <select id="minYears" name="minYears">
+                <option value="">Any</option>
+                @foreach (var y in IndexModel.YearChoices)
+                {
+                    <option value="@y" selected="@(f.MinYears == y)">@y+ years</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.MinYears))</span>
+        </div>
+        <div class="field">
             <label for="excluded">OIG exclusion list</label>
             <select id="excluded" name="excluded">
                 <option value="">Any</option>
@@ -208,6 +234,14 @@
                                     @if (p.Flags.OptedOutOfMedicare)
                                     {
                                         <span class="badge" title="Has an active Medicare opt-out affidavit">Medicare opt-out</span>
+                                    }
+                                    @if (p.Flags.AcceptsMedicareAssignment)
+                                    {
+                                        <span class="badge good" title="Accepts Medicare's approved amount as full payment (Care Compare)">Accepts Medicare</span>
+                                    }
+                                    @if (p.Flags.OffersTelehealth)
+                                    {
+                                        <span class="badge good" title="Offers telehealth (Care Compare)">Telehealth</span>
                                     }
                                 </td>
                                 <td>@p.Credential</td>

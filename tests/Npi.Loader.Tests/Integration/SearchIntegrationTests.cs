@@ -193,10 +193,10 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal([B, D], await Npis(search, new SearchFilter { OrderRefer = false, State = "NY" }));
 
         var flags = (await search.SearchAsync(new SearchFilter { State = "NY" }, _ct)).Items.ToDictionary(i => i.Npi, i => i.Flags);
-        Assert.Equal(new ProviderFlags(true, false, true), flags[A]);
-        Assert.Equal(new ProviderFlags(false, true, false), flags[B]);
+        Assert.Equal(new ProviderFlags(true, false, true, false, false), flags[A]);
+        Assert.Equal(new ProviderFlags(false, true, false, false, false), flags[B]);
         Assert.Equal(ProviderFlags.None, flags[D]);
-        Assert.Equal(new ProviderFlags(false, false, true), flags[E]);
+        Assert.Equal(new ProviderFlags(false, false, true, false, false), flags[E]);
 
         var csvFlags = new Dictionary<string, ProviderFlags>();
         await foreach (var item in search.SearchAllAsync(new SearchFilter { State = "NY" }, _ct))
@@ -221,6 +221,49 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(new MedicareOrderReferring(true, false, false, false, true), e.OrderReferring); // two rows merged
 
         Assert.Null((await details.GetAsync(D, _ct))!.Compliance.OrderReferring);
+    }
+
+    [Fact]
+    public async Task Care_compare_filters_badges_and_facility_details()
+    {
+        await using var db = await SeededAsync();
+        var year = DateTime.UtcNow.Year;
+        await db.ExecuteAsync(
+            """
+            INSERT INTO cc_clinician (npi, medical_school, graduation_year, primary_specialty, accepts_assignment, telehealth) VALUES
+              (@A, 'NEW YORK CHIROPRACTIC COLLEGE', @old, 'CHIROPRACTIC', 1, 1), (@B, 'OTHER', @recent, 'CHIROPRACTIC', 0, 1), (@E, NULL, NULL, 'PEDIATRICS', 1, 0);
+            INSERT INTO cc_group (npi, org_pac_id, group_name, members, accepts_assignment) VALUES (@A, '1234567890', 'ISLAND SPINE, PLLC', 12, 1);
+            INSERT INTO cc_facility_affiliation (npi, facility_type, ccn) VALUES (@A, 'Hospital', '330045'), (@A, 'Home health agency', '337002'), (@B, 'Hospital', '330045');
+            INSERT INTO cms_hospital (ccn, name, city, state, hospital_type, ownership, emergency_services, overall_rating) VALUES
+              ('330045', 'GOOD SAMARITAN HOSPITAL', 'WEST ISLIP', 'NY', 'Acute Care Hospitals', 'Voluntary non-profit - Church', 1, 3);
+            INSERT INTO cms_facility_npi (ccn, npi, kind) VALUES ('330045', @D, 'hospital');
+            """, new { A, B, D, E, old = year - 25, recent = year - 3 });
+        var search = Search(db);
+
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { AcceptsAssignment = true }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { AcceptsAssignment = false, State = "NY" }));
+        Assert.Equal([A, B], await Npis(search, new SearchFilter { Telehealth = true, State = "NY" }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { MinYears = 20, Classification = "Chiropractor" }));
+        Assert.Equal([A, B], await Npis(search, new SearchFilter { MinYears = 2, Classification = "Chiropractor" }));
+
+        var flags = (await search.SearchAsync(new SearchFilter { State = "NY" }, _ct)).Items.ToDictionary(i => i.Npi, i => i.Flags);
+        Assert.Equal(new ProviderFlags(false, false, false, true, true), flags[A]);
+        Assert.Equal(new ProviderFlags(false, false, false, false, true), flags[B]);
+
+        var details = new ProviderDetailService(db.ConnectionString);
+        var a = (await details.GetAsync(A, _ct))!.CareCompare!;
+        Assert.Equal(("NEW YORK CHIROPRACTIC COLLEGE", year - 25, true, true), (a.MedicalSchool, a.GraduationYear, a.AcceptsMedicareAssignment, a.OffersTelehealth));
+        Assert.Equal([new GroupPractice("1234567890", "ISLAND SPINE, PLLC", 12, true, null, null)], a.GroupPractices);
+        Assert.Equal(
+            [new FacilityAffiliation("Home health agency", "337002", null, null, null, null, null),
+             new FacilityAffiliation("Hospital", "330045", "GOOD SAMARITAN HOSPITAL", "WEST ISLIP", "NY", 3, D)],
+            a.Facilities);
+        Assert.Null((await details.GetAsync(D, _ct))!.CareCompare);
+
+        // The hospital's own NPI shows its Care Compare facility, with the clinicians affiliated with it.
+        var hospital = Assert.Single((await details.GetAsync(D, _ct))!.Facilities);
+        Assert.Equal(("330045", "hospital", "GOOD SAMARITAN HOSPITAL", true, 3, 2), (hospital.Ccn, hospital.Kind, hospital.Name, hospital.EmergencyServices,
+            hospital.OverallRating, hospital.AffiliatedClinicians));
     }
 
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));

@@ -25,6 +25,9 @@ public enum CsvValue
 
     /// <summary>A number; empty → NULL. A non-numeric value fails the load.</summary>
     Number,
+
+    /// <summary>A whole number when the value is all digits; anything else ("Not Available", blank) → NULL.</summary>
+    OptionalWholeNumber,
 }
 
 /// <summary>One CSV column to load: its header (matched case-insensitively) and the table column it goes to.</summary>
@@ -38,8 +41,11 @@ public sealed record CsvColumn(string Header, string Column, CsvValue Kind = Csv
 /// </summary>
 public static class CsvTableLoader
 {
+    /// <param name="characterSet">The file's encoding as a MySQL character set: utf8mb4, or latin1 for Windows-1252 files.</param>
+    /// <param name="constants">Columns set to a fixed value on every row (e.g. which file the row came from).</param>
     /// <returns>The number of rows loaded.</returns>
-    public static async Task<long> LoadAsync(MySqlConnection connection, string path, string table, IReadOnlyList<CsvColumn> columns, CancellationToken ct)
+    public static async Task<long> LoadAsync(MySqlConnection connection, string path, string table, IReadOnlyList<CsvColumn> columns, CancellationToken ct,
+        string characterSet = "utf8mb4", IReadOnlyDictionary<string, string>? constants = null)
     {
         CsvHeader header;
         await using (var headerStream = File.OpenRead(path))
@@ -76,7 +82,7 @@ public static class CsvTableLoader
             TableName = SqlIdentifier.Quote(table),
             Local = true,
             SourceStream = data,
-            CharacterSet = "utf8mb4",
+            CharacterSet = characterSet,
             FieldTerminator = ",",
             FieldQuotationCharacter = '"',
             FieldQuotationOptional = true,
@@ -95,6 +101,16 @@ public static class CsvTableLoader
             }
         }
 
+        foreach (var (column, value) in constants ?? new Dictionary<string, string>())
+        {
+            if (!SqlIdentifier.IsValid(column))
+            {
+                throw new ArgumentException($"Invalid column name '{column}'.", nameof(constants));
+            }
+
+            loader.Expressions.Add($"{SqlIdentifier.Quote(column)} = '{MySqlHelper.EscapeString(value)}'");
+        }
+
         return await StagingLoader.WithWarningsAsFailures(connection, $"{Path.GetFileName(path)} → {table}", () => loader.LoadAsync(ct));
     }
 
@@ -106,6 +122,7 @@ public static class CsvTableLoader
         CsvValue.YesNo => $"CASE UPPER(TRIM({variable})) WHEN 'Y' THEN 1 WHEN 'YES' THEN 1 WHEN 'N' THEN 0 WHEN 'NO' THEN 0 END",
         CsvValue.Npi => $"IF(TRIM({variable}) REGEXP '^[0-9]{{10}}$' AND TRIM({variable}) <> '0000000000', TRIM({variable}), NULL)",
         CsvValue.Number => $"NULLIF(TRIM({variable}), '')",
+        CsvValue.OptionalWholeNumber => $"IF(TRIM({variable}) REGEXP '^[0-9]+$', TRIM({variable}), NULL)",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 }

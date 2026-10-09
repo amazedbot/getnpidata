@@ -4,9 +4,9 @@ namespace Npi.Core.Search;
 /// Yes/no facts about a provider from the Stage 5.5 datasets (CLAUDE.md §7 Stage 5.5), shown as badges in
 /// results and available as search filters.
 /// </summary>
-public sealed record ProviderFlags(bool Excluded, bool OptedOutOfMedicare, bool CanOrderAndRefer)
+public sealed record ProviderFlags(bool Excluded, bool OptedOutOfMedicare, bool CanOrderAndRefer, bool AcceptsMedicareAssignment, bool OffersTelehealth)
 {
-    public static readonly ProviderFlags None = new(false, false, false);
+    public static readonly ProviderFlags None = new(false, false, false, false, false);
 }
 
 /// <summary>An entry on the HHS-OIG List of Excluded Individuals/Entities, matched by NPI.</summary>
@@ -18,6 +18,20 @@ public sealed record MedicareOptOut(string? Specialty, DateOnly? EffectiveDate, 
 
 /// <summary>The Medicare programs in which the provider may order or refer.</summary>
 public sealed record MedicareOrderReferring(bool PartB, bool DurableMedicalEquipment, bool HomeHealth, bool PowerMobilityDevices, bool Hospice);
+
+/// <summary>A group practice the clinician bills Medicare through (Care Compare).</summary>
+public sealed record GroupPractice(string OrgPacId, string? Name, int? Members, bool AcceptsMedicareAssignment, string? City, string? State);
+
+/// <summary>A facility where the clinician works (Care Compare), with the facility's own NPI and rating when known.</summary>
+public sealed record FacilityAffiliation(string FacilityType, string Ccn, string? Name, string? City, string? State, int? OverallRating, string? Npi);
+
+/// <summary>What Medicare's Care Compare publishes about a clinician (Stage 5.5 item 3).</summary>
+public sealed record ProviderCareCompare(string? MedicalSchool, int? GraduationYear, string? PrimarySpecialty, string? SecondarySpecialties,
+    bool AcceptsMedicareAssignment, bool OffersTelehealth, IReadOnlyList<GroupPractice> GroupPractices, IReadOnlyList<FacilityAffiliation> Facilities);
+
+/// <summary>A Medicare-certified facility (hospital or nursing home) held by this organization NPI, with its Care Compare ratings (Stage 5.5 item 4).</summary>
+public sealed record CertifiedFacility(string Ccn, string Kind, string Name, string? Type, string? Ownership, string? City, string? State, string? Phone,
+    bool? EmergencyServices, int? CertifiedBeds, int? OverallRating, int? InspectionRating, int? StaffingRating, int? QualityRating, int AffiliatedClinicians);
 
 /// <summary>Compliance facts for the detail page and API.</summary>
 public sealed record ProviderCompliance(IReadOnlyList<OigExclusion> Exclusions, MedicareOptOut? OptOut, MedicareOrderReferring? OrderReferring);
@@ -38,6 +52,13 @@ internal static class EnrichmentSql
 
     internal const string OrderRefer = "EXISTS (SELECT 1 FROM medicare_order_referring r WHERE r.npi = {0}.npi AND " + AnyProgram + ")";
 
+    internal const string AcceptsAssignment = "EXISTS (SELECT 1 FROM cc_clinician cc WHERE cc.npi = {0}.npi AND cc.accepts_assignment = 1)";
+
+    internal const string Telehealth = "EXISTS (SELECT 1 FROM cc_clinician cc WHERE cc.npi = {0}.npi AND cc.telehealth = 1)";
+
+    /// <summary>Needs the @maxGraduationYear parameter.</summary>
+    internal const string MinYears = "EXISTS (SELECT 1 FROM cc_clinician cc WHERE cc.npi = {0}.npi AND cc.graduation_year <= @maxGraduationYear)";
+
     // Candidate lists for searches driven by a selective flag (~9k excluded, ~55k opted out).
     internal const string ExcludedNpis = "SELECT DISTINCT x.npi FROM oig_exclusion x WHERE x.npi IS NOT NULL";
 
@@ -48,8 +69,9 @@ internal static class EnrichmentSql
         "SELECT p.npi AS Npi, " +
         "CAST(" + Excluded.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS Excluded, " +
         "CAST(" + OptedOut.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OptedOut, " +
-        "CAST(" + OrderRefer.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OrderRefer " +
-        "FROM provider p WHERE p.npi IN @npis";
+        "CAST(" + OrderRefer.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OrderRefer, " +
+        "CAST(COALESCE(cc.accepts_assignment, 0) AS SIGNED) AS AcceptsAssignment, CAST(COALESCE(cc.telehealth, 0) AS SIGNED) AS Telehealth " +
+        "FROM provider p LEFT JOIN cc_clinician cc ON cc.npi = p.npi WHERE p.npi IN @npis";
 }
 
 /// <summary>Descriptions of the HHS-OIG exclusion authorities (LEIE EXCLTYPE codes).</summary>

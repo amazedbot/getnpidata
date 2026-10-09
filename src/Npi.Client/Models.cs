@@ -58,6 +58,12 @@ public sealed class ProviderFlags
 
     /// <summary>Eligible to order or refer in at least one Medicare program.</summary>
     public bool CanOrderAndRefer { get; set; }
+
+    /// <summary>Accepts Medicare's approved amount as full payment (Care Compare).</summary>
+    public bool AcceptsMedicareAssignment { get; set; }
+
+    /// <summary>Offers telehealth (Care Compare).</summary>
+    public bool OffersTelehealth { get; set; }
 }
 
 /// <summary>One page of search results.</summary>
@@ -155,6 +161,107 @@ public sealed class ProviderDetail
 
     /// <summary>OIG exclusions, Medicare opt-out and order/refer eligibility.</summary>
     public ProviderCompliance Compliance { get; set; } = new();
+
+    /// <summary>Medicare Care Compare facts; null when the NPI isn't listed there.</summary>
+    public ProviderCareCompare? CareCompare { get; set; }
+
+    /// <summary>Medicare-certified hospitals and nursing homes held by this organization NPI.</summary>
+    public IReadOnlyList<CertifiedFacility> Facilities { get; set; } = [];
+}
+
+/// <summary>What Medicare Care Compare publishes about a clinician.</summary>
+public sealed class ProviderCareCompare
+{
+    public string? MedicalSchool { get; set; }
+
+    public int? GraduationYear { get; set; }
+
+    public string? PrimarySpecialty { get; set; }
+
+    public string? SecondarySpecialties { get; set; }
+
+    public bool AcceptsMedicareAssignment { get; set; }
+
+    public bool OffersTelehealth { get; set; }
+
+    public IReadOnlyList<GroupPractice> GroupPractices { get; set; } = [];
+
+    public IReadOnlyList<FacilityAffiliation> Facilities { get; set; } = [];
+}
+
+/// <summary>A group practice the clinician bills Medicare through.</summary>
+public sealed class GroupPractice
+{
+    /// <summary>Medicare PECOS associate ID of the group.</summary>
+    public string OrgPacId { get; set; } = "";
+
+    public string? Name { get; set; }
+
+    public int? Members { get; set; }
+
+    public bool AcceptsMedicareAssignment { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+}
+
+/// <summary>A facility where the clinician works.</summary>
+public sealed class FacilityAffiliation
+{
+    /// <summary>e.g. "Hospital", "Nursing home", "Home health agency".</summary>
+    public string FacilityType { get; set; } = "";
+
+    /// <summary>CMS Certification Number.</summary>
+    public string Ccn { get; set; } = "";
+
+    public string? Name { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    /// <summary>Care Compare overall star rating, 1–5.</summary>
+    public int? OverallRating { get; set; }
+
+    /// <summary>The facility's own organization NPI, when known.</summary>
+    public string? Npi { get; set; }
+}
+
+/// <summary>A Medicare-certified hospital or nursing home with its Care Compare ratings.</summary>
+public sealed class CertifiedFacility
+{
+    public string Ccn { get; set; } = "";
+
+    /// <summary>"hospital" or "nursing_home".</summary>
+    public string Kind { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Type { get; set; }
+
+    public string? Ownership { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? Phone { get; set; }
+
+    public bool? EmergencyServices { get; set; }
+
+    public int? CertifiedBeds { get; set; }
+
+    public int? OverallRating { get; set; }
+
+    public int? InspectionRating { get; set; }
+
+    public int? StaffingRating { get; set; }
+
+    public int? QualityRating { get; set; }
+
+    /// <summary>Clinicians Care Compare lists as affiliated with this facility.</summary>
+    public int AffiliatedClinicians { get; set; }
 }
 
 /// <summary>Compliance facts about a provider.</summary>

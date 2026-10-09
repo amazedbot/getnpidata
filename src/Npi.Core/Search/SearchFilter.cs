@@ -69,6 +69,15 @@ public sealed record SearchFilter
     /// <summary>true: only providers eligible to order or refer in Medicare (any program); false: only those who aren't.</summary>
     public bool? OrderRefer { get; init; }
 
+    /// <summary>true: only clinicians who accept Medicare assignment (Care Compare); false: everyone else.</summary>
+    public bool? AcceptsAssignment { get; init; }
+
+    /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
+    public bool? Telehealth { get; init; }
+
+    /// <summary>At least this many years since graduating from medical/professional school (Care Compare), 1–70.</summary>
+    public int? MinYears { get; init; }
+
     /// <summary>Sort key (<see cref="SearchSort"/>), optionally prefixed with "-" for descending. Default "name".</summary>
     public string? Sort { get; init; }
 

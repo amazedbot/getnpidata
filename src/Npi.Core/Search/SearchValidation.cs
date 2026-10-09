@@ -59,7 +59,7 @@ public static partial class SearchValidation
 
         if (f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
                 LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
-                Excluded: null, OptedOut: null, OrderRefer: null })
+                Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null })
         {
             Error("filter", "Enter at least one search filter.");
         }
@@ -115,6 +115,11 @@ public static partial class SearchValidation
         if (f.Gender is not null and not ("M" or "F"))
         {
             Error(nameof(SearchFilter.Gender), "Gender must be M or F.");
+        }
+
+        if (f.MinYears is < 1 or > 70)
+        {
+            Error(nameof(SearchFilter.MinYears), "Years in practice must be between 1 and 70.");
         }
 
         if (f.Page < 1)

@@ -56,6 +56,12 @@ public sealed record ProviderDetail(
 
     /// <summary>OIG exclusions, Medicare opt-out and order/refer eligibility (Stage 5.5 item 2).</summary>
     public ProviderCompliance Compliance { get; init; } = new([], null, null);
+
+    /// <summary>Medicare Care Compare clinician facts; null when the NPI isn't listed there (Stage 5.5 item 3).</summary>
+    public ProviderCareCompare? CareCompare { get; init; }
+
+    /// <summary>Medicare-certified hospitals and nursing homes held by this organization NPI (Stage 5.5 item 4).</summary>
+    public IReadOnlyList<CertifiedFacility> Facilities { get; init; } = [];
 }
 
 /// <summary>Reads one provider from the projection. Deactivated NPIs are not in the projection, so they come back as null.</summary>
@@ -83,6 +89,16 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record OptOutRow(string? Specialty, DateTime? EffectiveDate, DateTime? EndDate, sbyte? CanOrderRefer);
 
     private sealed record OrderReferRow(sbyte? PartB, sbyte? Dme, sbyte? Hha, sbyte? Pmd, sbyte? Hospice);
+
+    private sealed record ClinicianRow(string? MedicalSchool, short? GraduationYear, string? PrimarySpecialty, string? SecondarySpecialties,
+        sbyte AcceptsAssignment, sbyte Telehealth);
+
+    private sealed record GroupRow(string OrgPacId, string? GroupName, int? Members, sbyte AcceptsAssignment, string? City, string? State);
+
+    private sealed record AffiliationRow(string FacilityType, string Ccn, string? Name, string? City, string? State, long? OverallRating, string? FacilityNpi);
+
+    private sealed record FacilityRow(string Ccn, string Kind, string Name, string? Type, string? Ownership, string? City, string? State, string? Phone,
+        sbyte? EmergencyServices, int? CertifiedBeds, long? OverallRating, long? InspectionRating, long? StaffingRating, long? QualityRating, long AffiliatedClinicians);
 
     private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
         string? UseDescription, string? ContentDescription, string? AffiliationName, string? AffiliationCity, string? AffiliationState);
@@ -163,6 +179,52 @@ public sealed class ProviderDetailService(string connectionString)
             """, new { npi }, cancellationToken: ct));
         var today = DateOnly.FromDateTime(DateTime.Today);
 
+        var clinician = await connection.QuerySingleOrDefaultAsync<ClinicianRow>(new CommandDefinition(
+            """
+            SELECT medical_school AS MedicalSchool, graduation_year AS GraduationYear, primary_specialty AS PrimarySpecialty,
+                   secondary_specialties AS SecondarySpecialties, accepts_assignment AS AcceptsAssignment, telehealth AS Telehealth
+            FROM cc_clinician WHERE npi = @npi
+            """, new { npi }, cancellationToken: ct));
+        ProviderCareCompare? careCompare = null;
+        if (clinician is not null)
+        {
+            var groups = await connection.QueryAsync<GroupRow>(new CommandDefinition(
+                """
+                SELECT org_pac_id AS OrgPacId, group_name AS GroupName, members AS Members, accepts_assignment AS AcceptsAssignment, city AS City, state AS State
+                FROM cc_group WHERE npi = @npi ORDER BY group_name, org_pac_id
+                """, new { npi }, cancellationToken: ct));
+            var affiliations = await connection.QueryAsync<AffiliationRow>(new CommandDefinition(
+                """
+                SELECT a.facility_type AS FacilityType, a.ccn AS Ccn, COALESCE(h.name, n.name) AS Name, COALESCE(h.city, n.city) AS City,
+                       COALESCE(h.state, n.state) AS State, CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating,
+                       (SELECT MIN(f.npi) FROM cms_facility_npi f WHERE f.ccn = a.ccn) AS FacilityNpi
+                FROM (SELECT DISTINCT facility_type, ccn FROM cc_facility_affiliation WHERE npi = @npi) a
+                LEFT JOIN cms_hospital h ON h.ccn = a.ccn
+                LEFT JOIN cms_nursing_home n ON n.ccn = a.ccn
+                ORDER BY a.facility_type, Name, a.ccn
+                """, new { npi }, cancellationToken: ct));
+            careCompare = new ProviderCareCompare(
+                clinician.MedicalSchool, clinician.GraduationYear, clinician.PrimarySpecialty, clinician.SecondarySpecialties,
+                clinician.AcceptsAssignment != 0, clinician.Telehealth != 0,
+                groups.Select(g => new GroupPractice(g.OrgPacId, g.GroupName, g.Members, g.AcceptsAssignment != 0, g.City, g.State)).ToList(),
+                affiliations.Select(a => new FacilityAffiliation(a.FacilityType, a.Ccn, a.Name, a.City, a.State, (int?)a.OverallRating, a.FacilityNpi)).ToList());
+        }
+
+        var facilities = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
+            """
+            SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
+                   COALESCE(h.ownership, n.ownership) AS Ownership, COALESCE(h.city, n.city) AS City, COALESCE(h.state, n.state) AS State,
+                   COALESCE(h.phone, n.phone) AS Phone, h.emergency_services AS EmergencyServices, n.certified_beds AS CertifiedBeds,
+                   CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating, CAST(n.inspection_rating AS SIGNED) AS InspectionRating,
+                   CAST(n.staffing_rating AS SIGNED) AS StaffingRating, CAST(n.quality_rating AS SIGNED) AS QualityRating,
+                   (SELECT COUNT(DISTINCT a.npi) FROM cc_facility_affiliation a WHERE a.ccn = f.ccn) AS AffiliatedClinicians
+            FROM cms_facility_npi f
+            LEFT JOIN cms_hospital h ON h.ccn = f.ccn
+            LEFT JOIN cms_nursing_home n ON n.ccn = f.ccn
+            WHERE f.npi = @npi AND COALESCE(h.name, n.name) IS NOT NULL
+            ORDER BY f.kind, Name
+            """, new { npi }, cancellationToken: ct));
+
         return new ProviderDetail(
             p.Npi, p.EntityType,
             ProviderNames.Display(p.EntityType, p.LastName, p.FirstName, p.MiddleName, p.NameSuffix, p.OrgName),
@@ -185,6 +247,10 @@ public sealed class ProviderDetailService(string connectionString)
                     ToDate(optOut.EndDate) is not { } end || end >= today, optOut.CanOrderRefer is null ? null : optOut.CanOrderRefer != 0),
                 orderRefer is null ? null : new MedicareOrderReferring(orderRefer.PartB == 1, orderRefer.Dme == 1, orderRefer.Hha == 1,
                     orderRefer.Pmd == 1, orderRefer.Hospice == 1)),
+            CareCompare = careCompare,
+            Facilities = facilities.Select(f => new CertifiedFacility(f.Ccn, f.Kind, f.Name, f.Type, f.Ownership, f.City, f.State, f.Phone,
+                f.EmergencyServices is null ? null : f.EmergencyServices != 0, f.CertifiedBeds, (int?)f.OverallRating, (int?)f.InspectionRating, (int?)f.StaffingRating,
+                (int?)f.QualityRating, (int)f.AffiliatedClinicians)).ToList(),
         };
     }
 

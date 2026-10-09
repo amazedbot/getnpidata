@@ -11,6 +11,7 @@ public static class ProviderCsv
     [
         "NPI", "Entity Type", "Name", "Credential", "Primary Specialty", "Address 1", "Address 2", "City", "State", "ZIP", "County",
         "Phone", "Gender", "Enumeration Date", "Last Update Date", "OIG Excluded", "Medicare Opt-Out", "Medicare Order/Refer",
+        "Accepts Medicare Assignment", "Telehealth",
     ];
 
     /// <returns>The number of providers written.</returns>
@@ -45,6 +46,8 @@ public static class ProviderCsv
             csv.WriteField(r.Flags.Excluded ? "Yes" : "");
             csv.WriteField(r.Flags.OptedOutOfMedicare ? "Yes" : "");
             csv.WriteField(r.Flags.CanOrderAndRefer ? "Yes" : "");
+            csv.WriteField(r.Flags.AcceptsMedicareAssignment ? "Yes" : "");
+            csv.WriteField(r.Flags.OffersTelehealth ? "Yes" : "");
             await csv.NextRecordAsync();
             if (++count % 1000 == 0)
             {

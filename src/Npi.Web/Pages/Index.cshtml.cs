@@ -9,6 +9,8 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
 {
     public static readonly int[] RadiusChoices = [5, 10, 25, 50, 100];
 
+    public static readonly int[] YearChoices = [5, 10, 20, 30];
+
     public SearchFilter Filter { get; private set; } = new();
 
     public SearchResult? Result { get; private set; }

@@ -76,6 +76,11 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new LeieSource(),
         new OptOutSource(),
         new OrderReferringSource(),
+        new CareCompareClinicianSource(),
+        new FacilityAffiliationSource(),
+        new HospitalSource(),
+        new NursingHomeSource(),
+        new FacilityEnrollmentSource(),
     ];
 
     private readonly IReadOnlyList<DatasetSource> _sources = sources ?? AllSources;
