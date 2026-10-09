@@ -1,0 +1,30 @@
+@using Npi.Core.Search
+@model Npi.Web.Pages.FilterFields
+@*
+    Shared by the search page and the map page (CLAUDE.md §7 Stage 5.5 item 10), so both offer the same filters.
+*@
+<fieldset>
+    <legend>Specialty</legend>
+    <div class="field">
+        <label for="classification">Classification</label>
+        <select id="classification" name="classification" data-dependent="specialization" data-source="/lookup/specializations?classification=">
+            <option value="">Any</option>
+            @foreach (var c in Model.Classifications)
+            {
+                <option value="@c" selected="@(string.Equals(c, Model.Filter.Classification, StringComparison.OrdinalIgnoreCase))">@c</option>
+            }
+        </select>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.Classification))</span>
+    </div>
+    <div class="field">
+        <label for="specialization">Specialization</label>
+        <select id="specialization" name="specialization" disabled="@(Model.Specializations.Count == 0)">
+            <option value="">Any</option>
+            @foreach (var s in Model.Specializations)
+            {
+                <option value="@s" selected="@(string.Equals(s, Model.Filter.Specialization, StringComparison.OrdinalIgnoreCase))">@s</option>
+            }
+        </select>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.Specialization))</span>
+    </div>
+</fieldset>

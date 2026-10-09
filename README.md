@@ -40,7 +40,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
 | See compliance and Medicare badges on every result | Website grid, CSV and API flags |
 | Paged, sortable results with the total match count | Website grid, API JSON |
-| See the page's results on a map, and search **near me** from the browser's location | Website `/` |
+| Search **on a map**: pins at practice street addresses, "Search in this area", near me, and a sortable table of the pins in view | Website `/map` ("View on map" from any search) |
 | Download **every** match as CSV, streamed, with no row cap | "Download CSV" button, `/export.csv`, `/api/v1/providers.csv` |
 | See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, Care Compare, facilities, Medicare services and prescribing, industry payments | `/provider/{npi}`, `/api/v1/providers/{npi}` |
 | Look up thousands of NPIs at once (paste or upload a file) and download the details, in your order | `/lookup`, `POST /api/v1/providers/lookup[.csv]` |
@@ -91,14 +91,22 @@ addresses are not searched. Each result row shows the location that matched.
 
 - **`/`**: the search form. Specialty and location use dependent dropdowns (Classification → Specialization,
   State → County). Results appear in a sortable grid, 50 per page, with the total and a **Download CSV** button
-  for the same search. The page also works without JavaScript and on phones.
-- **Map**: above the grid, an [OpenStreetMap](https://www.openstreetmap.org/) map with one pin per ZIP code for the
-  providers on the current page. Pins sit at the ZIP code's center (Census ZCTA centroid), never at a street address;
-  click one to list its providers.
-- **Near me**: asks the browser for your location, finds the nearest ZIP code and searches within 10 miles of it
-  (keeping your other filters). Browsers offer location only over https (or on localhost). The position is rounded
-  to about 1 km in the browser, sent once in a POST body to find the ZIP, and never stored or logged; the search URL
-  contains only the ZIP.
+  for the same search, and **View on map** opens the map search with the same filters. The page also works without
+  JavaScript and on phones.
+- **`/map`**: map search on [OpenStreetMap](https://www.openstreetmap.org/).
+  - Move the map and choose **Search in this area**: every provider practicing inside the visible area that matches
+    the filters (the same specialty, provider and Medicare & compliance filters as the search page; the map area
+    replaces state/county/city/ZIP).
+  - One pin per street address. Hover a pin to see who practices there (everyone at that address); click it for the
+    same list with links. Gray dashed pins are approximate: the address couldn't be geocoded, so it sits at its ZIP
+    code's center.
+  - The table beside the map (below it on phones and narrow windows) lists every provider at the pins in view, and
+    updates as you pan. Sort it by distance from the map center, name, specialty, city or last update, either way.
+  - At most 1,000 providers per search, the closest to the center; zoom in or add filters for more. Very large areas
+    (more than about 170 miles across) ask you to zoom in.
+  - **Near me** centers the map on your location (the browser asks first; it stays in your browser) and searches
+    there. Browsers offer location only over https (or on localhost).
+  - The search URL (filters + area) is shareable.
 - **`/provider/{npi}`**: one provider's full record, with a link to the official
   [NPPES NPI Registry](https://npiregistry.cms.hhs.gov/) entry.
 - **`/lookup`**: bulk NPI lookup. Paste NPIs or upload a CSV or text file (up to 50,000 NPIs, 10 MB); every
@@ -198,6 +206,7 @@ by parameter and `RetryAfter`. Build the NuGet package with `dotnet pack src/Npi
 | [NUCC Health Care Provider Taxonomy](https://www.nucc.org/) | Specialty names (classification / specialization) | When NUCC publishes a new version (twice a year) |
 | [HUD USPS ZIP–County crosswalk](https://www.huduser.gov/portal/datasets/usps_crosswalk.html) | ZIP → county | Quarterly |
 | [Census Gazetteer files](https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html) | County names, ZIP centroids for radius search | Yearly |
+| [Census Geocoder](https://geocoding.geo.census.gov/) (batch) | Map pins: latitude/longitude of each practice street address | New addresses with each load; each address once |
 | [HHS-OIG LEIE](https://oig.hhs.gov/exclusions/) | Exclusions from federal health programs | Monthly |
 | [CMS Opt Out Affidavits, Order and Referring](https://data.cms.gov/) | Medicare opt-out, order/refer eligibility | Monthly / weekly |
 | [Medicare Care Compare (Provider Data Catalog)](https://data.cms.gov/provider-data/) | Clinicians, group practices, hospital affiliations, hospitals and nursing homes | Monthly |
@@ -268,7 +277,7 @@ needs `SELECT`.
 | `ConnectionStrings:RemoteMySql` | Web | — | Database the site reads (secret) |
 | `Api:PermitLimit`, `Api:WindowSeconds` | Web | `60`, `60` | API rate limit per client IP |
 | `Api:RequireKey`, `Api:Keys` | Web | `false`, — | Require `X-Api-Key` (keys are secrets) |
-| `Map:TileUrl`, `Map:Attribution`, `Map:MaxZoom` | Web | OpenStreetMap standard tiles, its credit line, `19` | Map tiles for the results map; empty `TileUrl` turns the map off. OpenStreetMap's free server allows only light use: a busy public site should switch to a hosted tile provider (a key in the URL is a secret) |
+| `Map:TileUrl`, `Map:Attribution`, `Map:MaxZoom` | Web | OpenStreetMap standard tiles, its credit line, `19` | Map tiles for the map search page; empty `TileUrl` turns the map off. OpenStreetMap's free server allows only light use: a busy public site should switch to a hosted tile provider (a key in the URL is a secret) |
 
 Environment variables work too: prefix `NPI_` for the loader (for example `NPI_HudApiToken`). For the site, use the
 standard ASP.NET Core form, for example `Api__RequireKey=true`.
@@ -290,6 +299,7 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `reference` | Force-refresh NUCC, HUD and Census reference data |
 | `datasets [name]` | Force-reload the enrichment datasets (OIG, CMS, HRSA, Census, Open Payments), or just one. `run` reloads each when its publisher releases a new version |
 | `project` | Rebuild the search tables now |
+| `geocode` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. `run` geocodes up to 200,000 new addresses per run |
 | `publish` | Sync the search tables to Azure *(planned)* |
 
 `run` skips files already loaded, so running it daily is safe. Exit code `0` means everything completed, `1` means

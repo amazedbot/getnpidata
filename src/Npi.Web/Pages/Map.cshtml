@@ -1,0 +1,90 @@
+@page "/map"
+@using System.Globalization
+@using Npi.Core.Search
+@model MapModel
+@{
+    ViewData["Title"] = "Map search";
+}
+
+<h1>Map search</h1>
+<p class="lede">Move the map to an area and choose <strong>Search in this area</strong>. Pins mark practice addresses; hover a pin to see who practices there.</p>
+
+<form method="get" action="/map" class="search map-filters" id="search-form">
+    <details>
+        <summary>Filters</summary>
+        <partial name="_SpecialtyFields" model="Model.Fields" />
+        <partial name="_ProviderFields" model="Model.Fields" />
+        <div class="actions">
+            <button type="submit">Search in this area</button>
+            <a href="/map" class="secondary">Clear filters</a>
+        </div>
+    </details>
+</form>
+
+<noscript><p class="notice">The map search needs JavaScript. The <a href="/">search page</a> works without it.</p></noscript>
+
+<div class="map-layout">
+    <div class="map-pane">
+        <div class="map-toolbar">
+            <button type="button" id="search-area">Search in this area</button>
+            <button type="button" class="secondary" id="near-me" hidden>Near me</button>
+            <span class="muted" id="map-status" role="status" aria-live="polite"></span>
+        </div>
+        <div id="area-map" class="area-map" role="region" aria-label="Map"
+             data-tile-url="@Model.Map.TileUrl" data-attribution="@Model.Map.Attribution" data-max-zoom="@Model.Map.MaxZoom"
+             data-start="@Model.StartText" data-auto-search="@(Model.AutoSearch ? "true" : "false")"
+             data-max-lat-span="@MapBounds.MaxLatSpan.ToString(CultureInfo.InvariantCulture)" data-max-lon-span="@MapBounds.MaxLonSpan.ToString(CultureInfo.InvariantCulture)"></div>
+        <p class="muted small legend">
+            <span><span class="dot exact" aria-hidden="true"></span>Street address</span>
+            <span><span class="dot approximate" aria-hidden="true"></span>Approximate (ZIP code center: the address couldn't be located)</span>
+        </p>
+    </div>
+
+    <section class="area-results" aria-labelledby="area-heading">
+        <div class="area-head">
+            <h2 id="area-heading">Providers in view</h2>
+            <div class="area-sort">
+                <label for="area-sort">Sort by</label>
+                <select id="area-sort">
+                    <option value="distance">Distance from map center</option>
+                    <option value="name">Name</option>
+                    <option value="specialty">Specialty</option>
+                    <option value="city">City</option>
+                    <option value="updated">Last updated</option>
+                </select>
+                <label for="area-order" class="visually-hidden">Order</label>
+                <select id="area-order">
+                    <option value="asc">Ascending</option>
+                    <option value="desc">Descending</option>
+                </select>
+            </div>
+        </div>
+        <p class="muted" id="area-count">Search an area to list its providers.</p>
+        <div class="table-wrap area-table-wrap">
+            <table id="area-table">
+                <caption class="visually-hidden">Providers at the pins currently visible on the map</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Provider</th>
+                        <th scope="col">Address</th>
+                        <th scope="col">Phone</th>
+                        <th scope="col">Miles</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+@section Head {
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+          integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+}
+
+@section Scripts {
+    <script src="~/js/search.js" asp-append-version="true"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+            integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="~/js/map.js" asp-append-version="true"></script>
+}

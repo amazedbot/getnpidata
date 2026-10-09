@@ -25,6 +25,136 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
     private sealed record PageRow(string Npi, long Total);
 
+    private sealed record AreaRow(string Npi, string AddrKey, double Lat, double Lon, sbyte Approximate);
+
+    private sealed record AreaLocationRow(
+        string Npi, string AddrKey, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4, string? PostalCode, string? Phone);
+
+    /// <summary>The most providers <see cref="SearchAreaAsync"/> returns; a busier area asks the visitor to zoom in.</summary>
+    public const int MaxAreaResults = 1000;
+
+    // Sides (as a share of the map area's) of the boxes around the centre probed for a busy area.
+    private static readonly double[] AreaProbeSides = [1.0 / 8, 1.0 / 4, 1.0 / 2];
+
+    /// <summary>
+    /// Map search (CLAUDE.md §7 Stage 5.5 item 10): providers with a street address inside the map area that match
+    /// the filter, one item per provider and address, nearest the centre first, at most <see cref="MaxAreaResults"/>.
+    /// The area replaces the location filters (state, county, city, ZIP, radius), which are ignored.
+    /// </summary>
+    /// <exception cref="SearchValidationException">Invalid filter or area, or an area too busy to answer in time.</exception>
+    public async Task<AreaResult> SearchAreaAsync(SearchFilter filter, MapBounds bounds, CancellationToken ct)
+    {
+        if (bounds.Problem is { } problem)
+        {
+            throw new SearchValidationException(new Dictionary<string, string[]> { ["bbox"] = [problem] });
+        }
+
+        var f = SearchValidation.Normalize(
+            filter with { State = null, CountyFips = null, City = null, Zip5 = null, RadiusMiles = null, Sort = null, Page = 1, PageSize = SearchFilter.DefaultPageSize },
+            requireFilter: false);
+        var query = new SearchQuery(f, await taxonomy.ResolveAsync(f, ct), radiusCenter: null, areaSearch: true);
+        var p = new DynamicParameters(query.Parameters);
+        p.Add("cells", bounds.Cells);
+        p.Add("box", bounds.Polygon);
+        p.Add("clat", bounds.CenterLat);
+        p.Add("clon", bounds.CenterLon);
+        p.Add("cosLat", Math.Cos(bounds.CenterLat * Math.PI / 180));
+        p.Add("areaTake", MaxAreaResults + 1);
+        var areaSql = query.AreaSql("@box");
+
+        await using var connection = await OpenAsync(ct);
+        List<AreaRow> rows;
+        var truncated = false;
+        try
+        {
+            if (!query.HasSelectiveDriver)
+            {
+                // A busy area (Manhattan with no specialty) holds hundreds of thousands of points, and sorting them all by
+                // distance is slow. Find the smallest box around the centre that already holds more than the limit: the
+                // nearest points are in it, so only that box is sorted. Each probe stops at limit + 1 matches.
+                foreach (var side in AreaProbeSides)
+                {
+                    var probe = bounds.Around(side);
+                    p.Add("box", probe.Polygon);
+                    var found = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                        $"SELECT COUNT(*) FROM ({areaSql} LIMIT @areaTake) x", p, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct));
+                    if (found > MaxAreaResults)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    p.Add("box", bounds.Polygon);
+                }
+            }
+
+            rows = (await connection.QueryAsync<AreaRow>(new CommandDefinition(
+                areaSql + " ORDER BY POW(m.lat - @clat, 2) + POW((m.lon - @clon) * @cosLat, 2), m.npi, m.addr_key LIMIT @areaTake",
+                p, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct))).ToList();
+        }
+        catch (MySqlException ex) when (ex.ErrorCode is MySqlErrorCode.CommandTimeoutExpired or MySqlErrorCode.QueryInterrupted && !ct.IsCancellationRequested)
+        {
+            throw new SearchValidationException(new Dictionary<string, string[]>
+            {
+                ["bbox"] = ["This area has too many providers to search quickly. Zoom in or add a filter."],
+            });
+        }
+
+        if (rows.Count > MaxAreaResults)
+        {
+            truncated = true;
+            rows.RemoveAt(rows.Count - 1);
+        }
+
+        var npis = rows.Select(r => r.Npi).Distinct(StringComparer.Ordinal).ToList();
+        var summaries = (await SummarizeAsync(connection, new SearchQuery(new SearchFilter(), null, null), npis, ct)).ToDictionary(s => s.Npi, StringComparer.Ordinal);
+        var locations = new Dictionary<(string, string), AreaLocationRow>();
+        if (rows.Count > 0)
+        {
+            var keys = rows.Select(r => r.AddrKey).Distinct(StringComparer.Ordinal).ToList();
+            foreach (var l in await connection.QueryAsync<AreaLocationRow>(new CommandDefinition(
+                         """
+                         SELECT npi AS Npi, addr_key AS AddrKey, address1 AS Address1, address2 AS Address2, city AS City, state AS State,
+                                zip5 AS Zip5, zip4 AS Zip4, postal_code AS PostalCode, phone AS Phone
+                         FROM provider_location WHERE npi IN @npis AND addr_key IN @keys ORDER BY npi, is_primary DESC, id
+                         """, new { npis, keys }, cancellationToken: ct)))
+            {
+                locations.TryAdd((l.Npi, l.AddrKey), l);
+            }
+        }
+
+        var items = new List<AreaProvider>(rows.Count);
+        foreach (var r in rows)
+        {
+            if (!summaries.TryGetValue(r.Npi, out var s))
+            {
+                continue; // replaced by a concurrent projection swap
+            }
+
+            if (locations.TryGetValue((r.Npi, r.AddrKey), out var l))
+            {
+                var sameZip = l.Zip5 is not null && s.Zip?.StartsWith(l.Zip5, StringComparison.Ordinal) == true;
+                s = s with
+                {
+                    Address1 = l.Address1, Address2 = l.Address2, City = l.City, State = l.State, Zip = ProviderNames.Zip(l.Zip5, l.Zip4, l.PostalCode),
+                    Phone = l.Phone ?? s.Phone, County = sameZip ? s.County : null,
+                };
+            }
+
+            items.Add(new AreaProvider(s, r.Lat, r.Lon, r.Approximate != 0, MilesBetween(bounds.CenterLat, bounds.CenterLon, r.Lat, r.Lon)));
+        }
+
+        var asOf = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition("SELECT as_of_date FROM data_version WHERE id = 1", cancellationToken: ct));
+        return new AreaResult(items, truncated, MaxAreaResults, asOf is null ? null : DateOnly.FromDateTime(asOf.Value));
+    }
+
+    private static double MilesBetween(double lat1, double lon1, double lat2, double lon2)
+    {
+        static double Rad(double d) => d * Math.PI / 180;
+        var a = Math.Pow(Math.Sin(Rad(lat2 - lat1) / 2), 2) + Math.Cos(Rad(lat1)) * Math.Cos(Rad(lat2)) * Math.Pow(Math.Sin(Rad(lon2 - lon1) / 2), 2);
+        return 3958.8 * 2 * Math.Asin(Math.Sqrt(a));
+    }
+
     /// <summary>Validates the filter and returns one page of results with the total count.</summary>
     /// <exception cref="SearchValidationException">Invalid filter, or a search too broad to answer within <see cref="SearchFilter.SearchTimeoutSeconds"/>.</exception>
     public async Task<SearchResult> SearchAsync(SearchFilter filter, CancellationToken ct)

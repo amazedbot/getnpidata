@@ -1,0 +1,117 @@
+@using Npi.Core.Search
+@model Npi.Web.Pages.FilterFields
+@*
+    Shared by the search page and the map page (CLAUDE.md §7 Stage 5.5 item 10), so both offer the same filters.
+*@
+<fieldset>
+    <legend>Provider</legend>
+    <div class="field">
+        <label for="lastName">Last name starts with</label>
+        <input id="lastName" name="lastName" value="@Model.Filter.LastName" maxlength="60" />
+    </div>
+    <div class="field">
+        <label for="firstName">First name starts with</label>
+        <input id="firstName" name="firstName" value="@Model.Filter.FirstName" maxlength="60" />
+    </div>
+    <div class="field">
+        <label for="orgName">Organization starts with</label>
+        <input id="orgName" name="orgName" value="@Model.Filter.OrgName" maxlength="60" />
+    </div>
+    <div class="field narrow">
+        <label for="npi">NPI</label>
+        <input id="npi" name="npi" value="@Model.Filter.Npi" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" />
+        <span class="field-error">@Model.Error(nameof(SearchFilter.Npi))</span>
+    </div>
+    <div class="field narrow">
+        <label for="entityType">Type</label>
+        <select id="entityType" name="entityType">
+            <option value="">Any</option>
+            <option value="1" selected="@(Model.Filter.EntityType == 1)">Individual</option>
+            <option value="2" selected="@(Model.Filter.EntityType == 2)">Organization</option>
+        </select>
+    </div>
+    <div class="field narrow">
+        <label for="gender">Gender</label>
+        <select id="gender" name="gender">
+            <option value="">Any</option>
+            <option value="F" selected="@(Model.Filter.Gender == "F")">Female</option>
+            <option value="M" selected="@(Model.Filter.Gender == "M")">Male</option>
+        </select>
+    </div>
+    <div class="field narrow">
+        <label for="credential">Credential</label>
+        <input id="credential" name="credential" value="@Model.Filter.Credential" maxlength="60" placeholder="e.g. MD" />
+    </div>
+</fieldset>
+
+<fieldset>
+    <legend>Medicare &amp; compliance</legend>
+    <div class="field">
+        <label for="acceptsAssignment">Accepts Medicare assignment</label>
+        <select id="acceptsAssignment" name="acceptsAssignment">
+            <option value="">Any</option>
+            <option value="true" selected="@(Model.Filter.AcceptsAssignment == true)">Yes</option>
+            <option value="false" selected="@(Model.Filter.AcceptsAssignment == false)">No / unknown</option>
+        </select>
+    </div>
+    <div class="field narrow">
+        <label for="telehealth">Telehealth</label>
+        <select id="telehealth" name="telehealth">
+            <option value="">Any</option>
+            <option value="true" selected="@(Model.Filter.Telehealth == true)">Offers telehealth</option>
+        </select>
+    </div>
+    <div class="field narrow">
+        <label for="minYears">Years in practice</label>
+        <select id="minYears" name="minYears">
+            <option value="">Any</option>
+            @foreach (var y in IndexModel.YearChoices)
+            {
+                <option value="@y" selected="@(Model.Filter.MinYears == y)">@y+ years</option>
+            }
+        </select>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.MinYears))</span>
+    </div>
+    <div class="field">
+        <label for="shortage">In a shortage area</label>
+        <select id="shortage" name="shortage">
+            <option value="">Any</option>
+            <option value="primaryCare" selected="@(Model.Filter.Shortage == "primaryCare")">Primary care</option>
+            <option value="dental" selected="@(Model.Filter.Shortage == "dental")">Dental</option>
+            <option value="mentalHealth" selected="@(Model.Filter.Shortage == "mentalHealth")">Mental health</option>
+        </select>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.Shortage))</span>
+    </div>
+    <div class="field">
+        <label for="medicareActive">Billed Medicare</label>
+        <select id="medicareActive" name="medicareActive">
+            <option value="">Any</option>
+            <option value="true" selected="@(Model.Filter.MedicareActive == true)">Yes, latest year</option>
+            <option value="false" selected="@(Model.Filter.MedicareActive == false)">No</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="excluded">OIG exclusion list</label>
+        <select id="excluded" name="excluded">
+            <option value="">Any</option>
+            <option value="false" selected="@(Model.Filter.Excluded == false)">Not excluded</option>
+            <option value="true" selected="@(Model.Filter.Excluded == true)">Excluded only</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="optedOut">Medicare opt-out</label>
+        <select id="optedOut" name="optedOut">
+            <option value="">Any</option>
+            <option value="false" selected="@(Model.Filter.OptedOut == false)">Not opted out</option>
+            <option value="true" selected="@(Model.Filter.OptedOut == true)">Opted out only</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="orderRefer">Can order/refer in Medicare</label>
+        <select id="orderRefer" name="orderRefer">
+            <option value="">Any</option>
+            <option value="true" selected="@(Model.Filter.OrderRefer == true)">Yes</option>
+            <option value="false" selected="@(Model.Filter.OrderRefer == false)">No</option>
+        </select>
+    </div>
+</fieldset>

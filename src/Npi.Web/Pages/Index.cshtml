@@ -16,31 +16,7 @@
         <p class="error" role="alert">@string.Join(" ", general)</p>
     }
 
-    <fieldset>
-        <legend>Specialty</legend>
-        <div class="field">
-            <label for="classification">Classification</label>
-            <select id="classification" name="classification" data-dependent="specialization" data-source="/lookup/specializations?classification=">
-                <option value="">Any</option>
-                @foreach (var c in Model.Classifications)
-                {
-                    <option value="@c" selected="@(string.Equals(c, f.Classification, StringComparison.OrdinalIgnoreCase))">@c</option>
-                }
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.Classification))</span>
-        </div>
-        <div class="field">
-            <label for="specialization">Specialization</label>
-            <select id="specialization" name="specialization" disabled="@(Model.Specializations.Count == 0)">
-                <option value="">Any</option>
-                @foreach (var s in Model.Specializations)
-                {
-                    <option value="@s" selected="@(string.Equals(s, f.Specialization, StringComparison.OrdinalIgnoreCase))">@s</option>
-                }
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.Specialization))</span>
-        </div>
-    </fieldset>
+    <partial name="_SpecialtyFields" model="Model.Fields" />
 
     <fieldset>
         <legend>Location</legend>
@@ -86,124 +62,9 @@
             </select>
             <span class="field-error">@Model.Error(nameof(SearchFilter.RadiusMiles))</span>
         </div>
-        <div class="field near-me" id="near-me-field" hidden>
-            <button type="button" class="secondary" id="near-me" data-source="/lookup/nearest-zip">Near me</button>
-            <span class="muted" id="near-me-status" role="status" aria-live="polite"></span>
-        </div>
     </fieldset>
 
-    <fieldset>
-        <legend>Provider</legend>
-        <div class="field">
-            <label for="lastName">Last name starts with</label>
-            <input id="lastName" name="lastName" value="@f.LastName" maxlength="60" />
-        </div>
-        <div class="field">
-            <label for="firstName">First name starts with</label>
-            <input id="firstName" name="firstName" value="@f.FirstName" maxlength="60" />
-        </div>
-        <div class="field">
-            <label for="orgName">Organization starts with</label>
-            <input id="orgName" name="orgName" value="@f.OrgName" maxlength="60" />
-        </div>
-        <div class="field narrow">
-            <label for="npi">NPI</label>
-            <input id="npi" name="npi" value="@f.Npi" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" />
-            <span class="field-error">@Model.Error(nameof(SearchFilter.Npi))</span>
-        </div>
-        <div class="field narrow">
-            <label for="entityType">Type</label>
-            <select id="entityType" name="entityType">
-                <option value="">Any</option>
-                <option value="1" selected="@(f.EntityType == 1)">Individual</option>
-                <option value="2" selected="@(f.EntityType == 2)">Organization</option>
-            </select>
-        </div>
-        <div class="field narrow">
-            <label for="gender">Gender</label>
-            <select id="gender" name="gender">
-                <option value="">Any</option>
-                <option value="F" selected="@(f.Gender == "F")">Female</option>
-                <option value="M" selected="@(f.Gender == "M")">Male</option>
-            </select>
-        </div>
-        <div class="field narrow">
-            <label for="credential">Credential</label>
-            <input id="credential" name="credential" value="@f.Credential" maxlength="60" placeholder="e.g. MD" />
-        </div>
-    </fieldset>
-
-    <fieldset>
-        <legend>Medicare &amp; compliance</legend>
-        <div class="field">
-            <label for="acceptsAssignment">Accepts Medicare assignment</label>
-            <select id="acceptsAssignment" name="acceptsAssignment">
-                <option value="">Any</option>
-                <option value="true" selected="@(f.AcceptsAssignment == true)">Yes</option>
-                <option value="false" selected="@(f.AcceptsAssignment == false)">No / unknown</option>
-            </select>
-        </div>
-        <div class="field narrow">
-            <label for="telehealth">Telehealth</label>
-            <select id="telehealth" name="telehealth">
-                <option value="">Any</option>
-                <option value="true" selected="@(f.Telehealth == true)">Offers telehealth</option>
-            </select>
-        </div>
-        <div class="field narrow">
-            <label for="minYears">Years in practice</label>
-            <select id="minYears" name="minYears">
-                <option value="">Any</option>
-                @foreach (var y in IndexModel.YearChoices)
-                {
-                    <option value="@y" selected="@(f.MinYears == y)">@y+ years</option>
-                }
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.MinYears))</span>
-        </div>
-        <div class="field">
-            <label for="shortage">In a shortage area</label>
-            <select id="shortage" name="shortage">
-                <option value="">Any</option>
-                <option value="primaryCare" selected="@(f.Shortage == "primaryCare")">Primary care</option>
-                <option value="dental" selected="@(f.Shortage == "dental")">Dental</option>
-                <option value="mentalHealth" selected="@(f.Shortage == "mentalHealth")">Mental health</option>
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.Shortage))</span>
-        </div>
-        <div class="field">
-            <label for="medicareActive">Billed Medicare</label>
-            <select id="medicareActive" name="medicareActive">
-                <option value="">Any</option>
-                <option value="true" selected="@(f.MedicareActive == true)">Yes, latest year</option>
-                <option value="false" selected="@(f.MedicareActive == false)">No</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="excluded">OIG exclusion list</label>
-            <select id="excluded" name="excluded">
-                <option value="">Any</option>
-                <option value="false" selected="@(f.Excluded == false)">Not excluded</option>
-                <option value="true" selected="@(f.Excluded == true)">Excluded only</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="optedOut">Medicare opt-out</label>
-            <select id="optedOut" name="optedOut">
-                <option value="">Any</option>
-                <option value="false" selected="@(f.OptedOut == false)">Not opted out</option>
-                <option value="true" selected="@(f.OptedOut == true)">Opted out only</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="orderRefer">Can order/refer in Medicare</label>
-            <select id="orderRefer" name="orderRefer">
-                <option value="">Any</option>
-                <option value="true" selected="@(f.OrderRefer == true)">Yes</option>
-                <option value="false" selected="@(f.OrderRefer == false)">No</option>
-            </select>
-        </div>
-    </fieldset>
+    <partial name="_ProviderFields" model="Model.Fields" />
 
     <div class="actions">
         <button type="submit">Search</button>
@@ -218,7 +79,10 @@
             <h2 id="results-heading">@result.TotalCount.ToString("N0", CultureInfo.InvariantCulture) provider@(result.TotalCount == 1 ? "" : "s") found</h2>
             @if (result.TotalCount > 0)
             {
-                <a class="button" href="@Model.CsvLink" download>Download CSV</a>
+                <span class="results-actions">
+                    <a class="button secondary" href="@Model.MapLink">View on map</a>
+                    <a class="button" href="@Model.CsvLink" download>Download CSV</a>
+                </span>
             }
         </div>
 
@@ -240,21 +104,6 @@
                     <br /><span class="muted">No HRSA shortage areas in force.</span>
                 }
             </aside>
-        }
-
-        @if (Model.Pins.Count > 0)
-        {
-            <section class="map-wrap" id="map-section" aria-label="Map of the providers on this page" hidden>
-                <div id="results-map" class="map" data-tile-url="@Model.Map.TileUrl" data-attribution="@Model.Map.Attribution" data-max-zoom="@Model.Map.MaxZoom"></div>
-                <p class="muted small">
-                    Pins mark each ZIP code's center, not street addresses.
-                    @if (Model.Unmapped > 0)
-                    {
-                        <span>@Model.Unmapped of the @result.Items.Count providers on this page have no map point.</span>
-                    }
-                </p>
-                <script type="application/json" id="map-data">@Html.Raw(Model.PinsJson)</script>
-            </section>
         }
 
         @if (result.TotalCount > 0)
@@ -339,20 +188,6 @@
     </section>
 }
 
-@section Head {
-    @if (Model.Pins.Count > 0)
-    {
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
-              integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    }
-}
-
 @section Scripts {
     <script src="~/js/search.js" asp-append-version="true"></script>
-    @if (Model.Pins.Count > 0)
-    {
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
-                integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-        <script src="~/js/map.js" asp-append-version="true"></script>
-    }
 }

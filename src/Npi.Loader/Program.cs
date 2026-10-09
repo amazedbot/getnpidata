@@ -68,6 +68,7 @@ try
         LoaderCommand.Reference => await app.ReferenceAsync(cts.Token),
         LoaderCommand.Datasets => await app.DatasetsAsync(invocation.Arguments.Count > 0 ? invocation.Arguments[0] : null, cts.Token),
         LoaderCommand.Project => await app.ProjectAsync(cts.Token),
+        LoaderCommand.Geocode => await app.GeocodeAsync(cts.Token),
         _ => throw new InvalidOperationException($"Unhandled command {invocation.Command}"),
     };
 }
