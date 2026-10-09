@@ -292,7 +292,8 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
     /// <summary>The standardized credentials of the NPIs (Stage 5.5 item 12), e.g. "MD, PhD", by NPI.</summary>
     internal static async Task<Dictionary<string, string>> StandardCredentialsAsync(MySqlConnection connection, IEnumerable<string> npis, CancellationToken ct) =>
         (await connection.QueryAsync<(string Npi, string Credential)>(new CommandDefinition(
-            "SELECT npi, credential FROM provider_credential WHERE npi IN @npis ORDER BY npi, ord", new { npis }, cancellationToken: ct)))
+            "SELECT npi, credential FROM provider_credential WHERE npi IN @npis AND ord < @otherOrd ORDER BY npi, ord",
+            new { npis, otherOrd = Credentials.OtherOrd }, cancellationToken: ct)))
         .GroupBy(r => r.Npi)
         .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(r => r.Credential)), StringComparer.Ordinal);
 

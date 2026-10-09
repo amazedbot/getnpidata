@@ -349,17 +349,18 @@ public sealed class SearchIntegrationTests : IDisposable
     public async Task Credentials_are_standardized_for_display_search_and_the_dropdown()
     {
         await using var db = await SeededAsync();
-        await new CredentialBuilder(db.Database, Logger.None, 0.95, minProvidersForKnown: 1).BuildAsync(_ct);
-        Assert.Equal([(A, "DC"), (B, "MD"), (E, "MD"), (E, "PhD")],
+        // Listed: credentials held by 2+ providers (MD); DC and PhD are rarer, so A and E are also under "Other".
+        await new CredentialBuilder(db.Database, Logger.None, 0.95, minProvidersForKnown: 1, minListed: 2).BuildAsync(_ct);
+        Assert.Equal([(A, "DC"), (A, "Other"), (B, "MD"), (E, "MD"), (E, "PhD"), (E, "Other")],
             await db.QueryAsync<(string, string)>("SELECT npi, credential FROM provider_credential ORDER BY npi, ord"));
 
-        var catalog = new CredentialCatalog(db.ConnectionString, minProviders: 1);
-        Assert.Equal([new CredentialInfo("MD", 2), new CredentialInfo("DC", 1), new CredentialInfo("PhD", 1)], await catalog.GetAllAsync(_ct));
+        var catalog = new CredentialCatalog(db.ConnectionString, minProviders: 2);
+        Assert.Equal([new CredentialInfo("MD", 2), new CredentialInfo("Other", 2)], await catalog.GetAllAsync(_ct)); // "Other" last
 
         var search = new SearchService(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString), catalog);
         Assert.Equal([B, E], await Npis(search, new SearchFilter { Credential = "M.D." }));   // exact: MD, whatever was typed
-        Assert.Equal([E], await Npis(search, new SearchFilter { Credential = "phd" }));
-        Assert.Equal([A], await Npis(search, new SearchFilter { Credential = "DC", State = "NY" }));
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { Credential = "Other" }));
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { Credential = "other", State = "NY" }));
         Assert.Equal([B, E], await Npis(search, new SearchFilter { Credential = "M" }));      // not a credential: prefix of the raw text
 
         // The grid, CSV and detail page show the standard spelling.

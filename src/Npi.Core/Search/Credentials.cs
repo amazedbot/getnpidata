@@ -14,6 +14,15 @@ public sealed record CredentialInfo(string Credential, int Providers);
 /// </summary>
 public static partial class Credentials
 {
+    /// <summary>
+    /// The list entry for every credential too rare to be listed (held by fewer than <see cref="CredentialCatalog.MinProviders"/>
+    /// providers): provider_credential has an extra "Other" row (ord <see cref="OtherOrd"/>) for each provider holding one.
+    /// </summary>
+    public const string Other = "Other";
+
+    /// <summary>The <c>ord</c> of the "Other" rows in provider_credential; display skips them.</summary>
+    public const int OtherOrd = 100;
+
     /// <summary>Spelled-out titles that stand for a credential.</summary>
     private static readonly Dictionary<string, string> Aliases = new(StringComparer.Ordinal)
     {

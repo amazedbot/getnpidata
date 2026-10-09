@@ -16,7 +16,7 @@ public sealed class CredentialCatalog(string connectionString, TimeSpan? maxAge 
     private readonly SemaphoreSlim _lock = new(1, 1);
     private (DateTime LoadedAt, IReadOnlyList<CredentialInfo> List, IReadOnlyDictionary<string, IReadOnlyList<string>> ByKey)? _cache;
 
-    /// <summary>Every standardized credential held by at least <see cref="MinProviders"/> providers, most common first.</summary>
+    /// <summary>Every standardized credential held by at least <see cref="MinProviders"/> providers, most common first, then "Other" (all the rest).</summary>
     public async Task<IReadOnlyList<CredentialInfo>> GetAllAsync(CancellationToken ct) => (await LoadAsync(ct)).List;
 
     /// <summary>
@@ -26,6 +26,12 @@ public sealed class CredentialCatalog(string connectionString, TimeSpan? maxAge 
     public async Task<string?> ResolveAsync(string typed, CancellationToken ct)
     {
         var byKey = (await LoadAsync(ct)).ByKey;
+        if (Credentials.Key(typed) == Credentials.Key(Credentials.Other))
+        {
+            // Not a credential anyone holds as written ("OTHER" means none): the list entry for every unlisted credential.
+            return byKey.ContainsKey(Credentials.Key(Credentials.Other)) ? Credentials.Other : null;
+        }
+
         return Credentials.Standardize(typed, k => byKey.GetValueOrDefault(k)) is [var single] && byKey.TryGetValue(Credentials.Key(single), out var listed)
             ? listed[0]
             : null;
@@ -48,8 +54,8 @@ public sealed class CredentialCatalog(string connectionString, TimeSpan? maxAge 
 
             await using var connection = new MySqlConnection(connectionString);
             var list = (await connection.QueryAsync<CredentialInfo>(new CommandDefinition(
-                "SELECT credential AS Credential, providers AS Providers FROM credential_list WHERE providers >= @min ORDER BY providers DESC, credential",
-                new { min = minProviders }, cancellationToken: ct))).ToList();
+                "SELECT credential AS Credential, providers AS Providers FROM credential_list WHERE providers >= @min ORDER BY credential = @other, providers DESC, credential",
+                new { min = minProviders, other = Credentials.Other }, cancellationToken: ct))).ToList();
             var byKey = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
             foreach (var c in list)
             {
