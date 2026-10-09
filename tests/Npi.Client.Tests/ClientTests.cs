@@ -67,6 +67,7 @@ public class ClientTests
 
     [Theory]
     [InlineData(typeof(Server.SearchResult), typeof(ProviderPage))]
+    [InlineData(typeof(Server.CredentialInfo), typeof(CredentialInfo))]
     [InlineData(typeof(Server.ProviderSummary), typeof(ProviderSummary))]
     [InlineData(typeof(Server.ProviderDetail), typeof(ProviderDetail))]
     [InlineData(typeof(Server.ProviderTaxonomy), typeof(ProviderTaxonomy))]

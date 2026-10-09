@@ -109,7 +109,7 @@ public static class SearchQueryString
         new("npi", ParameterType.Text, nameof(SearchFilter.Npi), "Ten-digit NPI."),
         new("entityType", ParameterType.WholeNumber, nameof(SearchFilter.EntityType), "1 = individual, 2 = organization."),
         new("gender", ParameterType.Text, nameof(SearchFilter.Gender), "F or M (individuals)."),
-        new("credential", ParameterType.Text, nameof(SearchFilter.Credential), "Credential, punctuation ignored (\"M.D.\" = \"MD\")."),
+        new("credential", ParameterType.Text, nameof(SearchFilter.Credential), "Credential (GET /api/v1/credentials): a standardized credential matches exactly, whatever the provider typed (\"M.D.\", \"MD, PhD\" both match MD); anything else is a prefix of the credential as written, punctuation ignored."),
         new("excluded", ParameterType.TrueFalse, nameof(SearchFilter.Excluded),
             "true: only providers on the HHS-OIG exclusion list (LEIE, matched by NPI); false: leave them out."),
         new("optedOut", ParameterType.TrueFalse, nameof(SearchFilter.OptedOut), "true: only practitioners with an active Medicare opt-out; false: leave them out."),

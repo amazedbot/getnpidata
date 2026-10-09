@@ -19,7 +19,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddSingleton(_ => new TaxonomyCatalog(connectionString));
-builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRequiredService<TaxonomyCatalog>()));
+builder.Services.AddSingleton(_ => new CredentialCatalog(connectionString));
+builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRequiredService<TaxonomyCatalog>(), sp.GetRequiredService<CredentialCatalog>()));
 builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));

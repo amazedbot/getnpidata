@@ -86,10 +86,12 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
 
     private async Task<long> BuildLockedAsync(MySqlConnector.MySqlConnection connection, Stopwatch watch, CancellationToken ct)
     {
-        var counts = await TableSwap.ReplaceAsync(connection, ["provider_map", "provider_map_specialty"], minRowRatio, async () =>
+        var counts = await TableSwap.ReplaceAsync(connection, ["provider_map", "provider_map_specialty", "provider_map_credential"], minRowRatio, async () =>
         {
             await Database.ExecuteAsync(connection, FillSql, ct);
             await Database.ExecuteAsync(connection, FillSpecialtySql, ct);
+            await Database.ExecuteAsync(connection,
+                Projection.CredentialBuilder.MapCredentialSql("provider_map_credential_staging", "provider_credential", "provider_map_staging"), ct);
         }, ct);
         var rows = counts["provider_map"];
         var exact = await connection.ExecuteScalarAsync<long>(new CommandDefinition(

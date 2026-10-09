@@ -161,7 +161,7 @@ public class ApiTests
         [
             "/api/v1/providers", "/api/v1/providers.csv", "/api/v1/providers/lookup", "/api/v1/providers/lookup.csv", "/api/v1/providers/{npi}", "/api/v1/taxonomy/classifications",
             "/api/v1/taxonomy/classifications/{classification}/specializations", "/api/v1/states", "/api/v1/states/{state}/counties",
-            "/api/v1/counties/{fips}", "/api/v1/meta",
+            "/api/v1/counties/{fips}", "/api/v1/meta", "/api/v1/credentials",
         ];
         Assert.Equal(expected.Order(), paths.EnumerateObject().Select(p => p.Name).Order());
 

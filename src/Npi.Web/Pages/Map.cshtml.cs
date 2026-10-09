@@ -10,7 +10,7 @@ namespace Npi.Web.Pages;
 /// visible map area ("Search in this area") with the same filters as the search page, and a table of the
 /// pins in view. The page itself only renders the form and the map; map.js calls /map/search.
 /// </summary>
-public class MapModel(TaxonomyCatalog taxonomy, MapService maps, IOptions<MapOptions> mapOptions) : PageModel
+public class MapModel(TaxonomyCatalog taxonomy, MapService maps, CredentialCatalog credentials, IOptions<MapOptions> mapOptions) : PageModel
 {
     public MapOptions Map => mapOptions.Value;
 
@@ -27,7 +27,11 @@ public class MapModel(TaxonomyCatalog taxonomy, MapService maps, IOptions<MapOpt
         var (filter, errors) = SearchQueryString.Parse(Request.Query);
         var classifications = await taxonomy.GetClassificationsAsync(ct);
         var specializations = filter.Classification is null ? [] : await taxonomy.GetSpecializationsAsync(filter.Classification, ct);
-        Fields = new FilterFields(filter, classifications, specializations, errors);
+        Fields = new FilterFields(filter, classifications, specializations, errors)
+        {
+            Credentials = await credentials.GetAllAsync(ct),
+            SelectedCredential = filter.Credential is null ? null : await credentials.ResolveAsync(filter.Credential, ct),
+        };
 
         Start = MapBounds.Parse(Request.Query["bbox"]) is { Problem: null } shared ? shared
             : errors.Count == 0 ? await maps.GetStartAreaAsync(filter, ct)

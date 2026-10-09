@@ -535,6 +535,15 @@ public sealed class ProviderEndpoint
 }
 
 /// <summary>A state or territory.</summary>
+public sealed class CredentialInfo
+{
+    /// <summary>A standardized credential, e.g. MD, PhD, PA-C.</summary>
+    public string Credential { get; set; } = "";
+
+    /// <summary>Active providers holding it.</summary>
+    public int Providers { get; set; }
+}
+
 public sealed class StateInfo
 {
     /// <summary>Two-letter code, e.g. NY.</summary>
