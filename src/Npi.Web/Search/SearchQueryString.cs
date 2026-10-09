@@ -15,6 +15,23 @@ public static class SearchQueryString
     public static (SearchFilter Filter, Dictionary<string, string[]> Errors) Parse(IQueryCollection q)
     {
         var errors = new Dictionary<string, string[]>();
+        bool? Bool(string key, string field)
+        {
+            var raw = Text(q, key);
+            switch (raw?.ToUpperInvariant())
+            {
+                case null:
+                    return null;
+                case "TRUE" or "1" or "YES":
+                    return true;
+                case "FALSE" or "0" or "NO":
+                    return false;
+                default:
+                    errors[field] = [$"{key} must be true or false."];
+                    return null;
+            }
+        }
+
         int? Int(string key, string field)
         {
             var raw = Text(q, key);
@@ -49,6 +66,9 @@ public static class SearchQueryString
             EntityType = Int("entityType", nameof(SearchFilter.EntityType)),
             Gender = Text(q, "gender"),
             Credential = Text(q, "credential"),
+            Excluded = Bool("excluded", nameof(SearchFilter.Excluded)),
+            OptedOut = Bool("optedOut", nameof(SearchFilter.OptedOut)),
+            OrderRefer = Bool("orderRefer", nameof(SearchFilter.OrderRefer)),
             Sort = Text(q, "sort"),
             Page = Int("page", nameof(SearchFilter.Page)) ?? 1,
             PageSize = Int("pageSize", nameof(SearchFilter.PageSize)) ?? SearchFilter.DefaultPageSize,
@@ -56,30 +76,43 @@ public static class SearchQueryString
         return (filter, errors);
     }
 
-    /// <summary>One query parameter: its name, whether it is a whole number, the <see cref="SearchFilter"/> property and a description.</summary>
-    public sealed record Parameter(string Name, bool IsInteger, string Field, string Description);
+    /// <summary>The JSON-schema type of a query parameter.</summary>
+    public enum ParameterType
+    {
+        Text,
+        WholeNumber,
+        TrueFalse,
+    }
+
+    /// <summary>One query parameter: its name, type, the <see cref="SearchFilter"/> property and a description.</summary>
+    public sealed record Parameter(string Name, ParameterType Type, string Field, string Description);
 
     /// <summary>Every search parameter, in display order. Feeds the OpenAPI document and maps validation errors back to parameter names.</summary>
     public static readonly IReadOnlyList<Parameter> Parameters =
     [
-        new("classification", false, nameof(SearchFilter.Classification), "NUCC classification, e.g. \"Chiropractor\" (GET /api/v1/taxonomy/classifications). Matches any of the provider's 15 taxonomies."),
-        new("specialization", false, nameof(SearchFilter.Specialization), "NUCC specialization within the classification (GET /api/v1/taxonomy/classifications/{c}/specializations)."),
-        new("taxonomy", false, nameof(SearchFilter.TaxonomyCode), "NUCC taxonomy code, e.g. 111N00000X."),
-        new("state", false, nameof(SearchFilter.State), "Two-letter state code of any practice location."),
-        new("county", false, nameof(SearchFilter.CountyFips), "Five-digit county FIPS code (GET /api/v1/states/{st}/counties). A ZIP matches every county it overlaps."),
-        new("city", false, nameof(SearchFilter.City), "Practice location city (exact, case-insensitive)."),
-        new("zip", false, nameof(SearchFilter.Zip5), "Five-digit practice location ZIP."),
-        new("radius", true, nameof(SearchFilter.RadiusMiles), "Miles around zip (1-100). Needs a ZIP with a Census ZCTA centroid."),
-        new("lastName", false, nameof(SearchFilter.LastName), "Last name prefix (individuals)."),
-        new("firstName", false, nameof(SearchFilter.FirstName), "First name prefix (individuals)."),
-        new("orgName", false, nameof(SearchFilter.OrgName), "Organization name prefix."),
-        new("npi", false, nameof(SearchFilter.Npi), "Ten-digit NPI."),
-        new("entityType", true, nameof(SearchFilter.EntityType), "1 = individual, 2 = organization."),
-        new("gender", false, nameof(SearchFilter.Gender), "F or M (individuals)."),
-        new("credential", false, nameof(SearchFilter.Credential), "Credential, punctuation ignored (\"M.D.\" = \"MD\")."),
-        new("sort", false, nameof(SearchFilter.Sort), "name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix - for descending."),
-        new("page", true, nameof(SearchFilter.Page), "Page number, from 1. Paging stops at the first 10,000 matches; use the CSV beyond that."),
-        new("pageSize", true, nameof(SearchFilter.PageSize), "Results per page, 1-200 (default 50)."),
+        new("classification", ParameterType.Text, nameof(SearchFilter.Classification), "NUCC classification, e.g. \"Chiropractor\" (GET /api/v1/taxonomy/classifications). Matches any of the provider's 15 taxonomies."),
+        new("specialization", ParameterType.Text, nameof(SearchFilter.Specialization), "NUCC specialization within the classification (GET /api/v1/taxonomy/classifications/{c}/specializations)."),
+        new("taxonomy", ParameterType.Text, nameof(SearchFilter.TaxonomyCode), "NUCC taxonomy code, e.g. 111N00000X."),
+        new("state", ParameterType.Text, nameof(SearchFilter.State), "Two-letter state code of any practice location."),
+        new("county", ParameterType.Text, nameof(SearchFilter.CountyFips), "Five-digit county FIPS code (GET /api/v1/states/{st}/counties). A ZIP matches every county it overlaps."),
+        new("city", ParameterType.Text, nameof(SearchFilter.City), "Practice location city (exact, case-insensitive)."),
+        new("zip", ParameterType.Text, nameof(SearchFilter.Zip5), "Five-digit practice location ZIP."),
+        new("radius", ParameterType.WholeNumber, nameof(SearchFilter.RadiusMiles), "Miles around zip (1-100). Needs a ZIP with a Census ZCTA centroid."),
+        new("lastName", ParameterType.Text, nameof(SearchFilter.LastName), "Last name prefix (individuals)."),
+        new("firstName", ParameterType.Text, nameof(SearchFilter.FirstName), "First name prefix (individuals)."),
+        new("orgName", ParameterType.Text, nameof(SearchFilter.OrgName), "Organization name prefix."),
+        new("npi", ParameterType.Text, nameof(SearchFilter.Npi), "Ten-digit NPI."),
+        new("entityType", ParameterType.WholeNumber, nameof(SearchFilter.EntityType), "1 = individual, 2 = organization."),
+        new("gender", ParameterType.Text, nameof(SearchFilter.Gender), "F or M (individuals)."),
+        new("credential", ParameterType.Text, nameof(SearchFilter.Credential), "Credential, punctuation ignored (\"M.D.\" = \"MD\")."),
+        new("excluded", ParameterType.TrueFalse, nameof(SearchFilter.Excluded),
+            "true: only providers on the HHS-OIG exclusion list (LEIE, matched by NPI); false: leave them out."),
+        new("optedOut", ParameterType.TrueFalse, nameof(SearchFilter.OptedOut), "true: only practitioners with an active Medicare opt-out; false: leave them out."),
+        new("orderRefer", ParameterType.TrueFalse, nameof(SearchFilter.OrderRefer),
+            "true: only providers eligible to order or refer in Medicare (any program); false: only those who aren't."),
+        new("sort", ParameterType.Text, nameof(SearchFilter.Sort), "name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix - for descending."),
+        new("page", ParameterType.WholeNumber, nameof(SearchFilter.Page), "Page number, from 1. Paging stops at the first 10,000 matches; use the CSV beyond that."),
+        new("pageSize", ParameterType.WholeNumber, nameof(SearchFilter.PageSize), "Results per page, 1-200 (default 50)."),
     ];
 
     private static readonly Dictionary<string, string> FieldToParameter =
@@ -94,7 +127,8 @@ public static class SearchQueryString
     public static bool HasAnyFilter(IQueryCollection q) => FilterKeys.Any(k => Text(q, k) is not null);
 
     private static readonly string[] FilterKeys =
-        ["classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential"];
+        ["classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential",
+         "excluded", "optedOut", "orderRefer"];
 
     /// <summary>"?classification=…&amp;state=…" for the filter, optionally with a different page/sort.</summary>
     public static string ToQueryString(SearchFilter f, int? page = null, string? sort = null, bool includePaging = true)
@@ -123,6 +157,9 @@ public static class SearchQueryString
         Add("entityType", f.EntityType?.ToString(CultureInfo.InvariantCulture));
         Add("gender", f.Gender);
         Add("credential", f.Credential);
+        Add("excluded", f.Excluded is { } excluded ? (excluded ? "true" : "false") : null);
+        Add("optedOut", f.OptedOut is { } optedOut ? (optedOut ? "true" : "false") : null);
+        Add("orderRefer", f.OrderRefer is { } orderRefer ? (orderRefer ? "true" : "false") : null);
         Add("sort", sort ?? f.Sort);
         if (includePaging)
         {

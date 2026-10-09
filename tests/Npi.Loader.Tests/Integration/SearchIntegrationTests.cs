@@ -164,6 +164,65 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_endpoint WHERE npi = @C", new { C }));
     }
 
+    [Fact]
+    public async Task Compliance_filters_badges_and_details()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO oig_exclusion (npi, business_name, exclusion_type, exclusion_date) VALUES
+              (@A, NULL, '1128b4', '2025-01-15'), (@C, NULL, '1128a1', '2020-01-01'), (NULL, 'NO NPI LLC', '1128a1', '2021-01-01');
+            INSERT INTO medicare_opt_out (npi, specialty, effective_date, end_date, can_order_refer) VALUES
+              (@B, 'Chiropractic', '2024-01-30', '2099-01-30', 1), (@E, 'Pediatrics', '2018-01-01', '2020-01-01', 0);
+            INSERT INTO medicare_order_referring (npi, part_b, dme, hha, pmd, hospice) VALUES
+              (@A, 1, 1, 0, 0, 0), (@B, 0, 0, 0, 0, 0), (@E, 1, 0, 0, 0, 0), (@E, 0, 0, 0, 0, 1);
+            """, new { A, B, C, E });
+        var search = Search(db);
+
+        // Exclusions are matched by NPI; the deactivated C is never returned, and the NPI-less entry matches nobody.
+        Assert.Equal([A], await Npis(search, new SearchFilter { Excluded = true }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { Excluded = true, State = "NY", Classification = "Chiropractor" }));
+        Assert.Equal([B], await Npis(search, new SearchFilter { Excluded = false, Classification = "Chiropractor" }));
+
+        // Only active opt-outs count (E's ended in 2020).
+        Assert.Equal([B], await Npis(search, new SearchFilter { OptedOut = true }));
+        Assert.Equal([A, D, E], await Npis(search, new SearchFilter { OptedOut = false, State = "NY" }));
+
+        // Order/refer: eligible in any program.
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { OrderRefer = true, State = "NY" }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { OrderRefer = false, State = "NY" }));
+
+        var flags = (await search.SearchAsync(new SearchFilter { State = "NY" }, _ct)).Items.ToDictionary(i => i.Npi, i => i.Flags);
+        Assert.Equal(new ProviderFlags(true, false, true), flags[A]);
+        Assert.Equal(new ProviderFlags(false, true, false), flags[B]);
+        Assert.Equal(ProviderFlags.None, flags[D]);
+        Assert.Equal(new ProviderFlags(false, false, true), flags[E]);
+
+        var csvFlags = new Dictionary<string, ProviderFlags>();
+        await foreach (var item in search.SearchAllAsync(new SearchFilter { State = "NY" }, _ct))
+        {
+            csvFlags[item.Npi] = item.Flags;
+        }
+
+        Assert.Equal(flags, csvFlags);
+
+        var details = new ProviderDetailService(db.ConnectionString);
+        var a = (await details.GetAsync(A, _ct))!.Compliance;
+        Assert.Equal([new OigExclusion("1128b4", "License revocation, suspension or surrender", new DateOnly(2025, 1, 15), null, null, null, null)], a.Exclusions);
+        Assert.Equal(new MedicareOrderReferring(true, true, false, false, false), a.OrderReferring);
+        Assert.Null(a.OptOut);
+
+        var b = (await details.GetAsync(B, _ct))!.Compliance;
+        Assert.Equal(new MedicareOptOut("Chiropractic", new DateOnly(2024, 1, 30), new DateOnly(2099, 1, 30), true, true), b.OptOut);
+        Assert.Empty(b.Exclusions);
+
+        var e = (await details.GetAsync(E, _ct))!.Compliance;
+        Assert.False(e.OptOut!.Active);
+        Assert.Equal(new MedicareOrderReferring(true, false, false, false, true), e.OrderReferring); // two rows merged
+
+        Assert.Null((await details.GetAsync(D, _ct))!.Compliance.OrderReferring);
+    }
+
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
 
     private async Task<string[]> Npis(SearchService search, SearchFilter filter) =>

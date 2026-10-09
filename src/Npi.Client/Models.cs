@@ -42,6 +42,22 @@ public sealed class ProviderSummary
     public DateTime? EnumerationDate { get; set; }
 
     public DateTime? LastUpdateDate { get; set; }
+
+    /// <summary>Badges from the joined datasets (exclusion, Medicare opt-out, order/refer eligibility).</summary>
+    public ProviderFlags Flags { get; set; } = new();
+}
+
+/// <summary>Yes/no facts from the joined datasets.</summary>
+public sealed class ProviderFlags
+{
+    /// <summary>On the HHS-OIG List of Excluded Individuals/Entities (matched by NPI).</summary>
+    public bool Excluded { get; set; }
+
+    /// <summary>Has an active Medicare opt-out affidavit.</summary>
+    public bool OptedOutOfMedicare { get; set; }
+
+    /// <summary>Eligible to order or refer in at least one Medicare program.</summary>
+    public bool CanOrderAndRefer { get; set; }
 }
 
 /// <summary>One page of search results.</summary>
@@ -136,6 +152,68 @@ public sealed class ProviderDetail
 
     /// <summary>Direct messaging addresses, FHIR endpoints and websites published in NPPES.</summary>
     public IReadOnlyList<ProviderEndpoint> Endpoints { get; set; } = [];
+
+    /// <summary>OIG exclusions, Medicare opt-out and order/refer eligibility.</summary>
+    public ProviderCompliance Compliance { get; set; } = new();
+}
+
+/// <summary>Compliance facts about a provider.</summary>
+public sealed class ProviderCompliance
+{
+    /// <summary>HHS-OIG exclusions matched by NPI (usually none).</summary>
+    public IReadOnlyList<OigExclusion> Exclusions { get; set; } = [];
+
+    public MedicareOptOut? OptOut { get; set; }
+
+    public MedicareOrderReferring? OrderReferring { get; set; }
+}
+
+/// <summary>An entry on the HHS-OIG List of Excluded Individuals/Entities.</summary>
+public sealed class OigExclusion
+{
+    /// <summary>OIG authority code, e.g. 1128b4.</summary>
+    public string? Type { get; set; }
+
+    public string? TypeDescription { get; set; }
+
+    public DateTime? ExclusionDate { get; set; }
+
+    public DateTime? WaiverDate { get; set; }
+
+    public string? WaiverState { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? Specialty { get; set; }
+}
+
+/// <summary>A Medicare opt-out affidavit.</summary>
+public sealed class MedicareOptOut
+{
+    public string? Specialty { get; set; }
+
+    public DateTime? EffectiveDate { get; set; }
+
+    public DateTime? EndDate { get; set; }
+
+    /// <summary>True while the opt-out is in effect.</summary>
+    public bool Active { get; set; }
+
+    public bool? CanOrderAndRefer { get; set; }
+}
+
+/// <summary>The Medicare programs in which the provider may order or refer.</summary>
+public sealed class MedicareOrderReferring
+{
+    public bool PartB { get; set; }
+
+    public bool DurableMedicalEquipment { get; set; }
+
+    public bool HomeHealth { get; set; }
+
+    public bool PowerMobilityDevices { get; set; }
+
+    public bool Hospice { get; set; }
 }
 
 /// <summary>NPPES registration details that are shown but not searched.</summary>

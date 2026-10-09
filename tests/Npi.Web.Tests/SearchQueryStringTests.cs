@@ -69,7 +69,8 @@ public class SearchQueryStringTests
         // Every documented parameter sets its SearchFilter property, so the OpenAPI document can't drift from Parse.
         foreach (var p in SearchQueryString.Parameters)
         {
-            var (filter, errors) = SearchQueryString.Parse(Query($"?{p.Name}={(p.IsInteger ? "7" : "x")}"));
+            var raw = p.Type switch { SearchQueryString.ParameterType.WholeNumber => "7", SearchQueryString.ParameterType.TrueFalse => "true", _ => "x" };
+            var (filter, errors) = SearchQueryString.Parse(Query($"?{p.Name}={raw}"));
             Assert.Empty(errors);
             var value = typeof(SearchFilter).GetProperty(p.Field)!.GetValue(filter);
             var unset = typeof(SearchFilter).GetProperty(p.Field)!.GetValue(new SearchFilter());

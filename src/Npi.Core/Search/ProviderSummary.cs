@@ -19,6 +19,9 @@ public sealed record ProviderSummary(
     DateOnly? LastUpdateDate)
 {
     public string EntityTypeName => EntityType == 2 ? "Organization" : "Individual";
+
+    /// <summary>Badges from the Stage 5.5 datasets (exclusion, Medicare opt-out, order/refer eligibility).</summary>
+    public ProviderFlags Flags { get; init; } = ProviderFlags.None;
 }
 
 public sealed record SearchResult(IReadOnlyList<ProviderSummary> Items, int Page, int PageSize, long TotalCount, DateOnly? DataAsOf);

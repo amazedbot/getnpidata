@@ -53,6 +53,9 @@ public sealed record ProviderDetail(
     public IReadOnlyList<ProviderIdentifier> Identifiers { get; init; } = [];
 
     public IReadOnlyList<ProviderEndpoint> Endpoints { get; init; } = [];
+
+    /// <summary>OIG exclusions, Medicare opt-out and order/refer eligibility (Stage 5.5 item 2).</summary>
+    public ProviderCompliance Compliance { get; init; } = new([], null, null);
 }
 
 /// <summary>Reads one provider from the projection. Deactivated NPIs are not in the projection, so they come back as null.</summary>
@@ -73,6 +76,13 @@ public sealed class ProviderDetailService(string connectionString)
         string? MailingCountryCode, string? MailingPhone, string? MailingFax, string? PracticeFax);
 
     private sealed record IdentifierRow(string Identifier, string? TypeCode, string? State, string? Issuer);
+
+    private sealed record ExclusionRow(string? ExclusionType, DateTime? ExclusionDate, DateTime? WaiverDate, string? WaiverState,
+        string? GeneralCategory, string? Specialty);
+
+    private sealed record OptOutRow(string? Specialty, DateTime? EffectiveDate, DateTime? EndDate, sbyte? CanOrderRefer);
+
+    private sealed record OrderReferRow(sbyte? PartB, sbyte? Dme, sbyte? Hha, sbyte? Pmd, sbyte? Hospice);
 
     private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
         string? UseDescription, string? ContentDescription, string? AffiliationName, string? AffiliationCity, string? AffiliationState);
@@ -135,6 +145,24 @@ public sealed class ProviderDetailService(string connectionString)
             FROM provider_endpoint WHERE npi = @npi ORDER BY id
             """, new { npi }, cancellationToken: ct));
 
+        var exclusions = await connection.QueryAsync<ExclusionRow>(new CommandDefinition(
+            """
+            SELECT exclusion_type AS ExclusionType, exclusion_date AS ExclusionDate, waiver_date AS WaiverDate, waiver_state AS WaiverState,
+                   general_category AS GeneralCategory, specialty AS Specialty
+            FROM oig_exclusion WHERE npi = @npi ORDER BY exclusion_date, id
+            """, new { npi }, cancellationToken: ct));
+        var optOut = await connection.QueryFirstOrDefaultAsync<OptOutRow>(new CommandDefinition(
+            """
+            SELECT specialty AS Specialty, effective_date AS EffectiveDate, end_date AS EndDate, can_order_refer AS CanOrderRefer
+            FROM medicare_opt_out WHERE npi = @npi ORDER BY end_date DESC, id DESC LIMIT 1
+            """, new { npi }, cancellationToken: ct));
+        var orderRefer = await connection.QueryFirstOrDefaultAsync<OrderReferRow>(new CommandDefinition(
+            """
+            SELECT MAX(part_b) AS PartB, MAX(dme) AS Dme, MAX(hha) AS Hha, MAX(pmd) AS Pmd, MAX(hospice) AS Hospice
+            FROM medicare_order_referring WHERE npi = @npi HAVING COUNT(*) > 0
+            """, new { npi }, cancellationToken: ct));
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
         return new ProviderDetail(
             p.Npi, p.EntityType,
             ProviderNames.Display(p.EntityType, p.LastName, p.FirstName, p.MiddleName, p.NameSuffix, p.OrgName),
@@ -150,8 +178,17 @@ public sealed class ProviderDetailService(string connectionString)
             Identifiers = identifiers.Select(i => new ProviderIdentifier(i.Identifier, i.TypeCode, ProviderIdentifier.Describe(i.TypeCode), i.State, i.Issuer)).ToList(),
             Endpoints = endpoints.Select(e => new ProviderEndpoint(e.EndpointType, e.EndpointTypeDescription, e.Endpoint, e.EndpointDescription,
                 e.UseDescription, e.ContentDescription, e.AffiliationName, e.AffiliationCity, e.AffiliationState)).ToList(),
+            Compliance = new ProviderCompliance(
+                exclusions.Select(x => new OigExclusion(x.ExclusionType, ComplianceCodes.DescribeOigType(x.ExclusionType), ToDate(x.ExclusionDate),
+                    ToDate(x.WaiverDate), x.WaiverState, x.GeneralCategory, x.Specialty)).ToList(),
+                optOut is null ? null : new MedicareOptOut(optOut.Specialty, ToDate(optOut.EffectiveDate), ToDate(optOut.EndDate),
+                    ToDate(optOut.EndDate) is not { } end || end >= today, optOut.CanOrderRefer is null ? null : optOut.CanOrderRefer != 0),
+                orderRefer is null ? null : new MedicareOrderReferring(orderRefer.PartB == 1, orderRefer.Dme == 1, orderRefer.Hha == 1,
+                    orderRefer.Pmd == 1, orderRefer.Hospice == 1)),
         };
     }
+
+    private static DateOnly? ToDate(DateTime? value) => value is null ? null : DateOnly.FromDateTime(value.Value);
 
     private static ProviderProfile ToProfile(ProfileRow r)
     {

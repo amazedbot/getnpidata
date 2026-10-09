@@ -1,0 +1,98 @@
+{
+ "dataset": [
+  {
+   "title": "Opt Out Affidavits : 2026-07-01",
+   "modified": "2026-08-20",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-07-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/OptOut_July2026.json",
+     "mediaType": "application/json"
+    },
+    {
+     "downloadURL": "https://cms.test/files/OptOut_July2026.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Opt Out Affidavits : 2026-08-01",
+   "modified": "2026-09-21",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-08-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/OptOut_August2026.json",
+     "mediaType": "application/json"
+    },
+    {
+     "downloadURL": "https://cms.test/files/OptOut_August2026.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Opt Out Affidavits : 2019-01-01",
+   "modified": "2026-10-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2019-01-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/OptOut_January2019.json",
+     "mediaType": "application/json"
+    },
+    {
+     "downloadURL": "https://cms.test/files/OptOut_January2019.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Order and Referring : 2026-10-08",
+   "modified": "2026-10-08",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-10-08"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/OrderReferring_20261008.json",
+     "mediaType": "application/json"
+    },
+    {
+     "downloadURL": "https://cms.test/files/OrderReferring_20261008.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Some Dataset Without CSV : 2026-01-01",
+   "modified": "2026-01-01",
+   "temporal": [
+    {
+     "endDate": "2026-01-31"
+    }
+   ],
+   "distribution": [
+    {
+     "accessURL": "https://cms.test/api"
+    }
+   ]
+  }
+ ]
+}

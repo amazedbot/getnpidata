@@ -86,6 +86,18 @@ public sealed class SearchQuery
             providerTemplates.Add(("attribute", "{0}.gender = @gender"));
         }
 
+        // Dataset flags (Stage 5.5): true = EXISTS, false = NOT EXISTS, on the shared fragments.
+        foreach (var (value, exists) in new[]
+                 {
+                     (filter.Excluded, EnrichmentSql.Excluded), (filter.OptedOut, EnrichmentSql.OptedOut), (filter.OrderRefer, EnrichmentSql.OrderRefer),
+                 })
+        {
+            if (value is not null)
+            {
+                providerTemplates.Add(("flag", value.Value ? exists : "NOT " + exists));
+            }
+        }
+
         if (taxonomyCodes is not null)
         {
             // An empty list can't match anything; keep the query valid instead of emitting "IN ()".
@@ -111,6 +123,12 @@ public sealed class SearchQuery
         {
             _driver = "SELECT @npi AS npi";
             _driverKind = "npi";
+        }
+        else if (filter.Excluded == true || filter.OptedOut == true)
+        {
+            // A few thousand NPIs at most: start there and check everything else per candidate.
+            _driver = filter.Excluded == true ? EnrichmentSql.ExcludedNpis : EnrichmentSql.OptedOutNpis;
+            _driverKind = "flag";
         }
         else if (taxonomyCodes is not null && _hasLocationFilter)
         {

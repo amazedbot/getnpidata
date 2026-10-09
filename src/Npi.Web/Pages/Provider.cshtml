@@ -21,6 +21,50 @@
     <dt>Last updated</dt><dd>@p.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>
 </dl>
 
+@{ var compliance = p.Compliance; }
+@if (compliance.Exclusions.Count > 0)
+{
+    <div class="notice alert" role="note">
+        <strong>On the HHS-OIG List of Excluded Individuals/Entities.</strong>
+        Federal health care programs don't pay for items or services this provider furnishes, orders or prescribes.
+        <ul>
+            @foreach (var x in compliance.Exclusions)
+            {
+                <li>
+                    Excluded @x.ExclusionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    under @x.Type@if (x.TypeDescription is not null){<span> (@x.TypeDescription)</span>}
+                    @if (x.WaiverDate is not null){<span>; waiver @x.WaiverDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) in @x.WaiverState</span>}
+                </li>
+            }
+        </ul>
+        <span class="muted">Matched by NPI. Confirm at <a href="https://exclusions.oig.hhs.gov/">exclusions.oig.hhs.gov</a>.</span>
+    </div>
+}
+
+@if (compliance.OptOut is not null || compliance.OrderReferring is not null)
+{
+    <h2>Medicare</h2>
+    <dl class="facts">
+        @if (compliance.OptOut is { } optOut)
+        {
+            <dt>Opt-out</dt>
+            <dd>
+                @(optOut.Active ? "Opted out of Medicare" : "Opt-out ended")
+                (@optOut.EffectiveDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) to @optOut.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+                @if (optOut.Specialty is not null){<span class="muted"> · @optOut.Specialty</span>}
+            </dd>
+        }
+        @if (compliance.OrderReferring is { } orders)
+        {
+            var programs = new[] { (orders.PartB, "Part B"), (orders.DurableMedicalEquipment, "DME"), (orders.HomeHealth, "home health"),
+                                   (orders.PowerMobilityDevices, "power mobility devices"), (orders.Hospice, "hospice") }
+                .Where(x => x.Item1).Select(x => x.Item2).ToList();
+            <dt>May order/refer</dt>
+            <dd>@(programs.Count > 0 ? string.Join(", ", programs) : "No programs")</dd>
+        }
+    </dl>
+}
+
 <h2>Specialties</h2>
 <div class="table-wrap">
     <table>

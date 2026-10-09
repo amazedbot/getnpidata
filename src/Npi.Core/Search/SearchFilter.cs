@@ -60,6 +60,15 @@ public sealed record SearchFilter
     /// <summary>Prefix of the credential, ignoring punctuation ("MD" matches "M.D.").</summary>
     public string? Credential { get; init; }
 
+    /// <summary>true: only providers on the HHS-OIG exclusion list (matched by NPI); false: leave them out.</summary>
+    public bool? Excluded { get; init; }
+
+    /// <summary>true: only practitioners with an active Medicare opt-out; false: leave them out.</summary>
+    public bool? OptedOut { get; init; }
+
+    /// <summary>true: only providers eligible to order or refer in Medicare (any program); false: only those who aren't.</summary>
+    public bool? OrderRefer { get; init; }
+
     /// <summary>Sort key (<see cref="SearchSort"/>), optionally prefixed with "-" for descending. Default "name".</summary>
     public string? Sort { get; init; }
 

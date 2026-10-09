@@ -20,6 +20,9 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
     private sealed record ZipCountyRow(string Zip5, string CountyName);
 
+    // EXISTS yields a BIGINT; CAST keeps the type fixed for Dapper.
+    private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer);
+
     private sealed record PageRow(string Npi, long Total);
 
     /// <summary>Validates the filter and returns one page of results with the total count.</summary>
@@ -157,6 +160,9 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             }
         }
 
+        var flags = (await connection.QueryAsync<FlagRow>(new CommandDefinition(EnrichmentSql.FlagsSql, new { npis }, cancellationToken: ct)))
+            .ToDictionary(f => f.Npi, f => new ProviderFlags(f.Excluded != 0, f.OptedOut != 0, f.OrderRefer != 0));
+
         var result = new List<ProviderSummary>(npis.Count);
         foreach (var npi in npis)
         {
@@ -182,7 +188,10 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 l?.Phone ?? p.Phone,
                 p.Gender,
                 p.EnumerationDate is null ? null : DateOnly.FromDateTime(p.EnumerationDate.Value),
-                p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value)));
+                p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value))
+            {
+                Flags = flags.GetValueOrDefault(npi, ProviderFlags.None),
+            });
         }
 
         return result;

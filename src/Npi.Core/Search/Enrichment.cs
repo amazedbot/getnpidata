@@ -1,0 +1,86 @@
+namespace Npi.Core.Search;
+
+/// <summary>
+/// Yes/no facts about a provider from the Stage 5.5 datasets (CLAUDE.md §7 Stage 5.5), shown as badges in
+/// results and available as search filters.
+/// </summary>
+public sealed record ProviderFlags(bool Excluded, bool OptedOutOfMedicare, bool CanOrderAndRefer)
+{
+    public static readonly ProviderFlags None = new(false, false, false);
+}
+
+/// <summary>An entry on the HHS-OIG List of Excluded Individuals/Entities, matched by NPI.</summary>
+public sealed record OigExclusion(string? Type, string? TypeDescription, DateOnly? ExclusionDate, DateOnly? WaiverDate, string? WaiverState,
+    string? Category, string? Specialty);
+
+/// <summary>A Medicare opt-out affidavit. While active, the practitioner bills Medicare patients privately.</summary>
+public sealed record MedicareOptOut(string? Specialty, DateOnly? EffectiveDate, DateOnly? EndDate, bool Active, bool? CanOrderAndRefer);
+
+/// <summary>The Medicare programs in which the provider may order or refer.</summary>
+public sealed record MedicareOrderReferring(bool PartB, bool DurableMedicalEquipment, bool HomeHealth, bool PowerMobilityDevices, bool Hospice);
+
+/// <summary>Compliance facts for the detail page and API.</summary>
+public sealed record ProviderCompliance(IReadOnlyList<OigExclusion> Exclusions, MedicareOptOut? OptOut, MedicareOrderReferring? OrderReferring);
+
+/// <summary>
+/// SQL fragments for the dataset flags, shared by the search filters and the result badges so they can't
+/// disagree. "{0}" is the alias of a table with an <c>npi</c> column.
+/// </summary>
+internal static class EnrichmentSql
+{
+    internal const string Excluded = "EXISTS (SELECT 1 FROM oig_exclusion x WHERE x.npi = {0}.npi)";
+
+    internal const string ActiveOptOut = "(o.end_date IS NULL OR o.end_date >= CURRENT_DATE)";
+
+    internal const string OptedOut = "EXISTS (SELECT 1 FROM medicare_opt_out o WHERE o.npi = {0}.npi AND " + ActiveOptOut + ")";
+
+    internal const string AnyProgram = "(r.part_b = 1 OR r.dme = 1 OR r.hha = 1 OR r.pmd = 1 OR r.hospice = 1)";
+
+    internal const string OrderRefer = "EXISTS (SELECT 1 FROM medicare_order_referring r WHERE r.npi = {0}.npi AND " + AnyProgram + ")";
+
+    // Candidate lists for searches driven by a selective flag (~9k excluded, ~55k opted out).
+    internal const string ExcludedNpis = "SELECT DISTINCT x.npi FROM oig_exclusion x WHERE x.npi IS NOT NULL";
+
+    internal const string OptedOutNpis = "SELECT DISTINCT o.npi FROM medicare_opt_out o WHERE " + ActiveOptOut;
+
+    /// <summary>The flags of the NPIs in @npis.</summary>
+    internal static readonly string FlagsSql =
+        "SELECT p.npi AS Npi, " +
+        "CAST(" + Excluded.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS Excluded, " +
+        "CAST(" + OptedOut.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OptedOut, " +
+        "CAST(" + OrderRefer.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OrderRefer " +
+        "FROM provider p WHERE p.npi IN @npis";
+}
+
+/// <summary>Descriptions of the HHS-OIG exclusion authorities (LEIE EXCLTYPE codes).</summary>
+public static class ComplianceCodes
+{
+    private static readonly Dictionary<string, string> OigTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["1128a1"] = "Conviction of program-related crimes",
+        ["1128a2"] = "Conviction relating to patient abuse or neglect",
+        ["1128a3"] = "Felony conviction relating to health care fraud",
+        ["1128a4"] = "Felony conviction relating to controlled substances",
+        ["1128b1"] = "Misdemeanor conviction relating to health care fraud",
+        ["1128b2"] = "Conviction relating to obstruction of an investigation or audit",
+        ["1128b3"] = "Misdemeanor conviction relating to controlled substances",
+        ["1128b4"] = "License revocation, suspension or surrender",
+        ["1128b5"] = "Exclusion or suspension under a federal or state health care program",
+        ["1128b6"] = "Claims for excessive charges or unnecessary services",
+        ["1128b7"] = "Fraud, kickbacks and other prohibited activities",
+        ["1128b8"] = "Entity controlled by a sanctioned individual",
+        ["1128b8a"] = "Entity controlled by a family or household member of an excluded individual",
+        ["1128b9"] = "Failure to disclose required information",
+        ["1128b10"] = "Failure to supply requested information on subcontractors and suppliers",
+        ["1128b11"] = "Failure to supply payment information",
+        ["1128b12"] = "Failure to grant immediate access",
+        ["1128b13"] = "Failure to take corrective action",
+        ["1128b14"] = "Default on health education loan or scholarship obligations",
+        ["1128b15"] = "Individual controlling a sanctioned entity",
+        ["1128b16"] = "Making false statements or misrepresentations of material fact",
+        ["1128Aa"] = "Civil monetary penalty",
+        ["1156"] = "Failure to meet statutory obligations (QIO)",
+    };
+
+    public static string? DescribeOigType(string? code) => code is null ? null : OigTypes.GetValueOrDefault(code.Trim());
+}

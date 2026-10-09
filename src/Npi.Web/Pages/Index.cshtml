@@ -129,6 +129,34 @@
         </div>
     </fieldset>
 
+    <fieldset>
+        <legend>Medicare &amp; compliance</legend>
+        <div class="field">
+            <label for="excluded">OIG exclusion list</label>
+            <select id="excluded" name="excluded">
+                <option value="">Any</option>
+                <option value="false" selected="@(f.Excluded == false)">Not excluded</option>
+                <option value="true" selected="@(f.Excluded == true)">Excluded only</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="optedOut">Medicare opt-out</label>
+            <select id="optedOut" name="optedOut">
+                <option value="">Any</option>
+                <option value="false" selected="@(f.OptedOut == false)">Not opted out</option>
+                <option value="true" selected="@(f.OptedOut == true)">Opted out only</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="orderRefer">Can order/refer in Medicare</label>
+            <select id="orderRefer" name="orderRefer">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.OrderRefer == true)">Yes</option>
+                <option value="false" selected="@(f.OrderRefer == false)">No</option>
+            </select>
+        </div>
+    </fieldset>
+
     <div class="actions">
         <button type="submit">Search</button>
         <a href="/" class="secondary">Clear</a>
@@ -171,7 +199,17 @@
                         {
                             <tr>
                                 <td><a href="/provider/@p.Npi">@p.Npi</a></td>
-                                <td>@p.Name <span class="muted">(@p.EntityTypeName)</span></td>
+                                <td>
+                                    @p.Name <span class="muted">(@p.EntityTypeName)</span>
+                                    @if (p.Flags.Excluded)
+                                    {
+                                        <span class="badge alert" title="On the HHS-OIG List of Excluded Individuals/Entities">OIG excluded</span>
+                                    }
+                                    @if (p.Flags.OptedOutOfMedicare)
+                                    {
+                                        <span class="badge" title="Has an active Medicare opt-out affidavit">Medicare opt-out</span>
+                                    }
+                                </td>
                                 <td>@p.Credential</td>
                                 <td>@p.PrimarySpecialty</td>
                                 <td>@p.Address1@if (p.Address2 is not null){<br />@p.Address2}</td>

@@ -29,7 +29,10 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
 
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
 
-    /// <summary>True when the projection is missing or older than the last completed NPPES or reference load.</summary>
+    /// <summary>
+    /// True when the projection is missing or older than the last completed NPPES load or NUCC/HUD/Census
+    /// reload. The Stage 5.5 datasets live in their own tables and never require a rebuild.
+    /// </summary>
     public async Task<bool> IsStaleAsync(CancellationToken ct)
     {
         await using var connection = await database.OpenAsync(ct);
@@ -38,7 +41,8 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             SELECT NOT EXISTS (SELECT 1 FROM `data_version` WHERE `id` = 1)
                 OR (SELECT `projected_at` FROM `data_version` WHERE `id` = 1) <
                    GREATEST(COALESCE((SELECT MAX(`completed_at`) FROM `downlog` WHERE `status` = 'Completed'), '1000-01-01'),
-                            COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data`), '1000-01-01'))
+                            COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data`
+                                      WHERE `source` IN ('nucc', 'hud_zip_county', 'census_gazetteer')), '1000-01-01'))
             """, cancellationToken: ct));
     }
 

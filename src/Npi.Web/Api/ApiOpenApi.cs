@@ -43,7 +43,15 @@ public static class ApiOpenApi
                     Name = p.Name,
                     In = ParameterLocation.Query,
                     Description = p.Description,
-                    Schema = new OpenApiSchema { Type = p.IsInteger ? JsonSchemaType.Integer : JsonSchemaType.String },
+                    Schema = new OpenApiSchema
+                    {
+                        Type = p.Type switch
+                        {
+                            SearchQueryString.ParameterType.WholeNumber => JsonSchemaType.Integer,
+                            SearchQueryString.ParameterType.TrueFalse => JsonSchemaType.Boolean,
+                            _ => JsonSchemaType.String,
+                        },
+                    },
                 });
             }
 
