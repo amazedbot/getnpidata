@@ -366,6 +366,29 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal("1234567890,Invalid NPI", lines[3]);
     }
 
+    [Fact]
+    public async Task Map_places_the_page_at_zip_centroids_and_near_me_finds_the_closest_zip()
+    {
+        await using var db = await SeededAsync();
+        var map = new MapService(db.ConnectionString);
+
+        var page = await Search(db).SearchAsync(new SearchFilter { Classification = "Chiropractor", CountyFips = "36103" }, _ct);
+        var centroids = await map.GetCentroidsAsync(page.Items.Select(p => MapService.Zip5(p.Zip)).OfType<string>().Append("99999"), _ct);
+        var pins = MapService.GroupPins(page.Items, centroids);
+        Assert.Equal(page.Items.Count, pins.Sum(p => p.Providers.Count));
+        Assert.All(pins, p => Assert.Contains(p.Zip, new[] { "11701", "11735" }));
+        Assert.DoesNotContain("99999", centroids.Keys);
+
+        // Rounded browser position in Amityville; Farmingdale is ~4 miles away.
+        var nearest = await map.FindNearestZipAsync(40.68, -73.41, _ct);
+        Assert.Equal("11701", nearest?.Zip);
+        Assert.InRange(nearest!.DistanceMiles, 0, 1);
+        Assert.Equal("11201", (await map.FindNearestZipAsync(40.70, -73.98, _ct))?.Zip);
+
+        // Nothing within 100 miles (mid-Atlantic) → no ZIP rather than a far-away one.
+        Assert.Null(await map.FindNearestZipAsync(38.0, -60.0, _ct));
+    }
+
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
 
     private async Task<string[]> Npis(SearchService search, SearchFilter filter) =>

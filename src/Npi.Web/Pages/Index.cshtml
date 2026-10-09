@@ -86,6 +86,10 @@
             </select>
             <span class="field-error">@Model.Error(nameof(SearchFilter.RadiusMiles))</span>
         </div>
+        <div class="field near-me" id="near-me-field" hidden>
+            <button type="button" class="secondary" id="near-me" data-source="/lookup/nearest-zip">Near me</button>
+            <span class="muted" id="near-me-status" role="status" aria-live="polite"></span>
+        </div>
     </fieldset>
 
     <fieldset>
@@ -238,6 +242,21 @@
             </aside>
         }
 
+        @if (Model.Pins.Count > 0)
+        {
+            <section class="map-wrap" id="map-section" aria-label="Map of the providers on this page" hidden>
+                <div id="results-map" class="map" data-tile-url="@Model.Map.TileUrl" data-attribution="@Model.Map.Attribution" data-max-zoom="@Model.Map.MaxZoom"></div>
+                <p class="muted small">
+                    Pins mark each ZIP code's center, not street addresses.
+                    @if (Model.Unmapped > 0)
+                    {
+                        <span>@Model.Unmapped of the @result.Items.Count providers on this page have no map point.</span>
+                    }
+                </p>
+                <script type="application/json" id="map-data">@Html.Raw(Model.PinsJson)</script>
+            </section>
+        }
+
         @if (result.TotalCount > 0)
         {
             <div class="table-wrap">
@@ -320,6 +339,20 @@
     </section>
 }
 
+@section Head {
+    @if (Model.Pins.Count > 0)
+    {
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+              integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    }
+}
+
 @section Scripts {
     <script src="~/js/search.js" asp-append-version="true"></script>
+    @if (Model.Pins.Count > 0)
+    {
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+                integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="~/js/map.js" asp-append-version="true"></script>
+    }
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Npi.Core.Search;
+using Npi.Web;
 using Npi.Web.Api;
 using Npi.Web.Search;
 
@@ -22,6 +23,8 @@ builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRe
 builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
+builder.Services.AddSingleton(_ => new MapService(connectionString));
+builder.Services.Configure<MapOptions>(builder.Configuration.GetSection(MapOptions.Section));
 builder.Services.AddRazorPages();
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
@@ -74,6 +77,15 @@ app.MapGet("/lookup/specializations", async ([FromQuery] string? classification,
 
 app.MapGet("/lookup/counties", async ([FromQuery] string? state, GeographyCatalog geography, CancellationToken ct) =>
     string.IsNullOrWhiteSpace(state) ? Results.Ok(Array.Empty<CountyInfo>()) : Results.Ok(await geography.GetCountiesAsync(state, ct)));
+
+// "Near me" on the search page (CLAUDE.md §7 Stage 5.5 item 10): the browser's location → the nearest ZIP centroid.
+// POST, so the coordinates never appear in a URL or a request log; they are used for this one query and not stored.
+app.MapPost("/lookup/nearest-zip", async (NearestZipRequest? request, MapService map, CancellationToken ct) =>
+    request is not { Lat: { } lat, Lon: { } lon } || !MapService.IsValidCoordinate(lat, lon)
+        ? Results.BadRequest(new { message = "Send {\"lat\": …, \"lon\": …} with valid coordinates." })
+        : await map.FindNearestZipAsync(lat, lon, ct) is { } nearest
+            ? Results.Ok(nearest)
+            : Results.NotFound(new { message = $"There is no US ZIP code within {MapService.MaxNearestMiles:0} miles of your location." }));
 
 app.Run();
 

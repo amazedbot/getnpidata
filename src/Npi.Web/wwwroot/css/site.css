@@ -147,3 +147,17 @@ footer {
 .field.wide { flex: 1 1 100%; }
 textarea { width: 100%; font: inherit; padding: 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
 header nav { margin-left: auto; }
+
+/* Results map and "near me" (Stage 5.5 item 10). */
+.map-wrap { margin: 1rem 0; }
+.map { height: 22rem; border: 1px solid var(--border); border-radius: 6px; }
+.map .leaflet-popup-content ul { margin: 0.25rem 0 0; padding-left: 1.1rem; max-height: 12rem; overflow-y: auto; }
+.map .leaflet-popup-content { color: #1b1f24; }
+.small { font-size: 0.875rem; }
+.field.near-me { align-self: flex-end; flex-direction: row; align-items: center; gap: 0.5rem; }
+@media (max-width: 40rem) { .map { height: 16rem; } }
+button.secondary { background: var(--bg); color: var(--accent); }
+[hidden] { display: none !important; }
+/* Leaflet popups are always light, so keep their text dark in dark mode too. */
+.map .leaflet-popup-content a { color: #0b5cad; }
+.map .leaflet-popup-content .muted { color: #57606a; }

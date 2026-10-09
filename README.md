@@ -40,6 +40,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
 | See compliance and Medicare badges on every result | Website grid, CSV and API flags |
 | Paged, sortable results with the total match count | Website grid, API JSON |
+| See the page's results on a map, and search **near me** from the browser's location | Website `/` |
 | Download **every** match as CSV, streamed, with no row cap | "Download CSV" button, `/export.csv`, `/api/v1/providers.csv` |
 | See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, Care Compare, facilities, Medicare services and prescribing, industry payments | `/provider/{npi}`, `/api/v1/providers/{npi}` |
 | Look up thousands of NPIs at once (paste or upload a file) and download the details, in your order | `/lookup`, `POST /api/v1/providers/lookup[.csv]` |
@@ -91,6 +92,13 @@ addresses are not searched. Each result row shows the location that matched.
 - **`/`**: the search form. Specialty and location use dependent dropdowns (Classification → Specialization,
   State → County). Results appear in a sortable grid, 50 per page, with the total and a **Download CSV** button
   for the same search. The page also works without JavaScript and on phones.
+- **Map**: above the grid, an [OpenStreetMap](https://www.openstreetmap.org/) map with one pin per ZIP code for the
+  providers on the current page. Pins sit at the ZIP code's center (Census ZCTA centroid), never at a street address;
+  click one to list its providers.
+- **Near me**: asks the browser for your location, finds the nearest ZIP code and searches within 10 miles of it
+  (keeping your other filters). Browsers offer location only over https (or on localhost). The position is rounded
+  to about 1 km in the browser, sent once in a POST body to find the ZIP, and never stored or logged; the search URL
+  contains only the ZIP.
 - **`/provider/{npi}`**: one provider's full record, with a link to the official
   [NPPES NPI Registry](https://npiregistry.cms.hhs.gov/) entry.
 - **`/lookup`**: bulk NPI lookup. Paste NPIs or upload a CSV or text file (up to 50,000 NPIs, 10 MB); every
@@ -260,6 +268,7 @@ needs `SELECT`.
 | `ConnectionStrings:RemoteMySql` | Web | — | Database the site reads (secret) |
 | `Api:PermitLimit`, `Api:WindowSeconds` | Web | `60`, `60` | API rate limit per client IP |
 | `Api:RequireKey`, `Api:Keys` | Web | `false`, — | Require `X-Api-Key` (keys are secrets) |
+| `Map:TileUrl`, `Map:Attribution`, `Map:MaxZoom` | Web | OpenStreetMap standard tiles, its credit line, `19` | Map tiles for the results map; empty `TileUrl` turns the map off. OpenStreetMap's free server allows only light use: a busy public site should switch to a hosted tile provider (a key in the URL is a secret) |
 
 Environment variables work too: prefix `NPI_` for the loader (for example `NPI_HudApiToken`). For the site, use the
 standard ASP.NET Core form, for example `Api__RequireKey=true`.
