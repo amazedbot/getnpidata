@@ -84,6 +84,8 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new MedicareUtilizationSource(),
         new MedicareServicesSource(),
         new PartDPrescriberSource(),
+        new ShortageAreaSource(),
+        new CountyPopulationSource(),
     ];
 
     private readonly IReadOnlyList<DatasetSource> _sources = sources ?? AllSources;

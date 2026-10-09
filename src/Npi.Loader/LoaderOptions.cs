@@ -49,6 +49,12 @@ public sealed class LoaderOptions
     /// <summary>HHS-OIG LEIE full list of excluded individuals and entities.</summary>
     public string LeieUrl { get; set; } = "https://oig.hhs.gov/exclusions/downloadables/UPDATED.csv";
 
+    /// <summary>HRSA HPSA detail files; {discipline} is PC, DH or MH.</summary>
+    public string HrsaHpsaUrlTemplate { get; set; } = "https://data.hrsa.gov/DataDownload/DD_Files/BCD_HPSA_FCT_DET_{discipline}.csv";
+
+    /// <summary>Census population estimates datasets folder (vintage folders "2020-YYYY/" below it).</summary>
+    public string CensusPopulationBaseUrl { get; set; } = "https://www2.census.gov/programs-surveys/popest/datasets/";
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");

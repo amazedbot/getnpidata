@@ -75,6 +75,9 @@ public sealed record SearchFilter
     /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
     public bool? Telehealth { get; init; }
 
+    /// <summary>primaryCare, dental or mentalHealth: practice locations in a county with an HRSA shortage area of that kind.</summary>
+    public string? Shortage { get; init; }
+
     /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
     public bool? MedicareActive { get; init; }
 
@@ -88,5 +91,5 @@ public sealed record SearchFilter
 
     public int PageSize { get; init; } = DefaultPageSize;
 
-    public bool HasLocationFilter => State is not null || CountyFips is not null || City is not null || Zip5 is not null;
+    public bool HasLocationFilter => State is not null || CountyFips is not null || City is not null || Zip5 is not null || Shortage is not null;
 }

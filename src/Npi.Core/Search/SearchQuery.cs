@@ -352,6 +352,12 @@ public sealed class SearchQuery
             _locationTemplates.Add("{0}.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips)");
         }
 
+        if (filter.Shortage is not null)
+        {
+            Parameters.Add("shortage", AreaService.Disciplines[filter.Shortage]);
+            _locationTemplates.Add("{0}.zip5 IN (SELECT z.zip5 FROM zip_county z JOIN county_shortage cs ON cs.county_fips = z.county_fips WHERE cs.discipline = @shortage)");
+        }
+
         if (filter.Zip5 is not null && filter.RadiusMiles is null)
         {
             Parameters.Add("zip5", filter.Zip5);

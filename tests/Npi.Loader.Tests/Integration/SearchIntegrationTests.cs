@@ -298,6 +298,33 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(new MedicarePrescribing(2024, "Pediatrics", 15, 123.4, null, null, 15, null, null, null), e.MedicarePrescribing);
     }
 
+    [Fact]
+    public async Task Shortage_filter_and_county_facts()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO county_shortage (county_fips, discipline, whole_county, hpsa_count, max_score) VALUES
+              ('36103', 'PC', 0, 1, 14), ('36103', 'DH', 1, 1, NULL), ('36047', 'MH', 0, 2, 19);
+            INSERT INTO county_population (county_fips, state_fips, county_code, population, year) VALUES ('36103', '36', '103', 1530000, 2025);
+            """);
+        var search = Search(db);
+
+        // A in Amityville (11701: Nassau and Suffolk), B's secondary location and E in Farmingdale (Suffolk); B and D in Brooklyn (Kings).
+        Assert.Equal([A, B, E], await Npis(search, new SearchFilter { Shortage = "primaryCare" }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { Shortage = "mentalHealth" }));
+        Assert.Equal([A, B], await Npis(search, new SearchFilter { Shortage = "dental", Classification = "Chiropractor" }));
+        var error = await Assert.ThrowsAsync<SearchValidationException>(() => search.SearchAsync(new SearchFilter { Shortage = "vision" }, _ct));
+        Assert.Contains(nameof(SearchFilter.Shortage), error.Errors.Keys);
+
+        var areas = new AreaService(db.ConnectionString);
+        var suffolk = await areas.GetCountyAsync("36103", _ct);
+        Assert.Equal(("Suffolk County", "NY", (int?)1530000, (int?)2025), (suffolk!.Name, suffolk.State, suffolk.Population, suffolk.PopulationYear));
+        Assert.Equal([new CountyShortage("PC", "Primary care", false, 1, 14), new CountyShortage("DH", "Dental", true, 1, null)], suffolk.Shortages);
+        Assert.Null((await areas.GetCountyAsync("36047", _ct))!.Population);
+        Assert.Null(await areas.GetCountyAsync("99999", _ct));
+    }
+
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
 
     private async Task<string[]> Npis(SearchService search, SearchFilter filter) =>

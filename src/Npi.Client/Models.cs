@@ -509,6 +509,42 @@ public sealed class CountyInfo
     public string Name { get; set; } = "";
 }
 
+/// <summary>Population and shortage-area facts about a county.</summary>
+public sealed class CountyFacts
+{
+    /// <summary>Five-digit county FIPS code.</summary>
+    public string Fips { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string State { get; set; } = "";
+
+    /// <summary>Census population estimate for <see cref="PopulationYear"/>.</summary>
+    public int? Population { get; set; }
+
+    public int? PopulationYear { get; set; }
+
+    /// <summary>HRSA Health Professional Shortage Areas in force, per discipline.</summary>
+    public IReadOnlyList<CountyShortage> Shortages { get; set; } = [];
+}
+
+/// <summary>HRSA shortage areas of one discipline in a county.</summary>
+public sealed class CountyShortage
+{
+    /// <summary>PC (primary care), DH (dental) or MH (mental health).</summary>
+    public string Discipline { get; set; } = "";
+
+    public string DisciplineName { get; set; } = "";
+
+    /// <summary>True when the whole county is a shortage area.</summary>
+    public bool WholeCounty { get; set; }
+
+    public int ShortageAreas { get; set; }
+
+    /// <summary>Highest HRSA score (0-26; higher = greater need).</summary>
+    public int? MaxScore { get; set; }
+}
+
 /// <summary>Where the served data comes from.</summary>
 public sealed class ApiMeta
 {

@@ -1,0 +1,5 @@
+HPSA Name,HPSA ID,Designation Type,HPSA Discipline Class,HPSA Score,Primary State Abbreviation,HPSA Status,HPSA Component Type Description,Common State County FIPS Code,
+Suffolk County Low Income,1361234567,HPSA Population,Primary Care,14,NY,Designated,Census Tract,36103,
+Suffolk County Low Income,1361234567,HPSA Population,Primary Care,14,NY,Designated,Census Tract,36103,
+Kings Old,1369999999,Geographic HPSA,Primary Care,9,NY,Withdrawn,Single County,36047,
+"Dona Ana, whole county",1351111111,Geographic HPSA,Primary Care,18,NM,Proposed For Withdrawal,Single County,35013,

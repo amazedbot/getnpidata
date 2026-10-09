@@ -66,6 +66,11 @@ public static class ApiEndpoints
         api.MapGet("/states/{state}/counties", GetCountiesAsync)
             .WithName("ListCounties").WithTags("Lookups").WithSummary("Counties of one state, with FIPS codes").CacheOutput(CachePolicy);
 
+        api.MapGet("/counties/{fips}", GetCountyAsync)
+            .WithName("GetCounty").WithTags("Lookups").WithSummary("County population and shortage areas")
+            .WithDescription("Census population estimate and HRSA Health Professional Shortage Areas (primary care, dental, mental health) in force.")
+            .CacheOutput(CachePolicy);
+
         api.MapGet("/meta", GetMetaAsync)
             .WithName("GetMeta").WithTags("Meta").WithSummary("Data versions")
             .WithDescription("As-of date, source files and reference data versions of the data being served.").CacheOutput(CachePolicy);
@@ -110,6 +115,9 @@ public static class ApiEndpoints
         var counties = await geography.GetCountiesAsync(state, ct);
         return counties.Count > 0 ? TypedResults.Ok(counties) : NotFound($"Unknown state '{state}'.");
     }
+
+    private static async Task<Results<Ok<CountyFacts>, ProblemHttpResult>> GetCountyAsync(string fips, AreaService areas, CancellationToken ct) =>
+        await areas.GetCountyAsync(fips, ct) is { } county ? TypedResults.Ok(county) : NotFound($"Unknown county FIPS '{fips}'.");
 
     private static async Task<Results<Ok<ApiMeta>, ProblemHttpResult>> GetMetaAsync(GeographyCatalog geography, CancellationToken ct) =>
         await geography.GetDataVersionAsync(ct) is { } version

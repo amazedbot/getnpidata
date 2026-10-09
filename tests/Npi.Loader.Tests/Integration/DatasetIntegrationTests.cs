@@ -42,15 +42,16 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(
             [("cc_clinicians", "2026-08-18 DAC_NationalDownloadableFile.csv"), ("cc_facility_affiliations", "2026-08-18 Facility_Affiliation.csv"),
              ("cc_hospitals", "2026-07-22 Hospital_General_Information.csv"), ("cc_nursing_homes", "2026-09-30 NH_ProviderInfo_Sep2026.csv"),
+             ("census_county_population", "vintage 2025"),
              ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
-             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"),
+             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("oig_leie", "2026-10-01T12:00:00Z 827")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
-            "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
+            "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name LIKE 'county\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
         Assert.Empty(Directory.GetFiles(Path.Combine(_folder, "datasets"))); // downloads are deleted after loading
     }
 
@@ -108,6 +109,25 @@ public sealed class DatasetIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Shortage_areas_and_population_load_per_county()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+
+        // Withdrawn HPSAs are left out; duplicate components count once; a blank score stays NULL.
+        Assert.Equal(
+            [("35013", "PC", (sbyte)1, 1, (int?)18), ("36047", "MH", (sbyte)0, 2, (int?)19), ("36103", "DH", (sbyte)1, 1, (int?)null),
+             ("36103", "PC", (sbyte)0, 1, (int?)14)],
+            await db.QueryAsync<(string, string, sbyte, int, int?)>(
+                "SELECT county_fips, discipline, whole_county, hpsa_count, max_score FROM county_shortage ORDER BY county_fips, discipline"));
+
+        // County rows only, from the newest vintage (2025), read as Windows-1252.
+        Assert.Equal([("35013", 226500), ("36047", 2620000), ("36103", 1530000)],
+            await db.QueryAsync<(string, int)>("SELECT county_fips, population FROM county_population ORDER BY county_fips"));
+        Assert.Equal(2025, await db.ScalarAsync<int>("SELECT MIN(year) FROM county_population"));
+    }
+
+    [Fact]
     public async Task Unchanged_datasets_are_not_downloaded_again()
     {
         await using var db = await TestDatabase.CreateAsync();
@@ -160,6 +180,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 CmsCatalogUrl = "https://cms.test/data.json",
                 ProviderDataMetastoreUrl = "https://pdc.test/items/",
                 LeieUrl = "https://oig.test/UPDATED.csv",
+                HrsaHpsaUrlTemplate = "https://hrsa.test/BCD_HPSA_FCT_DET_{discipline}.csv",
+                CensusPopulationBaseUrl = "https://census.test/popest/",
             },
             db.Database, new HttpClient(server), Logger.None, clock: clock);
 
@@ -211,6 +233,11 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://cms.test/files/MUP_PHY_D24_Prov.csv" => "datasets/physician_by_provider_sample.csv",
                 "https://cms.test/files/MUP_PHY_D24_Prov_Svc.csv" => "datasets/physician_by_service_sample.csv",
                 "https://cms.test/files/mup_dpr_dy24_npi.csv" => "datasets/part_d_by_provider_sample.csv",
+                "https://hrsa.test/BCD_HPSA_FCT_DET_PC.csv" => "datasets/hpsa_PC_sample.csv",
+                "https://hrsa.test/BCD_HPSA_FCT_DET_DH.csv" => "datasets/hpsa_DH_sample.csv",
+                "https://hrsa.test/BCD_HPSA_FCT_DET_MH.csv" => "datasets/hpsa_MH_sample.csv",
+                "https://census.test/popest/" => "datasets/census_popest_listing.html",
+                "https://census.test/popest/2020-2025/counties/totals/co-est2025-alldata.csv" => "datasets/census_population_sample.csv",
                 _ => null,
             };
             if (fixture is null)
@@ -226,6 +253,10 @@ public sealed class DatasetIntegrationTests : IDisposable
             if (url.StartsWith("https://oig.test", StringComparison.Ordinal))
             {
                 content.Headers.LastModified = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+            }
+            else if (url.StartsWith("https://hrsa.test", StringComparison.Ordinal))
+            {
+                content.Headers.LastModified = new DateTimeOffset(2026, 10, 8, 11, 47, 41, TimeSpan.Zero);
             }
 
             content.Headers.ContentType = new MediaTypeHeaderValue("text/csv");

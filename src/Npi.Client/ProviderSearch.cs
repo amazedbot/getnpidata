@@ -68,6 +68,9 @@ public sealed class ProviderSearch
     /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
     public bool? Telehealth { get; set; }
 
+    /// <summary>primaryCare, dental or mentalHealth: a practice location in a county with an HRSA shortage area of that kind.</summary>
+    public string? Shortage { get; set; }
+
     /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
     public bool? MedicareActive { get; set; }
 
@@ -122,6 +125,7 @@ public sealed class ProviderSearch
         AddBool("telehealth", Telehealth);
         AddInt("minYears", MinYears);
         AddBool("medicareActive", MedicareActive);
+        Add("shortage", Shortage);
         Add("sort", Sort);
         AddInt("page", Page);
         AddInt("pageSize", PageSize);

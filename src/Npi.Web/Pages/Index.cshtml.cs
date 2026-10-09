@@ -5,7 +5,7 @@ using Npi.Web.Search;
 namespace Npi.Web.Pages;
 
 /// <summary>The search form and results grid (CLAUDE.md §7 Stage 4). A GET form, so every search has a shareable URL.</summary>
-public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, GeographyCatalog geography) : PageModel
+public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, GeographyCatalog geography, AreaService areas) : PageModel
 {
     public static readonly int[] RadiusChoices = [5, 10, 25, 50, 100];
 
@@ -26,6 +26,9 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
     public IReadOnlyList<CountyInfo> Counties { get; private set; } = [];
 
     public SearchSortOrder Sort { get; private set; } = SearchSortOrder.Default;
+
+    /// <summary>Population and shortage facts for the searched county (Stage 5.5 item 7).</summary>
+    public CountyFacts? County { get; private set; }
 
     public long PageCount => Result is null ? 0 : Math.Max(1, (Result.TotalCount + Result.PageSize - 1) / Result.PageSize);
 
@@ -61,6 +64,10 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
         try
         {
             Result = await search.SearchAsync(filter, ct);
+            if (filter.CountyFips is not null)
+            {
+                County = await areas.GetCountyAsync(filter.CountyFips, ct);
+            }
         }
         catch (SearchValidationException ex)
         {

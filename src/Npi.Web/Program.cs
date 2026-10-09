@@ -21,6 +21,7 @@ builder.Services.AddSingleton(_ => new TaxonomyCatalog(connectionString));
 builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRequiredService<TaxonomyCatalog>()));
 builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
+builder.Services.AddSingleton(_ => new AreaService(connectionString));
 builder.Services.AddRazorPages();
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();

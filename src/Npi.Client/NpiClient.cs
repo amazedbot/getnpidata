@@ -110,6 +110,18 @@ public sealed class NpiClient : IDisposable
     public Task<IReadOnlyList<CountyInfo>> GetCountiesAsync(string state, CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<CountyInfo>>($"api/v1/states/{Segment(state, nameof(state))}/counties", cancellationToken);
 
+    /// <summary>County population and HRSA shortage areas, or null when the FIPS code is unknown.</summary>
+    public async Task<CountyFacts?> GetCountyAsync(string fips, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync("api/v1/counties/" + Segment(fips, nameof(fips)), cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<CountyFacts>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Data as-of date, source files and reference versions.</summary>
     public Task<ApiMeta> GetMetaAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<ApiMeta>("api/v1/meta", cancellationToken);
