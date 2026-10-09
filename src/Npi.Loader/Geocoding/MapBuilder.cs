@@ -19,13 +19,16 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
 
     private const string FillSql =
         """
-        INSERT INTO `provider_map_staging` (`npi`, `addr_key`, `lat`, `lon`, `approximate`, `pt`)
-        SELECT x.npi, x.addr_key, x.lat, x.lon, x.approximate, ST_SRID(POINT(x.lon, x.lat), 0)
+        INSERT INTO `provider_map_staging` (`npi`, `addr_key`, `lat`, `lon`, `approximate`, `source`, `pt`)
+        SELECT x.npi, x.addr_key, x.lat, x.lon, x.approximate, x.source, ST_SRID(POINT(x.lon, x.lat), 0)
         FROM (
+          -- Best first: Overture (the building), the Census geocoder (interpolated along the street), the ZIP centroid.
           SELECT l.npi, l.addr_key,
-                 CAST(COALESCE(g.lat, c.lat) AS DOUBLE) AS lat, CAST(COALESCE(g.lon, c.lon) AS DOUBLE) AS lon,
-                 g.lat IS NULL AS approximate
+                 CAST(COALESCE(o.lat, g.lat, c.lat) AS DOUBLE) AS lat, CAST(COALESCE(o.lon, g.lon, c.lon) AS DOUBLE) AS lon,
+                 o.lat IS NULL AND g.lat IS NULL AS approximate,
+                 CASE WHEN o.lat IS NOT NULL THEN o.source WHEN g.lat IS NOT NULL THEN 'census' ELSE 'zip' END AS source
           FROM (SELECT DISTINCT `npi`, `addr_key`, `zip5` FROM `provider_location` WHERE `addr_key` IS NOT NULL) l
+          LEFT JOIN `address_point` o ON o.`addr_key` = l.`addr_key`
           LEFT JOIN `address_geocode` g ON g.`addr_key` = l.`addr_key` AND g.`status` = 'Match'
           LEFT JOIN `zip_centroid` c ON c.`zip5` = l.`zip5`
         ) x
@@ -51,7 +54,8 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
                 OR NOT EXISTS (SELECT 1 FROM `provider_map_specialty`)
                 OR (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source)
                    < GREATEST(COALESCE((SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1970-01-01'),
-                              COALESCE((SELECT MAX(`geocoded_at`) FROM `address_geocode`), '1970-01-01'))
+                              COALESCE((SELECT MAX(`geocoded_at`) FROM `address_geocode`), '1970-01-01'),
+                              COALESCE((SELECT MAX(`matched_at`) FROM `address_point`), '1970-01-01'))
             """, new { source = Source }, cancellationToken: ct)) != 0;
     }
 
@@ -67,6 +71,9 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
         var rows = counts["provider_map"];
         var exact = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             "SELECT COUNT(*) FROM `provider_map` WHERE `approximate` = 0", cancellationToken: ct));
+        var bySource = string.Join(", ", (await connection.QueryAsync<(string Source, long Rows)>(new CommandDefinition(
+            "SELECT `source`, COUNT(*) FROM `provider_map` GROUP BY `source` ORDER BY COUNT(*) DESC", cancellationToken: ct)))
+            .Select(r => string.Create(CultureInfo.InvariantCulture, $"{r.Source} {r.Rows:N0}")));
         var now = DateTime.UtcNow;
         await Database.ExecuteAsync(connection,
             """
@@ -74,8 +81,8 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
             VALUES (@source, @version, '', @rows, @now, @now) AS new
             ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `loaded_at` = new.`loaded_at`, `checked_at` = new.`checked_at`
             """, ct, param: new { source = Source, version = string.Create(CultureInfo.InvariantCulture, $"{exact:N0} of {rows:N0} at the street address"), rows, now });
-        log.Information("provider_map: {Rows:N0} provider addresses, {Exact:N0} at the geocoded street address, in {Seconds:N0}s",
-            rows, exact, watch.Elapsed.TotalSeconds);
+        log.Information("provider_map: {Rows:N0} provider addresses, {Exact:N0} at the street address ({BySource}), in {Seconds:N0}s",
+            rows, exact, bySource, watch.Elapsed.TotalSeconds);
         return rows;
     }
 }

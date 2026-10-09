@@ -11,6 +11,7 @@ public enum LoaderCommand
     Datasets,
     Project,
     Geocode,
+    Overture,
     Publish,
 }
 
@@ -29,6 +30,7 @@ public static class LoaderCommandLine
         ["datasets"] = LoaderCommand.Datasets,
         ["project"] = LoaderCommand.Project,
         ["geocode"] = LoaderCommand.Geocode,
+        ["overture"] = LoaderCommand.Overture,
         ["publish"] = LoaderCommand.Publish,
     };
 
@@ -45,6 +47,9 @@ public static class LoaderCommandLine
           project          Rebuild the search projection tables
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses
+          overture <county>
+                           Place a county's practice addresses at their building with Overture Maps data
+                           (address points, places), then rebuild the map tables
           publish          Sync the search projection to Azure
         """;
 
@@ -70,11 +75,17 @@ public static class LoaderCommandLine
             return new LoaderInvocation(command, rest);
         }
 
-        if (command == LoaderCommand.Geocode && rest.Length == 1)
+        if (command == LoaderCommand.Overture && rest.Length != 1)
+        {
+            error = "Command 'overture' needs a 5-digit county FIPS code, e.g. 36103 (the whole country isn't enabled yet).";
+            return null;
+        }
+
+        if (command is LoaderCommand.Geocode or LoaderCommand.Overture && rest.Length == 1)
         {
             if (rest[0].Length != 5 || !rest[0].All(char.IsAsciiDigit))
             {
-                error = "Command 'geocode' takes an optional 5-digit county FIPS code, e.g. 36103.";
+                error = $"Command '{args[0]}' takes a 5-digit county FIPS code, e.g. 36103.";
                 return null;
             }
 

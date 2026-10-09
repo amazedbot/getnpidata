@@ -98,8 +98,9 @@ addresses are not searched. Each result row shows the location that matched.
     the filters (the same specialty, provider and Medicare & compliance filters as the search page; the map area
     replaces state/county/city/ZIP).
   - One pin per street address. Hover a pin to see who practices there (everyone at that address); click it for the
-    same list with links. Gray dashed pins are approximate: the address couldn't be geocoded, so it sits at its ZIP
-    code's center.
+    same list with links. Solid pins are at the building (Overture Maps address points and places), white pins are
+    estimated along the street (Census geocoder), and gray dashed pins are approximate: the address couldn't be
+    located, so it sits at its ZIP code's center.
   - The table beside the map (below it on phones and narrow windows) lists every provider at the pins in view, and
     updates as you pan. Sort it by distance from the map center, name, specialty, city or last update, either way.
   - At most 1,000 providers per search, the closest to the center; zoom in or add filters for more. Very large areas
@@ -206,7 +207,8 @@ by parameter and `RetryAfter`. Build the NuGet package with `dotnet pack src/Npi
 | [NUCC Health Care Provider Taxonomy](https://www.nucc.org/) | Specialty names (classification / specialization) | When NUCC publishes a new version (twice a year) |
 | [HUD USPS ZIP–County crosswalk](https://www.huduser.gov/portal/datasets/usps_crosswalk.html) | ZIP → county | Quarterly |
 | [Census Gazetteer files](https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html) | County names, ZIP centroids for radius search | Yearly |
-| [Census Geocoder](https://geocoding.geo.census.gov/) (batch) | Map pins: latitude/longitude of each practice street address | New addresses with each load; each address once |
+| [Overture Maps](https://overturemaps.org/) addresses (US DOT National Address Database) and places | Map pins at the building: address points, the addresses of places (hospitals, campuses), building names | Per area with `Npi.Loader overture` (Suffolk County, NY so far) |
+| [Census Geocoder](https://geocoding.geo.census.gov/) (batch) | Map pins where Overture has no match: estimated along the street | New addresses with each load; each address once |
 | [HHS-OIG LEIE](https://oig.hhs.gov/exclusions/) | Exclusions from federal health programs | Monthly |
 | [CMS Opt Out Affidavits, Order and Referring](https://data.cms.gov/) | Medicare opt-out, order/refer eligibility | Monthly / weekly |
 | [Medicare Care Compare (Provider Data Catalog)](https://data.cms.gov/provider-data/) | Clinicians, group practices, hospital affiliations, hospitals and nursing homes | Monthly |
@@ -299,6 +301,7 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `reference` | Force-refresh NUCC, HUD and Census reference data |
 | `datasets [name]` | Force-reload the enrichment datasets (OIG, CMS, HRSA, Census, Open Payments), or just one. `run` reloads each when its publisher releases a new version |
 | `project` | Rebuild the search tables now |
+| `overture <county>` | Place a county's practice addresses at their building with Overture Maps data (read in place from its public files, only that area), then rebuild the map tables. The whole country is the next step |
 | `geocode [county]` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. With a 5-digit county FIPS (e.g. `36103`), only that county's addresses. `run` geocodes up to 200,000 new addresses per run |
 | `publish` | Sync the search tables to Azure *(planned)* |
 

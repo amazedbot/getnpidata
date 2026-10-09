@@ -384,12 +384,16 @@ public sealed class SearchIntegrationTests : IDisposable
             await db.QueryAsync<(string, long)>("SELECT status, COUNT(*) FROM address_geocode GROUP BY status ORDER BY status"));
         Assert.Equal(new GeocodeOutcome(0, 0, 0, true), await geocoder.GeocodePendingAsync(maxBatches: 0, _ct)); // nothing is sent twice
 
+        // Overture placed D's address at a building (it beats the Census answer and the ZIP centroid).
+        await db.ExecuteAsync($"INSERT INTO address_point (addr_key, source, lat, lon, matched, `release`, matched_at) " +
+            $"SELECT addr_key, 'place', 40.6905, -73.9950, '5 ATLANTIC AVE', '2026-09-23.1', NOW() FROM provider_location WHERE npi = '{D}'");
+
         var map = new MapBuilder(db.Database, Logger.None, 0.95);
         Assert.True(await map.IsStaleAsync(_ct));
         Assert.Equal(5L, await map.BuildAsync(_ct));
         Assert.False(await map.IsStaleAsync(_ct));
-        Assert.Equal([(A, (sbyte)0), (B, (sbyte)1), (B, (sbyte)1), (D, (sbyte)1), (E, (sbyte)0)],
-            await db.QueryAsync<(string, sbyte)>("SELECT npi, approximate FROM provider_map ORDER BY npi, approximate"));
+        Assert.Equal([(A, (sbyte)0, "census"), (B, (sbyte)1, "zip"), (B, (sbyte)1, "zip"), (D, (sbyte)0, "place"), (E, (sbyte)0, "census")],
+            await db.QueryAsync<(string, sbyte, string)>("SELECT npi, approximate, source FROM provider_map ORDER BY npi, approximate"));
         // Each point under each of its specialties and grid cells: A (chiropractor + pediatrics), B (sports chiropractor at two addresses), D, E.
         Assert.Equal(6L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_map_specialty"));
 
