@@ -21,6 +21,7 @@ or private hosts.
 | 3 Search projection + `Npi.Core` search service | Done |
 | 4 Website | Done |
 | 5 REST API + `Npi.Client` | Done |
+| 5.5 More data and features (owner's addition, before Azure) | **In progress** on branch `stage-5.5-features`, one PR (§7 Stage 5.5) |
 | 6 Publish to Azure, deploy, Task Scheduler | **Not started. Wait for the owner to say "start Stage 6"** (§11 item 2) |
 
 On the loader PC, `workplace` holds the full data (current through 2026-10-04, 9,482,099 active providers). The site
@@ -70,6 +71,7 @@ CMS NPPES files ──► Npi.Loader (Windows PC, scheduled) ──► local MyS
 | Load cycle | Full monthly replace + weekly incremental updates. The site must stay up during reloads |
 | Schema changes | Allowed: widen columns for V2, utf8mb4, new tables and indexes |
 | Logging | Log file only (no email/alerts). Non-zero exit code on failure |
+| Stage 5.5 | Added by the owner (2026-10-08) between Stages 5 and 6: **all** the datasets and features in §7 Stage 5.5, delivered as **one PR**. Named 5.5 so that "Stage 6" references stay valid |
 | Git | Claude Code may create branches, commit, open PRs and merge when CI is green (§10) |
 
 ---
@@ -345,6 +347,53 @@ Specialization), Address 1, Address 2, City, State, ZIP, County, Phone, Gender, 
   - Optional API key; its own `HttpClient` or an injected one. Dates are `DateTime`, because netstandard2.0 has no `DateOnly`.
   - Contract tests fail when the server gains a field or parameter the client lacks.
   - Usage is in `src/Npi.Client/README.md`. `dotnet pack src/Npi.Client` builds the package (not published to nuget.org).
+
+### Stage 5.5 — More data and features (in progress)
+
+**Goal:** more value per search, by joining other public datasets to NPIs and adding website and search features. The owner chose all of the items below (2026-10-08), as one PR on `stage-5.5-features`.
+
+**Principles:**
+- Every source is public and free, keyed by NPI (or by CCN through a CMS enrollment crosswalk).
+- Each source is refreshed by `run` when its version changes, with versions tracked in `reference_data`.
+- Each is loaded with the staging + RENAME pattern and the ≥ 95% check (§6.3). Any MySQL warning fails a load.
+- Each failure is isolated, so one broken source doesn't stop the others.
+- Big sources are **summarized to one row (or a few rows) per NPI** before the projection, so the Azure database stays small (§7 Stage 6.3).
+- `row_hash` covers the new per-NPI rows, so the publisher picks up their changes.
+- Source discovery uses the catalogs below, never hard-coded release URLs: the newest release is chosen by its `temporal` end date, not by `modified`.
+
+**Sources (verified Oct 2026):**
+
+| # | Feature | Source | Discovery / URL | Key | Size, refresh |
+|---|---|---|---|---|---|
+| 1 | Unused NPPES fields | `npidata` (other identifiers, authorized official, parent org/subpart, mailing address) and the **`endpoint_pfile`** in each NPPES zip (now loaded) | already downloaded | NPI | weekly/monthly |
+| 2a | Exclusions | OIG **LEIE** | `https://oig.hhs.gov/exclusions/downloadables/UPDATED.csv` (full list; send a User-Agent) | NPI where present (many rows have none; those are not matched, never guessed by name) | 15 MB, monthly |
+| 2b | Medicare opt-out | CMS **Opt Out Affidavits** | data.cms.gov catalog `https://data.cms.gov/data.json`, title "Opt Out Affidavits" | `npi` | small, monthly |
+| 2c | Order & refer eligibility | CMS **Order and Referring** | catalog, "Order and Referring" (cols NPI, PARTB, DME, HHA, PMD, HOSPICE) | NPI | ~2M rows, weekly |
+| 3a | Care Compare clinicians | **Doctors and Clinicians National Downloadable File** | Provider Data Catalog `https://data.cms.gov/provider-data/api/1/metastore/schemas/dataset/items/mj5m-pzi6` | NPI (+ Ind_PAC_ID, org_pac_id) | 800 MB, monthly |
+| 3b | Hospital affiliations | **Facility Affiliation Data** | same catalog, `27ea-46a8` | NPI → facility CCN | 126 MB, monthly |
+| 4a | Facilities | **Hospital General Information** (`xubh-q36u`), **Nursing Home Provider Information** (`4pq5-n9py`) | Provider Data Catalog | CCN | small, monthly |
+| 4b | CCN ↔ NPI | **Hospital Enrollments**, **Skilled Nursing Facility Enrollments** | data.cms.gov catalog | NPI + CCN | small, quarterly |
+| 5a | Medicare services | **Medicare Physician & Other Practitioners – by Provider** and **– by Provider and Service** | data.cms.gov catalog (data year 2024 in Oct 2026) | Rndrng_NPI | yearly; keep totals + top 5 services per NPI |
+| 5b | Prescribing | **Medicare Part D Prescribers – by Provider** | data.cms.gov catalog | Prscrbr_NPI | yearly; totals, brand/generic, opioid rate |
+| 6 | Industry payments | **Open Payments General Payment Data** (yearly detailed file) | `https://openpaymentsdata.cms.gov/api/1/metastore/schemas/dataset/items` ("<year> General Payment Data") | Covered_Recipient_NPI | several GB per year, streamed and aggregated; newest year: totals by nature of payment + top 3 payers per NPI |
+| 7a | Shortage areas | HRSA **HPSA** primary care / dental / mental health | `https://data.hrsa.gov/DataDownload/DD_Files/BCD_HPSA_FCT_DET_{PC,DH,MH}.csv` | county FIPS (geographic HPSAs, status Designated) | small, weekly |
+| 7b | Population | Census **county population estimates** | `https://www2.census.gov/programs-surveys/popest/datasets/<years>/counties/totals/co-est<year>-alldata.csv` | county FIPS | yearly |
+
+**Website and API features:**
+
+| # | Feature | Notes |
+|---|---|---|
+| 8 | Bulk NPI lookup | Upload a CSV or paste NPIs → enriched CSV (all summary columns + new flags). `POST /api/v1/providers/lookup` (JSON list, capped per request) |
+| 9 | Smarter name search | Typo-tolerant names (phonetic key column + ranking) and word-anywhere organization search (FULLTEXT); prefix search stays the default |
+| 10 | Map + near me | Leaflet map of the current page's results at ZIP-centroid level; "near me" = browser geolocation → nearest ZIP centroid → radius search. Tile server configurable (OpenStreetMap by default, with attribution) |
+| 11 | Change tracking | A `provider_change` log written by the weekly loads (address, name, taxonomy and deactivation changes, from now on), shown on the detail page; "new providers" filter and feed (by enumeration date) per area |
+
+**Filters and display:**
+- **New filters:** not excluded, accepts Medicare assignment, telehealth, can order/refer, opted out, minimum years in practice, in a shortage area.
+- **Badges:** on the grid and the detail page.
+- **New detail-page sections:** Care Compare, affiliations, Medicare activity, payments, endpoints, other identifiers, change history.
+
+**Build order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11. Record actual sizes, row counts and timings in §12 as each item lands.
 
 ### Stage 6 — Publish to Azure & deploy (not started; wait for the owner)
 1. **Publisher** (`Npi.Loader publish`): connect to `RemoteMySql` and apply the migrations remotely.
