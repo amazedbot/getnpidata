@@ -68,6 +68,9 @@ public sealed record ProviderDetail(
 
     /// <summary>Medicare Part D prescribing in the latest data year; null when none (Stage 5.5 item 5b).</summary>
     public MedicarePrescribing? MedicarePrescribing { get; init; }
+
+    /// <summary>Open Payments general payments in the newest program year; null when none (Stage 5.5 item 6).</summary>
+    public IndustryPayments? IndustryPayments { get; init; }
 }
 
 /// <summary>Reads one provider from the projection. Deactivated NPIs are not in the projection, so they come back as null.</summary>
@@ -114,6 +117,12 @@ public sealed class ProviderDetailService(string connectionString)
 
     private sealed record PartDRow(short DataYear, string? PrescriberType, int? Claims, double? DrugCost, int? Beneficiaries, int? BrandClaims,
         int? GenericClaims, int? OpioidClaims, double? OpioidRate, int? AntibioticClaims);
+
+    private sealed record PaymentSummaryRow(short ProgramYear, double TotalAmount, int Records, int Payers);
+
+    private sealed record PaymentKindRow(string Nature, double Amount, int Records);
+
+    private sealed record PayerRow(string Payer, double Amount, int Records);
 
     private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
         string? UseDescription, string? ContentDescription, string? AffiliationName, string? AffiliationCity, string? AffiliationState);
@@ -246,6 +255,23 @@ public sealed class ProviderDetailService(string connectionString)
             FROM medicare_part_d WHERE npi = @npi
             """, new { npi }, cancellationToken: ct));
 
+        var payments = await connection.QuerySingleOrDefaultAsync<PaymentSummaryRow>(new CommandDefinition(
+            "SELECT program_year AS ProgramYear, total_amount AS TotalAmount, records AS Records, payers AS Payers FROM open_payments_summary WHERE npi = @npi",
+            new { npi }, cancellationToken: ct));
+        IndustryPayments? industry = null;
+        if (payments is not null)
+        {
+            var kinds = await connection.QueryAsync<PaymentKindRow>(new CommandDefinition(
+                "SELECT nature AS Nature, amount AS Amount, records AS Records FROM open_payments_nature WHERE npi = @npi ORDER BY amount DESC, nature",
+                new { npi }, cancellationToken: ct));
+            var payers = await connection.QueryAsync<PayerRow>(new CommandDefinition(
+                "SELECT payer AS Payer, amount AS Amount, records AS Records FROM open_payments_payer WHERE npi = @npi ORDER BY payer_rank",
+                new { npi }, cancellationToken: ct));
+            industry = new IndustryPayments(payments.ProgramYear, payments.TotalAmount, payments.Records, payments.Payers,
+                kinds.Select(k => new IndustryPaymentKind(k.Nature, k.Amount, k.Records)).ToList(),
+                payers.Select(p => new IndustryPayer(p.Payer, p.Amount, p.Records)).ToList());
+        }
+
         var facilities = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
             """
             SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
@@ -284,6 +310,7 @@ public sealed class ProviderDetailService(string connectionString)
                 orderRefer is null ? null : new MedicareOrderReferring(orderRefer.PartB == 1, orderRefer.Dme == 1, orderRefer.Hha == 1,
                     orderRefer.Pmd == 1, orderRefer.Hospice == 1)),
             CareCompare = careCompare,
+            IndustryPayments = industry,
             MedicareServices = utilization is null ? null : new MedicareServices(utilization.DataYear, utilization.ProviderType,
                 utilization.Participating is null ? null : utilization.Participating != 0, utilization.DistinctServices, utilization.Beneficiaries,
                 utilization.Services, utilization.AllowedAmount, utilization.PaymentAmount, utilization.AvgBeneficiaryAge, utilization.AvgRiskScore,

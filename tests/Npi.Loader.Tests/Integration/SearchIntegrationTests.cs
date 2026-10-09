@@ -325,6 +325,25 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Null(await areas.GetCountyAsync("99999", _ct));
     }
 
+    [Fact]
+    public async Task Industry_payments_detail()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO open_payments_summary (npi, program_year, total_amount, records, payers) VALUES (@B, 2025, 2563.35, 5, 4);
+            INSERT INTO open_payments_nature (npi, nature, amount, records) VALUES (@B, 'Consulting Fee', 2500, 1), (@B, 'Food and Beverage', 63.35, 4);
+            INSERT INTO open_payments_payer (npi, payer_rank, payer, amount, records) VALUES (@B, 1, 'Medtronic USA Inc.', 2500, 1), (@B, 2, 'Pfizer, Inc.', 40, 2);
+            """, new { B });
+        var details = new ProviderDetailService(db.ConnectionString);
+
+        var b = (await details.GetAsync(B, _ct))!.IndustryPayments!;
+        Assert.Equal((2025, 2563.35, 5, 4), (b.Year, b.TotalAmount, b.Records, b.Payers));
+        Assert.Equal([new IndustryPaymentKind("Consulting Fee", 2500, 1), new IndustryPaymentKind("Food and Beverage", 63.35, 4)], b.ByNature);
+        Assert.Equal([new IndustryPayer("Medtronic USA Inc.", 2500, 1), new IndustryPayer("Pfizer, Inc.", 40, 2)], b.TopPayers);
+        Assert.Null((await details.GetAsync(A, _ct))!.IndustryPayments);
+    }
+
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
 
     private async Task<string[]> Npis(SearchService search, SearchFilter filter) =>

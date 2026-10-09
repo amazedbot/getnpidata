@@ -47,11 +47,11 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
              ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("hrsa_hpsa", "HPSA 2026-10-08"),
-             ("oig_leie", "2026-10-01T12:00:00Z 827")],
+             ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
-            "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name LIKE 'county\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
+            "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name LIKE 'county\\_%\\_old' OR table_name LIKE 'open\\_payments\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
         Assert.Empty(Directory.GetFiles(Path.Combine(_folder, "datasets"))); // downloads are deleted after loading
     }
 
@@ -128,6 +128,23 @@ public sealed class DatasetIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Open_payments_are_summarized_per_npi()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+
+        // The NPI-less teaching hospital payment is left out; amounts sum exactly to the cent.
+        Assert.Equal([("1000000012", (short)2025, 2563.35, 5, 4), ("1000000046", (short)2025, 35.5, 1, 1)],
+            await db.QueryAsync<(string, short, double, int, int)>("SELECT npi, program_year, total_amount, records, payers FROM open_payments_summary ORDER BY npi"));
+        Assert.Equal([("Consulting Fee", 2500.0, 1), ("Food and Beverage", 63.35, 4)], await db.QueryAsync<(string, double, int)>(
+            "SELECT nature, amount, records FROM open_payments_nature WHERE npi = '1000000012' ORDER BY nature"));
+        Assert.Equal([("Medtronic USA Inc.", 2500.0), ("Pfizer, Inc.", 40.0), ("AbbVie Inc.", 12.25)], await db.QueryAsync<(string, double)>(
+            "SELECT payer, amount FROM open_payments_payer WHERE npi = '1000000012' ORDER BY payer_rank"));
+        Assert.Equal(0L, await db.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'open_payments_raw_staging'"));
+    }
+
+    [Fact]
     public async Task Unchanged_datasets_are_not_downloaded_again()
     {
         await using var db = await TestDatabase.CreateAsync();
@@ -146,7 +163,7 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(
             ["HEAD https://oig.test/UPDATED.csv", "https://cms.test/data.json", "https://pdc.test/items/mj5m-pzi6", "https://pdc.test/items/27ea-46a8",
              "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py"],
-            server.Requests);
+            server.Requests); // HRSA, Census and Open Payments are checked weekly
 
         // The datasets command forces a reload of one source.
         server.Requests.Clear();
@@ -182,6 +199,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 LeieUrl = "https://oig.test/UPDATED.csv",
                 HrsaHpsaUrlTemplate = "https://hrsa.test/BCD_HPSA_FCT_DET_{discipline}.csv",
                 CensusPopulationBaseUrl = "https://census.test/popest/",
+                OpenPaymentsCatalogUrl = "https://op.test/items",
             },
             db.Database, new HttpClient(server), Logger.None, clock: clock);
 
@@ -237,6 +255,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://hrsa.test/BCD_HPSA_FCT_DET_DH.csv" => "datasets/hpsa_DH_sample.csv",
                 "https://hrsa.test/BCD_HPSA_FCT_DET_MH.csv" => "datasets/hpsa_MH_sample.csv",
                 "https://census.test/popest/" => "datasets/census_popest_listing.html",
+                "https://op.test/items" => "datasets/open_payments_catalog_sample.json",
+                "https://op.test/PGYR2025_P06302026/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv" => "datasets/open_payments_sample.csv",
                 "https://census.test/popest/2020-2025/counties/totals/co-est2025-alldata.csv" => "datasets/census_population_sample.csv",
                 _ => null,
             };

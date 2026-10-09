@@ -1,0 +1,58 @@
+[
+ {
+  "title": "2024 General Payment Data",
+  "modified": "2026-06-30",
+  "distribution": [
+   {
+    "identifier": "x",
+    "data": {
+     "title": "2024 General Payment Data",
+     "mediaType": "text/csv",
+     "downloadURL": "https://op.test/PGYR2024_P06302026/OP_DTL_GNRL_PGYR2024_P06302026_06032026.csv"
+    }
+   }
+  ]
+ },
+ {
+  "title": "2025 General Payment Data",
+  "modified": "2026-06-30",
+  "distribution": [
+   {
+    "identifier": "x",
+    "data": {
+     "title": "2025 General Payment Data",
+     "mediaType": "text/csv",
+     "downloadURL": "https://op.test/PGYR2025_P06302026/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"
+    }
+   }
+  ]
+ },
+ {
+  "title": "2025 Research Payment Data",
+  "modified": "2026-06-30",
+  "distribution": [
+   {
+    "identifier": "x",
+    "data": {
+     "title": "2025 Research Payment Data",
+     "mediaType": "text/csv",
+     "downloadURL": "https://op.test/PGYR2025_P06302026/OP_DTL_RSRCH_PGYR2025_P06302026_06032026.csv"
+    }
+   }
+  ]
+ },
+ {
+  "title": "Covered Recipient Profile Supplement",
+  "modified": "2026-06-30",
+  "distribution": [
+   {
+    "identifier": "x",
+    "data": {
+     "title": "Covered Recipient Profile Supplement",
+     "mediaType": "text/csv",
+     "downloadURL": "https://op.test/PHPRFL/OP_CVRD_RCPNT_PRFL_SPLMTL.csv"
+    }
+   }
+  ]
+ }
+]

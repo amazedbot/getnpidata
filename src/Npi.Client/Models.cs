@@ -176,6 +176,48 @@ public sealed class ProviderDetail
 
     /// <summary>Medicare Part D prescribing in the latest data year; null when none.</summary>
     public MedicarePrescribing? MedicarePrescribing { get; set; }
+
+    /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
+    public IndustryPayments? IndustryPayments { get; set; }
+}
+
+/// <summary>Open Payments (Sunshine Act) general payments from drug and device makers to one NPI.</summary>
+public sealed class IndustryPayments
+{
+    /// <summary>Program year.</summary>
+    public int Year { get; set; }
+
+    public double TotalAmount { get; set; }
+
+    public int Records { get; set; }
+
+    public int Payers { get; set; }
+
+    /// <summary>Amounts by nature of payment, largest first.</summary>
+    public IReadOnlyList<IndustryPaymentKind> ByNature { get; set; } = [];
+
+    /// <summary>The three largest payers.</summary>
+    public IReadOnlyList<IndustryPayer> TopPayers { get; set; } = [];
+}
+
+/// <summary>Payments of one kind (e.g. "Food and Beverage", "Consulting Fee").</summary>
+public sealed class IndustryPaymentKind
+{
+    public string Nature { get; set; } = "";
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>A company that paid the recipient.</summary>
+public sealed class IndustryPayer
+{
+    public string Name { get; set; } = "";
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
 }
 
 /// <summary>Medicare Part B activity in one data year. Counts under 11 are suppressed by CMS (null).</summary>

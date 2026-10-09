@@ -52,6 +52,9 @@ public sealed class LoaderOptions
     /// <summary>HRSA HPSA detail files; {discipline} is PC, DH or MH.</summary>
     public string HrsaHpsaUrlTemplate { get; set; } = "https://data.hrsa.gov/DataDownload/DD_Files/BCD_HPSA_FCT_DET_{discipline}.csv";
 
+    /// <summary>Open Payments metastore (DKAN) listing every dataset; "&lt;year&gt; General Payment Data" entries are used.</summary>
+    public string OpenPaymentsCatalogUrl { get; set; } = "https://openpaymentsdata.cms.gov/api/1/metastore/schemas/dataset/items?show-reference-ids=false";
+
     /// <summary>Census population estimates datasets folder (vintage folders "2020-YYYY/" below it).</summary>
     public string CensusPopulationBaseUrl { get; set; } = "https://www2.census.gov/programs-surveys/popest/datasets/";
 

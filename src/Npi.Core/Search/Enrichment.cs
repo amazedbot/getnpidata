@@ -18,6 +18,16 @@ public sealed record MedicareService(string Hcpcs, string? Description, bool IsD
 public sealed record MedicareServices(int Year, string? ProviderType, bool? Participating, int? DistinctServices, int? Beneficiaries, double? Services,
     double? AllowedAmount, double? PaymentAmount, double? AverageBeneficiaryAge, double? AverageRiskScore, IReadOnlyList<MedicareService> TopServices);
 
+/// <summary>Industry payments of one kind (nature of payment) in the Open Payments program year.</summary>
+public sealed record IndustryPaymentKind(string Nature, double Amount, int Records);
+
+/// <summary>A company among the recipient's top payers in the Open Payments program year.</summary>
+public sealed record IndustryPayer(string Name, double Amount, int Records);
+
+/// <summary>Open Payments (Sunshine Act) general payments from drug and device makers to this NPI (Stage 5.5 item 6).</summary>
+public sealed record IndustryPayments(int Year, double TotalAmount, int Records, int Payers, IReadOnlyList<IndustryPaymentKind> ByNature,
+    IReadOnlyList<IndustryPayer> TopPayers);
+
 /// <summary>Medicare Part D prescribing in one data year (Stage 5.5 item 5b).</summary>
 public sealed record MedicarePrescribing(int Year, string? PrescriberType, int? Claims, double? DrugCost, int? Beneficiaries, int? BrandClaims,
     int? GenericClaims, int? OpioidClaims, double? OpioidRate, int? AntibioticClaims);

@@ -177,6 +177,32 @@
     <p class="muted">From CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers data (traditional Medicare only; counts under 11 are suppressed by CMS).</p>
 }
 
+@if (p.IndustryPayments is { } pay)
+{
+    <h2>Industry payments (@pay.Year)</h2>
+    <p>
+        <strong>@Money(pay.TotalAmount)</strong> in @pay.Records.ToString("N0", CultureInfo.InvariantCulture) general payment@(pay.Records == 1 ? "" : "s")
+        from @pay.Payers company@(pay.Payers == 1 ? "" : "ies") (drug and device makers, as reported to CMS Open Payments).
+    </p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Industry payments by kind</caption>
+            <thead><tr><th scope="col">Kind of payment</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+            <tbody>
+                @foreach (var k in pay.ByNature)
+                {
+                    <tr><td>@k.Nature</td><td>@Money(k.Amount)</td><td>@k.Records.ToString("N0", CultureInfo.InvariantCulture)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (pay.TopPayers.Count > 0)
+    {
+        <p>Top payers: @string.Join("; ", pay.TopPayers.Select(t => $"{t.Name} ({Money(t.Amount)})"))</p>
+    }
+    <p class="muted">General payments only (research payments and ownership interests are not included). Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
+}
+
 <h2>Specialties</h2>
 <div class="table-wrap">
     <table>

@@ -44,6 +44,17 @@ public class DatasetCatalogTests
         Assert.Equal("https://pdc.test/resources/abc_123/DAC_NationalDownloadableFile.csv", release.Url.AbsoluteUri);
     }
 
+    [Fact]
+    public void Open_payments_uses_the_newest_general_payment_year()
+    {
+        using var stream = File.OpenRead(Fixtures.Path("datasets/open_payments_catalog_sample.json"));
+        var release = OpenPaymentsSource.ParseCatalog(stream);
+
+        Assert.Equal("2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv", release.Version);
+        Assert.Equal(2025, release.DataYear);
+        Assert.EndsWith("/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv", release.Url.AbsoluteUri, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(CsvValue.Npi, "IF(TRIM(@c0) REGEXP '^[0-9]{10}$' AND TRIM(@c0) <> '0000000000', TRIM(@c0), NULL)")]
     [InlineData(CsvValue.DateYmd, "STR_TO_DATE(NULLIF(NULLIF(TRIM(@c0), ''), '00000000'), '%Y%m%d')")]

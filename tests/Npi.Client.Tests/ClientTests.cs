@@ -93,6 +93,9 @@ public class ClientTests
     [InlineData(typeof(Server.MedicarePrescribing), typeof(MedicarePrescribing))]
     [InlineData(typeof(Server.CountyFacts), typeof(CountyFacts))]
     [InlineData(typeof(Server.CountyShortage), typeof(CountyShortage))]
+    [InlineData(typeof(Server.IndustryPayments), typeof(IndustryPayments))]
+    [InlineData(typeof(Server.IndustryPaymentKind), typeof(IndustryPaymentKind))]
+    [InlineData(typeof(Server.IndustryPayer), typeof(IndustryPayer))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
         static IEnumerable<string> Names(Type t) =>
