@@ -30,6 +30,16 @@ Rules:
 | `011_provider.sql` … `014_provider_other_name.sql` | Search projection: provider, provider_taxonomy, provider_location, provider_other_name. |
 | `015_data_version.sql` | What the projection was built from ("Data as of"). |
 | `016_provider_search.sql` | (taxonomy_code, state, city, zip5, npi) accelerator for specialty + location searches. |
+| `017_endpoints.sql` | Raw NPPES `endpoint_pfile` (Stage 5.5 item 1). |
+| `018_provider_profile.sql` … `020_provider_endpoint.sql` | Projection: registration details (mailing address, authorized official, parent org), other identifiers, endpoints. |
+| `021_reference_data_widen.sql` | `reference_data.version` 200, `source_url` 1000 (dataset file names and URLs are long). |
+| `022_oig_exclusion.sql` … `024_medicare_order_referring.sql` | Compliance: OIG LEIE, Medicare opt-out, order & referring (item 2). |
+| `025_cc_dac_raw.sql` … `028_cc_facility_affiliation.sql` | Care Compare: raw DAC template, clinicians, group practices, facility affiliations (item 3). |
+| `029_cms_hospital.sql` … `031_cms_facility_npi.sql` | Facilities: hospitals, nursing homes, CCN ↔ NPI from the enrollments (item 4). |
+| `032_provider_location_covering.sql` | Replaces `provider_location (npi)` with a covering (npi, state, zip5, city) index. |
+| `033_medicare_utilization.sql` … `036_medicare_part_d.sql` | Medicare Part B totals, raw by-service template, top 5 services, Part D (item 5). |
+| `037_hrsa_shortage_raw.sql` … `040_county_population_raw.sql` | Area insights: HPSA raw template, county shortage areas, county population + raw template (item 7). |
+| `041_open_payments_raw.sql` … `044_open_payments_payer.sql` | Open Payments: raw template, per-NPI summary, by nature of payment, top 3 payers (item 6). |
 
 ## 001_baseline.sql
 

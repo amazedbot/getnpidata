@@ -7,6 +7,11 @@ Ask questions like *"all chiropractors in Suffolk County, NY"* or *"dentists wit
 through the results, open any provider, or download every match as a CSV. The same searches are available as a
 public REST API and a typed .NET client.
 
+Each provider is enriched with other public data keyed by NPI: HHS-OIG exclusions, Medicare opt-out and
+order/refer eligibility, Medicare Care Compare (accepts assignment, telehealth, years in practice, group practices,
+hospital affiliations), Medicare services and prescribing, industry payments (Open Payments) and the health
+facilities an organization runs. Counties come with population and shortage-area facts.
+
 > **Status:** the website, API and data loader are complete and running on the loader PC. Public hosting on Azure
 > (App Service + Azure Database for MySQL) is the next step.
 
@@ -32,9 +37,13 @@ public REST API and a typed .NET client.
 | Capability | Where |
 |---|---|
 | Search by specialty, location (state, county, city, ZIP, radius), name, NPI, credential, gender and entity type | Website `/`, API `/api/v1/providers` |
+| Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
+| See compliance and Medicare badges on every result | Website grid, CSV and API flags |
 | Paged, sortable results with the total match count | Website grid, API JSON |
 | Download **every** match as CSV, streamed, with no row cap | "Download CSV" button, `/export.csv`, `/api/v1/providers.csv` |
-| See a provider's full record: all specialties with license numbers, all practice locations, other names | `/provider/{npi}`, `/api/v1/providers/{npi}` |
+| See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, Care Compare, facilities, Medicare services and prescribing, industry payments | `/provider/{npi}`, `/api/v1/providers/{npi}` |
+| Look up thousands of NPIs at once (paste or upload a file) and download the details, in your order | `/lookup`, `POST /api/v1/providers/lookup[.csv]` |
+| County insights: population and HRSA Health Professional Shortage Areas | Search page (when a county is chosen), `/api/v1/counties/{fips}` |
 | Look up the lists behind the filters: classifications, specializations, states, counties (FIPS) | `/api/v1/taxonomy/…`, `/api/v1/states/…` |
 | Check how fresh the data is and which source files it came from | Site footer, `/api/v1/meta` |
 | Interactive API docs (try every call in the browser) | `/swagger` (OpenAPI document at `/openapi/v1.json`) |
@@ -63,6 +72,14 @@ At least one filter is required. Filters combine with AND.
 | `entityType` | `1` = individual, `2` = organization | `2` |
 | `gender` | `F` or `M` (individuals) | `F` |
 | `credential` | Credential; punctuation and case are ignored (`M.D.` = `MD`) | `DC` |
+| `excluded` | `true`: only providers on the HHS-OIG exclusion list (matched by NPI); `false`: leave them out | `false` |
+| `optedOut` | `true`: only practitioners with an active Medicare opt-out; `false`: leave them out | `false` |
+| `orderRefer` | `true`: only providers eligible to order or refer in Medicare | `true` |
+| `acceptsAssignment` | `true`: only clinicians who accept Medicare assignment (Care Compare) | `true` |
+| `telehealth` | `true`: only clinicians who offer telehealth (Care Compare) | `true` |
+| `minYears` | At least this many years since graduation (Care Compare), 1–70 | `20` |
+| `medicareActive` | `true`: only providers who billed Medicare Part B or Part D in the latest data year | `true` |
+| `shortage` | `primaryCare`, `dental` or `mentalHealth`: a practice location in a county with that kind of shortage area | `dental` |
 | `sort` | `name` (default), `npi`, `credential`, `city`, `state`, `zip`, `lastUpdate`, `enumeration`; prefix `-` for descending | `-lastUpdate` |
 | `page`, `pageSize` | Page from 1; 1–200 results per page (default 50) | `2`, `100` |
 
@@ -76,12 +93,16 @@ addresses are not searched. Each result row shows the location that matched.
   for the same search. The page also works without JavaScript and on phones.
 - **`/provider/{npi}`**: one provider's full record, with a link to the official
   [NPPES NPI Registry](https://npiregistry.cms.hhs.gov/) entry.
+- **`/lookup`**: bulk NPI lookup. Paste NPIs or upload a CSV or text file (up to 50,000 NPIs, 10 MB); every
+  10-digit number counts. The CSV has one row per NPI, in your order, with a Lookup Status (Found, Not found or
+  deactivated, Invalid NPI — a wrong check digit, usually a typo).
 - **`/export.csv?…`**: the CSV for any search (UTF-8 with BOM, so Excel shows accents correctly). It's named
   `npi_search_<yyyyMMdd>.csv`.
 - **Footer**: the date the data is current through and the number of active providers.
 
 Grid and CSV columns: NPI, Entity Type, Name, Credential, Primary Specialty, Address 1, Address 2, City, State, ZIP,
-County, Phone, Gender, Enumeration Date, Last Update Date.
+County, Phone, Gender, Enumeration Date, Last Update Date, then the flags OIG Excluded, Medicare Opt-Out, Medicare
+Order/Refer, Accepts Medicare Assignment, Telehealth and Billed Medicare.
 
 ## REST API
 
@@ -92,11 +113,14 @@ problem documents. CORS is open for GET, so browser apps on any site can call it
 |---|---|
 | `GET /api/v1/providers?…filters…` | `{ items, page, pageSize, totalCount, dataAsOf }` |
 | `GET /api/v1/providers.csv?…filters…` | Every match as CSV (paging ignored), streamed |
-| `GET /api/v1/providers/{npi}` | Full record: taxonomies with licenses, locations, other names. `404` if unknown or deactivated |
+| `GET /api/v1/providers/{npi}` | Full record, including the enrichment sections. `404` if unknown or deactivated |
+| `POST /api/v1/providers/lookup` | Body `{ "npis": [...] }`, up to 1,000. `{ items: [{ npi, status, provider }] }`, one per requested NPI in order; `status` is `found`, `notFound` or `invalid` |
+| `POST /api/v1/providers/lookup.csv` | The same, as CSV |
 | `GET /api/v1/taxonomy/classifications` | All NUCC classifications |
 | `GET /api/v1/taxonomy/classifications/{classification}/specializations` | Specializations of one classification |
 | `GET /api/v1/states` | States and territories (`code`, `name`) |
 | `GET /api/v1/states/{state}/counties` | Counties with their FIPS codes (`fips`, `name`) |
+| `GET /api/v1/counties/{fips}` | County population and the shortage areas in force |
 | `GET /api/v1/meta` | Data as-of date, source files, reference-data versions, provider count |
 
 ```http
@@ -151,6 +175,7 @@ var page = await npi.SearchProvidersAsync(new ProviderSearch { Classification = 
 Console.WriteLine(page.TotalCount);                       // 961
 
 var provider = await npi.GetProviderAsync("1003000126");  // null if unknown or deactivated
+var rows = await npi.LookupProvidersAsync(myNpis);         // any number; sent 1,000 per request
 ```
 
 It has one method per endpoint. API errors become `NpiApiException`, which carries the status, the message, errors
@@ -165,10 +190,19 @@ by parameter and `RetryAfter`. Build the NuGet package with `dotnet pack src/Npi
 | [NUCC Health Care Provider Taxonomy](https://www.nucc.org/) | Specialty names (classification / specialization) | When NUCC publishes a new version (twice a year) |
 | [HUD USPS ZIP–County crosswalk](https://www.huduser.gov/portal/datasets/usps_crosswalk.html) | ZIP → county | Quarterly |
 | [Census Gazetteer files](https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html) | County names, ZIP centroids for radius search | Yearly |
+| [HHS-OIG LEIE](https://oig.hhs.gov/exclusions/) | Exclusions from federal health programs | Monthly |
+| [CMS Opt Out Affidavits, Order and Referring](https://data.cms.gov/) | Medicare opt-out, order/refer eligibility | Monthly / weekly |
+| [Medicare Care Compare (Provider Data Catalog)](https://data.cms.gov/provider-data/) | Clinicians, group practices, hospital affiliations, hospitals and nursing homes | Monthly |
+| CMS Hospital and SNF Enrollments | Linking facilities (CCN) to NPIs | Quarterly |
+| [Medicare Physician & Other Practitioners, Part D Prescribers](https://data.cms.gov/) | Medicare services (totals + top 5), prescribing | Yearly |
+| [CMS Open Payments](https://openpaymentsdata.cms.gov/) | Industry payments: totals, by kind, top 3 payers (newest program year) | Yearly |
+| [HRSA HPSA](https://data.hrsa.gov/) | Health Professional Shortage Areas by county | Weekly |
+| [Census population estimates](https://www.census.gov/programs-surveys/popest.html) | County population | Yearly |
 
 As of October 2026 the data holds **9,482,099 active providers**, current through 2026-10-04.
 
-All of this is public information published by CMS, HUD, the Census Bureau and NUCC. NPPES data is self-reported by
+All of this is public information published by CMS, HHS-OIG, HRSA, HUD, the Census Bureau and NUCC. Datasets are
+matched by NPI only (never by name); an OIG exclusion without an NPI is not shown. NPPES data is self-reported by
 providers. Verify anything important in the official [NPPES NPI Registry](https://npiregistry.cms.hhs.gov/).
 
 ## Limits
@@ -245,6 +279,7 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `discover` | List what `run` would load |
 | `load-file <zip>` | Load one NPPES zip manually |
 | `reference` | Force-refresh NUCC, HUD and Census reference data |
+| `datasets [name]` | Force-reload the enrichment datasets (OIG, CMS, HRSA, Census, Open Payments), or just one. `run` reloads each when its publisher releases a new version |
 | `project` | Rebuild the search tables now |
 | `publish` | Sync the search tables to Azure *(planned)* |
 
@@ -265,7 +300,7 @@ because the development HTTPS certificate is trusted only for localhost.
 | Path | What |
 |---|---|
 | `src/Npi.Core` | Search filters, validation, SQL builder, search, detail and lookup services, CSV writer |
-| `src/Npi.Loader` | Console app: discover, download, load, reference data, search tables |
+| `src/Npi.Loader` | Console app: discover, download, load, reference data, enrichment datasets, search tables |
 | `src/Npi.Web` | ASP.NET Core site (Razor Pages) and the `/api/v1` REST API, in one app |
 | `src/Npi.Client` | Typed .NET client for the API (netstandard2.0) |
 | `tests/` | xUnit v3 tests for each project, plus hand-made fixtures with tricky values (commas, quotes, braces, backslashes, Unicode) |

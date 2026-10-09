@@ -143,3 +143,7 @@ footer {
     color: var(--muted);
     font-size: 0.875rem;
 }
+
+.field.wide { flex: 1 1 100%; }
+textarea { width: 100%; font: inherit; padding: 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+header nav { margin-left: auto; }

@@ -96,6 +96,8 @@ public class ClientTests
     [InlineData(typeof(Server.IndustryPayments), typeof(IndustryPayments))]
     [InlineData(typeof(Server.IndustryPaymentKind), typeof(IndustryPaymentKind))]
     [InlineData(typeof(Server.IndustryPayer), typeof(IndustryPayer))]
+    [InlineData(typeof(Server.LookupRow), typeof(LookupRow))]
+    [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
         static IEnumerable<string> Names(Type t) =>

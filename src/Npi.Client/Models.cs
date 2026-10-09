@@ -551,6 +551,35 @@ public sealed class CountyInfo
     public string Name { get; set; } = "";
 }
 
+/// <summary>What a bulk lookup found for one NPI.</summary>
+public enum LookupStatus
+{
+    /// <summary>An active provider; <see cref="LookupRow.Provider"/> is set.</summary>
+    Found,
+
+    /// <summary>Unknown, or deactivated (deactivated NPIs are never shown).</summary>
+    NotFound,
+
+    /// <summary>Not 10 digits, or the check digit is wrong.</summary>
+    Invalid,
+}
+
+/// <summary>One requested NPI in a bulk lookup.</summary>
+public sealed class LookupRow
+{
+    public string Npi { get; set; } = "";
+
+    public LookupStatus Status { get; set; }
+
+    public ProviderSummary? Provider { get; set; }
+}
+
+/// <summary>The API's bulk lookup response.</summary>
+public sealed class LookupResponse
+{
+    public IReadOnlyList<LookupRow> Items { get; set; } = [];
+}
+
 /// <summary>Population and shortage-area facts about a county.</summary>
 public sealed class CountyFacts
 {

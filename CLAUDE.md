@@ -21,7 +21,7 @@ or private hosts.
 | 3 Search projection + `Npi.Core` search service | Done |
 | 4 Website | Done |
 | 5 REST API + `Npi.Client` | Done |
-| 5.5 More data and features (owner's addition, before Azure) | **In progress** on branch `stage-5.5-features`, one PR (§7 Stage 5.5) |
+| 5.5 More data and features (owner's addition, before Azure) | **In progress.** Items 1–8 merged (first PR); items 9–11 next, one at a time (§7 Stage 5.5) |
 | 6 Publish to Azure, deploy, Task Scheduler | **Not started. Wait for the owner to say "start Stage 6"** (§11 item 2) |
 
 On the loader PC, `workplace` holds the full data (current through 2026-10-04, 9,482,099 active providers). The site
@@ -71,7 +71,7 @@ CMS NPPES files ──► Npi.Loader (Windows PC, scheduled) ──► local MyS
 | Load cycle | Full monthly replace + weekly incremental updates. The site must stay up during reloads |
 | Schema changes | Allowed: widen columns for V2, utf8mb4, new tables and indexes |
 | Logging | Log file only (no email/alerts). Non-zero exit code on failure |
-| Stage 5.5 | Added by the owner (2026-10-08) between Stages 5 and 6: **all** the datasets and features in §7 Stage 5.5, delivered as **one PR**. Named 5.5 so that "Stage 6" references stay valid |
+| Stage 5.5 | Added by the owner (2026-10-08) between Stages 5 and 6: **all** the datasets and features in §7 Stage 5.5. Named 5.5 so that "Stage 6" references stay valid. Planned as one PR; the owner then had items 1–8 merged first. Work **one item at a time** and wait for the owner's "next" |
 | Git | Claude Code may create branches, commit, open PRs and merge when CI is green (§10) |
 
 ---
@@ -146,7 +146,7 @@ getnpidata/
     Npi.Web.Tests/     query-string binding, API behaviour (WebApplicationFactory, no database)
     Npi.Client.Tests/  the client against the in-memory API + client/server contract checks
     fixtures/          real V2 headers, NPI_Files.html, reference-data excerpts (byte-exact; see .gitattributes)
-  db/migrations/           numbered .sql files (001–016) + README, embedded in and applied by `Npi.Loader migrate`.
+  db/migrations/           numbered .sql files (001–044) + README, embedded in and applied by `Npi.Loader migrate`.
                            Applied migrations are checksummed: never edit one, add a new one instead.
   deploy/
     azure.md               Azure setup + deploy notes
@@ -395,6 +395,14 @@ Specialization), Address 1, Address 2, City, State, ZIP, County, Phone, Gender, 
 
 **Build order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11. Record actual sizes, row counts and timings in §12 as each item lands.
 
+**As built (items 1–8, migrations 017–044):**
+- **Loader:** `Npi.Loader datasets [name]` force-reloads the datasets; `run` refreshes them after the reference data. Each is a `DatasetSource` (`src/Npi.Loader/Datasets`) with a name, a check interval (default 20 h; HRSA, Census and Open Payments weekly) and a version from its catalog; versions are kept in `reference_data`. `CsvTableLoader` streams a CSV into a staging table with typed column conversions in SQL; some CMS files are latin1. `TableSwap.ReplaceAsync` does the staging + RENAME + ≥ 95% check. Raw templates (`*_raw`) are empty `LIKE` sources for staging.
+- **Item 1:** `endpoints` (raw, from `endpoint_pfile`), projections `provider_profile`, `provider_identifier` (50 other-identifier slots unpivoted), `provider_endpoint`; all covered by `row_hash`. Monthly + weekly loads include endpoints from now on. **Backfill pending:** `workplace` needs the September monthly and the weeklies reloaded (`load-file`) and one `project` (~45 min).
+- **Items 2–7:** per-NPI tables `oig_exclusion`, `medicare_opt_out`, `medicare_order_referring`, `cc_clinician`, `cc_group`, `cc_facility_affiliation`, `cms_hospital`, `cms_nursing_home`, `cms_facility_npi`, `medicare_utilization`, `medicare_top_service` (top 5 per NPI by ROW_NUMBER), `medicare_part_d`, `open_payments_summary`/`_nature`/`_payer` (top 3), and per county `county_shortage`, `county_population`.
+- **Search:** `ProviderFlags` (Npi.Core `Enrichment.cs`) drive the badges, CSV flag columns and filters `excluded`, `optedOut`, `orderRefer`, `acceptsAssignment`, `telehealth`, `minYears`, `medicareActive`, `shortage` (a location filter). `excluded/optedOut=true` become the driver; Care Compare conditions join into the location driver; the count skips the provider join when only NPI-level flags remain. Migration 032 replaced `provider_location (npi)` with a covering (npi, state, zip5, city) index.
+- **Item 8:** `SearchService.LookupAsync` (≤ `MaxLookupBatch` 1,000; dedupes, keeps order, Found/NotFound/Invalid with the Luhn check digit, `InputFormats.HasValidCheckDigit`), `/lookup` page (≤ 50,000 NPIs, 10 MB, streamed in batches), `POST /api/v1/providers/lookup[.csv]`, `NpiClient.LookupProvidersAsync`. Enums are camelCase strings in the API JSON.
+- **Known slower combinations** (under the 30 s timeout): a state + Care Compare flag, e.g. NY + telehealth + accepts assignment 5.1 s, CA + accepts + minYears 6.8 s, telehealth alone 5.2 s.
+
 ### Stage 6 — Publish to Azure & deploy (not started; wait for the owner)
 1. **Publisher** (`Npi.Loader publish`): connect to `RemoteMySql` and apply the migrations remotely.
    - **Diff sync:** compare local `row_hash` with a local `publish_state(npi, hash)` table. Batch-upsert changed rows with multi-row `INSERT … ON DUPLICATE KEY UPDATE` (~1000 rows per batch, in transactions), and delete removed NPIs.
@@ -496,3 +504,4 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 | 2026-10-08 | — | **Owner's Azure answers** recorded (§2, §11 item 2). |
 | 2026-10-08 | — | **Repository cleanup.** Removed `db/reference/` (the 2021 schema dump, superseded by `001_baseline.sql`; still in history); replaced the Visual Studio template `.gitignore`/`.gitattributes` with project-specific ones; rewrote README.md as the user-facing description of the service; reorganized this file (section numbers kept, because code and migrations cite them) and removed private details. |
 | 2026-10-08 | — | **History rewrite** (owner's request): `git filter-branch` over all 33 commits; only the blobs containing private strings changed (all other files byte-identical), and all personal author/committer identities were mapped to the owner's GitHub noreply address. All 8 branches force-pushed; local repo re-pointed and pruned. The repo now commits with the noreply address. See §11 item 7. |
+| 2026-10-08 | 5.5 | **Items 1–8** (migrations 017–044), merged as the first Stage 5.5 PR. **Live loads into `workplace`:** LEIE 84,001 rows (5 s); opt-out 57,780; order/refer 2,058,209 (22 s); Care Compare 3,388,628 rows → 1,627,468 clinicians (160 s), affiliations 2,254,034, hospitals 5,419, nursing homes 14,690, enrollments 23,571; Medicare by provider 1,296,739, by service 9,781,673 → 4,685,762 top rows (290 s), Part D 1,416,883; HPSA 8,402 county/discipline rows; population 3,144 counties (PR not covered); Open Payments 2025: 9.2 GB, 16,131,856 records → 1,020,608 NPIs, $2.89 B, 1,277,309 by-kind rows, 2,166,183 payer rows (865 s). **Timings:** excluded=true 7,756 matches 0.11 s; Chiropractor + Suffolk 0.26 s (961; 199 accept assignment); a 27.5 s state + Care Compare search → 4–7 s after the driver join and index 032; bulk lookup of 1,000 NPIs 0.43 s. Tests: Core 81, Client 40, Web 28, Loader 130 (with MySQL). Item 1 data backfill still pending. |

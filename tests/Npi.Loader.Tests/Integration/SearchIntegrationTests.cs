@@ -344,6 +344,28 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Null((await details.GetAsync(A, _ct))!.IndustryPayments);
     }
 
+    [Fact]
+    public async Task Bulk_lookup_keeps_request_order_and_reports_each_npi()
+    {
+        await using var db = await SeededAsync();
+        var search = Search(db);
+
+        var rows = await search.LookupAsync([E, C, "1234567890", A, E, " "], _ct);
+
+        Assert.Equal([(E, LookupStatus.Found), (C, LookupStatus.NotFound), ("1234567890", LookupStatus.Invalid), (A, LookupStatus.Found)],
+            rows.Select(r => (r.Npi, r.Status)));
+        Assert.Equal("NUÑEZ, ELENA", rows[0].Provider!.Name);
+        Assert.Equal("AMITYVILLE", rows[3].Provider!.City); // the primary location: a lookup has no location filter
+
+        using var csv = new MemoryStream();
+        await ProviderCsv.WriteLookupAsync(rows.ToAsyncEnumerable(), csv, _ct);
+        var lines = System.Text.Encoding.UTF8.GetString(csv.ToArray()).TrimStart('\uFEFF').Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.StartsWith("Requested NPI,Lookup Status,NPI,Entity Type,Name", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith($"{E},Found,{E},Individual,", lines[1], StringComparison.Ordinal);
+        Assert.Equal($"{C},Not found or deactivated", lines[2]);
+        Assert.Equal("1234567890,Invalid NPI", lines[3]);
+    }
+
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
 
     private async Task<string[]> Npis(SearchService search, SearchFilter filter) =>

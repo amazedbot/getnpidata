@@ -60,6 +60,27 @@ public class ApiTests
     }
 
     [Fact]
+    public async Task Lookup_validates_the_request_and_reports_invalid_npis()
+    {
+        await using var factory = new ApiFactory();
+        var client = factory.CreateClient();
+
+        var empty = await ProblemAsync(await client.PostAsync("/api/v1/providers/lookup", Json("""{"npis":[]}"""), Ct), HttpStatusCode.BadRequest);
+        Assert.True(empty.GetProperty("errors").TryGetProperty("npis", out _));
+        var many = "{\"npis\":[" + string.Join(",", Enumerable.Range(0, 1001).Select(_ => "\"1234567893\"")) + "]}";
+        await ProblemAsync(await client.PostAsync("/api/v1/providers/lookup", Json(many), Ct), HttpStatusCode.BadRequest);
+
+        // Invalid NPIs are answered without touching the database (the test server has none).
+        var response = await client.PostAsync("/api/v1/providers/lookup", Json("""{"npis":["1234567890","12","1234567890"]}"""), Ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        Assert.Equal([("1234567890", "invalid"), ("12", "invalid")],
+            doc.RootElement.GetProperty("items").EnumerateArray().Select(i => (i.GetProperty("npi").GetString(), i.GetProperty("status").GetString())).ToList());
+    }
+
+    private static StringContent Json(string body) => new(body, System.Text.Encoding.UTF8, "application/json");
+
+    [Fact]
     public async Task Malformed_npi_is_not_found()
     {
         await using var factory = new ApiFactory();
@@ -138,7 +159,7 @@ public class ApiTests
 
         string[] expected =
         [
-            "/api/v1/providers", "/api/v1/providers.csv", "/api/v1/providers/{npi}", "/api/v1/taxonomy/classifications",
+            "/api/v1/providers", "/api/v1/providers.csv", "/api/v1/providers/lookup", "/api/v1/providers/lookup.csv", "/api/v1/providers/{npi}", "/api/v1/taxonomy/classifications",
             "/api/v1/taxonomy/classifications/{classification}/specializations", "/api/v1/states", "/api/v1/states/{state}/counties",
             "/api/v1/counties/{fips}", "/api/v1/meta",
         ];

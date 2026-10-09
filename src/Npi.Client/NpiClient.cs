@@ -17,7 +17,10 @@ public sealed class NpiClient : IDisposable
     /// <summary>Header carrying the API key, when the server requires one.</summary>
     public const string ApiKeyHeader = "X-Api-Key";
 
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+    };
 
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
@@ -73,6 +76,33 @@ public sealed class NpiClient : IDisposable
         await EnsureSuccessAsync(response).ConfigureAwait(false);
         using var body = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
         await body.CopyToAsync(destination, 81920, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Looks up many NPIs at once (up to 1,000 per call; larger lists are sent in batches). One row per requested NPI, in order.</summary>
+    public async Task<IReadOnlyList<LookupRow>> LookupProvidersAsync(IEnumerable<string> npis, CancellationToken cancellationToken = default)
+    {
+        if (npis is null)
+        {
+            throw new ArgumentNullException(nameof(npis));
+        }
+
+        var all = new List<LookupRow>();
+        foreach (var batch in npis.Select((npi, i) => (npi, i)).GroupBy(x => x.i / 1000, x => x.npi))
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_baseAddress, "api/v1/providers/lookup"))
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { npis = batch.ToList() }, Json), System.Text.Encoding.UTF8, "application/json"),
+            };
+            if (_apiKey is not null)
+            {
+                request.Headers.Add(ApiKeyHeader, _apiKey);
+            }
+
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            all.AddRange((await ReadJsonAsync<LookupResponse>(response, cancellationToken).ConfigureAwait(false)).Items);
+        }
+
+        return all;
     }
 
     /// <summary>Everything published for one NPI, or null when it is unknown or deactivated.</summary>

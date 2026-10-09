@@ -1,0 +1,40 @@
+@page "/lookup"
+@model LookupModel
+@{
+    ViewData["Title"] = "Bulk NPI lookup";
+}
+
+<h1>Bulk NPI lookup</h1>
+<p class="lede">Paste NPIs or upload a file and download a CSV with each provider's details, in the order you gave them.</p>
+
+<form method="post" enctype="multipart/form-data" class="search">
+    @if (Model.Error is not null)
+    {
+        <p class="error" role="alert">@Model.Error</p>
+    }
+
+    <fieldset>
+        <legend>NPIs</legend>
+        <div class="field wide">
+            <label for="Npis">Paste NPIs (any separators)</label>
+            <textarea id="Npis" name="Npis" rows="8" placeholder="1003000126, 1234567893 …">@Model.Npis</textarea>
+        </div>
+        <div class="field wide">
+            <label for="Upload">Or upload a CSV or text file (up to @(LookupModel.MaxUploadBytes / 1_000_000) MB)</label>
+            <input id="Upload" name="Upload" type="file" accept=".csv,.txt,text/csv,text/plain" />
+        </div>
+    </fieldset>
+
+    <div class="actions">
+        <button type="submit">Download CSV</button>
+    </div>
+</form>
+
+<section class="muted">
+    <p>
+        Every 10-digit number in the text or file is treated as an NPI (up to @LookupModel.MaxNpis.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)).
+        Each one gets a <strong>Lookup Status</strong>: <em>Found</em>, <em>Not found or deactivated</em>, or <em>Invalid NPI</em> (wrong check digit, usually a typo).
+        Found NPIs get the same columns as the search CSV, including the OIG exclusion, Medicare and Care Compare flags.
+    </p>
+    <p>Programs can use <code>POST /api/v1/providers/lookup</code> (JSON) or <code>/api/v1/providers/lookup.csv</code>; see the <a href="/swagger">API docs</a>.</p>
+</section>
