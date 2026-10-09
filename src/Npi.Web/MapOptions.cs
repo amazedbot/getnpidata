@@ -1,7 +1,7 @@
 namespace Npi.Web;
 
 /// <summary>
-/// Map tiles for the results map (CLAUDE.md §7 Stage 5.5 item 10), configuration section <c>Map</c>. The default is the
+/// Map tiles for the map search page (CLAUDE.md §7 Stage 5.5 item 10), configuration section <c>Map</c>. The default is the
 /// OpenStreetMap standard tile server, which asks for attribution and allows only light use; a busy public site should
 /// switch <see cref="TileUrl"/> to a hosted tile provider (an API key in the URL is a secret: set it in user-secrets /
 /// App Service configuration, never in appsettings.json).
@@ -20,6 +20,3 @@ public sealed class MapOptions
 
     public bool Enabled => !string.IsNullOrWhiteSpace(TileUrl);
 }
-
-/// <summary>POST /lookup/nearest-zip body: the browser's position, rounded by the page to about 1 km.</summary>
-public sealed record NearestZipRequest(double? Lat, double? Lon);

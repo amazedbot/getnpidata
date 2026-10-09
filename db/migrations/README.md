@@ -40,6 +40,10 @@ Rules:
 | `033_medicare_utilization.sql` … `036_medicare_part_d.sql` | Medicare Part B totals, raw by-service template, top 5 services, Part D (item 5). |
 | `037_hrsa_shortage_raw.sql` … `040_county_population_raw.sql` | Area insights: HPSA raw template, county shortage areas, county population + raw template (item 7). |
 | `041_open_payments_raw.sql` … `044_open_payments_payer.sql` | Open Payments: raw template, per-NPI summary, by nature of payment, top 3 payers (item 6). |
+| `045_provider_location_addr_key.sql` | VIRTUAL street-address key on `provider_location` (item 10, map search); metadata-only change. |
+| `046_address_geocode.sql` | Census geocoder results per street address (a cache; rows only added). |
+| `047_provider_map.sql` | One map point per provider and street address, with a SPATIAL index. |
+| `048_provider_map_specialty.sql` | Specialty × 0.1° grid cell → NPI, for specialty map searches. |
 
 ## 001_baseline.sql
 

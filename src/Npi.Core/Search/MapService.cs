@@ -3,88 +3,58 @@ using MySqlConnector;
 
 namespace Npi.Core.Search;
 
-/// <summary>A ZIP code's Census ZCTA centroid.</summary>
-public sealed record ZipPoint(string Zip, double Lat, double Lon);
-
-/// <summary>The ZIP whose centroid is closest to a point, and how far away it is.</summary>
-public sealed record NearestZip(string Zip, double DistanceMiles);
-
-/// <summary>One provider listed under a map pin.</summary>
-public sealed record MapEntry(string Npi, string Name, string? Specialty, string? Address);
-
-/// <summary>A map pin: every provider on the page whose matching location is in this ZIP.</summary>
-public sealed record MapPin(string Zip, double Lat, double Lon, IReadOnlyList<MapEntry> Providers);
-
 /// <summary>
-/// Map of the results page and "near me" (CLAUDE.md §7 Stage 5.5 item 10). Providers are placed at their ZIP's
-/// Census centroid (<c>zip_centroid</c>), never at a geocoded street address.
+/// Where the map search page (CLAUDE.md §7 Stage 5.5 item 10) opens when it comes from a search with location
+/// filters ("View on map"): the area those filters cover, from the ZIP centroids.
 /// </summary>
 public sealed class MapService(string connectionString)
 {
-    /// <summary>"Near me" finds a ZIP only within this distance (the largest search radius).</summary>
-    public const double MaxNearestMiles = 100;
+    private const double MilesPerDegreeLat = 69.0;
 
-    public static bool IsValidCoordinate(double lat, double lon) =>
-        double.IsFinite(lat) && double.IsFinite(lon) && lat is >= -90 and <= 90 && lon is >= -180 and <= 180;
+    private sealed record Box(double? South, double? West, double? North, double? East);
 
-    /// <summary>Centroids of the given ZIPs; ZIPs without a ZCTA are left out.</summary>
-    public async Task<IReadOnlyDictionary<string, ZipPoint>> GetCentroidsAsync(IEnumerable<string> zips, CancellationToken ct)
+    /// <summary>The area for the filter's ZIP (+ radius), county, city or state, or null when it has none of them.</summary>
+    public async Task<MapBounds?> GetStartAreaAsync(SearchFilter filter, CancellationToken ct)
     {
-        var wanted = zips.Where(z => z is { Length: 5 } && z.All(char.IsAsciiDigit)).Distinct(StringComparer.Ordinal).ToList();
-        if (wanted.Count == 0)
+        string sql;
+        object args;
+        double padMiles = 1;
+        if (filter.Zip5 is not null)
         {
-            return new Dictionary<string, ZipPoint>();
+            sql = "SELECT CAST(lat AS DOUBLE) AS South, CAST(lon AS DOUBLE) AS West, CAST(lat AS DOUBLE) AS North, CAST(lon AS DOUBLE) AS East FROM zip_centroid WHERE zip5 = @zip";
+            args = new { zip = filter.Zip5 };
+            padMiles = filter.RadiusMiles ?? 3;
+        }
+        else if (filter.CountyFips is not null)
+        {
+            sql = "SELECT MIN(CAST(c.lat AS DOUBLE)) AS South, MIN(CAST(c.lon AS DOUBLE)) AS West, MAX(CAST(c.lat AS DOUBLE)) AS North, MAX(CAST(c.lon AS DOUBLE)) AS East FROM zip_county z JOIN zip_centroid c ON c.zip5 = z.zip5 WHERE z.county_fips = @fips";
+            args = new { fips = filter.CountyFips };
+        }
+        else if (filter.City is not null && filter.State is not null)
+        {
+            sql = "SELECT MIN(CAST(c.lat AS DOUBLE)) AS South, MIN(CAST(c.lon AS DOUBLE)) AS West, MAX(CAST(c.lat AS DOUBLE)) AS North, MAX(CAST(c.lon AS DOUBLE)) AS East FROM zip_county z JOIN zip_centroid c ON c.zip5 = z.zip5 WHERE z.usps_city = @city AND z.usps_state = @state";
+            args = new { city = filter.City, state = filter.State };
+        }
+        else if (filter.State is not null)
+        {
+            sql = "SELECT MIN(CAST(c.lat AS DOUBLE)) AS South, MIN(CAST(c.lon AS DOUBLE)) AS West, MAX(CAST(c.lat AS DOUBLE)) AS North, MAX(CAST(c.lon AS DOUBLE)) AS East FROM zip_county z JOIN county k ON k.county_fips = z.county_fips JOIN zip_centroid c ON c.zip5 = z.zip5 WHERE k.state = @state";
+            args = new { state = filter.State };
+        }
+        else
+        {
+            return null;
         }
 
         await using var connection = new MySqlConnection(connectionString);
-        var rows = await connection.QueryAsync<ZipPoint>(new CommandDefinition(
-            "SELECT zip5 AS Zip, CAST(lat AS DOUBLE) AS Lat, CAST(lon AS DOUBLE) AS Lon FROM zip_centroid WHERE zip5 IN @wanted",
-            new { wanted }, cancellationToken: ct));
-        return rows.ToDictionary(r => r.Zip, StringComparer.Ordinal);
-    }
-
-    /// <summary>The ZIP centroid nearest to the point, or null when none is within <see cref="MaxNearestMiles"/>.</summary>
-    public async Task<NearestZip?> FindNearestZipAsync(double lat, double lon, CancellationToken ct)
-    {
-        if (!IsValidCoordinate(lat, lon))
+        var box = await connection.QuerySingleOrDefaultAsync<Box>(new CommandDefinition(
+            sql, args, cancellationToken: ct));
+        if (box is not { South: { } s, West: { } w, North: { } n, East: { } e })
         {
-            throw new ArgumentOutOfRangeException(nameof(lat), "Latitude must be -90..90 and longitude -180..180.");
+            return null;
         }
 
-        // Bounding box first (about MaxNearestMiles in every direction), then the exact great-circle distance.
-        var latDelta = MaxNearestMiles / 69.0;
-        var lonDelta = MaxNearestMiles / (69.0 * Math.Max(0.01, Math.Cos(lat * Math.PI / 180)));
-        await using var connection = new MySqlConnection(connectionString);
-        var nearest = await connection.QueryFirstOrDefaultAsync<NearestZip>(new CommandDefinition(
-            """
-            SELECT zip5 AS Zip,
-                   3958.8 * 2 * ASIN(SQRT(POWER(SIN(RADIANS(lat - @lat) / 2), 2)
-                       + COS(RADIANS(@lat)) * COS(RADIANS(lat)) * POWER(SIN(RADIANS(lon - @lon) / 2), 2))) AS DistanceMiles
-            FROM zip_centroid
-            WHERE lat BETWEEN @latMin AND @latMax AND lon BETWEEN @lonMin AND @lonMax
-            ORDER BY DistanceMiles, zip5
-            LIMIT 1
-            """,
-            new { lat, lon, latMin = lat - latDelta, latMax = lat + latDelta, lonMin = lon - lonDelta, lonMax = lon + lonDelta },
-            cancellationToken: ct));
-        return nearest is not null && nearest.DistanceMiles <= MaxNearestMiles ? nearest : null;
+        var dLat = padMiles / MilesPerDegreeLat;
+        var dLon = padMiles / (MilesPerDegreeLat * Math.Max(Math.Cos((s + n) / 2 * Math.PI / 180), 0.01));
+        return new MapBounds(s - dLat, w - dLon, n + dLat, e + dLon);
     }
-
-    /// <summary>Groups a results page into one pin per ZIP, in the order the ZIPs first appear. Providers without a centroid are skipped.</summary>
-    public static IReadOnlyList<MapPin> GroupPins(IEnumerable<ProviderSummary> providers, IReadOnlyDictionary<string, ZipPoint> centroids) =>
-        providers
-            .Select(p => (Provider: p, Zip: Zip5(p.Zip)))
-            .Where(x => x.Zip is not null && centroids.ContainsKey(x.Zip))
-            .GroupBy(x => x.Zip!, StringComparer.Ordinal)
-            .Select(g =>
-            {
-                var point = centroids[g.Key];
-                return new MapPin(g.Key, point.Lat, point.Lon, g.Select(x => new MapEntry(x.Provider.Npi, x.Provider.Name, x.Provider.PrimarySpecialty,
-                    string.Join(", ", new[] { x.Provider.Address1, x.Provider.City }.Where(s => !string.IsNullOrEmpty(s))))).ToList());
-            })
-            .ToList();
-
-    /// <summary>The 5-digit ZIP of a "12345" or "12345-6789" value, else null.</summary>
-    public static string? Zip5(string? zip) =>
-        zip is { Length: >= 5 } && !zip.AsSpan(0, 5).ContainsAnyExceptInRange('0', '9') && (zip.Length == 5 || zip[5] == '-') ? zip[..5] : null;
 }

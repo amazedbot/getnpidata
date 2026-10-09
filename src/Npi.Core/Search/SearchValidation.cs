@@ -15,7 +15,8 @@ public static partial class SearchValidation
     private const int MaxTextLength = 60;
 
     /// <summary>Returns the filter with values trimmed/upper-cased, or throws <see cref="SearchValidationException"/>.</summary>
-    public static SearchFilter Normalize(SearchFilter filter)
+    /// <param name="requireFilter">False for the map search, where the map area itself is the filter.</param>
+    public static SearchFilter Normalize(SearchFilter filter, bool requireFilter = true)
     {
         var errors = new Dictionary<string, List<string>>();
         void Error(string field, string message)
@@ -58,7 +59,7 @@ public static partial class SearchValidation
             Sort = Clean(filter.Sort, nameof(SearchFilter.Sort)),
         };
 
-        if (f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
+        if (requireFilter && f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
                 LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
                 Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null,
                 MedicareActive: null, Shortage: null })

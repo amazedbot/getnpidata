@@ -36,7 +36,11 @@ public sealed class SearchQuery
 
     /// <param name="taxonomyCodes">The codes the Classification/Specialization/TaxonomyCode filters resolved to, or null for no specialty filter.</param>
     /// <param name="radiusCenter">The ZIP centroid for a radius search.</param>
-    public SearchQuery(SearchFilter filter, IReadOnlyCollection<string>? taxonomyCodes, GeoPoint? radiusCenter)
+    /// <param name="areaSearch">
+    /// A map search (<see cref="AreaSql"/>): a specialty is then looked up by grid cell in provider_map_specialty
+    /// (parameter @cells), which is far more selective than every provider of the specialty nationwide.
+    /// </param>
+    public SearchQuery(SearchFilter filter, IReadOnlyCollection<string>? taxonomyCodes, GeoPoint? radiusCenter, bool areaSearch = false)
     {
         Filter = filter;
         _sort = SearchSortOrder.TryParse(filter.Sort, out var sort)
@@ -156,6 +160,12 @@ public sealed class SearchQuery
             _driver = filter.Excluded == true ? EnrichmentSql.ExcludedNpis : EnrichmentSql.OptedOutNpis;
             _driverKind = "flag";
         }
+        else if (taxonomyCodes is not null && areaSearch)
+        {
+            _driver = "SELECT DISTINCT s.npi FROM provider_map_specialty s WHERE s.taxonomy_code IN @taxonomyCodes AND s.cell IN @cells";
+            _driverKind = "taxonomy";
+            drivenBy.Add("taxonomy");
+        }
         else if (taxonomyCodes is not null && _hasLocationFilter)
         {
             _driver = $"SELECT DISTINCT s.npi FROM provider_search s WHERE s.taxonomy_code IN @taxonomyCodes AND {Location("s")}";
@@ -215,6 +225,28 @@ public sealed class SearchQuery
     }
 
     public SearchFilter Filter { get; }
+
+    /// <summary>
+    /// True when the driver is a small candidate set (an NPI, the exclusion/opt-out lists, a specialty, a name or a
+    /// credential). The map search then starts from the candidates and checks whether each is inside the area;
+    /// otherwise it starts from the points in the area (spatial index) and checks the filters.
+    /// </summary>
+    public bool HasSelectiveDriver => _driverKind is "npi" or "flag" or "search" or "taxonomy" or "name" or "credential";
+
+    /// <summary>
+    /// Map search (Stage 5.5 item 10): the provider_map rows (alias m) inside the area <paramref name="boxParameter"/>
+    /// (a WKT polygon parameter) that match the filter. The caller appends ORDER BY / LIMIT.
+    /// </summary>
+    public string AreaSql(string boxParameter)
+    {
+        const string select = "m.npi AS Npi, m.addr_key AS AddrKey, m.lat AS Lat, m.lon AS Lon, m.approximate AS Approximate";
+        var joinProvider = _remaining.Count > 0 ? " JOIN provider p ON p.npi = m.npi" : "";
+        var remaining = _remaining.Count > 0 ? " AND " + string.Join(" AND ", _remaining) : "";
+        var inArea = $"MBRContains(ST_GeomFromText({boxParameter}, 0), m.pt)";
+        return HasSelectiveDriver
+            ? $"SELECT /*+ JOIN_ORDER(c, m{(joinProvider.Length > 0 ? ", p" : "")}) */ {select} FROM ({_driver}) c JOIN provider_map m ON m.npi = c.npi{joinProvider} WHERE {inArea}{remaining}"
+            : $"SELECT {select} FROM provider_map m{joinProvider} WHERE {inArea}{(_driver is null ? "" : $" AND m.npi IN ({_driver})")}{remaining}";
+    }
 
     public DynamicParameters Parameters { get; } = new();
 

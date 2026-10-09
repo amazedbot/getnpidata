@@ -78,14 +78,31 @@ app.MapGet("/lookup/specializations", async ([FromQuery] string? classification,
 app.MapGet("/lookup/counties", async ([FromQuery] string? state, GeographyCatalog geography, CancellationToken ct) =>
     string.IsNullOrWhiteSpace(state) ? Results.Ok(Array.Empty<CountyInfo>()) : Results.Ok(await geography.GetCountiesAsync(state, ct)));
 
-// "Near me" on the search page (CLAUDE.md §7 Stage 5.5 item 10): the browser's location → the nearest ZIP centroid.
-// POST, so the coordinates never appear in a URL or a request log; they are used for this one query and not stored.
-app.MapPost("/lookup/nearest-zip", async (NearestZipRequest? request, MapService map, CancellationToken ct) =>
-    request is not { Lat: { } lat, Lon: { } lon } || !MapService.IsValidCoordinate(lat, lon)
-        ? Results.BadRequest(new { message = "Send {\"lat\": …, \"lon\": …} with valid coordinates." })
-        : await map.FindNearestZipAsync(lat, lon, ct) is { } nearest
-            ? Results.Ok(nearest)
-            : Results.NotFound(new { message = $"There is no US ZIP code within {MapService.MaxNearestMiles:0} miles of your location." }));
+// Map search (CLAUDE.md §7 Stage 5.5 item 10): the providers inside bbox=west,south,east,north that match the search
+// filters (location filters are replaced by the area), nearest the centre first, at most SearchService.MaxAreaResults.
+app.MapGet("/map/search", async (HttpContext http, SearchService search, CancellationToken ct) =>
+{
+    var (filter, errors) = SearchQueryString.Parse(http.Request.Query);
+    var bounds = MapBounds.Parse(http.Request.Query["bbox"]);
+    if (bounds is null)
+    {
+        errors["bbox"] = ["Send bbox=west,south,east,north in degrees."];
+    }
+
+    if (errors.Count > 0)
+    {
+        return Results.ValidationProblem(SearchQueryString.ByParameterName(errors));
+    }
+
+    try
+    {
+        return Results.Ok(await search.SearchAreaAsync(filter, bounds!, ct));
+    }
+    catch (SearchValidationException ex)
+    {
+        return Results.ValidationProblem(SearchQueryString.ByParameterName(ex.Errors));
+    }
+});
 
 app.Run();
 

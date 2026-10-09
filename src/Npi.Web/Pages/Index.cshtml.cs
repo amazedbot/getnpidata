@@ -1,14 +1,11 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Extensions.Options;
 using Npi.Core.Search;
 using Npi.Web.Search;
 
 namespace Npi.Web.Pages;
 
 /// <summary>The search form and results grid (CLAUDE.md §7 Stage 4). A GET form, so every search has a shareable URL.</summary>
-public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, GeographyCatalog geography, AreaService areas, MapService maps,
-    IOptions<MapOptions> mapOptions) : PageModel
+public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, GeographyCatalog geography, AreaService areas) : PageModel
 {
     public static readonly int[] RadiusChoices = [5, 10, 25, 50, 100];
 
@@ -33,16 +30,8 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
     /// <summary>Population and shortage facts for the searched county (Stage 5.5 item 7).</summary>
     public CountyFacts? County { get; private set; }
 
-    public MapOptions Map => mapOptions.Value;
-
-    /// <summary>The page's providers grouped by ZIP centroid (Stage 5.5 item 10); empty when the map is off or nothing can be placed.</summary>
-    public IReadOnlyList<MapPin> Pins { get; private set; } = [];
-
-    /// <summary>Providers on this page that have no map point (non-US or a ZIP without a Census ZCTA).</summary>
-    public int Unmapped { get; private set; }
-
-    /// <summary><see cref="Pins"/> as JSON for map.js. The default encoder escapes &lt; and &gt;, so it is safe inside a script element.</summary>
-    public string PinsJson => JsonSerializer.Serialize(Pins, JsonSerializerOptions.Web);
+    /// <summary>The specialty and provider fields, shared with the map page.</summary>
+    public FilterFields Fields => new(Filter, Classifications, Specializations, Errors);
 
     public long PageCount => Result is null ? 0 : Math.Max(1, (Result.TotalCount + Result.PageSize - 1) / Result.PageSize);
 
@@ -82,13 +71,6 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
             {
                 County = await areas.GetCountyAsync(filter.CountyFips, ct);
             }
-
-            if (Map.Enabled && Result.Items.Count > 0)
-            {
-                var centroids = await maps.GetCentroidsAsync(Result.Items.Select(p => MapService.Zip5(p.Zip)).OfType<string>(), ct);
-                Pins = MapService.GroupPins(Result.Items, centroids);
-                Unmapped = Result.Items.Count - Pins.Sum(p => p.Providers.Count);
-            }
         }
         catch (SearchValidationException ex)
         {
@@ -99,6 +81,9 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
     public string Error(string field) => Errors.TryGetValue(field, out var messages) ? string.Join(" ", messages) : "";
 
     public string PageLink(int page) => "/" + SearchQueryString.ToQueryString(Filter, page: page);
+
+    /// <summary>The map search page with the same filters; it opens on the area of the location filters (Stage 5.5 item 10).</summary>
+    public string MapLink => "/map" + SearchQueryString.ToQueryString(Filter, includePaging: false);
 
     public string CsvLink => "/export.csv" + SearchQueryString.ToQueryString(Filter, includePaging: false);
 

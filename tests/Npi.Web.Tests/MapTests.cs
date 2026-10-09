@@ -1,5 +1,5 @@
 using System.Net;
-using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Npi.Web.Tests;
 
-/// <summary>"Near me" input checks and the map settings (Stage 5.5 item 10). No database: the connection string points at a closed port.</summary>
+/// <summary>Map search input checks and settings (Stage 5.5 item 10). No database: the connection string points at a closed port.</summary>
 public class MapTests
 {
     private sealed class Factory : WebApplicationFactory<Program>
@@ -22,24 +22,18 @@ public class MapTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Theory]
-    [InlineData("""{"lat":95,"lon":-73.4}""")]
-    [InlineData("""{"lat":40.7,"lon":-200}""")]
-    [InlineData("""{"lat":40.7}""")]
-    [InlineData("""{}""")]
-    public async Task Nearest_zip_rejects_bad_coordinates_without_touching_the_database(string body)
+    [InlineData("/map/search?classification=Dentist", "bbox")]                        // no area
+    [InlineData("/map/search?bbox=1,2,3", "bbox")]                                    // not four numbers
+    [InlineData("/map/search?bbox=-100,30,-70,45", "bbox")]                           // too large: zoom in
+    [InlineData("/map/search?bbox=-73.3,40.6,-73.5,40.8", "bbox")]                    // west > east
+    [InlineData("/map/search?bbox=-73.5,40.6,-73.3,40.8&minYears=99", "minYears")]    // a bad filter
+    public async Task Map_search_rejects_bad_requests_without_touching_the_database(string url, string parameter)
     {
         await using var factory = new Factory();
-        var response = await factory.CreateClient().PostAsync("/lookup/nearest-zip", new StringContent(body, Encoding.UTF8, "application/json"), Ct);
+        var response = await factory.CreateClient().GetAsync(url, Ct);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("valid coordinates", await response.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Nearest_zip_is_post_only_so_coordinates_never_appear_in_urls()
-    {
-        await using var factory = new Factory();
-        var response = await factory.CreateClient().GetAsync("/lookup/nearest-zip?lat=40.7&lon=-73.4", Ct);
-        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty(parameter, out _), doc.RootElement.ToString());
     }
 
     [Fact]

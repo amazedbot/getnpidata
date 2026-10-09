@@ -10,6 +10,7 @@ public enum LoaderCommand
     Reference,
     Datasets,
     Project,
+    Geocode,
     Publish,
 }
 
@@ -27,6 +28,7 @@ public static class LoaderCommandLine
         ["reference"] = LoaderCommand.Reference,
         ["datasets"] = LoaderCommand.Datasets,
         ["project"] = LoaderCommand.Project,
+        ["geocode"] = LoaderCommand.Geocode,
         ["publish"] = LoaderCommand.Publish,
     };
 
@@ -41,6 +43,7 @@ public static class LoaderCommandLine
           reference        Refresh NUCC / HUD / Census reference data
           datasets [name]  Reload the Stage 5.5 datasets (OIG, CMS, …), or just one
           project          Rebuild the search projection tables
+          geocode          Geocode every new practice address (Census) and rebuild the map table
           publish          Sync the search projection to Azure
         """;
 

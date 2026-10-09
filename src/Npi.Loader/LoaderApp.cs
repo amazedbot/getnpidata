@@ -2,6 +2,7 @@ using System.Globalization;
 using Dapper;
 using Npi.Loader.Datasets;
 using Npi.Loader.Db;
+using Npi.Loader.Geocoding;
 using Npi.Loader.Load;
 using Npi.Loader.Nppes;
 using Npi.Loader.Projection;
@@ -88,9 +89,61 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             log.Information("Search projection is current");
         }
 
-        log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; datasets {Datasets}; projection {Projection}",
-            plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", datasetsOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED");
-        return failures == 0 && referenceOk && datasetsOk && projectionOk ? 0 : 1;
+        // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
+        var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
+
+        log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; datasets {Datasets}; projection {Projection}; map {Map}",
+            plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", datasetsOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED",
+            mapOk ? "current" : "FAILED");
+        return failures == 0 && referenceOk && datasetsOk && projectionOk && mapOk ? 0 : 1;
+    }
+
+    /// <summary>The <c>geocode</c> command: geocode every practice address not geocoded yet, then rebuild the map table.</summary>
+    public async Task<int> GeocodeAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+
+        // A backlog of millions takes hours: build the map table first so the map page works meanwhile, with
+        // not-yet-geocoded addresses at their ZIP centroid.
+        var map = new MapBuilder(database, log, options.MinRowRatio);
+        if (await map.IsStaleAsync(ct))
+        {
+            await map.BuildAsync(ct);
+        }
+
+        return await RefreshMapAsync(maxBatches: 0, ct) ? 0 : 1;
+    }
+
+    private async Task<bool> RefreshMapAsync(int maxBatches, CancellationToken ct)
+    {
+        try
+        {
+            var census = new CensusGeocoder(http, options.CensusGeocoderUrl, options.GeocodeBenchmark);
+            var outcome = await new AddressGeocoder(database, census, log, options.GeocodeBatchSize, options.GeocodeParallelism)
+                .GeocodePendingAsync(maxBatches, ct);
+            var map = new MapBuilder(database, log, options.MinRowRatio);
+            if (outcome.Geocoded > 0 || await map.IsStaleAsync(ct))
+            {
+                await map.BuildAsync(ct);
+            }
+            else
+            {
+                log.Information("Map table is current");
+            }
+
+            if (outcome.Pending > outcome.Geocoded)
+            {
+                log.Information("{Left:N0} addresses are still to be geocoded; they show at their ZIP centroid until then (Npi.Loader geocode clears the backlog)",
+                    outcome.Pending - outcome.Geocoded);
+            }
+
+            return outcome.Ok;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log.Error(ex, "Geocoding or building the map table failed");
+            return false;
+        }
     }
 
     /// <summary>The <c>project</c> command: rebuild the search projection now.</summary>

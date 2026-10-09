@@ -1,4 +1,5 @@
 using Npi.Core.Search;
+using Npi.Loader.Geocoding;
 using Npi.Loader.Projection;
 using Serilog.Core;
 
@@ -367,26 +368,85 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task Map_places_the_page_at_zip_centroids_and_near_me_finds_the_closest_zip()
+    public async Task Addresses_are_geocoded_once_and_the_map_search_finds_providers_by_area()
     {
         await using var db = await SeededAsync();
-        var map = new MapService(db.ConnectionString);
+        var census = new FakeCensus();
+        var geocoder = new AddressGeocoder(db.Database, new CensusGeocoder(new HttpClient(census), "https://census.test/batch", "Public_AR_Current"),
+            Logger.None, batchSize: 2, parallelism: 2) { Delays = [] };
 
-        var page = await Search(db).SearchAsync(new SearchFilter { Classification = "Chiropractor", CountyFips = "36103" }, _ct);
-        var centroids = await map.GetCentroidsAsync(page.Items.Select(p => MapService.Zip5(p.Zip)).OfType<string>().Append("99999"), _ct);
-        var pins = MapService.GroupPins(page.Items, centroids);
-        Assert.Equal(page.Items.Count, pins.Sum(p => p.Providers.Count));
-        Assert.All(pins, p => Assert.Contains(p.Zip, new[] { "11701", "11735" }));
-        Assert.DoesNotContain("99999", centroids.Keys);
+        // Five street addresses (B has two); C is deactivated, so not in the projection. Batches of 2, two at a time.
+        var first = await geocoder.GeocodePendingAsync(maxBatches: 0, _ct);
+        Assert.Equal(new GeocodeOutcome(Pending: 5, Geocoded: 5, Matched: 2, Ok: true), first);
+        Assert.Equal(3, census.Requests);
+        Assert.Equal([("Match", 2L), ("No_Match", 2L), ("Tie", 1L)],
+            await db.QueryAsync<(string, long)>("SELECT status, COUNT(*) FROM address_geocode GROUP BY status ORDER BY status"));
+        Assert.Equal(new GeocodeOutcome(0, 0, 0, true), await geocoder.GeocodePendingAsync(maxBatches: 0, _ct)); // nothing is sent twice
 
-        // Rounded browser position in Amityville; Farmingdale is ~4 miles away.
-        var nearest = await map.FindNearestZipAsync(40.68, -73.41, _ct);
-        Assert.Equal("11701", nearest?.Zip);
-        Assert.InRange(nearest!.DistanceMiles, 0, 1);
-        Assert.Equal("11201", (await map.FindNearestZipAsync(40.70, -73.98, _ct))?.Zip);
+        var map = new MapBuilder(db.Database, Logger.None, 0.95);
+        Assert.True(await map.IsStaleAsync(_ct));
+        Assert.Equal(5L, await map.BuildAsync(_ct));
+        Assert.False(await map.IsStaleAsync(_ct));
+        Assert.Equal([(A, (sbyte)0), (B, (sbyte)1), (B, (sbyte)1), (D, (sbyte)1), (E, (sbyte)0)],
+            await db.QueryAsync<(string, sbyte)>("SELECT npi, approximate FROM provider_map ORDER BY npi, approximate"));
+        // Each point under each of its specialties and grid cells: A (chiropractor + pediatrics), B (sports chiropractor at two addresses), D, E.
+        Assert.Equal(6L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_map_specialty"));
 
-        // Nothing within 100 miles (mid-Atlantic) → no ZIP rather than a far-away one.
-        Assert.Null(await map.FindNearestZipAsync(38.0, -60.0, _ct));
+        var search = Search(db);
+        var longIsland = MapBounds.Parse("-74.1,40.5,-73.3,40.9")!;
+        var all = await search.SearchAreaAsync(new SearchFilter(), longIsland, _ct);
+        Assert.Equal(5, all.Items.Count);
+        Assert.False(all.Truncated);
+        Assert.Equal(all.Items.OrderBy(i => i.DistanceMiles).Select(i => i.Provider.Npi), all.Items.Select(i => i.Provider.Npi)); // nearest the centre first
+
+        // B appears at both of its addresses, each with that address.
+        Assert.Equal(["10 Court St", "300 Conklin St"], all.Items.Where(i => i.Provider.Npi == B).Select(i => i.Provider.Address1).Order());
+        var a = Assert.Single(all.Items, i => i.Provider.Npi == A);
+        Assert.Equal((40.6790, -73.4150, false), (a.Lat, a.Lon, a.Approximate)); // the geocoded point, not the ZIP centroid
+
+        // Filters work as on the search page; the location filters are replaced by the area.
+        var chiros = await search.SearchAreaAsync(new SearchFilter { Classification = "Chiropractor", State = "CA" }, longIsland, _ct);
+        Assert.Equal([A, B, B], chiros.Items.Select(i => i.Provider.Npi).Order());
+
+        var amityville = await search.SearchAreaAsync(new SearchFilter(), MapBounds.Parse("-73.43,40.67,-73.40,40.69")!, _ct);
+        Assert.Equal([A], amityville.Items.Select(i => i.Provider.Npi));
+
+        var tooLarge = await Assert.ThrowsAsync<SearchValidationException>(() => search.SearchAreaAsync(new SearchFilter(), MapBounds.Parse("-100,30,-70,45")!, _ct));
+        Assert.Contains("bbox", tooLarge.Errors.Keys);
+
+        // "View on map" opens on the area of the search's location filters.
+        var maps = new MapService(db.ConnectionString);
+        var county = await maps.GetStartAreaAsync(new SearchFilter { CountyFips = "36103" }, _ct);
+        Assert.NotNull(county);
+        Assert.InRange(40.682177, county.South, county.North);
+        Assert.Null(await maps.GetStartAreaAsync(new SearchFilter { Classification = "Chiropractor" }, _ct));
+    }
+
+    /// <summary>The Census batch geocoder: 1 Broadway and 200 Main St match, 300 Conklin St is a tie, the rest don't match.</summary>
+    private sealed class FakeCensus : HttpMessageHandler
+    {
+        public int Requests { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            var answer = new System.Text.StringBuilder();
+            foreach (var line in body.Split("\r\n").Where(l => l.Length > 0 && char.IsAsciiDigit(l[0])))
+            {
+                var parts = line.Split(',');
+                var (id, street) = (parts[0], parts[1]);
+                answer.AppendLine(street switch
+                {
+                    "1 Broadway" => $"\"{id}\",\"{street}\",\"Match\",\"Exact\",\"1 BROADWAY, AMITYVILLE, NY, 11701\",\"-73.4150,40.6790\",\"1\",\"L\"",
+                    "200 Main St" => $"\"{id}\",\"{street}\",\"Match\",\"Non_Exact\",\"200 MAIN ST, FARMINGDALE, NY, 11735\",\"-73.4450,40.7330\",\"2\",\"R\"",
+                    "300 Conklin St" => $"\"{id}\",\"{street}\",\"Tie\"",
+                    _ => $"\"{id}\",\"{street}\",\"No_Match\"",
+                });
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(answer.ToString()) };
+        }
     }
 
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));

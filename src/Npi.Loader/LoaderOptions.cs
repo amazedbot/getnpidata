@@ -58,6 +58,24 @@ public sealed class LoaderOptions
     /// <summary>Census population estimates datasets folder (vintage folders "2020-YYYY/" below it).</summary>
     public string CensusPopulationBaseUrl { get; set; } = "https://www2.census.gov/programs-surveys/popest/datasets/";
 
+    /// <summary>US Census Bureau batch geocoder (Stage 5.5 item 10, map search).</summary>
+    public string CensusGeocoderUrl { get; set; } = "https://geocoding.geo.census.gov/geocoder/locations/addressbatch";
+
+    /// <summary>Census geocoder benchmark (address data release).</summary>
+    public string GeocodeBenchmark { get; set; } = "Public_AR_Current";
+
+    /// <summary>Addresses per geocoder request (the Census maximum is 10,000).</summary>
+    public int GeocodeBatchSize { get; set; } = 10_000;
+
+    /// <summary>Geocoder requests in flight at once.</summary>
+    public int GeocodeParallelism { get; set; } = 2;
+
+    /// <summary>
+    /// Batches <c>run</c> geocodes at most (new addresses from the weekly files are a few thousand); the
+    /// <c>geocode</c> command clears any backlog. 0 = no limit.
+    /// </summary>
+    public int GeocodeBatchesPerRun { get; set; } = 20;
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");
