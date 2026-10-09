@@ -84,7 +84,14 @@ public sealed record MapBounds(double South, double West, double North, double E
 /// <summary>One provider at one street address inside the map area.</summary>
 /// <param name="Approximate">True when the point is the ZIP centroid (address not geocoded or not matched).</param>
 /// <param name="DistanceMiles">From the centre of the map area.</param>
-public sealed record AreaProvider(ProviderSummary Provider, double Lat, double Lon, bool Approximate, double DistanceMiles);
+public sealed record AreaProvider(ProviderSummary Provider, double Lat, double Lon, bool Approximate, double DistanceMiles)
+{
+    /// <summary>
+    /// How the point was placed: address, place or place_name (Overture Maps: the building), census (Census geocoder:
+    /// interpolated along the street) or zip (the ZIP centroid).
+    /// </summary>
+    public string Source { get; init; } = "zip";
+}
 
 /// <summary>The providers in a map area, nearest the centre first. <see cref="Truncated"/>: there were more than <see cref="Limit"/>.</summary>
 public sealed record AreaResult(IReadOnlyList<AreaProvider> Items, bool Truncated, int Limit, DateOnly? DataAsOf);

@@ -25,7 +25,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
     private sealed record PageRow(string Npi, long Total);
 
-    private sealed record AreaRow(string Npi, string AddrKey, double Lat, double Lon, sbyte Approximate);
+    private sealed record AreaRow(string Npi, string AddrKey, double Lat, double Lon, sbyte Approximate, string Source);
 
     private sealed record AreaLocationRow(
         string Npi, string AddrKey, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4, string? PostalCode, string? Phone);
@@ -141,7 +141,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 };
             }
 
-            items.Add(new AreaProvider(s, r.Lat, r.Lon, r.Approximate != 0, MilesBetween(bounds.CenterLat, bounds.CenterLon, r.Lat, r.Lon)));
+            items.Add(new AreaProvider(s, r.Lat, r.Lon, r.Approximate != 0, MilesBetween(bounds.CenterLat, bounds.CenterLon, r.Lat, r.Lon)) { Source = r.Source });
         }
 
         var asOf = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition("SELECT as_of_date FROM data_version WHERE id = 1", cancellationToken: ct));

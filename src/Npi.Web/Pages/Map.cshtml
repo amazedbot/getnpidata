@@ -35,8 +35,10 @@
              data-start="@Model.StartText" data-auto-search="@(Model.AutoSearch ? "true" : "false")"
              data-max-lat-span="@MapBounds.MaxLatSpan.ToString(CultureInfo.InvariantCulture)" data-max-lon-span="@MapBounds.MaxLonSpan.ToString(CultureInfo.InvariantCulture)"></div>
         <p class="muted small legend">
-            <span><span class="dot exact" aria-hidden="true"></span>Street address</span>
+            <span><span class="dot exact" aria-hidden="true"></span>At the building</span>
+            <span><span class="dot street" aria-hidden="true"></span>Estimated along the street</span>
             <span><span class="dot approximate" aria-hidden="true"></span>Approximate (ZIP code center: the address couldn't be located)</span>
+            <span>Locations: <a href="https://overturemaps.org/">Overture Maps Foundation</a> (US DOT National Address Database, places), US Census Bureau geocoder.</span>
         </p>
     </div>
 

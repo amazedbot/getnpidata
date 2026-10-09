@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="CsvHelper" />
+    <PackageReference Include="DuckDB.NET.Data.Full" />
     <PackageReference Include="Dapper" />
     <PackageReference Include="ExcelDataReader" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />

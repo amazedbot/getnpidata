@@ -121,6 +121,15 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         return await RefreshMapAsync(maxBatches: 0, ct) ? 0 : 1;
     }
 
+    /// <summary>The <c>overture</c> command: place one county's practice addresses with Overture data, then rebuild the map tables.</summary>
+    public async Task<int> OvertureAsync(string countyFips, CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new OvertureMatcher(database, http, log, options).MatchCountyAsync(countyFips, ct);
+        await new MapBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
+    }
+
     private async Task<bool> RefreshMapAsync(int maxBatches, CancellationToken ct, string? countyFips = null)
     {
         try

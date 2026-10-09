@@ -76,6 +76,15 @@ public sealed class LoaderOptions
     /// </summary>
     public int GeocodeBatchesPerRun { get; set; } = 20;
 
+    /// <summary>S3 listing of Overture Maps releases; the newest "release/&lt;date&gt;.&lt;n&gt;/" folder is used (Stage 5.5 item 10).</summary>
+    public string OvertureReleasesUrl { get; set; } = "https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/?list-type=2&prefix=release/&delimiter=/";
+
+    /// <summary>Overture release folders, read in place with DuckDB (public bucket, no credentials).</summary>
+    public string OvertureBaseUrl { get; set; } = "s3://overturemaps-us-west-2/release/";
+
+    /// <summary>Overture places below this confidence (0–1) are ignored.</summary>
+    public double OverturePlaceMinConfidence { get; set; } = 0.6;
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");

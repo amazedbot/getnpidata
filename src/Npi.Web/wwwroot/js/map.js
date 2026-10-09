@@ -106,6 +106,8 @@
       const key = `${item.lat.toFixed(5)},${item.lon.toFixed(5)}`;
       if (!byPoint.has(key)) byPoint.set(key, { lat: item.lat, lon: item.lon, approximate: item.approximate, items: [] });
       byPoint.get(key).items.push(item);
+      if (item.source === "place_name") byPoint.get(key).byName = true;
+      if (item.source === "census") byPoint.get(key).street = true;
     }
 
     pins = [...byPoint.values()];
@@ -113,7 +115,9 @@
       const size = Math.min(6 + 1.5 * (pin.items.length - 1), 14);
       pin.style = pin.approximate
         ? { radius: size, weight: 2, color: "#6e7781", dashArray: "3 3", fillColor: "#afb8c1", fillOpacity: 0.5 }
-        : { radius: size, weight: 2, color: "#0b5cad", fillColor: "#0b5cad", fillOpacity: 0.55 };
+        : pin.street
+          ? { radius: size, weight: 2, color: "#0b5cad", fillColor: "#ffffff", fillOpacity: 0.85 }
+          : { radius: size, weight: 2, color: "#0b5cad", fillColor: "#0b5cad", fillOpacity: 0.55 };
       pin.marker = L.circleMarker([pin.lat, pin.lon], pin.style)
         .bindTooltip(() => pinContent(pin, false), { direction: "top", offset: [0, -size], className: "pin-tooltip" })
         .bindPopup(() => pinContent(pin, true), { maxWidth: 320, autoPanPaddingTopLeft: L.point(48, 12) })
@@ -146,6 +150,8 @@
     const zip = (pin.items[0].provider.zip || "").slice(0, 5);
     root.append(el("strong", shared ? addressLine(pin.items[0].provider) : pin.approximate ? `ZIP ${zip}` : "Several addresses at this point"));
     if (pin.approximate) root.append(el("div", "Approximate location (ZIP code center)", "muted"));
+    else if (pin.street) root.append(el("div", "Estimated along the street (Census geocoder)", "muted"));
+    else if (pin.byName) root.append(el("div", "Placed by building name", "muted"));
     const list = el("ul");
     const shown = withLinks ? pin.items : pin.items.slice(0, 10);
     for (const item of shown) {

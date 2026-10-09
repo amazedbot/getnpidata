@@ -162,6 +162,7 @@ button.secondary, .button.secondary { background: var(--bg); color: var(--accent
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0.4rem 0 0; }
 .dot { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; vertical-align: middle; margin-right: 0.25rem; }
 .dot.exact { background: #0b5cad; opacity: 0.75; }
+.dot.street { background: #ffffff; border: 2px solid #0b5cad; }
 .dot.approximate { background: #afb8c1; border: 2px dashed #6e7781; }
 .area-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .area-head h2 { margin: 0; }

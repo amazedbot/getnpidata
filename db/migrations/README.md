@@ -44,6 +44,8 @@ Rules:
 | `046_address_geocode.sql` | Census geocoder results per street address (a cache; rows only added). |
 | `047_provider_map.sql` | One map point per provider and street address, with a SPATIAL index. |
 | `048_provider_map_specialty.sql` | Specialty × 0.1° grid cell → NPI, for specialty map searches. |
+| `049_address_point.sql` | Building-level locations from Overture Maps (address points, place addresses, place names). |
+| `050_provider_map_source.sql` | `provider_map.source`: how each point was placed (instant ADD COLUMN with a default). |
 
 ## 001_baseline.sql
 

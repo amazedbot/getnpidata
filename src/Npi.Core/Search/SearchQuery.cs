@@ -239,7 +239,7 @@ public sealed class SearchQuery
     /// </summary>
     public string AreaSql(string boxParameter)
     {
-        const string select = "m.npi AS Npi, m.addr_key AS AddrKey, m.lat AS Lat, m.lon AS Lon, m.approximate AS Approximate";
+        const string select = "m.npi AS Npi, m.addr_key AS AddrKey, m.lat AS Lat, m.lon AS Lon, m.approximate AS Approximate, m.source AS Source";
         var joinProvider = _remaining.Count > 0 ? " JOIN provider p ON p.npi = m.npi" : "";
         var remaining = _remaining.Count > 0 ? " AND " + string.Join(" AND ", _remaining) : "";
         var inArea = $"MBRContains(ST_GeomFromText({boxParameter}, 0), m.pt)";
