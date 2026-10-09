@@ -118,7 +118,8 @@ addresses are not searched. Each result row shows the location that matched.
 - **Footer**: the date the data is current through and the number of active providers.
 
 Credentials are shown standardized ("M.D." and "MD" both show as MD; "M.S., CCC-SLP" as "MS, CCC-SLP"), and the
-search form's Credential filter is a dropdown of every credential held by at least 25 providers, with counts.
+search form's Credential box lists every credential held by at least 100 providers nationwide, with counts; typing
+narrows the list to the credentials starting with what you typed ("m" → MD, MS, MA …; punctuation and case don't matter).
 
 Grid and CSV columns: NPI, Entity Type, Name, Credential, Primary Specialty, Address 1, Address 2, City, State, ZIP,
 County, Phone, Gender, Enumeration Date, Last Update Date, then the flags OIG Excluded, Medicare Opt-Out, Medicare
