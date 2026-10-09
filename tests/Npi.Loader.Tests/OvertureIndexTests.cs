@@ -73,4 +73,18 @@ public class OvertureIndexTests
     [Fact]
     public void An_unknown_house_number_is_left_to_the_census_geocoder() =>
         Assert.Null(StonyBrook().Match("99 TINKER LN", "SETAUKET", "11733"));
+
+    [Fact]
+    public void With_candidates_only_the_points_and_places_they_can_use_are_kept()
+    {
+        var index = new OvertureIndex([("3 TINKER LANE", "SETAUKET", "11733"), ("UNIVERSITY HOSPITAL", "STONY BROOK", "11794")]);
+        index.AddPoint("3", "Tinker Ln", "11733", "Setauket", 40.95574, -73.09634);
+        index.AddPoint("5", "Tinker Ln", "11733", "Setauket", 40.9560, -73.0965);                      // no practice there
+        index.AddPlace("Stony Brook University Hospital", null, "11794", null, 40.9090, -73.1155, 0.9);
+        index.AddPlace("Corner Animal Hospital", "24 Woods Corner Rd", "11733", null, 40.9261, -73.11907, 0.92); // not a wanted ZIP for names
+
+        Assert.Equal(2, index.Points); // 3 Tinker Ln, by ZIP and by city
+        Assert.Equal(PointSource.Address, index.Match("3 TINKER LN", "SETAUKET", "11733")?.Source);
+        Assert.Equal(PointSource.PlaceName, index.Match("UNIVERSITY HOSPITAL", "STONY BROOK", "11794")?.Source);
+    }
 }

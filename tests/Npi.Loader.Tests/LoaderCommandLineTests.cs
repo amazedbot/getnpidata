@@ -58,6 +58,16 @@ public class LoaderCommandLineTests
         Assert.Contains("FIPS", error, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Overture_takes_a_state_a_county_or_nothing()
+    {
+        Assert.Equal([], LoaderCommandLine.Parse(["overture"], out _)?.Arguments);
+        Assert.Equal(["NY"], LoaderCommandLine.Parse(["overture", "ny"], out _)?.Arguments);
+        Assert.Equal(["36103"], LoaderCommandLine.Parse(["overture", "36103"], out _)?.Arguments);
+        Assert.Null(LoaderCommandLine.Parse(["overture", "Suffolk"], out var error));
+        Assert.Contains("state code", error, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("datasets", "a", "b")]
     [InlineData("geocode", "36103", "36059")]

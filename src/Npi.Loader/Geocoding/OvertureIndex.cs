@@ -37,6 +37,40 @@ public sealed class OvertureIndex
     private readonly Dictionary<string, List<(IReadOnlySet<string> Tokens, double Lat, double Lon, double Confidence, string Name)>> _namesByZip = [];
     private readonly Dictionary<string, List<(IReadOnlySet<string> Tokens, double Lat, double Lon, double Confidence, string Name)>> _namesByCity = [];
 
+    // With candidates given, only points and places they can match are kept: a state has millions of address points
+    // but only thousands of practice addresses.
+    private readonly HashSet<(string, string)>? _wantedStreets;
+    private readonly HashSet<string>? _wantedNameZips;
+    private readonly HashSet<string>? _wantedNameCities;
+
+    /// <param name="candidates">The practice addresses to be matched (address line 1, city, ZIP); null keeps everything.</param>
+    public OvertureIndex(IEnumerable<(string? Address1, string? City, string Zip5)>? candidates = null)
+    {
+        if (candidates is null)
+        {
+            return;
+        }
+
+        _wantedStreets = [];
+        _wantedNameZips = new(StringComparer.Ordinal);
+        _wantedNameCities = new(StringComparer.Ordinal);
+        foreach (var (address1, city, zip5) in candidates)
+        {
+            if (AddressNormalizer.Split(address1) is var (number, street))
+            {
+                _wantedStreets.Add((number, street));
+            }
+            else
+            {
+                _wantedNameZips.Add(zip5);
+                if (!string.IsNullOrWhiteSpace(city))
+                {
+                    _wantedNameCities.Add(city.Trim().ToUpperInvariant());
+                }
+            }
+        }
+    }
+
     public int Points => _pointsByZip.Count + _pointsByCity.Count;
 
     public int Places { get; private set; }
@@ -50,6 +84,11 @@ public sealed class OvertureIndex
 
         var n = number.Trim().ToUpperInvariant();
         var s = AddressNormalizer.Street(street);
+        if (_wantedStreets is not null && !_wantedStreets.Contains((n, s)))
+        {
+            return;
+        }
+
         if (Zip5(zip) is { } z)
         {
             _pointsByZip.TryAdd((n, s, z), (lat, lon));
@@ -65,7 +104,7 @@ public sealed class OvertureIndex
     {
         var z = Zip5(zip) ?? "";
         var c = city?.Trim().ToUpperInvariant() ?? "";
-        if (AddressNormalizer.Split(freeformAddress) is var (number, street))
+        if (AddressNormalizer.Split(freeformAddress) is var (number, street) && (_wantedStreets is null || _wantedStreets.Contains((number, street))))
         {
             var entry = (lat, lon, name ?? "");
             if (z.Length > 0)
@@ -80,7 +119,8 @@ public sealed class OvertureIndex
         }
 
         Places++;
-        var tokens = AddressNormalizer.NameTokens(name);
+        var wantedName = _wantedNameZips is null || _wantedNameZips.Contains(z) || (z.Length == 0 && _wantedNameCities!.Contains(c));
+        var tokens = wantedName ? AddressNormalizer.NameTokens(name) : new HashSet<string>();
         if (tokens.Count >= MinSharedWords)
         {
             if (z.Length > 0)
