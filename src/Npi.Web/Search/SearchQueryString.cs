@@ -74,6 +74,8 @@ public static class SearchQueryString
             MinYears = Int("minYears", nameof(SearchFilter.MinYears)),
             MedicareActive = Bool("medicareActive", nameof(SearchFilter.MedicareActive)),
             Shortage = Text(q, "shortage"),
+            NewWithinDays = Int("newWithinDays", nameof(SearchFilter.NewWithinDays)),
+            UpdatedWithinDays = Int("updatedWithinDays", nameof(SearchFilter.UpdatedWithinDays)),
             Sort = Text(q, "sort"),
             Page = Int("page", nameof(SearchFilter.Page)) ?? 1,
             PageSize = Int("pageSize", nameof(SearchFilter.PageSize)) ?? SearchFilter.DefaultPageSize,
@@ -124,6 +126,10 @@ public static class SearchQueryString
             "primaryCare, dental or mentalHealth: a practice location in a county with an HRSA Health Professional Shortage Area of that kind."),
         new("medicareActive", ParameterType.TrueFalse, nameof(SearchFilter.MedicareActive),
             "true: only providers who billed Medicare Part B or Part D in the latest CMS data year; false: those who didn't."),
+        new("newWithinDays", ParameterType.WholeNumber, nameof(SearchFilter.NewWithinDays),
+            "New providers: enumerated (NPI issued) within the last this many days, 1-3650. Sort by -enumeration for a newest-first feed."),
+        new("updatedWithinDays", ParameterType.WholeNumber, nameof(SearchFilter.UpdatedWithinDays),
+            "NPPES record updated within the last this many days, 1-3650 (NPPES doesn't say what changed; see the provider's recorded changes)."),
         new("sort", ParameterType.Text, nameof(SearchFilter.Sort), "name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix - for descending."),
         new("page", ParameterType.WholeNumber, nameof(SearchFilter.Page), "Page number, from 1. Paging stops at the first 10,000 matches; use the CSV beyond that."),
         new("pageSize", ParameterType.WholeNumber, nameof(SearchFilter.PageSize), "Results per page, 1-200 (default 50)."),
@@ -142,7 +148,8 @@ public static class SearchQueryString
 
     private static readonly string[] FilterKeys =
         ["classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential",
-         "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears", "medicareActive", "shortage"];
+         "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears", "medicareActive", "shortage",
+         "newWithinDays", "updatedWithinDays"];
 
     /// <summary>"?classification=…&amp;state=…" for the filter, optionally with a different page/sort.</summary>
     public static string ToQueryString(SearchFilter f, int? page = null, string? sort = null, bool includePaging = true)
@@ -179,6 +186,8 @@ public static class SearchQueryString
         Add("minYears", f.MinYears?.ToString(CultureInfo.InvariantCulture));
         Add("medicareActive", f.MedicareActive is { } active ? (active ? "true" : "false") : null);
         Add("shortage", f.Shortage);
+        Add("newWithinDays", f.NewWithinDays?.ToString(CultureInfo.InvariantCulture));
+        Add("updatedWithinDays", f.UpdatedWithinDays?.ToString(CultureInfo.InvariantCulture));
         Add("sort", sort ?? f.Sort);
         if (includePaging)
         {

@@ -120,6 +120,25 @@ public sealed class SearchQuery
             providerTemplates.Add(("flag", EnrichmentSql.MinYears));
         }
 
+        // New / recently updated (Stage 5.5 item 11), counted back from today (UTC).
+        var dates = new List<string>();
+        if (filter.NewWithinDays is { } newDays)
+        {
+            Parameters.Add("enumeratedSince", Since(newDays));
+            providerTemplates.Add(("date", "{0}.enumeration_date >= @enumeratedSince"));
+            dates.Add("d.enumeration_date >= @enumeratedSince");
+        }
+
+        if (filter.UpdatedWithinDays is { } updatedDays)
+        {
+            Parameters.Add("updatedSince", Since(updatedDays));
+            providerTemplates.Add(("date", "{0}.last_update_date >= @updatedSince"));
+            dates.Add("d.last_update_date >= @updatedSince");
+        }
+
+        // A short window is a small share of all providers (a month of enumerations is ~0.5%), so it can drive.
+        var selectiveDate = filter.NewWithinDays <= SelectiveNewDays || filter.UpdatedWithinDays <= SelectiveUpdatedDays;
+
         if (taxonomyCodes is not null)
         {
             // An empty list can't match anything; keep the query valid instead of emitting "IN ()".
@@ -203,6 +222,13 @@ public sealed class SearchQuery
             drivenBy.Add("location");
             _driverKind = "search";
         }
+        else if (selectiveDate)
+        {
+            // Both date conditions, when both are set: the provider rows are read anyway.
+            _driver = "SELECT d.npi FROM provider d WHERE " + string.Join(" AND ", dates);
+            drivenBy.Add("date");
+            _driverKind = "date";
+        }
         else if (providerTemplates.Any(t => t.Kind == "name"))
         {
             _driver = "SELECT d.npi FROM provider d WHERE " + string.Join(" AND ", providerTemplates.Where(t => t.Kind == "name").Select(t => Format(t.Template, "d")));
@@ -259,7 +285,15 @@ public sealed class SearchQuery
     /// credential). The map search then starts from the candidates and checks whether each is inside the area;
     /// otherwise it starts from the points in the area (spatial index) and checks the filters.
     /// </summary>
-    public bool HasSelectiveDriver => _driverKind is "npi" or "flag" or "search" or "taxonomy" or "name" or "credential";
+    public bool HasSelectiveDriver => _driverKind is "npi" or "flag" or "search" or "taxonomy" or "name" or "credential" or "date";
+
+    /// <summary>A "new within" window up to this many days drives the search (see the constructor); longer ones only check candidates.</summary>
+    public const int SelectiveNewDays = 400;
+
+    /// <summary>The same for "updated within": updates are far more frequent than enumerations.</summary>
+    public const int SelectiveUpdatedDays = 31;
+
+    private static DateTime Since(int days) => DateTime.UtcNow.Date.AddDays(-days);
 
     /// <summary>
     /// Map search (Stage 5.5 item 10): the provider_map rows (alias m) inside the area <paramref name="boxParameter"/>
@@ -312,7 +346,7 @@ public sealed class SearchQuery
             // Only NPI-level checks left (dataset flags): count the candidates without joining provider,
             // which costs a random lookup per candidate (950k for a whole state). Only for drivers drawn from
             // projection tables; the NPI, flag and Care Compare drivers can list NPIs that aren't projected.
-            if (_driverKind is "location" or "search" or "taxonomy" or "name" or "credential" && _remaining.Count == _remainingNpiOnly.Count)
+            if (_driverKind is "location" or "search" or "taxonomy" or "name" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
             {
                 var flags = _remainingNpiOnly.Count > 0 ? " WHERE " + string.Join(" AND ", _remainingNpiOnly.Select(t => Format(t, "c"))) : "";
                 return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";

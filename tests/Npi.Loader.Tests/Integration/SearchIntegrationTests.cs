@@ -140,6 +140,51 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Each_projection_records_what_changed_since_the_last_one()
+    {
+        await using var db = await SeededAsync();
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_change")); // the first projection has nothing to compare with
+
+        await db.ExecuteAsync("UPDATE npidata SET Provider_Last_Name_Legal_Name = 'OBRIEN-SMITH' WHERE NPI = @A", new { A });
+        await db.ExecuteAsync("UPDATE npidata SET Provider_Credential_Text = 'MD', Healthcare_Provider_Taxonomy_Code_1 = @Dentist WHERE NPI = @B", new { B, Dentist });
+        await db.ExecuteAsync("UPDATE npidata SET Provider_First_Line_Business_Practice_Location_Address = '210 Main St' WHERE NPI = @E", new { E });
+        await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 0 WHERE NPI = @C", new { C });
+        await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 1 WHERE NPI = @D", new { D });
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+
+        Assert.Equal(
+            [
+                (A, "name", "O'BRIEN, JOSÉ Q", "OBRIEN-SMITH, JOSÉ Q"), (B, "credential", "M.D.", "MD"), (B, "specialty", ChiroSports, Dentist),
+                (C, "added", null, "CARTER"), (D, "deactivated", "SMITH, JONES & CO, LLC", null),
+                (E, "address", "200 Main St, FARMINGDALE, NY 11735", "210 Main St, FARMINGDALE, NY 11735"),
+            ],
+            await db.QueryAsync<(string, string, string?, string?)>(
+                "SELECT npi, change_type, old_value, new_value FROM provider_change ORDER BY npi, change_type"));
+
+        var b = await new ProviderDetailService(db.ConnectionString).GetAsync(B, _ct);
+        Assert.Equal([("credential", "M.D.", "MD"), ("specialty", "Chiropractor – Sports Physician", "Dentist")],
+            b!.Changes.Select(c => (c.Type, c.OldValue, c.NewValue)).Order());
+        Assert.Equal(DateOnly.FromDateTime(DateTime.UtcNow), b.Changes[0].RecordedOn);
+    }
+
+    [Fact]
+    public async Task New_and_recently_updated_filters()
+    {
+        await using var db = await SeededAsync();
+        var search = Search(db);
+        await db.ExecuteAsync("UPDATE provider SET enumeration_date = UTC_DATE() - INTERVAL 10 DAY, last_update_date = UTC_DATE() - INTERVAL 10 DAY WHERE npi = @E", new { E });
+        await db.ExecuteAsync("UPDATE provider SET last_update_date = UTC_DATE() - INTERVAL 3 DAY WHERE npi = @A", new { A });
+
+        Assert.Equal([E], await Npis(search, new SearchFilter { NewWithinDays = 30 }));                // drives
+        Assert.Equal([E], await Npis(search, new SearchFilter { NewWithinDays = 30, CountyFips = "36103" }));
+        Assert.Empty(await Npis(search, new SearchFilter { NewWithinDays = 5 }));
+        Assert.Equal([E], await Npis(search, new SearchFilter { NewWithinDays = 3650, State = "NY" }));  // checked per candidate
+        Assert.Equal([A], await Npis(search, new SearchFilter { UpdatedWithinDays = 7 }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { UpdatedWithinDays = 7, Classification = "Chiropractor" }));
+        Assert.Empty(await Npis(search, new SearchFilter { UpdatedWithinDays = 7, NewWithinDays = 30 }));
+    }
+
+    [Fact]
     public async Task Detail_shows_registration_details_identifiers_and_endpoints()
     {
         await using var db = await SeededAsync();

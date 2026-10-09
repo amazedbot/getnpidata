@@ -84,12 +84,21 @@ public sealed record SearchFilter
     /// <summary>At least this many years since graduating from medical/professional school (Care Compare), 1–70.</summary>
     public int? MinYears { get; init; }
 
+    /// <summary>Enumerated (received their NPI) within the last this many days, 1–3650: new providers (Stage 5.5 item 11).</summary>
+    public int? NewWithinDays { get; init; }
+
+    /// <summary>NPPES record updated within the last this many days, 1–3650 (Stage 5.5 item 11).</summary>
+    public int? UpdatedWithinDays { get; init; }
+
     /// <summary>Sort key (<see cref="SearchSort"/>), optionally prefixed with "-" for descending. Default "name".</summary>
     public string? Sort { get; init; }
 
     public int Page { get; init; } = 1;
 
     public int PageSize { get; init; } = DefaultPageSize;
+
+    /// <summary>Longest window for <see cref="NewWithinDays"/> and <see cref="UpdatedWithinDays"/> (10 years).</summary>
+    public const int MaxWithinDays = 3650;
 
     public bool HasLocationFilter => State is not null || CountyFips is not null || City is not null || Zip5 is not null || Shortage is not null;
 }

@@ -47,6 +47,29 @@
         <ul id="credential-options" class="combo-list" role="listbox" aria-label="Credentials" hidden></ul>
         <script type="application/json" id="credential-data">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Credentials.Select(c => new object[] { c.Credential, c.Providers })))</script>
     </div>
+    @* New / recently updated (Stage 5.5 item 11); other day counts from a shared link are kept as an extra option. *@
+    <div class="field narrow">
+        <label for="newWithinDays">New providers</label>
+        <select id="newWithinDays" name="newWithinDays">
+            <option value="">Any</option>
+            @foreach (var (days, text) in FilterFields.NewChoices(Model.Filter.NewWithinDays))
+            {
+                <option value="@days" selected="@(Model.Filter.NewWithinDays == days)">@text</option>
+            }
+        </select>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.NewWithinDays))</span>
+    </div>
+    <div class="field narrow">
+        <label for="updatedWithinDays">Record updated</label>
+        <select id="updatedWithinDays" name="updatedWithinDays">
+            <option value="">Any</option>
+            @foreach (var (days, text) in FilterFields.UpdatedChoices(Model.Filter.UpdatedWithinDays))
+            {
+                <option value="@days" selected="@(Model.Filter.UpdatedWithinDays == days)">@text</option>
+            }
+        </select>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.UpdatedWithinDays))</span>
+    </div>
 </fieldset>
 
 <fieldset>

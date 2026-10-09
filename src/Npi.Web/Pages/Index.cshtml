@@ -149,6 +149,10 @@
                                     {
                                         <span class="badge good" title="Offers telehealth (Care Compare)">Telehealth</span>
                                     }
+                                    @if (p.EnumerationDate is { } enumerated && enumerated >= DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-90))
+                                    {
+                                        <span class="badge" title="NPI issued @enumerated.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)">New</span>
+                                    }
                                 </td>
                                 <td>@p.Credential</td>
                                 <td>@p.PrimarySpecialty</td>

@@ -179,6 +179,22 @@ public sealed class ProviderDetail
 
     /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
     public IndustryPayments? IndustryPayments { get; set; }
+
+    /// <summary>Changes recorded since change tracking began (October 2026), newest first.</summary>
+    public IReadOnlyList<ProviderChange> Changes { get; set; } = [];
+}
+
+/// <summary>A change noticed between two weekly/monthly NPPES loads.</summary>
+public sealed class ProviderChange
+{
+    public DateTime RecordedOn { get; set; }
+
+    /// <summary>name, credential, specialty or address (primary practice address).</summary>
+    public string Type { get; set; } = "";
+
+    public string? OldValue { get; set; }
+
+    public string? NewValue { get; set; }
 }
 
 /// <summary>Open Payments (Sunshine Act) general payments from drug and device makers to one NPI.</summary>

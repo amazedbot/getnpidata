@@ -211,6 +211,33 @@ public class SearchQueryTests
         }
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3651)]
+    public void Day_windows_must_be_1_to_3650(int days)
+    {
+        Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { NewWithinDays = days }));
+        Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { UpdatedWithinDays = days }));
+    }
+
+    [Fact]
+    public void A_short_new_or_updated_window_drives_the_search_and_a_long_one_only_checks()
+    {
+        var recent = new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 30, State = "NY" }), null, null);
+        Assert.Contains("FROM (SELECT d.npi FROM provider d WHERE d.enumeration_date >= @enumeratedSince) c", recent.PageSql, StringComparison.Ordinal);
+        Assert.Contains("EXISTS (SELECT 1 FROM provider_location l", recent.PageSql, StringComparison.Ordinal);
+        Assert.Equal(DateTime.UtcNow.Date.AddDays(-30), recent.Parameters.Get<DateTime>("enumeratedSince"));
+        Assert.True(recent.HasSelectiveDriver);
+
+        var updated = new SearchQuery(SearchValidation.Normalize(new SearchFilter { UpdatedWithinDays = 7 }), null, null);
+        Assert.Contains("d.last_update_date >= @updatedSince", updated.PageSql, StringComparison.Ordinal);
+
+        // A year of updates is millions of providers: the state drives, the date is checked per candidate.
+        var older = new SearchQuery(SearchValidation.Normalize(new SearchFilter { UpdatedWithinDays = 365, State = "NY" }), null, null);
+        Assert.Contains("FROM (SELECT DISTINCT l.npi FROM provider_location l", older.PageSql, StringComparison.Ordinal);
+        Assert.Contains("p.last_update_date >= @updatedSince", older.PageSql, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Sorts_without_an_index_have_no_sort_index_plan() =>
         Assert.Null(new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "CA", Sort = "-lastUpdate" }), null, null).IndexOrderPageSql);
