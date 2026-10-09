@@ -72,6 +72,11 @@ public class ClientTests
     [InlineData(typeof(Server.StateInfo), typeof(StateInfo))]
     [InlineData(typeof(Server.CountyInfo), typeof(CountyInfo))]
     [InlineData(typeof(Npi.Web.Api.ApiMeta), typeof(ApiMeta))]
+    [InlineData(typeof(Server.ProviderProfile), typeof(ProviderProfile))]
+    [InlineData(typeof(Server.AuthorizedOfficial), typeof(AuthorizedOfficial))]
+    [InlineData(typeof(Server.MailingAddress), typeof(MailingAddress))]
+    [InlineData(typeof(Server.ProviderIdentifier), typeof(ProviderIdentifier))]
+    [InlineData(typeof(Server.ProviderEndpoint), typeof(ProviderEndpoint))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
         static IEnumerable<string> Names(Type t) =>

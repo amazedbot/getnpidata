@@ -114,6 +114,7 @@ button, .button {
 .results-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+td.break { overflow-wrap: anywhere; max-width: 32rem; }
 table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
 th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { background: var(--panel); white-space: nowrap; }

@@ -13,6 +13,8 @@ internal sealed class NppesZipBuilder
     private readonly List<Dictionary<string, string>> _providers = [];
     private readonly List<string[]> _otherNames = [];
     private readonly List<string[]> _locations = [];
+    private readonly List<string[]> _endpoints = [];
+    private bool _withEndpointFile = true;
 
     /// <param name="values">Column name (as in the database, e.g. Provider_Last_Name_Legal_Name) → value.</param>
     public NppesZipBuilder Provider(string npi, params (string Column, string Value)[] values)
@@ -40,6 +42,22 @@ internal sealed class NppesZipBuilder
         return this;
     }
 
+    /// <summary>One endpoint_pfile row (19 columns in the V2 header order).</summary>
+    public NppesZipBuilder Endpoint(string npi, string type, string endpoint, string description = "", string affiliationName = "",
+        string city = "", string state = "")
+    {
+        _endpoints.Add([npi, type, type == "DIRECT" ? "Direct Messaging Address" : type, endpoint, affiliationName.Length > 0 ? "Y" : "N", description,
+            affiliationName, "", "", "", "", "", "", "", "", city, state, city.Length > 0 ? "US" : "", ""]);
+        return this;
+    }
+
+    /// <summary>Leave the endpoint file out of the zip (the loader must keep the stored endpoints).</summary>
+    public NppesZipBuilder WithoutEndpointFile()
+    {
+        _withEndpointFile = false;
+        return this;
+    }
+
     /// <returns>The path of the written zip, named <paramref name="zipName"/>.</returns>
     public string Write(string folder, string zipName, string lineTerminator = "\n")
     {
@@ -53,7 +71,11 @@ internal sealed class NppesZipBuilder
         AddCsv(zip, "npidata_pfile_20260101-20260107", npiHeader, npiRows, lineTerminator);
         AddCsv(zip, "othername_pfile_20260101-20260107", HeaderLine("othername_pfile_v2_fileheader.csv"), _otherNames, lineTerminator);
         AddCsv(zip, "pl_pfile_20260101-20260107", HeaderLine("pl_pfile_v2_fileheader.csv"), _locations, lineTerminator);
-        AddCsv(zip, "endpoint_pfile_20260101-20260107", "\"NPI\",\"Endpoint\"", [["1000000004", "https://example.org"]], lineTerminator);
+        if (_withEndpointFile)
+        {
+            AddCsv(zip, "endpoint_pfile_20260101-20260107", HeaderLine("endpoint_pfile_v2_fileheader.csv"), _endpoints, lineTerminator);
+        }
+
         AddText(zip, "NPPES_Data_Dissemination_Readme_v.2.pdf", "%PDF-1.4 placeholder");
         return path;
     }

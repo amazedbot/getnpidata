@@ -61,6 +61,82 @@
     </table>
 </div>
 
+@if (p.Profile is { } profile && (profile.AuthorizedOfficial is not null || profile.ParentOrganization is not null || profile.MailingAddress is not null
+                                   || profile.IsSoleProprietor == true || profile.PracticeFax is not null))
+{
+    <h2>Registration details</h2>
+    <dl class="facts">
+        @if (profile.AuthorizedOfficial is { } official)
+        {
+            <dt>Authorized official</dt>
+            <dd>
+                @official.Name@if (official.Credential is not null){<span>, @official.Credential</span>}
+                @if (official.Title is not null){<br /><span class="muted">@official.Title</span>}
+                @if (official.Phone is not null){<br />@Format.Phone(official.Phone)}
+            </dd>
+        }
+        @if (profile.ParentOrganization is not null)
+        {
+            <dt>Parent organization</dt><dd>@profile.ParentOrganization@if (profile.IsOrganizationSubpart == true){<span class="muted"> (this NPI is a subpart)</span>}</dd>
+        }
+        @if (profile.IsSoleProprietor == true)
+        {
+            <dt>Sole proprietor</dt><dd>Yes</dd>
+        }
+        @if (profile.MailingAddress is { } mail)
+        {
+            <dt>Mailing address</dt>
+            <dd>
+                @mail.Address1@if (mail.Address2 is not null){<br />@mail.Address2}<br />
+                @mail.City, @mail.State @mail.PostalCode@if (mail.CountryCode is not null && mail.CountryCode != "US"){<span> @mail.CountryCode</span>}
+                @if (mail.Phone is not null){<br /><span>Phone @Format.Phone(mail.Phone)</span>}
+                @if (mail.Fax is not null){<br /><span>Fax @Format.Phone(mail.Fax)</span>}
+            </dd>
+        }
+        @if (profile.PracticeFax is not null)
+        {
+            <dt>Practice fax</dt><dd>@Format.Phone(profile.PracticeFax)</dd>
+        }
+    </dl>
+}
+
+@if (p.Endpoints.Count > 0)
+{
+    <h2>Electronic endpoints</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Type</th><th scope="col">Endpoint</th><th scope="col">Use</th><th scope="col">Affiliation</th></tr></thead>
+            <tbody>
+                @foreach (var e in p.Endpoints)
+                {
+                    <tr>
+                        <td>@(e.TypeDescription ?? e.Type)</td>
+                        <td class="break">@e.Endpoint@if (e.Description is not null){<br /><span class="muted">@e.Description</span>}</td>
+                        <td>@e.Use</td>
+                        <td>@e.AffiliationName@if (e.AffiliationCity is not null){<br /><span class="muted">@e.AffiliationCity, @e.AffiliationState</span>}</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (p.Identifiers.Count > 0)
+{
+    <h2>Other identifiers</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Identifier</th><th scope="col">Type</th><th scope="col">State</th><th scope="col">Issuer</th></tr></thead>
+            <tbody>
+                @foreach (var i in p.Identifiers)
+                {
+                    <tr><td>@i.Identifier</td><td>@i.Type</td><td>@i.State</td><td>@i.Issuer</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
 @if (p.OtherNames.Count > 0)
 {
     <h2>Other names</h2>

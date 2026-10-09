@@ -127,13 +127,41 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.False(await builder.IsStaleAsync(_ct));
         var before = await db.QueryAsync<(string, byte[])>("SELECT npi, row_hash FROM provider ORDER BY npi");
 
-        // Change only a secondary location of B: B's hash changes, nobody else's.
+        // Change only a secondary location of B, A's endpoint and D's authorized official: exactly their hashes change.
         await db.ExecuteAsync("UPDATE practice_locations SET Provider_Secondary_Practice_Location_Address_Line_1 = '2 New Rd' WHERE NPI = @B", new { B });
+        await db.ExecuteAsync("UPDATE endpoints SET Endpoint = 'obrien2@direct.example.org' WHERE NPI = @A", new { A });
+        await db.ExecuteAsync("UPDATE npidata SET Authorized_Official_Title_or_Position = 'CEO' WHERE NPI = @D", new { D });
         await builder.BuildAsync(_ct);
         var after = await db.QueryAsync<(string, byte[])>("SELECT npi, row_hash FROM provider ORDER BY npi");
 
         var changed = before.Zip(after).Where(p => !p.First.Item2.SequenceEqual(p.Second.Item2)).Select(p => p.First.Item1);
-        Assert.Equal([B], changed);
+        Assert.Equal([A, B, D], changed);
+    }
+
+    [Fact]
+    public async Task Detail_shows_registration_details_identifiers_and_endpoints()
+    {
+        await using var db = await SeededAsync();
+        var details = new ProviderDetailService(db.ConnectionString);
+
+        var d = await details.GetAsync(D, _ct);
+        Assert.NotNull(d?.Profile);
+        Assert.Equal(new AuthorizedOfficial("DR. PAT SMITH", "DDS", "OWNER, PRESIDENT", "7185550100"), d.Profile.AuthorizedOfficial);
+        Assert.Equal("SMITH HOLDINGS INC", d.Profile.ParentOrganization);
+        Assert.True(d.Profile.IsOrganizationSubpart);
+        Assert.Equal(new MailingAddress("PO BOX 12", null, "BROOKLYN", "NY", "11201-0012", "US", null, "7185550199"), d.Profile.MailingAddress);
+        Assert.Equal([new ProviderIdentifier("MCD-123", "05", "Medicaid", "NY", null), new ProviderIdentifier("X9", "01", "Other", null, "BLUE PLAN")],
+            d.Identifiers);
+        Assert.Empty(d.Endpoints);
+
+        var a = await details.GetAsync(A, _ct);
+        Assert.Equal([new ProviderEndpoint("DIRECT", "Direct Messaging Address", "obrien@direct.example.org", "Direct address", null, null,
+            "O'BRIEN CHIROPRACTIC, PC", "AMITYVILLE", "NY")], a!.Endpoints);
+        Assert.Null(a.Profile!.AuthorizedOfficial); // individuals have none
+        Assert.Empty(a.Identifiers);
+
+        // The deactivated NPI's endpoint never reaches the projection.
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_endpoint WHERE npi = @C", new { C }));
     }
 
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
@@ -180,6 +208,15 @@ public sealed class SearchIntegrationTests : IDisposable
                 ("Healthcare_Provider_Taxonomy_Code_1", Chiro), ("Provider_Business_Practice_Location_Address_Postal_Code", "11701"),
                 ("Provider_Business_Practice_Location_Address_State_Name", "NY"), ("NPI_Deactivation_Date", "01/01/2025"))
             .Provider(D, ("Entity_Type_Code", "2"), ("Provider_Organization_Name_Legal_Business_Name", "SMITH, JONES & CO, LLC"),
+                ("Authorized_Official_Name_Prefix_Text", "DR."), ("Authorized_Official_First_Name", "PAT"), ("Authorized_Official_Last_Name", "SMITH"),
+                ("Authorized_Official_Credential_Text", "DDS"), ("Authorized_Official_Title_or_Position", "OWNER, PRESIDENT"),
+                ("Authorized_Official_Telephone_Number", "7185550100"),
+                ("Is_Organization_Subpart", "Y"), ("Parent_Organization_LBN", "SMITH HOLDINGS INC"), ("Parent_Organization_TIN", "<UNAVAIL>"),
+                ("Provider_First_Line_Business_Mailing_Address", "PO BOX 12"), ("Provider_Business_Mailing_Address_City_Name", "BROOKLYN"),
+                ("Provider_Business_Mailing_Address_State_Name", "NY"), ("Provider_Business_Mailing_Address_Postal_Code", "112010012"),
+                ("Provider_Business_Mailing_Address_Country_Code", "US"), ("Provider_Business_Mailing_Address_Fax_Number", "7185550199"),
+                ("Other_Provider_Identifier_1", "MCD-123"), ("Other_Provider_Identifier_Type_Code_1", "05"), ("Other_Provider_Identifier_State_1", "NY"),
+                ("Other_Provider_Identifier_2", "X9"), ("Other_Provider_Identifier_Type_Code_2", "01"), ("Other_Provider_Identifier_Issuer_2", "BLUE PLAN"),
                 ("Healthcare_Provider_Taxonomy_Code_1", Dentist), ("Healthcare_Provider_Primary_Taxonomy_Switch_1", "Y"),
                 ("Provider_First_Line_Business_Practice_Location_Address", "5 Atlantic Ave"),
                 ("Provider_Business_Practice_Location_Address_City_Name", "BROOKLYN"), ("Provider_Business_Practice_Location_Address_State_Name", "NY"),
@@ -192,6 +229,8 @@ public sealed class SearchIntegrationTests : IDisposable
                 ("Provider_Business_Practice_Location_Address_Postal_Code", "11735"), ("Last_Update_Date", "10/04/2026"))
             .Location(B, "300 Conklin St", "", "FARMINGDALE", "NY", "117351234", "US", "5165550100")
             .OtherName(D, "SJC DENTAL", "3", "01/01/2020")
+            .Endpoint(A, "DIRECT", "obrien@direct.example.org", "Direct address", "O'BRIEN CHIROPRACTIC, PC", "AMITYVILLE", "NY")
+            .Endpoint(C, "DIRECT", "deactivated@direct.example.org")
             .Write(_folder, "NPPES_Data_Dissemination_September_2026_V2.zip");
 
         using var http = new HttpClient();

@@ -218,4 +218,8 @@ public static class ProviderNames
     /// <summary>"11701-1234", "11701", or the raw postal code for foreign addresses.</summary>
     public static string? Zip(string? zip5, string? zip4, string? postalCode) =>
         zip5 is null ? postalCode : zip4 is null ? zip5 : $"{zip5}-{zip4}";
+
+    /// <summary>A raw NPPES postal code for display: US "117011234" → "11701-1234"; anything else unchanged.</summary>
+    public static string? PostalCode(string? raw, string? countryCode) =>
+        raw is { Length: 9 } && raw.All(char.IsAsciiDigit) && (countryCode is null or "US") ? $"{raw[..5]}-{raw[5..]}" : raw;
 }

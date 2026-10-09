@@ -9,16 +9,22 @@ using Serilog;
 namespace Npi.Loader.Projection;
 
 /// <summary>
-/// Builds the search projection (CLAUDE.md §6.2, §7 Stage 3.1): provider, provider_taxonomy,
-/// provider_location and provider_other_name, from npidata / practice_locations / other_names.
+/// Builds the search projection (CLAUDE.md §6.2, §7 Stage 3.1 and Stage 5.5 item 1): provider,
+/// provider_taxonomy, provider_location, provider_other_name, provider_profile, provider_identifier
+/// and provider_endpoint, from npidata / practice_locations / other_names / endpoints.
 /// Deactivated NPIs are left out. Everything is built in *_staging tables and swapped in with one
 /// atomic RENAME, so searches never see a partial projection.
 /// </summary>
 public sealed class ProjectionBuilder(Database database, ILogger log, double minRowRatio, TimeProvider? clock = null)
 {
-    public static readonly string[] Tables = ["provider", "provider_taxonomy", "provider_location", "provider_other_name", "provider_search"];
+    public static readonly string[] Tables =
+    [
+        "provider", "provider_taxonomy", "provider_location", "provider_other_name", "provider_search",
+        "provider_profile", "provider_identifier", "provider_endpoint",
+    ];
 
     private const int TaxonomySlots = 15;
+    private const int IdentifierSlots = 50;
     private const string Active = "n.`Is_Deactivated` = 0 AND n.`Entity_Type_Code` IN ('1', '2')";
 
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -56,6 +62,9 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             await StepAsync(connection, "provider_location (secondary)", SecondaryLocationSql, ct);
             await StepAsync(connection, "provider_other_name", OtherNameSql, ct);
             await StepAsync(connection, "provider_search", SearchSql, ct);
+            await StepAsync(connection, "provider_profile", ProfileSql, ct);
+            await StepAsync(connection, "provider_identifier", IdentifierSql(), ct);
+            await StepAsync(connection, "provider_endpoint", EndpointSql, ct);
             await StepAsync(connection, "row_hash", RowHashSql, ct);
 
             var providers = await Database.CountAsync(connection, "provider_staging", ct);
@@ -227,6 +236,66 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         ORDER BY o.`NPI`, o.`ID`
         """;
 
+    private static readonly string ProfileSql = $"""
+        INSERT INTO `provider_profile_staging` (`npi`, `is_sole_proprietor`, `is_subpart`, `parent_org_name`,
+          `official_prefix`, `official_first_name`, `official_middle_name`, `official_last_name`, `official_suffix`, `official_credential`,
+          `official_title`, `official_phone`, `mailing_address1`, `mailing_address2`, `mailing_city`, `mailing_state`, `mailing_postal_code`,
+          `mailing_country_code`, `mailing_phone`, `mailing_fax`, `practice_fax`)
+        SELECT n.`NPI`,
+          CASE {Text("n.`Is_Sole_Proprietor`")} WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END,
+          CASE {Text("n.`Is_Organization_Subpart`")} WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END,
+          {Text("n.`Parent_Organization_LBN`")},
+          {Text("n.`Authorized_Official_Name_Prefix_Text`")}, {Text("n.`Authorized_Official_First_Name`")},
+          {Text("n.`Authorized_Official_Middle_Name`")}, {Text("n.`Authorized_Official_Last_Name`")},
+          {Text("n.`Authorized_Official_Name_Suffix_Text`")}, {Text("n.`Authorized_Official_Credential_Text`")},
+          {Text("n.`Authorized_Official_Title_or_Position`")}, {Text("n.`Authorized_Official_Telephone_Number`")},
+          {Text("n.`Provider_First_Line_Business_Mailing_Address`")}, {Text("n.`Provider_Second_Line_Business_Mailing_Address`")},
+          {Text("n.`Provider_Business_Mailing_Address_City_Name`")}, {Text("n.`Provider_Business_Mailing_Address_State_Name`")},
+          {Text("n.`Provider_Business_Mailing_Address_Postal_Code`")}, {Text("n.`Provider_Business_Mailing_Address_Country_Code`")},
+          {Text("n.`Provider_Business_Mailing_Address_Telephone_Number`")}, {Text("n.`Provider_Business_Mailing_Address_Fax_Number`")},
+          {Text("n.`Provider_Business_Practice_Location_Address_Fax_Number`")}
+        FROM `npidata` n
+        JOIN `provider_staging` p ON p.`npi` = n.`NPI`
+        """;
+
+    // Same one-pass slot unpivot as the taxonomies, over the 50 other-identifier slots.
+    private static string IdentifierSql()
+    {
+        string Pick(string prefix) => "CASE s.slot " + string.Join(" ", Enumerable.Range(1, IdentifierSlots)
+            .Select(i => $"WHEN {i} THEN n.`{prefix}_{i}`")) + " END";
+        var slots = string.Join(" UNION ALL ", Enumerable.Range(1, IdentifierSlots).Select(i => $"SELECT {i} AS slot"));
+        return $"""
+            INSERT INTO `provider_identifier_staging` (`npi`, `slot`, `identifier`, `type_code`, `state`, `issuer`)
+            SELECT x.npi, x.slot, x.identifier, x.type_code, x.state, x.issuer
+            FROM (
+              SELECT n.`NPI` AS npi, s.slot,
+                {Text(Pick("Other_Provider_Identifier"))} AS identifier,
+                {Text(Pick("Other_Provider_Identifier_Type_Code"))} AS type_code,
+                {Text(Pick("Other_Provider_Identifier_State"))} AS state,
+                {Text(Pick("Other_Provider_Identifier_Issuer"))} AS issuer
+              FROM `npidata` n
+              JOIN `provider_staging` p ON p.`npi` = n.`NPI`
+              CROSS JOIN ({slots}) s
+              WHERE n.`Other_Provider_Identifier_1` IS NOT NULL
+            ) x
+            WHERE x.identifier IS NOT NULL
+            """;
+    }
+
+    private static readonly string EndpointSql = $"""
+        INSERT INTO `provider_endpoint_staging` (`npi`, `endpoint_type`, `endpoint_type_description`, `endpoint`, `endpoint_description`,
+          `use_description`, `content_description`, `affiliation_name`, `affiliation_city`, `affiliation_state`)
+        SELECT e.`NPI`, {Text("e.`Endpoint_Type`")}, {Text("e.`Endpoint_Type_Description`")}, {Text("e.`Endpoint`")},
+          {Text("e.`Endpoint_Description`")},
+          COALESCE({Text("e.`Use_Description`")}, {Text("e.`Other_Use_Description`")}),
+          COALESCE({Text("e.`Content_Description`")}, {Text("e.`Other_Content_Description`")}),
+          {Text("e.`Affiliation_Legal_Business_Name`")}, {Text("e.`Affiliation_Address_City`")}, {Text("e.`Affiliation_Address_State`")}
+        FROM `endpoints` e
+        JOIN `provider_staging` p ON p.`npi` = e.`NPI`
+        WHERE {Text("e.`Endpoint`")} IS NOT NULL
+        ORDER BY e.`NPI`, e.`ID`
+        """;
+
     // Every (taxonomy code, location area) pair of each provider; DISTINCT because two locations can
     // share state/city/ZIP. Derived entirely from the two tables above, so not part of row_hash.
     private const string SearchSql = """
@@ -252,10 +321,27 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         LEFT JOIN (
           SELECT npi, MD5(GROUP_CONCAT(CONCAT_WS('|', name, IFNULL(type_code, '')) ORDER BY name, type_code SEPARATOR '\n')) AS h
           FROM `provider_other_name_staging` GROUP BY npi) o ON o.npi = p.npi
+        LEFT JOIN `provider_profile_staging` pp ON pp.npi = p.npi
+        LEFT JOIN (
+          SELECT npi, MD5(GROUP_CONCAT(CONCAT_WS('|', slot, identifier, IFNULL(type_code, ''), IFNULL(state, ''), IFNULL(issuer, ''))
+                                       ORDER BY slot SEPARATOR '\n')) AS h
+          FROM `provider_identifier_staging` GROUP BY npi) i ON i.npi = p.npi
+        LEFT JOIN (
+          SELECT npi, MD5(GROUP_CONCAT(CONCAT_WS('|', IFNULL(endpoint_type, ''), endpoint, IFNULL(endpoint_description, ''), IFNULL(use_description, ''),
+                                                 IFNULL(content_description, ''), IFNULL(affiliation_name, ''), IFNULL(affiliation_city, ''), IFNULL(affiliation_state, ''))
+                                       ORDER BY endpoint_type, endpoint, affiliation_name SEPARATOR '\n')) AS h
+          FROM `provider_endpoint_staging` GROUP BY npi) e ON e.npi = p.npi
         SET p.row_hash = UNHEX(MD5(CONCAT_WS('#', p.entity_type, IFNULL(p.last_name, ''), IFNULL(p.first_name, ''), IFNULL(p.middle_name, ''),
             IFNULL(p.name_prefix, ''), IFNULL(p.name_suffix, ''), IFNULL(p.credential, ''), IFNULL(p.org_name, ''), IFNULL(p.gender, ''),
             IFNULL(p.primary_taxonomy_code, ''), IFNULL(p.phone, ''), IFNULL(p.enumeration_date, ''), IFNULL(p.last_update_date, ''),
-            IFNULL(t.h, ''), IFNULL(l.h, ''), IFNULL(o.h, ''))))
+            IFNULL(t.h, ''), IFNULL(l.h, ''), IFNULL(o.h, ''),
+            MD5(CONCAT_WS('|', IFNULL(pp.is_sole_proprietor, ''), IFNULL(pp.is_subpart, ''), IFNULL(pp.parent_org_name, ''),
+              IFNULL(pp.official_prefix, ''), IFNULL(pp.official_first_name, ''), IFNULL(pp.official_middle_name, ''), IFNULL(pp.official_last_name, ''),
+              IFNULL(pp.official_suffix, ''), IFNULL(pp.official_credential, ''), IFNULL(pp.official_title, ''), IFNULL(pp.official_phone, ''),
+              IFNULL(pp.mailing_address1, ''), IFNULL(pp.mailing_address2, ''), IFNULL(pp.mailing_city, ''), IFNULL(pp.mailing_state, ''),
+              IFNULL(pp.mailing_postal_code, ''), IFNULL(pp.mailing_country_code, ''), IFNULL(pp.mailing_phone, ''), IFNULL(pp.mailing_fax, ''),
+              IFNULL(pp.practice_fax, ''))),
+            IFNULL(i.h, ''), IFNULL(e.h, ''))))
         """;
 
     private const string DataVersionSql = """

@@ -7,6 +7,39 @@ public sealed record ProviderTaxonomy(int Slot, string Code, string? Classificat
 
 public sealed record ProviderLocation(bool IsPrimary, string? Address1, string? Address2, string? City, string? State, string? Zip, string? CountryCode, string? Phone);
 
+/// <summary>The person an organization registered as its authorized official.</summary>
+public sealed record AuthorizedOfficial(string Name, string? Credential, string? Title, string? Phone);
+
+/// <summary>NPPES business mailing address (shown, never searched).</summary>
+public sealed record MailingAddress(string? Address1, string? Address2, string? City, string? State, string? PostalCode, string? CountryCode,
+    string? Phone, string? Fax);
+
+/// <summary>NPPES details that are shown but not searched (CLAUDE.md §7 Stage 5.5 item 1).</summary>
+public sealed record ProviderProfile(bool? IsSoleProprietor, bool? IsOrganizationSubpart, string? ParentOrganization,
+    AuthorizedOfficial? AuthorizedOfficial, MailingAddress? MailingAddress, string? PracticeFax);
+
+/// <summary>An identifier other than the NPI (e.g. a state Medicaid number).</summary>
+public sealed record ProviderIdentifier(string Identifier, string? TypeCode, string? Type, string? State, string? Issuer)
+{
+    /// <summary>NPPES "Other Provider Identifier Type Code" → description.</summary>
+    public static string? Describe(string? code) => code switch
+    {
+        null => null,
+        "01" => "Other",
+        "02" => "Medicare UPIN",
+        "04" => "Medicare ID (type unspecified)",
+        "05" => "Medicaid",
+        "06" => "Medicare OSCAR/Certification",
+        "07" => "Medicare NSC",
+        "08" => "Medicare PIN",
+        _ => code,
+    };
+}
+
+/// <summary>A Direct messaging address, FHIR endpoint, website or similar published in NPPES.</summary>
+public sealed record ProviderEndpoint(string? Type, string? TypeDescription, string Endpoint, string? Description, string? Use, string? Content,
+    string? AffiliationName, string? AffiliationCity, string? AffiliationState);
+
 /// <summary>Everything the detail page and GET /api/v1/providers/{npi} show for one NPI.</summary>
 public sealed record ProviderDetail(
     string Npi, int EntityType, string Name, string? NamePrefix, string? Credential, string? Gender,
@@ -14,6 +47,12 @@ public sealed record ProviderDetail(
     IReadOnlyList<ProviderTaxonomy> Taxonomies, IReadOnlyList<ProviderLocation> Locations, IReadOnlyList<string> OtherNames)
 {
     public string EntityTypeName => EntityType == 2 ? "Organization" : "Individual";
+
+    public ProviderProfile? Profile { get; init; }
+
+    public IReadOnlyList<ProviderIdentifier> Identifiers { get; init; } = [];
+
+    public IReadOnlyList<ProviderEndpoint> Endpoints { get; init; } = [];
 }
 
 /// <summary>Reads one provider from the projection. Deactivated NPIs are not in the projection, so they come back as null.</summary>
@@ -26,6 +65,17 @@ public sealed class ProviderDetailService(string connectionString)
 
     private sealed record LocRow(sbyte IsPrimary, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4,
         string? PostalCode, string? CountryCode, string? Phone);
+
+    private sealed record ProfileRow(sbyte? IsSoleProprietor, sbyte? IsSubpart, string? ParentOrgName,
+        string? OfficialPrefix, string? OfficialFirstName, string? OfficialMiddleName, string? OfficialLastName, string? OfficialSuffix,
+        string? OfficialCredential, string? OfficialTitle, string? OfficialPhone,
+        string? MailingAddress1, string? MailingAddress2, string? MailingCity, string? MailingState, string? MailingPostalCode,
+        string? MailingCountryCode, string? MailingPhone, string? MailingFax, string? PracticeFax);
+
+    private sealed record IdentifierRow(string Identifier, string? TypeCode, string? State, string? Issuer);
+
+    private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
+        string? UseDescription, string? ContentDescription, string? AffiliationName, string? AffiliationCity, string? AffiliationState);
 
     public async Task<ProviderDetail?> GetAsync(string npi, CancellationToken ct)
     {
@@ -63,6 +113,27 @@ public sealed class ProviderDetailService(string connectionString)
             """, new { npi }, cancellationToken: ct));
         var otherNames = await connection.QueryAsync<string>(new CommandDefinition(
             "SELECT name FROM provider_other_name WHERE npi = @npi ORDER BY id", new { npi }, cancellationToken: ct));
+        var profile = await connection.QuerySingleOrDefaultAsync<ProfileRow>(new CommandDefinition(
+            """
+            SELECT is_sole_proprietor AS IsSoleProprietor, is_subpart AS IsSubpart, parent_org_name AS ParentOrgName,
+                   official_prefix AS OfficialPrefix, official_first_name AS OfficialFirstName, official_middle_name AS OfficialMiddleName,
+                   official_last_name AS OfficialLastName, official_suffix AS OfficialSuffix, official_credential AS OfficialCredential,
+                   official_title AS OfficialTitle, official_phone AS OfficialPhone,
+                   mailing_address1 AS MailingAddress1, mailing_address2 AS MailingAddress2, mailing_city AS MailingCity,
+                   mailing_state AS MailingState, mailing_postal_code AS MailingPostalCode, mailing_country_code AS MailingCountryCode,
+                   mailing_phone AS MailingPhone, mailing_fax AS MailingFax, practice_fax AS PracticeFax
+            FROM provider_profile WHERE npi = @npi
+            """, new { npi }, cancellationToken: ct));
+        var identifiers = await connection.QueryAsync<IdentifierRow>(new CommandDefinition(
+            "SELECT identifier AS Identifier, type_code AS TypeCode, state AS State, issuer AS Issuer FROM provider_identifier WHERE npi = @npi ORDER BY slot",
+            new { npi }, cancellationToken: ct));
+        var endpoints = await connection.QueryAsync<EndpointRow>(new CommandDefinition(
+            """
+            SELECT endpoint_type AS EndpointType, endpoint_type_description AS EndpointTypeDescription, endpoint AS Endpoint,
+                   endpoint_description AS EndpointDescription, use_description AS UseDescription, content_description AS ContentDescription,
+                   affiliation_name AS AffiliationName, affiliation_city AS AffiliationCity, affiliation_state AS AffiliationState
+            FROM provider_endpoint WHERE npi = @npi ORDER BY id
+            """, new { npi }, cancellationToken: ct));
 
         return new ProviderDetail(
             p.Npi, p.EntityType,
@@ -73,6 +144,27 @@ public sealed class ProviderDetailService(string connectionString)
             taxonomies.Select(t => new ProviderTaxonomy(t.Slot, t.Code, t.Classification, t.Specialization, t.IsPrimary != 0, t.LicenseNo, t.LicenseState)).ToList(),
             locations.Select(l => new ProviderLocation(l.IsPrimary != 0, l.Address1, l.Address2, l.City, l.State,
                 ProviderNames.Zip(l.Zip5, l.Zip4, l.PostalCode), l.CountryCode, l.Phone)).ToList(),
-            otherNames.ToList());
+            otherNames.ToList())
+        {
+            Profile = profile is null ? null : ToProfile(profile),
+            Identifiers = identifiers.Select(i => new ProviderIdentifier(i.Identifier, i.TypeCode, ProviderIdentifier.Describe(i.TypeCode), i.State, i.Issuer)).ToList(),
+            Endpoints = endpoints.Select(e => new ProviderEndpoint(e.EndpointType, e.EndpointTypeDescription, e.Endpoint, e.EndpointDescription,
+                e.UseDescription, e.ContentDescription, e.AffiliationName, e.AffiliationCity, e.AffiliationState)).ToList(),
+        };
+    }
+
+    private static ProviderProfile ToProfile(ProfileRow r)
+    {
+        var officialName = string.Join(" ", new[] { r.OfficialPrefix, r.OfficialFirstName, r.OfficialMiddleName, r.OfficialLastName, r.OfficialSuffix }
+            .Where(x => !string.IsNullOrWhiteSpace(x)));
+        var official = officialName.Length == 0 ? null : new AuthorizedOfficial(officialName, r.OfficialCredential, r.OfficialTitle, r.OfficialPhone);
+        var mailing = r.MailingAddress1 is null && r.MailingCity is null
+            ? null
+            : new MailingAddress(r.MailingAddress1, r.MailingAddress2, r.MailingCity, r.MailingState,
+                ProviderNames.PostalCode(r.MailingPostalCode, r.MailingCountryCode), r.MailingCountryCode, r.MailingPhone, r.MailingFax);
+        return new ProviderProfile(
+            r.IsSoleProprietor is null ? null : r.IsSoleProprietor != 0,
+            r.IsSubpart is null ? null : r.IsSubpart != 0,
+            r.ParentOrgName, official, mailing, r.PracticeFax);
     }
 }

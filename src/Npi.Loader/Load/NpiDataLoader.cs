@@ -9,19 +9,25 @@ using Serilog;
 namespace Npi.Loader.Load;
 
 /// <summary>
-/// Loads an NPPES data zip (monthly full or weekly incremental) into npidata, other_names and
-/// practice_locations (CLAUDE.md §7 Stage 1.4–1.6). Every CSV goes into a <c>*_staging</c> copy first.
+/// Loads an NPPES data zip (monthly full or weekly incremental) into npidata, other_names,
+/// practice_locations and endpoints (CLAUDE.md §7 Stage 1.4–1.6, Stage 5.5 item 1). Every CSV goes
+/// into a <c>*_staging</c> copy first.
 /// </summary>
 public sealed class NpiDataLoader(Database database, ILogger log, double minRowRatio)
 {
-    private static readonly (NppesEntryKind Kind, string Table)[] Targets =
+    // Endpoints are optional: a zip without an endpoint file leaves the stored endpoints alone.
+    private static readonly (NppesEntryKind Kind, string Table, bool Required)[] AllTargets =
     [
-        (NppesEntryKind.NpiData, "npidata"),
-        (NppesEntryKind.OtherName, "other_names"),
-        (NppesEntryKind.PracticeLocation, "practice_locations"),
+        (NppesEntryKind.NpiData, "npidata", true),
+        (NppesEntryKind.OtherName, "other_names", true),
+        (NppesEntryKind.PracticeLocation, "practice_locations", true),
+        (NppesEntryKind.Endpoint, "endpoints", false),
     ];
 
-    /// <returns>Total rows loaded into staging across the three tables.</returns>
+    /// <summary>The child tables replaced per NPI by a weekly file (and in full by a monthly).</summary>
+    private static readonly string[] ChildTables = ["other_names", "practice_locations", "endpoints"];
+
+    /// <returns>Total rows loaded into staging across the tables.</returns>
     public async Task<long> LoadAsync(string zipPath, NppesFile file, CancellationToken ct)
     {
         if (file.Kind is not (NppesFileKind.Monthly or NppesFileKind.Weekly))
@@ -31,6 +37,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
 
         using var zip = ZipFile.OpenRead(zipPath);
         var entries = FindEntries(zip, file);
+        var targets = AllTargets.Where(t => entries.ContainsKey(t.Kind)).Select(t => (t.Kind, t.Table)).ToList();
         await using var connection = await database.OpenAsync(ct);
 
         // CREATE TABLE npidata_staging LIKE npidata fails InnoDB's worst-case row-size check in strict
@@ -40,7 +47,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
         try
         {
             long total = 0;
-            foreach (var (kind, table) in Targets)
+            foreach (var (kind, table) in targets)
             {
                 var entry = entries[kind];
                 var staging = table + "_staging";
@@ -58,13 +65,13 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
 
             if (file.Kind == NppesFileKind.Monthly)
             {
-                await ReplaceAllAsync(connection, ct);
+                await ReplaceAllAsync(connection, targets.Select(t => t.Table).ToList(), ct);
                 var flagged = await Deactivations.ApplyAsync(connection, scopeTable: null, ct);
                 log.Information("Deactivation flags refreshed: {Rows:N0} rows changed", flagged);
             }
             else
             {
-                await ApplyWeeklyAsync(connection, ct);
+                await ApplyWeeklyAsync(connection, ChildTables.Where(t => targets.Any(x => x.Table == t)).ToList(), ct);
             }
 
             return total;
@@ -72,7 +79,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
         finally
         {
             // Also after a failure: a monthly's staging tables hold ~10 GB.
-            foreach (var (_, table) in Targets)
+            foreach (var (_, table, _) in AllTargets)
             {
                 await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS {SqlIdentifier.Quote(table + "_staging")}", CancellationToken.None);
             }
@@ -87,15 +94,12 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             var kind = NppesEntryClassifier.Classify(entry.FullName);
             switch (kind)
             {
-                case NppesEntryKind.NpiData or NppesEntryKind.OtherName or NppesEntryKind.PracticeLocation:
+                case NppesEntryKind.NpiData or NppesEntryKind.OtherName or NppesEntryKind.PracticeLocation or NppesEntryKind.Endpoint:
                     if (!found.TryAdd(kind, entry))
                     {
                         throw new InvalidDataException($"{file.FileName} contains more than one {kind} file.");
                     }
 
-                    break;
-                case NppesEntryKind.Endpoint:
-                    log.Information("Skipping {Entry}: endpoints are out of scope", entry.FullName);
                     break;
                 case NppesEntryKind.Unknown:
                     log.Warning("Skipping unexpected entry {Entry} in {File}", entry.FullName, file.FileName);
@@ -103,19 +107,27 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             }
         }
 
-        var missing = Targets.Where(t => !found.ContainsKey(t.Kind)).Select(t => t.Kind).ToList();
-        return missing.Count == 0
-            ? found
-            : throw new InvalidDataException($"{file.FileName} has no {string.Join(", ", missing)} file.");
+        var missing = AllTargets.Where(t => t.Required && !found.ContainsKey(t.Kind)).Select(t => t.Kind).ToList();
+        if (missing.Count > 0)
+        {
+            throw new InvalidDataException($"{file.FileName} has no {string.Join(", ", missing)} file.");
+        }
+
+        if (!found.ContainsKey(NppesEntryKind.Endpoint))
+        {
+            log.Warning("{File} has no endpoint file; the stored endpoints are kept", file.FileName);
+        }
+
+        return found;
     }
 
     /// <summary>
-    /// Monthly: check the staging row counts, then swap all three tables in one atomic RENAME so the
+    /// Monthly: check the staging row counts, then swap all tables in one atomic RENAME so the
     /// site never sees an empty or half-loaded table (legacy defect #11).
     /// </summary>
-    private async Task ReplaceAllAsync(MySqlConnection connection, CancellationToken ct)
+    private async Task ReplaceAllAsync(MySqlConnection connection, IReadOnlyList<string> tables, CancellationToken ct)
     {
-        foreach (var (_, table) in Targets)
+        foreach (var table in tables)
         {
             var current = await Database.CountAsync(connection, table, ct);
             var incoming = await Database.CountAsync(connection, table + "_staging", ct);
@@ -126,20 +138,20 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             }
         }
 
-        foreach (var (_, table) in Targets)
+        foreach (var table in tables)
         {
             await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS {SqlIdentifier.Quote(table + "_old")}", ct);
         }
 
-        var renames = Targets.SelectMany(t => new[]
+        var renames = tables.SelectMany(t => new[]
         {
-            $"{SqlIdentifier.Quote(t.Table)} TO {SqlIdentifier.Quote(t.Table + "_old")}",
-            $"{SqlIdentifier.Quote(t.Table + "_staging")} TO {SqlIdentifier.Quote(t.Table)}",
+            $"{SqlIdentifier.Quote(t)} TO {SqlIdentifier.Quote(t + "_old")}",
+            $"{SqlIdentifier.Quote(t + "_staging")} TO {SqlIdentifier.Quote(t)}",
         });
         await Database.ExecuteAsync(connection, $"RENAME TABLE {string.Join(", ", renames)}", ct);
-        log.Information("Swapped in the new npidata, other_names and practice_locations");
+        log.Information("Swapped in the new {Tables}", string.Join(", ", tables));
 
-        foreach (var (_, table) in Targets)
+        foreach (var table in tables)
         {
             await Database.ExecuteAsync(connection, $"DROP TABLE {SqlIdentifier.Quote(table + "_old")}", ct);
         }
@@ -149,7 +161,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
     /// Weekly: upsert npidata rows unless the stored row is newer (legacy defect #9), then replace the
     /// other names and practice locations of exactly those NPIs (legacy defect #5). One transaction.
     /// </summary>
-    private async Task ApplyWeeklyAsync(MySqlConnection connection, CancellationToken ct)
+    private async Task ApplyWeeklyAsync(MySqlConnection connection, IReadOnlyList<string> childTableNames, CancellationToken ct)
     {
         var npiColumns = (await Database.GetColumnsAsync(connection, "npidata", ct))
             .Select(c => c.Name)
@@ -160,7 +172,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             .Where(c => !c.Equals("NPI", StringComparison.OrdinalIgnoreCase))
             .Select(c => $"{SqlIdentifier.Quote(c)} = s.{SqlIdentifier.Quote(c)}"));
         var childTables = new List<(string Table, string Columns)>();
-        foreach (var table in new[] { "other_names", "practice_locations" })
+        foreach (var table in childTableNames)
         {
             var childColumns = (await Database.GetColumnsAsync(connection, table, ct))
                 .Select(c => c.Name)

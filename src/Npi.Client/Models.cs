@@ -127,6 +127,103 @@ public sealed class ProviderDetail
     public IReadOnlyList<ProviderLocation> Locations { get; set; } = [];
 
     public IReadOnlyList<string> OtherNames { get; set; } = [];
+
+    /// <summary>Registration details (authorized official, parent organization, mailing address); null when none are published.</summary>
+    public ProviderProfile? Profile { get; set; }
+
+    /// <summary>Other identifiers, e.g. state Medicaid numbers.</summary>
+    public IReadOnlyList<ProviderIdentifier> Identifiers { get; set; } = [];
+
+    /// <summary>Direct messaging addresses, FHIR endpoints and websites published in NPPES.</summary>
+    public IReadOnlyList<ProviderEndpoint> Endpoints { get; set; } = [];
+}
+
+/// <summary>NPPES registration details that are shown but not searched.</summary>
+public sealed class ProviderProfile
+{
+    public bool? IsSoleProprietor { get; set; }
+
+    /// <summary>True when this organization NPI is a subpart of <see cref="ParentOrganization"/>.</summary>
+    public bool? IsOrganizationSubpart { get; set; }
+
+    public string? ParentOrganization { get; set; }
+
+    public AuthorizedOfficial? AuthorizedOfficial { get; set; }
+
+    public MailingAddress? MailingAddress { get; set; }
+
+    public string? PracticeFax { get; set; }
+}
+
+/// <summary>The person an organization registered as its authorized official.</summary>
+public sealed class AuthorizedOfficial
+{
+    public string Name { get; set; } = "";
+
+    public string? Credential { get; set; }
+
+    public string? Title { get; set; }
+
+    public string? Phone { get; set; }
+}
+
+/// <summary>NPPES business mailing address.</summary>
+public sealed class MailingAddress
+{
+    public string? Address1 { get; set; }
+
+    public string? Address2 { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? PostalCode { get; set; }
+
+    public string? CountryCode { get; set; }
+
+    public string? Phone { get; set; }
+
+    public string? Fax { get; set; }
+}
+
+/// <summary>An identifier other than the NPI.</summary>
+public sealed class ProviderIdentifier
+{
+    public string Identifier { get; set; } = "";
+
+    /// <summary>NPPES type code, e.g. "05".</summary>
+    public string? TypeCode { get; set; }
+
+    /// <summary>Description of <see cref="TypeCode"/>, e.g. "Medicaid".</summary>
+    public string? Type { get; set; }
+
+    public string? State { get; set; }
+
+    public string? Issuer { get; set; }
+}
+
+/// <summary>An electronic endpoint published in NPPES.</summary>
+public sealed class ProviderEndpoint
+{
+    /// <summary>e.g. "DIRECT", "FHIR", "CONNECT".</summary>
+    public string? Type { get; set; }
+
+    public string? TypeDescription { get; set; }
+
+    public string Endpoint { get; set; } = "";
+
+    public string? Description { get; set; }
+
+    public string? Use { get; set; }
+
+    public string? Content { get; set; }
+
+    public string? AffiliationName { get; set; }
+
+    public string? AffiliationCity { get; set; }
+
+    public string? AffiliationState { get; set; }
 }
 
 /// <summary>A state or territory.</summary>
