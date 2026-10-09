@@ -43,7 +43,8 @@ public static class LoaderCommandLine
           reference        Refresh NUCC / HUD / Census reference data
           datasets [name]  Reload the Stage 5.5 datasets (OIG, CMS, …), or just one
           project          Rebuild the search projection tables
-          geocode          Geocode every new practice address (Census) and rebuild the map table
+          geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
+                           with a 5-digit county FIPS, only that county's addresses
           publish          Sync the search projection to Azure
         """;
 
@@ -66,6 +67,17 @@ public static class LoaderCommandLine
         var rest = args.Skip(1).ToArray();
         if (command == LoaderCommand.Datasets && rest.Length <= 1)
         {
+            return new LoaderInvocation(command, rest);
+        }
+
+        if (command == LoaderCommand.Geocode && rest.Length == 1)
+        {
+            if (rest[0].Length != 5 || !rest[0].All(char.IsAsciiDigit))
+            {
+                error = "Command 'geocode' takes an optional 5-digit county FIPS code, e.g. 36103.";
+                return null;
+            }
+
             return new LoaderInvocation(command, rest);
         }
 

@@ -98,10 +98,17 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         return failures == 0 && referenceOk && datasetsOk && projectionOk && mapOk ? 0 : 1;
     }
 
-    /// <summary>The <c>geocode</c> command: geocode every practice address not geocoded yet, then rebuild the map table.</summary>
-    public async Task<int> GeocodeAsync(CancellationToken ct)
+    /// <summary>
+    /// The <c>geocode</c> command: geocode every practice address not geocoded yet, then rebuild the map table.
+    /// With a county FIPS, only that county's addresses (to try the map in one area before the whole backlog).
+    /// </summary>
+    public async Task<int> GeocodeAsync(string? countyFips, CancellationToken ct)
     {
         await EnsureMigratedAsync(ct);
+        if (countyFips is not null)
+        {
+            return await RefreshMapAsync(maxBatches: 0, ct, countyFips) ? 0 : 1;
+        }
 
         // A backlog of millions takes hours: build the map table first so the map page works meanwhile, with
         // not-yet-geocoded addresses at their ZIP centroid.
@@ -114,13 +121,13 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         return await RefreshMapAsync(maxBatches: 0, ct) ? 0 : 1;
     }
 
-    private async Task<bool> RefreshMapAsync(int maxBatches, CancellationToken ct)
+    private async Task<bool> RefreshMapAsync(int maxBatches, CancellationToken ct, string? countyFips = null)
     {
         try
         {
             var census = new CensusGeocoder(http, options.CensusGeocoderUrl, options.GeocodeBenchmark);
             var outcome = await new AddressGeocoder(database, census, log, options.GeocodeBatchSize, options.GeocodeParallelism)
-                .GeocodePendingAsync(maxBatches, ct);
+                .GeocodePendingAsync(maxBatches, ct, countyFips);
             var map = new MapBuilder(database, log, options.MinRowRatio);
             if (outcome.Geocoded > 0 || await map.IsStaleAsync(ct))
             {

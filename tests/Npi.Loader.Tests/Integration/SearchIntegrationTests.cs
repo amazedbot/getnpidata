@@ -376,8 +376,9 @@ public sealed class SearchIntegrationTests : IDisposable
             Logger.None, batchSize: 2, parallelism: 2) { Delays = [] };
 
         // Five street addresses (B has two); C is deactivated, so not in the projection. Batches of 2, two at a time.
-        var first = await geocoder.GeocodePendingAsync(maxBatches: 0, _ct);
-        Assert.Equal(new GeocodeOutcome(Pending: 5, Geocoded: 5, Matched: 2, Ok: true), first);
+        // Suffolk County first (11701, 11735: A, B's Farmingdale office, E), then the rest (Brooklyn).
+        Assert.Equal(new GeocodeOutcome(Pending: 3, Geocoded: 3, Matched: 2, Ok: true), await geocoder.GeocodePendingAsync(maxBatches: 0, _ct, countyFips: "36103"));
+        Assert.Equal(new GeocodeOutcome(Pending: 2, Geocoded: 2, Matched: 0, Ok: true), await geocoder.GeocodePendingAsync(maxBatches: 0, _ct));
         Assert.Equal(3, census.Requests);
         Assert.Equal([("Match", 2L), ("No_Match", 2L), ("Tie", 1L)],
             await db.QueryAsync<(string, long)>("SELECT status, COUNT(*) FROM address_geocode GROUP BY status ORDER BY status"));

@@ -299,7 +299,7 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `reference` | Force-refresh NUCC, HUD and Census reference data |
 | `datasets [name]` | Force-reload the enrichment datasets (OIG, CMS, HRSA, Census, Open Payments), or just one. `run` reloads each when its publisher releases a new version |
 | `project` | Rebuild the search tables now |
-| `geocode` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. `run` geocodes up to 200,000 new addresses per run |
+| `geocode [county]` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. With a 5-digit county FIPS (e.g. `36103`), only that county's addresses. `run` geocodes up to 200,000 new addresses per run |
 | `publish` | Sync the search tables to Azure *(planned)* |
 
 `run` skips files already loaded, so running it daily is safe. Exit code `0` means everything completed, `1` means
