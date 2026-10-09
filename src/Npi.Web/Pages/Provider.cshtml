@@ -133,6 +133,50 @@
     }
 }
 
+@if (p.MedicareServices is { } mu)
+{
+    <h2>Medicare services (@mu.Year)</h2>
+    <dl class="facts">
+        @if (mu.ProviderType is not null){<dt>Medicare provider type</dt><dd>@mu.ProviderType@if (mu.Participating == false){<span class="muted"> · non-participating</span>}</dd>}
+        <dt>Patients</dt><dd>@Count(mu.Beneficiaries)</dd>
+        <dt>Services</dt><dd>@Count(mu.Services)@if (mu.DistinctServices is not null){<span class="muted"> · @mu.DistinctServices distinct procedure codes</span>}</dd>
+        <dt>Medicare paid</dt><dd>@Money(mu.PaymentAmount)@if (mu.AllowedAmount is not null){<span class="muted"> of @Money(mu.AllowedAmount) allowed</span>}</dd>
+        @if (mu.AverageRiskScore is not null){<dt>Patients' average risk score</dt><dd>@mu.AverageRiskScore.Value.ToString("0.00", CultureInfo.InvariantCulture) <span class="muted">(1.00 = average Medicare patient)</span></dd>}
+    </dl>
+    @if (mu.TopServices.Count > 0)
+    {
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Most frequent Medicare services</caption>
+                <thead><tr><th scope="col">Code</th><th scope="col">Service</th><th scope="col">Setting</th><th scope="col">Patients</th><th scope="col">Services</th><th scope="col">Avg. Medicare payment</th></tr></thead>
+                <tbody>
+                    @foreach (var s in mu.TopServices)
+                    {
+                        <tr><td>@s.Hcpcs</td><td>@s.Description</td><td>@s.PlaceOfService</td><td>@Count(s.Beneficiaries)</td><td>@Count(s.Services)</td><td>@Money(s.AveragePayment)</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@if (p.MedicarePrescribing is { } rx)
+{
+    <h2>Medicare Part D prescribing (@rx.Year)</h2>
+    <dl class="facts">
+        <dt>Prescriptions (claims)</dt><dd>@Count(rx.Claims)@if (rx.Beneficiaries is not null){<span class="muted"> for @Count(rx.Beneficiaries) patients</span>}</dd>
+        <dt>Drug cost</dt><dd>@Money(rx.DrugCost)</dd>
+        @if (rx.BrandClaims is not null && rx.Claims is > 0){<dt>Brand-name share</dt><dd>@((100.0 * rx.BrandClaims.Value / rx.Claims.Value).ToString("0", CultureInfo.InvariantCulture))% of claims</dd>}
+        @if (rx.OpioidRate is not null){<dt>Opioid prescribing rate</dt><dd>@rx.OpioidRate.Value.ToString("0.0", CultureInfo.InvariantCulture)% of claims</dd>}
+        @if (rx.AntibioticClaims is not null){<dt>Antibiotic claims</dt><dd>@Count(rx.AntibioticClaims)</dd>}
+    </dl>
+}
+
+@if (p.MedicareServices is not null || p.MedicarePrescribing is not null)
+{
+    <p class="muted">From CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers data (traditional Medicare only; counts under 11 are suppressed by CMS).</p>
+}
+
 <h2>Specialties</h2>
 <div class="table-wrap">
     <table>
@@ -263,5 +307,9 @@
 <p class="muted">Verify details with the official <a href="https://npiregistry.cms.hhs.gov/provider-view/@p.Npi">NPPES NPI Registry</a>.</p>
 
 @functions {
+    private static string Count(double? value) => value is null ? "Suppressed" : value.Value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string Money(double? value) => value is null ? "Suppressed" : value.Value.ToString("$#,##0", CultureInfo.InvariantCulture);
+
     private static string Stars(int? rating) => rating is >= 1 and <= 5 ? new string('★', rating.Value) + new string('☆', 5 - rating.Value) + $" ({rating}/5)" : "Not rated";
 }

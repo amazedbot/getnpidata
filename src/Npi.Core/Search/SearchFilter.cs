@@ -75,6 +75,9 @@ public sealed record SearchFilter
     /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
     public bool? Telehealth { get; init; }
 
+    /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
+    public bool? MedicareActive { get; init; }
+
     /// <summary>At least this many years since graduating from medical/professional school (Care Compare), 1–70.</summary>
     public int? MinYears { get; init; }
 

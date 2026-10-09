@@ -158,6 +158,14 @@
             <span class="field-error">@Model.Error(nameof(SearchFilter.MinYears))</span>
         </div>
         <div class="field">
+            <label for="medicareActive">Billed Medicare</label>
+            <select id="medicareActive" name="medicareActive">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.MedicareActive == true)">Yes, latest year</option>
+                <option value="false" selected="@(f.MedicareActive == false)">No</option>
+            </select>
+        </div>
+        <div class="field">
             <label for="excluded">OIG exclusion list</label>
             <select id="excluded" name="excluded">
                 <option value="">Any</option>

@@ -59,7 +59,8 @@ public static partial class SearchValidation
 
         if (f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
                 LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
-                Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null })
+                Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null,
+                MedicareActive: null })
         {
             Error("filter", "Enter at least one search filter.");
         }

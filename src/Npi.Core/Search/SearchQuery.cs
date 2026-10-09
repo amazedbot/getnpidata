@@ -92,6 +92,7 @@ public sealed class SearchQuery
                  {
                      (filter.Excluded, EnrichmentSql.Excluded), (filter.OptedOut, EnrichmentSql.OptedOut), (filter.OrderRefer, EnrichmentSql.OrderRefer),
                      (filter.AcceptsAssignment, EnrichmentSql.AcceptsAssignment), (filter.Telehealth, EnrichmentSql.Telehealth),
+                     (filter.MedicareActive, EnrichmentSql.BilledMedicare),
                  })
         {
             if (value is not null)

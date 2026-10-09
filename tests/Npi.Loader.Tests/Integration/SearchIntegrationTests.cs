@@ -193,10 +193,10 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal([B, D], await Npis(search, new SearchFilter { OrderRefer = false, State = "NY" }));
 
         var flags = (await search.SearchAsync(new SearchFilter { State = "NY" }, _ct)).Items.ToDictionary(i => i.Npi, i => i.Flags);
-        Assert.Equal(new ProviderFlags(true, false, true, false, false), flags[A]);
-        Assert.Equal(new ProviderFlags(false, true, false, false, false), flags[B]);
+        Assert.Equal(new ProviderFlags(true, false, true, false, false, false), flags[A]);
+        Assert.Equal(new ProviderFlags(false, true, false, false, false, false), flags[B]);
         Assert.Equal(ProviderFlags.None, flags[D]);
-        Assert.Equal(new ProviderFlags(false, false, true, false, false), flags[E]);
+        Assert.Equal(new ProviderFlags(false, false, true, false, false, false), flags[E]);
 
         var csvFlags = new Dictionary<string, ProviderFlags>();
         await foreach (var item in search.SearchAllAsync(new SearchFilter { State = "NY" }, _ct))
@@ -247,8 +247,8 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal([A, B], await Npis(search, new SearchFilter { MinYears = 2, Classification = "Chiropractor" }));
 
         var flags = (await search.SearchAsync(new SearchFilter { State = "NY" }, _ct)).Items.ToDictionary(i => i.Npi, i => i.Flags);
-        Assert.Equal(new ProviderFlags(false, false, false, true, true), flags[A]);
-        Assert.Equal(new ProviderFlags(false, false, false, false, true), flags[B]);
+        Assert.Equal(new ProviderFlags(false, false, false, true, true, false), flags[A]);
+        Assert.Equal(new ProviderFlags(false, false, false, false, true, false), flags[B]);
 
         var details = new ProviderDetailService(db.ConnectionString);
         var a = (await details.GetAsync(A, _ct))!.CareCompare!;
@@ -264,6 +264,38 @@ public sealed class SearchIntegrationTests : IDisposable
         var hospital = Assert.Single((await details.GetAsync(D, _ct))!.Facilities);
         Assert.Equal(("330045", "hospital", "GOOD SAMARITAN HOSPITAL", true, 3, 2), (hospital.Ccn, hospital.Kind, hospital.Name, hospital.EmergencyServices,
             hospital.OverallRating, hospital.AffiliatedClinicians));
+    }
+
+    [Fact]
+    public async Task Medicare_activity_filter_badge_and_details()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO medicare_utilization (npi, data_year, provider_type, participating, distinct_services, beneficiaries, services, allowed_amount,
+              payment_amount, avg_risk_score) VALUES (@A, 2024, 'Chiropractic', 1, 4, 212, 1840, 40000.5, 31234.56, 0.91);
+            INSERT INTO medicare_top_service (npi, service_rank, data_year, hcpcs, description, is_drug, place_of_service, beneficiaries, services, avg_payment)
+              VALUES (@A, 1, 2024, '98940', 'Chiropractic manipulative treatment', 0, 'O', 150, 900, 28.12), (@A, 2, 2024, '98941', 'CMT 3-4 regions', 0, 'F', NULL, 600, 35);
+            INSERT INTO medicare_part_d (npi, data_year, prescriber_type, claims, drug_cost, beneficiaries, brand_claims, generic_claims, opioid_claims, opioid_rate)
+              VALUES (@E, 2024, 'Pediatrics', 15, 123.4, NULL, NULL, 15, NULL, NULL);
+            """, new { A, E });
+        var search = Search(db);
+
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { MedicareActive = true }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { MedicareActive = false, State = "NY" }));
+        Assert.True((await search.SearchAsync(new SearchFilter { Npi = A }, _ct)).Items.Single().Flags.BilledMedicare);
+
+        var details = new ProviderDetailService(db.ConnectionString);
+        var a = (await details.GetAsync(A, _ct))!;
+        Assert.Equal((2024, "Chiropractic", true, 212, 31234.56), (a.MedicareServices!.Year, a.MedicareServices.ProviderType, a.MedicareServices.Participating,
+            a.MedicareServices.Beneficiaries, a.MedicareServices.PaymentAmount));
+        Assert.Equal([new MedicareService("98940", "Chiropractic manipulative treatment", false, "Office", 150, 900, 28.12),
+                      new MedicareService("98941", "CMT 3-4 regions", false, "Facility", null, 600, 35)], a.MedicareServices.TopServices);
+        Assert.Null(a.MedicarePrescribing);
+
+        var e = (await details.GetAsync(E, _ct))!;
+        Assert.Null(e.MedicareServices);
+        Assert.Equal(new MedicarePrescribing(2024, "Pediatrics", 15, 123.4, null, null, 15, null, null, null), e.MedicarePrescribing);
     }
 
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));

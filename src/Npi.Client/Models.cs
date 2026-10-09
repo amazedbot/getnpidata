@@ -64,6 +64,9 @@ public sealed class ProviderFlags
 
     /// <summary>Offers telehealth (Care Compare).</summary>
     public bool OffersTelehealth { get; set; }
+
+    /// <summary>Billed Medicare Part B or Part D in the latest CMS data year.</summary>
+    public bool BilledMedicare { get; set; }
 }
 
 /// <summary>One page of search results.</summary>
@@ -167,6 +170,84 @@ public sealed class ProviderDetail
 
     /// <summary>Medicare-certified hospitals and nursing homes held by this organization NPI.</summary>
     public IReadOnlyList<CertifiedFacility> Facilities { get; set; } = [];
+
+    /// <summary>Medicare Part B services in the latest data year; null when none.</summary>
+    public MedicareServices? MedicareServices { get; set; }
+
+    /// <summary>Medicare Part D prescribing in the latest data year; null when none.</summary>
+    public MedicarePrescribing? MedicarePrescribing { get; set; }
+}
+
+/// <summary>Medicare Part B activity in one data year. Counts under 11 are suppressed by CMS (null).</summary>
+public sealed class MedicareServices
+{
+    public int Year { get; set; }
+
+    public string? ProviderType { get; set; }
+
+    public bool? Participating { get; set; }
+
+    public int? DistinctServices { get; set; }
+
+    public int? Beneficiaries { get; set; }
+
+    public double? Services { get; set; }
+
+    public double? AllowedAmount { get; set; }
+
+    public double? PaymentAmount { get; set; }
+
+    public double? AverageBeneficiaryAge { get; set; }
+
+    /// <summary>HCC risk score of the provider's patients (1.0 = average Medicare patient).</summary>
+    public double? AverageRiskScore { get; set; }
+
+    /// <summary>The five most frequent services.</summary>
+    public IReadOnlyList<MedicareService> TopServices { get; set; } = [];
+}
+
+/// <summary>One Medicare Part B service (HCPCS code).</summary>
+public sealed class MedicareService
+{
+    public string Hcpcs { get; set; } = "";
+
+    public string? Description { get; set; }
+
+    public bool IsDrug { get; set; }
+
+    /// <summary>"Facility" or "Office".</summary>
+    public string? PlaceOfService { get; set; }
+
+    public int? Beneficiaries { get; set; }
+
+    public double? Services { get; set; }
+
+    public double? AveragePayment { get; set; }
+}
+
+/// <summary>Medicare Part D prescribing in one data year.</summary>
+public sealed class MedicarePrescribing
+{
+    public int Year { get; set; }
+
+    public string? PrescriberType { get; set; }
+
+    public int? Claims { get; set; }
+
+    public double? DrugCost { get; set; }
+
+    public int? Beneficiaries { get; set; }
+
+    public int? BrandClaims { get; set; }
+
+    public int? GenericClaims { get; set; }
+
+    public int? OpioidClaims { get; set; }
+
+    /// <summary>Percent of claims that are for opioids.</summary>
+    public double? OpioidRate { get; set; }
+
+    public int? AntibioticClaims { get; set; }
 }
 
 /// <summary>What Medicare Care Compare publishes about a clinician.</summary>

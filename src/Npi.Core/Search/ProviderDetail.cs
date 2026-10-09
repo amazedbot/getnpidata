@@ -62,6 +62,12 @@ public sealed record ProviderDetail(
 
     /// <summary>Medicare-certified hospitals and nursing homes held by this organization NPI (Stage 5.5 item 4).</summary>
     public IReadOnlyList<CertifiedFacility> Facilities { get; init; } = [];
+
+    /// <summary>Medicare Part B services billed in the latest data year; null when none (Stage 5.5 item 5a).</summary>
+    public MedicareServices? MedicareServices { get; init; }
+
+    /// <summary>Medicare Part D prescribing in the latest data year; null when none (Stage 5.5 item 5b).</summary>
+    public MedicarePrescribing? MedicarePrescribing { get; init; }
 }
 
 /// <summary>Reads one provider from the projection. Deactivated NPIs are not in the projection, so they come back as null.</summary>
@@ -99,6 +105,15 @@ public sealed class ProviderDetailService(string connectionString)
 
     private sealed record FacilityRow(string Ccn, string Kind, string Name, string? Type, string? Ownership, string? City, string? State, string? Phone,
         sbyte? EmergencyServices, int? CertifiedBeds, long? OverallRating, long? InspectionRating, long? StaffingRating, long? QualityRating, long AffiliatedClinicians);
+
+    private sealed record UtilizationRow(short DataYear, string? ProviderType, sbyte? Participating, int? DistinctServices, int? Beneficiaries,
+        double? Services, double? AllowedAmount, double? PaymentAmount, double? AvgBeneficiaryAge, double? AvgRiskScore);
+
+    private sealed record TopServiceRow(string Hcpcs, string? Description, sbyte? IsDrug, string? PlaceOfService, int? Beneficiaries, double? Services,
+        double? AvgPayment);
+
+    private sealed record PartDRow(short DataYear, string? PrescriberType, int? Claims, double? DrugCost, int? Beneficiaries, int? BrandClaims,
+        int? GenericClaims, int? OpioidClaims, double? OpioidRate, int? AntibioticClaims);
 
     private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
         string? UseDescription, string? ContentDescription, string? AffiliationName, string? AffiliationCity, string? AffiliationState);
@@ -210,6 +225,27 @@ public sealed class ProviderDetailService(string connectionString)
                 affiliations.Select(a => new FacilityAffiliation(a.FacilityType, a.Ccn, a.Name, a.City, a.State, (int?)a.OverallRating, a.FacilityNpi)).ToList());
         }
 
+        var utilization = await connection.QuerySingleOrDefaultAsync<UtilizationRow>(new CommandDefinition(
+            """
+            SELECT data_year AS DataYear, provider_type AS ProviderType, participating AS Participating, distinct_services AS DistinctServices,
+                   beneficiaries AS Beneficiaries, services AS Services, allowed_amount AS AllowedAmount, payment_amount AS PaymentAmount,
+                   avg_beneficiary_age AS AvgBeneficiaryAge, avg_risk_score AS AvgRiskScore
+            FROM medicare_utilization WHERE npi = @npi
+            """, new { npi }, cancellationToken: ct));
+        var topServices = await connection.QueryAsync<TopServiceRow>(new CommandDefinition(
+            """
+            SELECT hcpcs AS Hcpcs, description AS Description, is_drug AS IsDrug, place_of_service AS PlaceOfService, beneficiaries AS Beneficiaries,
+                   services AS Services, avg_payment AS AvgPayment
+            FROM medicare_top_service WHERE npi = @npi ORDER BY service_rank
+            """, new { npi }, cancellationToken: ct));
+        var partD = await connection.QuerySingleOrDefaultAsync<PartDRow>(new CommandDefinition(
+            """
+            SELECT data_year AS DataYear, prescriber_type AS PrescriberType, claims AS Claims, drug_cost AS DrugCost, beneficiaries AS Beneficiaries,
+                   brand_claims AS BrandClaims, generic_claims AS GenericClaims, opioid_claims AS OpioidClaims, opioid_rate AS OpioidRate,
+                   antibiotic_claims AS AntibioticClaims
+            FROM medicare_part_d WHERE npi = @npi
+            """, new { npi }, cancellationToken: ct));
+
         var facilities = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
             """
             SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
@@ -248,6 +284,13 @@ public sealed class ProviderDetailService(string connectionString)
                 orderRefer is null ? null : new MedicareOrderReferring(orderRefer.PartB == 1, orderRefer.Dme == 1, orderRefer.Hha == 1,
                     orderRefer.Pmd == 1, orderRefer.Hospice == 1)),
             CareCompare = careCompare,
+            MedicareServices = utilization is null ? null : new MedicareServices(utilization.DataYear, utilization.ProviderType,
+                utilization.Participating is null ? null : utilization.Participating != 0, utilization.DistinctServices, utilization.Beneficiaries,
+                utilization.Services, utilization.AllowedAmount, utilization.PaymentAmount, utilization.AvgBeneficiaryAge, utilization.AvgRiskScore,
+                topServices.Select(s => new MedicareService(s.Hcpcs, s.Description, s.IsDrug == 1,
+                    s.PlaceOfService switch { "F" => "Facility", "O" => "Office", _ => s.PlaceOfService }, s.Beneficiaries, s.Services, s.AvgPayment)).ToList()),
+            MedicarePrescribing = partD is null ? null : new MedicarePrescribing(partD.DataYear, partD.PrescriberType, partD.Claims, partD.DrugCost,
+                partD.Beneficiaries, partD.BrandClaims, partD.GenericClaims, partD.OpioidClaims, partD.OpioidRate, partD.AntibioticClaims),
             Facilities = facilities.Select(f => new CertifiedFacility(f.Ccn, f.Kind, f.Name, f.Type, f.Ownership, f.City, f.State, f.Phone,
                 f.EmergencyServices is null ? null : f.EmergencyServices != 0, f.CertifiedBeds, (int?)f.OverallRating, (int?)f.InspectionRating, (int?)f.StaffingRating,
                 (int?)f.QualityRating, (int)f.AffiliatedClinicians)).ToList(),

@@ -44,11 +44,13 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cc_hospitals", "2026-07-22 Hospital_General_Information.csv"), ("cc_nursing_homes", "2026-09-30 NH_ProviderInfo_Sep2026.csv"),
              ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
+             ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
+             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"),
              ("oig_leie", "2026-10-01T12:00:00Z 827")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
-            "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
+            "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
         Assert.Empty(Directory.GetFiles(Path.Combine(_folder, "datasets"))); // downloads are deleted after loading
     }
 
@@ -77,6 +79,32 @@ public sealed class DatasetIntegrationTests : IDisposable
         // Windows-1252 enrollment files load (their names contain bytes that aren't valid UTF-8).
         Assert.Equal([("330045", "1000000038", "hospital"), ("335001", "1000000046", "nursing_home")],
             await db.QueryAsync<(string, string, string)>("SELECT ccn, npi, kind FROM cms_facility_npi ORDER BY ccn"));
+    }
+
+    [Fact]
+    public async Task Medicare_activity_loads_with_its_data_year_and_top_services()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+
+        // The newest data year (2024, not 2023); suppressed counts stay NULL; long decimals load without warnings.
+        Assert.Equal(((short)2024, 212, 1840.0, 31234.56789012, 0.9123), (await db.QueryAsync<(short, int, double, double, double)>(
+            "SELECT data_year, beneficiaries, services, payment_amount, avg_risk_score FROM medicare_utilization WHERE npi = '1000000004'")).Single());
+        Assert.Equal(((sbyte?)0, (int?)null), (await db.QueryAsync<(sbyte?, int?)>(
+            "SELECT participating, beneficiaries FROM medicare_utilization WHERE npi = '1000000012'")).Single());
+
+        // Top five per NPI by services, ties broken by patients.
+        Assert.Equal(["98940", "98941", "97140", "97012", "97110"],
+            await db.QueryAsync<string>("SELECT hcpcs FROM medicare_top_service WHERE npi = '1000000004' ORDER BY service_rank"));
+        Assert.Equal(("Chiropractic manipulative treatment, spinal, 98940", (short)2024, "O"), (await db.QueryAsync<(string, short, string)>(
+            "SELECT description, data_year, place_of_service FROM medicare_top_service WHERE npi = '1000000004' AND service_rank = 1")).Single());
+        Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM medicare_top_service WHERE npi = '1000000012'"));
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'medicare_service_raw_staging'"));
+
+        Assert.Equal((1200, 45678.91, 400, 2.0), (await db.QueryAsync<(int, double, int, double)>(
+            "SELECT claims, drug_cost, brand_claims, opioid_rate FROM medicare_part_d WHERE npi = '1000000012'")).Single());
+        Assert.Equal(((int?)null, (double?)null), (await db.QueryAsync<(int?, double?)>(
+            "SELECT brand_claims, opioid_rate FROM medicare_part_d WHERE npi = '1000000046'")).Single());
     }
 
     [Fact]
@@ -180,6 +208,9 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://pdc.test/files/Facility_Affiliation.csv" => "datasets/facaff_sample.csv",
                 "https://pdc.test/files/Hospital_General_Information.csv" => "datasets/hospitals_sample.csv",
                 "https://pdc.test/files/NH_ProviderInfo_Sep2026.csv" => "datasets/nursing_homes_sample.csv",
+                "https://cms.test/files/MUP_PHY_D24_Prov.csv" => "datasets/physician_by_provider_sample.csv",
+                "https://cms.test/files/MUP_PHY_D24_Prov_Svc.csv" => "datasets/physician_by_service_sample.csv",
+                "https://cms.test/files/mup_dpr_dy24_npi.csv" => "datasets/part_d_by_provider_sample.csv",
                 _ => null,
             };
             if (fixture is null)

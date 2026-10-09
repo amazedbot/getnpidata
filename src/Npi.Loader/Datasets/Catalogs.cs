@@ -2,8 +2,12 @@ using System.Text.Json;
 
 namespace Npi.Loader.Datasets;
 
-/// <summary>A published release of a dataset: its version label and the file to download.</summary>
-public sealed record DatasetRelease(string Version, Uri Url);
+/// <summary>A published release of a dataset: its version label, the file to download and (CMS catalog) the end of its data period.</summary>
+public sealed record DatasetRelease(string Version, Uri Url, string? PeriodEnd = null)
+{
+    /// <summary>The data year (e.g. 2024 for a period ending 2024-12-31), or null when the catalog gives no period.</summary>
+    public int? DataYear => PeriodEnd is { Length: >= 4 } p && int.TryParse(p.AsSpan(0, 4), System.Globalization.CultureInfo.InvariantCulture, out var y) ? y : null;
+}
 
 /// <summary>
 /// The data.cms.gov catalog (<c>https://data.cms.gov/data.json</c>, DCAT-US). Every release is its own
@@ -74,7 +78,7 @@ public sealed class CmsCatalog
         }
 
         var url = new Uri(best.CsvUrl);
-        return new DatasetRelease($"{best.PeriodEnd} {Path.GetFileName(url.AbsolutePath)}".Trim(), url);
+        return new DatasetRelease($"{best.PeriodEnd} {Path.GetFileName(url.AbsolutePath)}".Trim(), url, best.PeriodEnd.Length > 0 ? best.PeriodEnd : null);
     }
 }
 

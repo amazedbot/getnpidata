@@ -81,6 +81,9 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new HospitalSource(),
         new NursingHomeSource(),
         new FacilityEnrollmentSource(),
+        new MedicareUtilizationSource(),
+        new MedicareServicesSource(),
+        new PartDPrescriberSource(),
     ];
 
     private readonly IReadOnlyList<DatasetSource> _sources = sources ?? AllSources;

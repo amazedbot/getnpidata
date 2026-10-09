@@ -72,6 +72,7 @@ public static class SearchQueryString
             AcceptsAssignment = Bool("acceptsAssignment", nameof(SearchFilter.AcceptsAssignment)),
             Telehealth = Bool("telehealth", nameof(SearchFilter.Telehealth)),
             MinYears = Int("minYears", nameof(SearchFilter.MinYears)),
+            MedicareActive = Bool("medicareActive", nameof(SearchFilter.MedicareActive)),
             Sort = Text(q, "sort"),
             Page = Int("page", nameof(SearchFilter.Page)) ?? 1,
             PageSize = Int("pageSize", nameof(SearchFilter.PageSize)) ?? SearchFilter.DefaultPageSize,
@@ -118,6 +119,8 @@ public static class SearchQueryString
         new("telehealth", ParameterType.TrueFalse, nameof(SearchFilter.Telehealth), "true: only clinicians who offer telehealth (Care Compare); false: everyone else."),
         new("minYears", ParameterType.WholeNumber, nameof(SearchFilter.MinYears),
             "At least this many years since graduating from medical or professional school (Care Compare), 1-70."),
+        new("medicareActive", ParameterType.TrueFalse, nameof(SearchFilter.MedicareActive),
+            "true: only providers who billed Medicare Part B or Part D in the latest CMS data year; false: those who didn't."),
         new("sort", ParameterType.Text, nameof(SearchFilter.Sort), "name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix - for descending."),
         new("page", ParameterType.WholeNumber, nameof(SearchFilter.Page), "Page number, from 1. Paging stops at the first 10,000 matches; use the CSV beyond that."),
         new("pageSize", ParameterType.WholeNumber, nameof(SearchFilter.PageSize), "Results per page, 1-200 (default 50)."),
@@ -136,7 +139,7 @@ public static class SearchQueryString
 
     private static readonly string[] FilterKeys =
         ["classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential",
-         "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears"];
+         "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears", "medicareActive"];
 
     /// <summary>"?classification=…&amp;state=…" for the filter, optionally with a different page/sort.</summary>
     public static string ToQueryString(SearchFilter f, int? page = null, string? sort = null, bool includePaging = true)
@@ -171,6 +174,7 @@ public static class SearchQueryString
         Add("acceptsAssignment", f.AcceptsAssignment is { } assignment ? (assignment ? "true" : "false") : null);
         Add("telehealth", f.Telehealth is { } telehealth ? (telehealth ? "true" : "false") : null);
         Add("minYears", f.MinYears?.ToString(CultureInfo.InvariantCulture));
+        Add("medicareActive", f.MedicareActive is { } active ? (active ? "true" : "false") : null);
         Add("sort", sort ?? f.Sort);
         if (includePaging)
         {

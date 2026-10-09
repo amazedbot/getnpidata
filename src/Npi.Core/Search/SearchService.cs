@@ -21,7 +21,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
     private sealed record ZipCountyRow(string Zip5, string CountyName);
 
     // EXISTS yields a BIGINT; CAST keeps the type fixed for Dapper.
-    private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer, long AcceptsAssignment, long Telehealth);
+    private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer, long AcceptsAssignment, long Telehealth, long BilledMedicare);
 
     private sealed record PageRow(string Npi, long Total);
 
@@ -161,7 +161,8 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         }
 
         var flags = (await connection.QueryAsync<FlagRow>(new CommandDefinition(EnrichmentSql.FlagsSql, new { npis }, cancellationToken: ct)))
-            .ToDictionary(f => f.Npi, f => new ProviderFlags(f.Excluded != 0, f.OptedOut != 0, f.OrderRefer != 0, f.AcceptsAssignment != 0, f.Telehealth != 0));
+            .ToDictionary(f => f.Npi, f => new ProviderFlags(f.Excluded != 0, f.OptedOut != 0, f.OrderRefer != 0, f.AcceptsAssignment != 0, f.Telehealth != 0,
+                f.BilledMedicare != 0));
 
         var result = new List<ProviderSummary>(npis.Count);
         foreach (var npi in npis)

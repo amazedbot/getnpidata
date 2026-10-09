@@ -68,6 +68,9 @@ public sealed class ProviderSearch
     /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
     public bool? Telehealth { get; set; }
 
+    /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
+    public bool? MedicareActive { get; set; }
+
     /// <summary>At least this many years since graduation (Care Compare), 1–70.</summary>
     public int? MinYears { get; set; }
 
@@ -118,6 +121,7 @@ public sealed class ProviderSearch
         AddBool("acceptsAssignment", AcceptsAssignment);
         AddBool("telehealth", Telehealth);
         AddInt("minYears", MinYears);
+        AddBool("medicareActive", MedicareActive);
         Add("sort", Sort);
         AddInt("page", Page);
         AddInt("pageSize", PageSize);

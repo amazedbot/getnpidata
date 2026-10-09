@@ -125,6 +125,70 @@
      "mediaType": "text/csv"
     }
    ]
+  },
+  {
+   "title": "Medicare Physician & Other Practitioners - by Provider : 2024-12-01",
+   "modified": "2026-05-21",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/MUP_PHY_D24_Prov.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Physician & Other Practitioners - by Provider : 2023-12-01",
+   "modified": "2026-05-21",
+   "temporal": [
+    {
+     "startDate": "2023-01-01",
+     "endDate": "2023-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/MUP_PHY_D23_Prov.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Physician & Other Practitioners - by Provider and Service : 2024-12-01",
+   "modified": "2026-05-21",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/MUP_PHY_D24_Prov_Svc.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Part D Prescribers - by Provider : 2024-12-01",
+   "modified": "2026-05-21",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/mup_dpr_dy24_npi.csv",
+     "mediaType": "text/csv"
+    }
+   ]
   }
  ]
 }

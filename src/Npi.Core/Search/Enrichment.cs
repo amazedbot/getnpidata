@@ -4,10 +4,23 @@ namespace Npi.Core.Search;
 /// Yes/no facts about a provider from the Stage 5.5 datasets (CLAUDE.md §7 Stage 5.5), shown as badges in
 /// results and available as search filters.
 /// </summary>
-public sealed record ProviderFlags(bool Excluded, bool OptedOutOfMedicare, bool CanOrderAndRefer, bool AcceptsMedicareAssignment, bool OffersTelehealth)
+public sealed record ProviderFlags(bool Excluded, bool OptedOutOfMedicare, bool CanOrderAndRefer, bool AcceptsMedicareAssignment, bool OffersTelehealth,
+    bool BilledMedicare)
 {
-    public static readonly ProviderFlags None = new(false, false, false, false, false);
+    public static readonly ProviderFlags None = new(false, false, false, false, false, false);
 }
+
+/// <summary>One of a provider's most frequent Medicare Part B services.</summary>
+public sealed record MedicareService(string Hcpcs, string? Description, bool IsDrug, string? PlaceOfService, int? Beneficiaries, double? Services,
+    double? AveragePayment);
+
+/// <summary>Medicare Part B activity in one data year (Stage 5.5 item 5a). Counts under 11 are suppressed by CMS (null).</summary>
+public sealed record MedicareServices(int Year, string? ProviderType, bool? Participating, int? DistinctServices, int? Beneficiaries, double? Services,
+    double? AllowedAmount, double? PaymentAmount, double? AverageBeneficiaryAge, double? AverageRiskScore, IReadOnlyList<MedicareService> TopServices);
+
+/// <summary>Medicare Part D prescribing in one data year (Stage 5.5 item 5b).</summary>
+public sealed record MedicarePrescribing(int Year, string? PrescriberType, int? Claims, double? DrugCost, int? Beneficiaries, int? BrandClaims,
+    int? GenericClaims, int? OpioidClaims, double? OpioidRate, int? AntibioticClaims);
 
 /// <summary>An entry on the HHS-OIG List of Excluded Individuals/Entities, matched by NPI.</summary>
 public sealed record OigExclusion(string? Type, string? TypeDescription, DateOnly? ExclusionDate, DateOnly? WaiverDate, string? WaiverState,
@@ -56,6 +69,9 @@ internal static class EnrichmentSql
 
     internal const string Telehealth = "EXISTS (SELECT 1 FROM cc_clinician cc WHERE cc.npi = {0}.npi AND cc.telehealth = 1)";
 
+    internal const string BilledMedicare =
+        "(EXISTS (SELECT 1 FROM medicare_utilization mu WHERE mu.npi = {0}.npi) OR EXISTS (SELECT 1 FROM medicare_part_d md WHERE md.npi = {0}.npi))";
+
     /// <summary>Needs the @maxGraduationYear parameter.</summary>
     internal const string MinYears = "EXISTS (SELECT 1 FROM cc_clinician cc WHERE cc.npi = {0}.npi AND cc.graduation_year <= @maxGraduationYear)";
 
@@ -70,7 +86,8 @@ internal static class EnrichmentSql
         "CAST(" + Excluded.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS Excluded, " +
         "CAST(" + OptedOut.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OptedOut, " +
         "CAST(" + OrderRefer.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OrderRefer, " +
-        "CAST(COALESCE(cc.accepts_assignment, 0) AS SIGNED) AS AcceptsAssignment, CAST(COALESCE(cc.telehealth, 0) AS SIGNED) AS Telehealth " +
+        "CAST(COALESCE(cc.accepts_assignment, 0) AS SIGNED) AS AcceptsAssignment, CAST(COALESCE(cc.telehealth, 0) AS SIGNED) AS Telehealth, " +
+        "CAST(" + BilledMedicare.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS BilledMedicare " +
         "FROM provider p LEFT JOIN cc_clinician cc ON cc.npi = p.npi WHERE p.npi IN @npis";
 }
 
