@@ -136,9 +136,6 @@ public sealed class SearchQuery
             dates.Add("d.last_update_date >= @updatedSince");
         }
 
-        // A short window is a small share of all providers (a month of enumerations is ~0.5%), so it can drive.
-        var selectiveDate = filter.NewWithinDays <= SelectiveNewDays || filter.UpdatedWithinDays <= SelectiveUpdatedDays;
-
         if (taxonomyCodes is not null)
         {
             // An empty list can't match anything; keep the query valid instead of emitting "IN ()".
@@ -174,6 +171,21 @@ public sealed class SearchQuery
         {
             careCompare.Add("cc.graduation_year <= @maxGraduationYear");
         }
+
+        // When the dates drive (measured on full data, Oct 2026):
+        // - no location: always; the search counts first (MayBeBroad) and walks a sort index when the window is long
+        //   (a year of enumerations: 650k matches, 0.4 s);
+        // - a whole state: up to a year of enumerations or 120 days of updates (NY + a year: 6 s, against 13 s from
+        //   the state's locations; CA 6 s against 25 s);
+        // - a county, city or ZIP: never; their locations are few (Suffolk + any window ≤ 0.8 s);
+        // - the map: up to 90 days of enumerations or 31 of updates; a year of new providers in Manhattan took 9 s
+        //   from the candidates and 1 s from the points in view.
+        var hasDate = filter.NewWithinDays is not null || filter.UpdatedWithinDays is not null;
+        var narrowLocation = filter.CountyFips is not null || filter.City is not null || filter.Zip5 is not null;
+        var selectiveDate = areaSearch
+            ? filter.NewWithinDays <= MapSelectiveNewDays || filter.UpdatedWithinDays <= MapSelectiveUpdatedDays
+            : hasDate && (!_hasLocationFilter
+                          || (!narrowLocation && (filter.NewWithinDays <= StateSelectiveNewDays || filter.UpdatedWithinDays <= StateSelectiveUpdatedDays)));
 
         // Pick the driver: the filter expected to match the fewest providers.
         var drivenBy = new HashSet<string>();
@@ -224,8 +236,10 @@ public sealed class SearchQuery
         }
         else if (selectiveDate)
         {
-            // Both date conditions, when both are set: the provider rows are read anyway.
-            _driver = "SELECT d.npi FROM provider d WHERE " + string.Join(" AND ", dates);
+            // Both date conditions, when both are set: the provider rows are read anyway. DISTINCT keeps MySQL from
+            // merging the derived table into the outer query, which would void JOIN_ORDER (a map search then scanned
+            // every point in the area: 5 s instead of 0.1 s).
+            _driver = "SELECT DISTINCT d.npi FROM provider d WHERE " + string.Join(" AND ", dates);
             drivenBy.Add("date");
             _driverKind = "date";
         }
@@ -287,11 +301,17 @@ public sealed class SearchQuery
     /// </summary>
     public bool HasSelectiveDriver => _driverKind is "npi" or "flag" or "search" or "taxonomy" or "name" or "credential" or "date";
 
-    /// <summary>A "new within" window up to this many days drives the search (see the constructor); longer ones only check candidates.</summary>
-    public const int SelectiveNewDays = 400;
+    /// <summary>With a state (and no narrower location), "new within" windows up to this many days drive (see the constructor).</summary>
+    public const int StateSelectiveNewDays = 400;
 
     /// <summary>The same for "updated within": updates are far more frequent than enumerations.</summary>
-    public const int SelectiveUpdatedDays = 31;
+    public const int StateSelectiveUpdatedDays = 120;
+
+    /// <summary>Map searches: "new within" windows up to this many days drive.</summary>
+    public const int MapSelectiveNewDays = 90;
+
+    /// <summary>Map searches: "updated within" windows up to this many days drive.</summary>
+    public const int MapSelectiveUpdatedDays = 31;
 
     private static DateTime Since(int days) => DateTime.UtcNow.Date.AddDays(-days);
 
@@ -361,7 +381,7 @@ public sealed class SearchQuery
     /// gender/entity filters (§11 item 6). Count first; above <see cref="SearchFilter.BroadSearchThreshold"/>
     /// use <see cref="IndexOrderPageSql"/>.
     /// </summary>
-    public bool MayBeBroad => _driverKind is null or "location";
+    public bool MayBeBroad => _driverKind is null or "location" || (_driverKind == "date" && !_hasLocationFilter);
 
     /// <summary>
     /// The page read in sort-index order (name or NPI sorts only, else null). Fast when matches are
@@ -375,6 +395,8 @@ public sealed class SearchQuery
             {
                 SearchSort.Name => "ix_provider_sort",
                 SearchSort.Npi => "PRIMARY",
+                SearchSort.Enumeration => "ix_provider_enumeration",
+                SearchSort.LastUpdate => "ix_provider_last_update",
                 _ => null,
             };
             if (index is null)
@@ -409,8 +431,9 @@ public sealed class SearchQuery
                 SearchSort.Name => $"p.sort_name {dir}, p.npi",
                 SearchSort.Npi => $"p.npi {dir}",
                 SearchSort.Credential => $"p.credential_key {dir}, p.sort_name, p.npi",
-                SearchSort.LastUpdate => $"p.last_update_date {dir}, p.npi",
-                SearchSort.Enumeration => $"p.enumeration_date {dir}, p.npi",
+                // The NPI follows the direction too, so the date indexes (date, npi) can give this order (IndexOrderPageSql).
+                SearchSort.LastUpdate => $"p.last_update_date {dir}, p.npi {dir}",
+                SearchSort.Enumeration => $"p.enumeration_date {dir}, p.npi {dir}",
                 SearchSort.City => $"{MatchingLocation("city")} {dir}, p.sort_name, p.npi",
                 SearchSort.State => $"{MatchingLocation("state")} {dir}, p.sort_name, p.npi",
                 SearchSort.Zip => $"{MatchingLocation("zip5")} {dir}, p.sort_name, p.npi",

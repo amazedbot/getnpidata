@@ -142,7 +142,7 @@ public class SearchQueryTests
     [Theory]
     [InlineData(null, "p.sort_name ASC, p.npi")]
     [InlineData("name", "p.sort_name ASC, p.npi")]
-    [InlineData("-lastUpdate", "p.last_update_date DESC, p.npi")]
+    [InlineData("-lastUpdate", "p.last_update_date DESC, p.npi DESC")]
     [InlineData("NPI", "p.npi ASC")]
     public void Sorting_comes_from_a_whitelist(string? sort, string orderBy)
     {
@@ -224,13 +224,27 @@ public class SearchQueryTests
     public void A_short_new_or_updated_window_drives_the_search_and_a_long_one_only_checks()
     {
         var recent = new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 30, State = "NY" }), null, null);
-        Assert.Contains("FROM (SELECT d.npi FROM provider d WHERE d.enumeration_date >= @enumeratedSince) c", recent.PageSql, StringComparison.Ordinal);
+        Assert.Contains("FROM (SELECT DISTINCT d.npi FROM provider d WHERE d.enumeration_date >= @enumeratedSince) c", recent.PageSql, StringComparison.Ordinal);
         Assert.Contains("EXISTS (SELECT 1 FROM provider_location l", recent.PageSql, StringComparison.Ordinal);
         Assert.Equal(DateTime.UtcNow.Date.AddDays(-30), recent.Parameters.Get<DateTime>("enumeratedSince"));
         Assert.True(recent.HasSelectiveDriver);
 
         var updated = new SearchQuery(SearchValidation.Normalize(new SearchFilter { UpdatedWithinDays = 7 }), null, null);
         Assert.Contains("d.last_update_date >= @updatedSince", updated.PageSql, StringComparison.Ordinal);
+
+        // Dates drive and count first, so a long window can walk a sort index, including the date indexes.
+        var year = new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 365, Sort = "-enumeration" }), null, null);
+        Assert.True(year.MayBeBroad);
+        Assert.Contains("FORCE INDEX FOR ORDER BY (ix_provider_enumeration)", year.IndexOrderPageSql, StringComparison.Ordinal);
+        Assert.EndsWith("ORDER BY p.enumeration_date DESC, p.npi DESC LIMIT @take OFFSET @skip", year.IndexOrderPageSql, StringComparison.Ordinal);
+        // The map drives only from shorter windows.
+        Assert.True(new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 90 }, requireFilter: false), null, null, areaSearch: true).HasSelectiveDriver);
+        Assert.False(recent.MayBeBroad); // with a state, no count first
+        Assert.False(new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 365 }, requireFilter: false), null, null, areaSearch: true).HasSelectiveDriver);
+
+        // A county's locations are few: they drive, and the date is checked per candidate.
+        Assert.Contains("FROM (SELECT DISTINCT l.npi FROM provider_location l",
+            new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 30, CountyFips = "36103" }), null, null).PageSql, StringComparison.Ordinal);
 
         // A year of updates is millions of providers: the state drives, the date is checked per candidate.
         var older = new SearchQuery(SearchValidation.Normalize(new SearchFilter { UpdatedWithinDays = 365, State = "NY" }), null, null);
@@ -240,7 +254,7 @@ public class SearchQueryTests
 
     [Fact]
     public void Sorts_without_an_index_have_no_sort_index_plan() =>
-        Assert.Null(new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "CA", Sort = "-lastUpdate" }), null, null).IndexOrderPageSql);
+        Assert.Null(new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "CA", Sort = "-city" }), null, null).IndexOrderPageSql);
 
     [Fact]
     public void The_page_query_starts_from_the_driver_and_returns_the_total()
