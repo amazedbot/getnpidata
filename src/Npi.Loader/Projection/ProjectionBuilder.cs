@@ -90,12 +90,18 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
                 $"{Staging(t)} TO {SqlIdentifier.Quote(t)}",
             });
             await Database.ExecuteAsync(connection, $"RENAME TABLE {string.Join(", ", renames)}", ct);
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (current > 0)
+            {
+                await RecordChangesAsync(connection, now, ct);
+            }
+
             foreach (var table in Tables)
             {
                 await Database.ExecuteAsync(connection, $"DROP TABLE {SqlIdentifier.Quote(table + "_old")}", ct);
             }
 
-            await Database.ExecuteAsync(connection, DataVersionSql, ct, param: new { now = _clock.GetUtcNow().UtcDateTime, providers });
+            await Database.ExecuteAsync(connection, DataVersionSql, ct, param: new { now, providers });
             log.Information("Projection built: {Providers:N0} providers in {Duration}", providers,
                 (DateTime.UtcNow - started).ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture));
             return providers;
@@ -108,6 +114,88 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             }
         }
     }
+
+    /// <summary>
+    /// Change log (Stage 5.5 item 11): compares the new projection with the one it just replaced (the *_old tables)
+    /// and appends to provider_change. Only NPIs whose row_hash changed are compared field by field. A failure here
+    /// is logged, not thrown: the new projection is already live, and a missed entry is not worth failing the run.
+    /// </summary>
+    private async Task RecordChangesAsync(MySqlConnection connection, DateTime now, CancellationToken ct)
+    {
+        var started = DateTime.UtcNow;
+        try
+        {
+            await Database.ExecuteAsync(connection, "DROP TEMPORARY TABLE IF EXISTS `changed_npi`", ct);
+            await Database.ExecuteAsync(connection, ChangedNpiSql, ct);
+            var rows = 0;
+            foreach (var sql in ChangeSql)
+            {
+                rows += await connection.ExecuteAsync(new CommandDefinition(sql, new { now }, cancellationToken: ct));
+            }
+
+            log.Information("Projection changes: {Rows:N0} recorded in {Seconds:N0}s", rows, (DateTime.UtcNow - started).TotalSeconds);
+        }
+        catch (MySqlException e)
+        {
+            log.Error(e, "Projection changes could not be recorded; the new projection is in place");
+        }
+        finally
+        {
+            await Database.ExecuteAsync(connection, "DROP TEMPORARY TABLE IF EXISTS `changed_npi`", CancellationToken.None);
+        }
+    }
+
+    private const string ChangedNpiSql = """
+        CREATE TEMPORARY TABLE `changed_npi` (PRIMARY KEY (`npi`))
+        SELECT n.`npi` FROM `provider` n JOIN `provider_old` o ON o.`npi` = n.`npi` WHERE NOT (n.`row_hash` <=> o.`row_hash`)
+        """;
+
+    // The primary practice address as one line, as compared and recorded.
+    private static string AddressLine(string alias) =>
+        $"LEFT(CONCAT_WS(', ', {alias}.`address1`, {alias}.`city`, CONCAT_WS(' ', {alias}.`state`, {alias}.`zip5`)), 300)";
+
+    private static readonly string[] ChangeSql =
+    [
+        """
+        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+        SELECT n.`npi`, @now, 'added', NULL, LEFT(n.`sort_name`, 300)
+        FROM `provider` n LEFT JOIN `provider_old` o ON o.`npi` = n.`npi` WHERE o.`npi` IS NULL
+        """,
+        // Gone from the projection: deactivated, or (rarely) no longer in the NPPES file.
+        """
+        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+        SELECT o.`npi`, @now,
+          IF(EXISTS (SELECT 1 FROM `npidata` d WHERE d.`NPI` = o.`npi` AND d.`Is_Deactivated` = 1), 'deactivated', 'removed'),
+          LEFT(o.`sort_name`, 300), NULL
+        FROM `provider_old` o LEFT JOIN `provider` n ON n.`npi` = o.`npi` WHERE n.`npi` IS NULL
+        """,
+        """
+        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+        SELECT c.`npi`, @now, 'name', LEFT(o.`sort_name`, 300), LEFT(n.`sort_name`, 300)
+        FROM `changed_npi` c JOIN `provider` n ON n.`npi` = c.`npi` JOIN `provider_old` o ON o.`npi` = c.`npi`
+        WHERE NOT (n.`sort_name` <=> o.`sort_name`)
+        """,
+        """
+        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+        SELECT c.`npi`, @now, 'credential', o.`credential`, n.`credential`
+        FROM `changed_npi` c JOIN `provider` n ON n.`npi` = c.`npi` JOIN `provider_old` o ON o.`npi` = c.`npi`
+        WHERE NOT (n.`credential` <=> o.`credential`)
+        """,
+        """
+        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+        SELECT c.`npi`, @now, 'specialty', o.`primary_taxonomy_code`, n.`primary_taxonomy_code`
+        FROM `changed_npi` c JOIN `provider` n ON n.`npi` = c.`npi` JOIN `provider_old` o ON o.`npi` = c.`npi`
+        WHERE NOT (n.`primary_taxonomy_code` <=> o.`primary_taxonomy_code`)
+        """,
+        $"""
+        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+        SELECT c.`npi`, @now, 'address', {AddressLine("ol")}, {AddressLine("nl")}
+        FROM `changed_npi` c
+        JOIN `provider_location` nl ON nl.`npi` = c.`npi` AND nl.`is_primary` = 1
+        JOIN `provider_location_old` ol ON ol.`npi` = c.`npi` AND ol.`is_primary` = 1
+        WHERE NOT ({AddressLine("nl")} <=> {AddressLine("ol")})
+        """,
+    ];
 
     private async Task StepAsync(MySqlConnection connection, string what, string sql, CancellationToken ct)
     {

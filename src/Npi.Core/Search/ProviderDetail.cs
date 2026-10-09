@@ -40,6 +40,12 @@ public sealed record ProviderIdentifier(string Identifier, string? TypeCode, str
 public sealed record ProviderEndpoint(string? Type, string? TypeDescription, string Endpoint, string? Description, string? Use, string? Content,
     string? AffiliationName, string? AffiliationCity, string? AffiliationState);
 
+/// <summary>
+/// A change the loader noticed between two projections (Stage 5.5 item 11): type is name, credential, specialty
+/// (old/new shown as "Classification – Specialization") or address (the primary practice address).
+/// </summary>
+public sealed record ProviderChange(DateOnly RecordedOn, string Type, string? OldValue, string? NewValue);
+
 /// <summary>Everything the detail page and GET /api/v1/providers/{npi} show for one NPI.</summary>
 public sealed record ProviderDetail(
     string Npi, int EntityType, string Name, string? NamePrefix, string? Credential, string? Gender,
@@ -71,6 +77,9 @@ public sealed record ProviderDetail(
 
     /// <summary>Open Payments general payments in the newest program year; null when none (Stage 5.5 item 6).</summary>
     public IndustryPayments? IndustryPayments { get; init; }
+
+    /// <summary>Changes recorded since change tracking began, newest first (Stage 5.5 item 11).</summary>
+    public IReadOnlyList<ProviderChange> Changes { get; init; } = [];
 }
 
 /// <summary>Reads one provider from the projection. Deactivated NPIs are not in the projection, so they come back as null.</summary>
@@ -123,6 +132,8 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record PaymentKindRow(string Nature, double Amount, int Records);
 
     private sealed record PayerRow(string Payer, double Amount, int Records);
+
+    private sealed record ChangeRow(DateTime DetectedAt, string ChangeType, string? OldValue, string? NewValue);
 
     private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
         string? UseDescription, string? ContentDescription, string? AffiliationName, string? AffiliationCity, string? AffiliationState);
@@ -287,6 +298,19 @@ public sealed class ProviderDetailService(string connectionString)
             ORDER BY f.kind, Name
             """, new { npi }, cancellationToken: ct));
 
+        // Specialty changes are stored as taxonomy codes and shown by name. Added/removed rows are for feeds, not this page.
+        var changes = await connection.QueryAsync<ChangeRow>(new CommandDefinition(
+            """
+            SELECT c.detected_at AS DetectedAt, c.change_type AS ChangeType,
+                   IF(c.change_type = 'specialty', COALESCE(CONCAT_WS(' – ', o.Classification, o.Specialization), c.old_value), c.old_value) AS OldValue,
+                   IF(c.change_type = 'specialty', COALESCE(CONCAT_WS(' – ', n.Classification, n.Specialization), c.new_value), c.new_value) AS NewValue
+            FROM provider_change c
+            LEFT JOIN taxonomy_codes o ON c.change_type = 'specialty' AND o.Taxonomy_Code = c.old_value
+            LEFT JOIN taxonomy_codes n ON c.change_type = 'specialty' AND n.Taxonomy_Code = c.new_value
+            WHERE c.npi = @npi AND c.change_type IN ('name', 'credential', 'specialty', 'address')
+            ORDER BY c.detected_at DESC, c.id DESC LIMIT 100
+            """, new { npi }, cancellationToken: ct));
+
         var standardCredential = (await SearchService.StandardCredentialsAsync(connection, [npi], ct)).GetValueOrDefault(npi);
         return new ProviderDetail(
             p.Npi, p.EntityType,
@@ -312,6 +336,7 @@ public sealed class ProviderDetailService(string connectionString)
                     orderRefer.Pmd == 1, orderRefer.Hospice == 1)),
             CareCompare = careCompare,
             IndustryPayments = industry,
+            Changes = changes.Select(c => new ProviderChange(DateOnly.FromDateTime(c.DetectedAt), c.ChangeType, c.OldValue, c.NewValue)).ToList(),
             MedicareServices = utilization is null ? null : new MedicareServices(utilization.DataYear, utilization.ProviderType,
                 utilization.Participating is null ? null : utilization.Participating != 0, utilization.DistinctServices, utilization.Beneficiaries,
                 utilization.Services, utilization.AllowedAmount, utilization.PaymentAmount, utilization.AvgBeneficiaryAge, utilization.AvgRiskScore,

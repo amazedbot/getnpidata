@@ -38,11 +38,12 @@ facilities an organization runs. Counties come with population and shortage-area
 |---|---|
 | Search by specialty, location (state, county, city, ZIP, radius), name, NPI, credential, gender and entity type | Website `/`, API `/api/v1/providers` |
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
+| Find **new providers** (NPI issued in the last 30/90/365 days) and **recently updated** records in any area; sort newest first for a feed | Same (`newWithinDays`, `updatedWithinDays`) |
 | See compliance and Medicare badges on every result | Website grid, CSV and API flags |
 | Paged, sortable results with the total match count | Website grid, API JSON |
 | Search **on a map**: pins at practice street addresses, "Search in this area", near me, and a sortable table of the pins in view | Website `/map` ("View on map" from any search) |
 | Download **every** match as CSV, streamed, with no row cap | "Download CSV" button, `/export.csv`, `/api/v1/providers.csv` |
-| See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, Care Compare, facilities, Medicare services and prescribing, industry payments | `/provider/{npi}`, `/api/v1/providers/{npi}` |
+| See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, Care Compare, facilities, Medicare services and prescribing, industry payments, and the changes recorded between NPPES updates (name, credential, primary specialty, primary address) | `/provider/{npi}`, `/api/v1/providers/{npi}` |
 | Look up thousands of NPIs at once (paste or upload a file) and download the details, in your order | `/lookup`, `POST /api/v1/providers/lookup[.csv]` |
 | County insights: population and HRSA Health Professional Shortage Areas | Search page (when a county is chosen), `/api/v1/counties/{fips}` |
 | Look up the lists behind the filters: classifications, specializations, states, counties (FIPS) | `/api/v1/taxonomy/…`, `/api/v1/states/…` |
@@ -81,6 +82,8 @@ At least one filter is required. Filters combine with AND.
 | `minYears` | At least this many years since graduation (Care Compare), 1–70 | `20` |
 | `medicareActive` | `true`: only providers who billed Medicare Part B or Part D in the latest data year | `true` |
 | `shortage` | `primaryCare`, `dental` or `mentalHealth`: a practice location in a county with that kind of shortage area | `dental` |
+| `newWithinDays` | New providers: NPI issued (enumerated) within the last this many days, 1–3650. With `sort=-enumeration`, a newest-first feed | `30` |
+| `updatedWithinDays` | NPPES record updated within the last this many days, 1–3650 | `7` |
 | `sort` | `name` (default), `npi`, `credential`, `city`, `state`, `zip`, `lastUpdate`, `enumeration`; prefix `-` for descending | `-lastUpdate` |
 | `page`, `pageSize` | Page from 1; 1–200 results per page (default 50) | `2`, `100` |
 
@@ -109,7 +112,10 @@ addresses are not searched. Each result row shows the location that matched.
     there. Browsers offer location only over https (or on localhost).
   - The search URL (filters + area) is shareable.
 - **`/provider/{npi}`**: one provider's full record, with a link to the official
-  [NPPES NPI Registry](https://npiregistry.cms.hhs.gov/) entry.
+  [NPPES NPI Registry](https://npiregistry.cms.hhs.gov/) entry. **Recorded changes** lists what changed between
+  NPPES updates (name, credential, primary specialty, primary practice address), from October 2026 on: NPPES itself
+  publishes only the current record, so there is no earlier history.
+- Results enumerated in the last 90 days carry a **New** badge.
 - **`/lookup`**: bulk NPI lookup. Paste NPIs or upload a CSV or text file (up to 50,000 NPIs, 10 MB); every
   10-digit number counts. The CSV has one row per NPI, in your order, with a Lookup Status (Found, Not found or
   deactivated, Invalid NPI — a wrong check digit, usually a typo).

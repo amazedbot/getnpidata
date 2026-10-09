@@ -330,6 +330,29 @@
     </ul>
 }
 
+@* Stage 5.5 item 11: what the loader saw change between NPPES files; NPPES itself publishes no history. *@
+@if (p.Changes.Count > 0)
+{
+    <h2>Recorded changes</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Recorded</th><th scope="col">What changed</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+            <tbody>
+                @foreach (var c in p.Changes)
+                {
+                    <tr>
+                        <td>@c.RecordedOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                        <td>@(c.Type switch { "name" => "Name", "credential" => "Credential", "specialty" => "Primary specialty", "address" => "Primary practice address", _ => c.Type })</td>
+                        <td>@(c.OldValue ?? "(none)")</td>
+                        <td>@(c.NewValue ?? "(none)")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">Changes are recorded from October 2026 on, as each NPPES update is loaded.</p>
+}
+
 <p class="muted">Verify details with the official <a href="https://npiregistry.cms.hhs.gov/provider-view/@p.Npi">NPPES NPI Registry</a>.</p>
 
 @functions {

@@ -77,6 +77,12 @@ public sealed class ProviderSearch
     /// <summary>At least this many years since graduation (Care Compare), 1–70.</summary>
     public int? MinYears { get; set; }
 
+    /// <summary>New providers: enumerated within the last this many days, 1–3650.</summary>
+    public int? NewWithinDays { get; set; }
+
+    /// <summary>NPPES record updated within the last this many days, 1–3650.</summary>
+    public int? UpdatedWithinDays { get; set; }
+
     /// <summary>name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix "-" for descending.</summary>
     public string? Sort { get; set; }
 
@@ -126,6 +132,8 @@ public sealed class ProviderSearch
         AddInt("minYears", MinYears);
         AddBool("medicareActive", MedicareActive);
         Add("shortage", Shortage);
+        AddInt("newWithinDays", NewWithinDays);
+        AddInt("updatedWithinDays", UpdatedWithinDays);
         Add("sort", Sort);
         AddInt("page", Page);
         AddInt("pageSize", PageSize);

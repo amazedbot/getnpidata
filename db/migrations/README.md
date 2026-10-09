@@ -49,6 +49,8 @@ Rules:
 | `051_credentials.sql` | Standardized credentials (item 12): raw → standard map, provider credentials, the dropdown list. |
 | `052_credential_search.sql` | Credential × practice location, for fast credential + location searches. |
 | `053_provider_map_credential.sql` | Credential × map grid cell → NPI, for credential map searches. |
+| `054_provider_dates.sql` | Indexes on `provider` enumeration and last-update dates, for the new / recently updated filters (item 11). |
+| `055_provider_change.sql` | `provider_change`: the change log each projection appends to (item 11). |
 
 ## 001_baseline.sql
 

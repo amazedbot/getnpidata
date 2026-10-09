@@ -62,7 +62,7 @@ public static partial class SearchValidation
         if (requireFilter && f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
                 LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
                 Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null,
-                MedicareActive: null, Shortage: null })
+                MedicareActive: null, Shortage: null, NewWithinDays: null, UpdatedWithinDays: null })
         {
             Error("filter", "Enter at least one search filter.");
         }
@@ -128,6 +128,16 @@ public static partial class SearchValidation
         if (f.MinYears is < 1 or > 70)
         {
             Error(nameof(SearchFilter.MinYears), "Years in practice must be between 1 and 70.");
+        }
+
+        if (f.NewWithinDays is < 1 or > SearchFilter.MaxWithinDays)
+        {
+            Error(nameof(SearchFilter.NewWithinDays), $"New within must be between 1 and {SearchFilter.MaxWithinDays:N0} days.");
+        }
+
+        if (f.UpdatedWithinDays is < 1 or > SearchFilter.MaxWithinDays)
+        {
+            Error(nameof(SearchFilter.UpdatedWithinDays), $"Updated within must be between 1 and {SearchFilter.MaxWithinDays:N0} days.");
         }
 
         if (f.Page < 1)
