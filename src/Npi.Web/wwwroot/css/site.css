@@ -132,9 +132,9 @@ tbody tr:hover { background: var(--panel); }
 
 .pager { display: flex; gap: 1rem; justify-content: center; padding: 1rem 0; }
 
-dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+dl.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 1rem; }
 dl.facts dt { color: var(--muted); }
-dl.facts dd { margin: 0; }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
 
 footer {
     margin-top: 3rem;
