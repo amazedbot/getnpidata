@@ -33,6 +33,7 @@ public sealed class SearchQuery
     private readonly List<string> _locationTemplates = []; // "{0}" = table alias
     private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
     private string? _driverKind;
+    private readonly List<string> _relevance = [];          // "similar" names: best matches first (default sort only)
 
     /// <param name="taxonomyCodes">The codes the Classification/Specialization/TaxonomyCode filters resolved to, or null for no specialty filter.</param>
     /// <param name="radiusCenter">The ZIP centroid for a radius search.</param>
@@ -58,22 +59,51 @@ public sealed class SearchQuery
             Parameters.Add("npi", filter.Npi);
         }
 
-        if (filter.LastName is not null)
+        // Names (Stage 3.3 prefix match; Stage 5.5 item 9 "similar": people also by sound, organizations by words anywhere).
+        var similar = filter.NameMatch == NameSearch.Similar;
+        var relevance = new List<string>();
+        void PersonName(string? value, string column, string parameter)
         {
-            Parameters.Add("lastName", Prefix(filter.LastName));
-            providerTemplates.Add(("name", "{0}.last_name LIKE @lastName"));
+            if (value is null)
+            {
+                return;
+            }
+
+            Parameters.Add(parameter, Prefix(value));
+            if (similar && NameSearch.CanSoundLike(value))
+            {
+                Parameters.Add(parameter + "Sound", value);
+                providerTemplates.Add(("name",
+                    $"({{0}}.{column}_name LIKE @{parameter} OR {{0}}.{column}_phonetic = {NameSearch.PhoneticSql("@" + parameter + "Sound")})"));
+                relevance.Add($"(p.{column}_name LIKE @{parameter}) DESC"); // what was typed, before what sounds like it
+            }
+            else
+            {
+                providerTemplates.Add(("name", $"{{0}}.{column}_name LIKE @{parameter}"));
+            }
         }
 
-        if (filter.FirstName is not null)
-        {
-            Parameters.Add("firstName", Prefix(filter.FirstName));
-            providerTemplates.Add(("name", "{0}.first_name LIKE @firstName"));
-        }
+        PersonName(filter.LastName, "last", "lastName");
+        PersonName(filter.FirstName, "first", "firstName");
 
+        string? orgDriver = null;
         if (filter.OrgName is not null)
         {
             Parameters.Add("orgName", Prefix(filter.OrgName));
-            providerTemplates.Add(("name", "{0}.org_name LIKE @orgName"));
+            if (similar && NameSearch.OrganizationWords(filter.OrgName) is { } words)
+            {
+                // Any legal or other name containing every word (FULLTEXT), or the legal name starting with the text.
+                // As the driver it also scores each NPI: a prefix match first, then FULLTEXT relevance.
+                Parameters.Add("orgWords", words);
+                const string match = "MATCH(o.name) AGAINST (@orgWords IN BOOLEAN MODE)";
+                providerTemplates.Add(("org", $"({{0}}.org_name LIKE @orgName OR {{0}}.npi IN (SELECT o.npi FROM provider_org_name o WHERE {match}))"));
+                orgDriver = $"SELECT x.npi, MAX(x.score) AS score FROM (SELECT o.npi, {match} AS score FROM provider_org_name o WHERE {match} " +
+                            "UNION ALL SELECT d.npi, 1000 AS score FROM provider d WHERE d.org_name LIKE @orgName) x GROUP BY x.npi";
+            }
+            else
+            {
+                providerTemplates.Add(("name", "{0}.org_name LIKE @orgName"));
+            }
         }
 
         if (credential is not null)
@@ -243,6 +273,12 @@ public sealed class SearchQuery
             drivenBy.Add("date");
             _driverKind = "date";
         }
+        else if (orgDriver is not null)
+        {
+            _driver = orgDriver;
+            drivenBy.Add("org");
+            _driverKind = "org";
+        }
         else if (providerTemplates.Any(t => t.Kind == "name"))
         {
             _driver = "SELECT d.npi FROM provider d WHERE " + string.Join(" AND ", providerTemplates.Where(t => t.Kind == "name").Select(t => Format(t.Template, "d")));
@@ -288,6 +324,17 @@ public sealed class SearchQuery
             _remaining.Add($"EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND {Location("l")})");
         }
 
+        if (similar && filter.Sort is null)
+        {
+            // Best matches first, then the normal name order. Only the default sort: an explicit sort is honoured as asked.
+            if (orgDriver is not null)
+            {
+                relevance.Insert(0, _driverKind == "org" ? "c.score DESC" : "(p.org_name LIKE @orgName) DESC");
+            }
+
+            _relevance.AddRange(relevance);
+        }
+
         Parameters.Add("take", filter.PageSize);
         Parameters.Add("skip", (filter.Page - 1) * filter.PageSize);
     }
@@ -299,7 +346,7 @@ public sealed class SearchQuery
     /// credential). The map search then starts from the candidates and checks whether each is inside the area;
     /// otherwise it starts from the points in the area (spatial index) and checks the filters.
     /// </summary>
-    public bool HasSelectiveDriver => _driverKind is "npi" or "flag" or "search" or "taxonomy" or "name" or "credential" or "date";
+    public bool HasSelectiveDriver => _driverKind is "npi" or "flag" or "search" or "taxonomy" or "name" or "org" or "credential" or "date";
 
     /// <summary>With a state (and no narrower location), "new within" windows up to this many days drive (see the constructor).</summary>
     public const int StateSelectiveNewDays = 400;
@@ -366,7 +413,7 @@ public sealed class SearchQuery
             // Only NPI-level checks left (dataset flags): count the candidates without joining provider,
             // which costs a random lookup per candidate (950k for a whole state). Only for drivers drawn from
             // projection tables; the NPI, flag and Care Compare drivers can list NPIs that aren't projected.
-            if (_driverKind is "location" or "search" or "taxonomy" or "name" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
+            if (_driverKind is "location" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
             {
                 var flags = _remainingNpiOnly.Count > 0 ? " WHERE " + string.Join(" AND ", _remainingNpiOnly.Select(t => Format(t, "c"))) : "";
                 return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";
@@ -399,7 +446,7 @@ public sealed class SearchQuery
                 SearchSort.LastUpdate => "ix_provider_last_update",
                 _ => null,
             };
-            if (index is null)
+            if (index is null || _relevance.Count > 0)
             {
                 return null;
             }
@@ -426,7 +473,8 @@ public sealed class SearchQuery
         get
         {
             var dir = _sort.Descending ? "DESC" : "ASC";
-            return _sort.Key switch
+            var relevance = _relevance.Count > 0 ? string.Join(", ", _relevance) + ", " : "";
+            return relevance + _sort.Key switch
             {
                 SearchSort.Name => $"p.sort_name {dir}, p.npi",
                 SearchSort.Npi => $"p.npi {dir}",

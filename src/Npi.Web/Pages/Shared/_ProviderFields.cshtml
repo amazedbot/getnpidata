@@ -6,16 +6,26 @@
 <fieldset>
     <legend>Provider</legend>
     <div class="field">
-        <label for="lastName">Last name starts with</label>
+        <label for="lastName">Last name</label>
         <input id="lastName" name="lastName" value="@Model.Filter.LastName" maxlength="60" />
     </div>
     <div class="field">
-        <label for="firstName">First name starts with</label>
+        <label for="firstName">First name</label>
         <input id="firstName" name="firstName" value="@Model.Filter.FirstName" maxlength="60" />
     </div>
     <div class="field">
-        <label for="orgName">Organization starts with</label>
+        <label for="orgName">Organization name</label>
         <input id="orgName" name="orgName" value="@Model.Filter.OrgName" maxlength="60" />
+    </div>
+    @* Stage 5.5 item 9: "similar" also finds misspellings and sound-alikes of people's names, and organization names with the words anywhere. *@
+    <div class="field">
+        <label for="nameMatch">Name match</label>
+        <select id="nameMatch" name="nameMatch" aria-describedby="nameMatch-hint">
+            <option value="">Starts with</option>
+            <option value="similar" selected="@(Model.Filter.NameMatch == NameSearch.Similar)">Similar (typos, any word order)</option>
+        </select>
+        <span id="nameMatch-hint" class="muted small">Similar finds “Smiht” → Smith, “shore north” → North Shore …</span>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.NameMatch))</span>
     </div>
     <div class="field narrow">
         <label for="npi">NPI</label>

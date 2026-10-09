@@ -62,6 +62,7 @@ public static class SearchQueryString
             LastName = Text(q, "lastName"),
             FirstName = Text(q, "firstName"),
             OrgName = Text(q, "orgName"),
+            NameMatch = Text(q, "nameMatch"),
             Npi = Text(q, "npi"),
             EntityType = Int("entityType", nameof(SearchFilter.EntityType)),
             Gender = Text(q, "gender"),
@@ -107,7 +108,9 @@ public static class SearchQueryString
         new("radius", ParameterType.WholeNumber, nameof(SearchFilter.RadiusMiles), "Miles around zip (1-100). Needs a ZIP with a Census ZCTA centroid."),
         new("lastName", ParameterType.Text, nameof(SearchFilter.LastName), "Last name prefix (individuals)."),
         new("firstName", ParameterType.Text, nameof(SearchFilter.FirstName), "First name prefix (individuals)."),
-        new("orgName", ParameterType.Text, nameof(SearchFilter.OrgName), "Organization name prefix."),
+        new("orgName", ParameterType.Text, nameof(SearchFilter.OrgName), "Organization name prefix; with nameMatch=similar, words anywhere in the legal or another (DBA) name."),
+        new("nameMatch", ParameterType.Text, nameof(SearchFilter.NameMatch),
+            "prefix (default): names start with the text. similar: last/first names also match by sound (typos, spelling variants such as Smiht, Jonhson, Nunez), organization names by every word anywhere in a legal or other name; best matches first unless a sort is given."),
         new("npi", ParameterType.Text, nameof(SearchFilter.Npi), "Ten-digit NPI."),
         new("entityType", ParameterType.WholeNumber, nameof(SearchFilter.EntityType), "1 = individual, 2 = organization."),
         new("gender", ParameterType.Text, nameof(SearchFilter.Gender), "F or M (individuals)."),
@@ -174,6 +177,7 @@ public static class SearchQueryString
         Add("lastName", f.LastName);
         Add("firstName", f.FirstName);
         Add("orgName", f.OrgName);
+        Add("nameMatch", f.NameMatch);
         Add("npi", f.Npi);
         Add("entityType", f.EntityType?.ToString(CultureInfo.InvariantCulture));
         Add("gender", f.Gender);

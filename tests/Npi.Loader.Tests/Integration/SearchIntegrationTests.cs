@@ -168,6 +168,28 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Similar_names_find_misspellings_and_organization_words_anywhere()
+    {
+        await using var db = await SeededAsync();
+        var search = Search(db);
+
+        Assert.Empty(await Npis(search, new SearchFilter { LastName = "obrian" }));                                   // prefix: no
+        Assert.Equal([A], await Npis(search, new SearchFilter { LastName = "obrian", NameMatch = "similar" }));       // O'BRIEN by sound
+        Assert.Equal([E], await Npis(search, new SearchFilter { LastName = "Nunes", NameMatch = "similar" }));        // NUÑEZ, accent folded
+        Assert.Equal([B], await Npis(search, new SearchFilter { LastName = "bakr", FirstName = "al", NameMatch = "similar" }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { FirstName = "josie", NameMatch = "similar", State = "NY" }));  // JOSÉ
+        Assert.Equal([E], await Npis(search, new SearchFilter { LastName = "nu", NameMatch = "similar" }));           // a prefix still matches
+
+        Assert.Empty(await Npis(search, new SearchFilter { OrgName = "jones" }));
+        Assert.Equal([D], await Npis(search, new SearchFilter { OrgName = "jones smith", NameMatch = "similar" }));  // words anywhere, any order
+        Assert.Equal([D], await Npis(search, new SearchFilter { OrgName = "dental", NameMatch = "similar" }));       // the other name "SJC DENTAL"
+        Assert.Equal([D], await Npis(search, new SearchFilter { OrgName = "smi", NameMatch = "similar", Classification = "Dentist", State = "NY" }));
+        Assert.Empty(await Npis(search, new SearchFilter { OrgName = "jones dentist", NameMatch = "similar" }));
+
+        Assert.Equal(2L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_org_name WHERE npi = @D", new { D }));
+    }
+
+    [Fact]
     public async Task New_and_recently_updated_filters()
     {
         await using var db = await SeededAsync();

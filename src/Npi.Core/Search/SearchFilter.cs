@@ -90,6 +90,12 @@ public sealed record SearchFilter
     /// <summary>NPPES record updated within the last this many days, 1–3650 (Stage 5.5 item 11).</summary>
     public int? UpdatedWithinDays { get; init; }
 
+    /// <summary>
+    /// How names match (Stage 5.5 item 9): <c>prefix</c> (default, null) = starts with; <c>similar</c> = people also by
+    /// sound (typos, spelling variants), organizations by every word anywhere in a legal or other name, best matches first.
+    /// </summary>
+    public string? NameMatch { get; init; }
+
     /// <summary>Sort key (<see cref="SearchSort"/>), optionally prefixed with "-" for descending. Default "name".</summary>
     public string? Sort { get; init; }
 

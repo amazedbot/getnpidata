@@ -51,6 +51,8 @@ Rules:
 | `053_provider_map_credential.sql` | Credential × map grid cell → NPI, for credential map searches. |
 | `054_provider_dates.sql` | Indexes on `provider` enumeration and last-update dates, for the new / recently updated filters (item 11). |
 | `055_provider_change.sql` | `provider_change`: the change log each projection appends to (item 11). |
+| `056_provider_phonetic.sql` | Soundex keys of last/first names as indexed virtual columns on `provider`, for similar-name search (item 9). |
+| `057_provider_org_name.sql` | `provider_org_name`: organization legal + other names with a FULLTEXT index, for word-anywhere search (item 9); filled once from the current projection. |
 
 ## 001_baseline.sql
 
