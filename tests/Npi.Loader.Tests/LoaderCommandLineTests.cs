@@ -49,8 +49,18 @@ public class LoaderCommandLineTests
         Assert.Equal(["oig_leie"], one?.Arguments);
     }
 
+    [Fact]
+    public void Geocode_takes_an_optional_county_fips()
+    {
+        Assert.Equal([], LoaderCommandLine.Parse(["geocode"], out _)?.Arguments);
+        Assert.Equal(["36103"], LoaderCommandLine.Parse(["geocode", "36103"], out _)?.Arguments);
+        Assert.Null(LoaderCommandLine.Parse(["geocode", "Suffolk"], out var error));
+        Assert.Contains("FIPS", error, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("datasets", "a", "b")]
+    [InlineData("geocode", "36103", "36059")]
     [InlineData("load-file")]
     [InlineData("load-file", "a.zip", "b.zip")]
     [InlineData("run", "extra")]

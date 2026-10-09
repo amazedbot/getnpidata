@@ -25,7 +25,8 @@ public sealed class AddressGeocoder(Database database, CensusGeocoder census, IL
     public IReadOnlyList<TimeSpan> Delays { get; init; } = RetryDelays;
 
     /// <param name="maxBatches">Stop after this many batches (0 = the whole backlog).</param>
-    public async Task<GeocodeOutcome> GeocodePendingAsync(int maxBatches, CancellationToken ct)
+    /// <param name="countyFips">Only addresses in this county's ZIPs (HUD crosswalk), e.g. to try the map in one area first.</param>
+    public async Task<GeocodeOutcome> GeocodePendingAsync(int maxBatches, CancellationToken ct, string? countyFips = null)
     {
         await using var connection = await database.OpenAsync(ct);
         await Database.ExecuteAsync(connection, "DROP TABLE IF EXISTS `geocode_pending`", ct);
@@ -39,8 +40,9 @@ public sealed class AddressGeocoder(Database database, CensusGeocoder census, IL
             FROM `provider_location` l
             LEFT JOIN `address_geocode` g ON g.`addr_key` = l.`addr_key`
             WHERE l.`addr_key` IS NOT NULL AND g.`addr_key` IS NULL
+              AND (@county IS NULL OR l.`zip5` IN (SELECT z.`zip5` FROM `zip_county` z WHERE z.`county_fips` = @county))
             GROUP BY l.`addr_key`
-            """, ct);
+            """, ct, param: new { county = countyFips });
         var pending = await Database.CountAsync(connection, "geocode_pending", ct);
         var size = Math.Clamp(batchSize, 1, CensusGeocoder.MaxBatch);
         var planned = maxBatches > 0 ? Math.Min(pending, (long)maxBatches * size) : pending;
