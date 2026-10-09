@@ -1,0 +1,3 @@
+HPSA Name,HPSA ID,Designation Type,HPSA Discipline Class,HPSA Score,Primary State Abbreviation,HPSA Status,HPSA Component Type Description,Common State County FIPS Code,
+Kings Mental,7361234567,HPSA Population,Mental Health,16,NY,Designated,County Subdivision,36047,
+Kings Mental 2,7361234568,HPSA Population,Mental Health,19,NY,Designated,Census Tract,36047,

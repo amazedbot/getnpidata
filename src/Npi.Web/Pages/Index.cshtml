@@ -129,6 +129,78 @@
         </div>
     </fieldset>
 
+    <fieldset>
+        <legend>Medicare &amp; compliance</legend>
+        <div class="field">
+            <label for="acceptsAssignment">Accepts Medicare assignment</label>
+            <select id="acceptsAssignment" name="acceptsAssignment">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.AcceptsAssignment == true)">Yes</option>
+                <option value="false" selected="@(f.AcceptsAssignment == false)">No / unknown</option>
+            </select>
+        </div>
+        <div class="field narrow">
+            <label for="telehealth">Telehealth</label>
+            <select id="telehealth" name="telehealth">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.Telehealth == true)">Offers telehealth</option>
+            </select>
+        </div>
+        <div class="field narrow">
+            <label for="minYears">Years in practice</label>
+            <select id="minYears" name="minYears">
+                <option value="">Any</option>
+                @foreach (var y in IndexModel.YearChoices)
+                {
+                    <option value="@y" selected="@(f.MinYears == y)">@y+ years</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.MinYears))</span>
+        </div>
+        <div class="field">
+            <label for="shortage">In a shortage area</label>
+            <select id="shortage" name="shortage">
+                <option value="">Any</option>
+                <option value="primaryCare" selected="@(f.Shortage == "primaryCare")">Primary care</option>
+                <option value="dental" selected="@(f.Shortage == "dental")">Dental</option>
+                <option value="mentalHealth" selected="@(f.Shortage == "mentalHealth")">Mental health</option>
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.Shortage))</span>
+        </div>
+        <div class="field">
+            <label for="medicareActive">Billed Medicare</label>
+            <select id="medicareActive" name="medicareActive">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.MedicareActive == true)">Yes, latest year</option>
+                <option value="false" selected="@(f.MedicareActive == false)">No</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="excluded">OIG exclusion list</label>
+            <select id="excluded" name="excluded">
+                <option value="">Any</option>
+                <option value="false" selected="@(f.Excluded == false)">Not excluded</option>
+                <option value="true" selected="@(f.Excluded == true)">Excluded only</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="optedOut">Medicare opt-out</label>
+            <select id="optedOut" name="optedOut">
+                <option value="">Any</option>
+                <option value="false" selected="@(f.OptedOut == false)">Not opted out</option>
+                <option value="true" selected="@(f.OptedOut == true)">Opted out only</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="orderRefer">Can order/refer in Medicare</label>
+            <select id="orderRefer" name="orderRefer">
+                <option value="">Any</option>
+                <option value="true" selected="@(f.OrderRefer == true)">Yes</option>
+                <option value="false" selected="@(f.OrderRefer == false)">No</option>
+            </select>
+        </div>
+    </fieldset>
+
     <div class="actions">
         <button type="submit">Search</button>
         <a href="/" class="secondary">Clear</a>
@@ -145,6 +217,26 @@
                 <a class="button" href="@Model.CsvLink" download>Download CSV</a>
             }
         </div>
+
+        @if (Model.County is { } county)
+        {
+            <aside class="notice" aria-label="About @county.Name">
+                <strong>@county.Name, @county.State</strong>
+                @if (county.Population is { } population && population > 0)
+                {
+                    <span> · population @population.ToString("N0", CultureInfo.InvariantCulture) (@county.PopulationYear)
+                        · @((10000.0 * result.TotalCount / population).ToString("0.0", CultureInfo.InvariantCulture)) matching providers per 10,000 residents</span>
+                }
+                @if (county.Shortages.Count > 0)
+                {
+                    <br /><span>HRSA shortage areas: @string.Join("; ", county.Shortages.Select(s => $"{s.DisciplineName} ({(s.WholeCounty ? "whole county" : $"{s.ShortageAreas} area{(s.ShortageAreas == 1 ? "" : "s")}")})"))</span>
+                }
+                else
+                {
+                    <br /><span class="muted">No HRSA shortage areas in force.</span>
+                }
+            </aside>
+        }
 
         @if (result.TotalCount > 0)
         {
@@ -171,7 +263,25 @@
                         {
                             <tr>
                                 <td><a href="/provider/@p.Npi">@p.Npi</a></td>
-                                <td>@p.Name <span class="muted">(@p.EntityTypeName)</span></td>
+                                <td>
+                                    @p.Name <span class="muted">(@p.EntityTypeName)</span>
+                                    @if (p.Flags.Excluded)
+                                    {
+                                        <span class="badge alert" title="On the HHS-OIG List of Excluded Individuals/Entities">OIG excluded</span>
+                                    }
+                                    @if (p.Flags.OptedOutOfMedicare)
+                                    {
+                                        <span class="badge" title="Has an active Medicare opt-out affidavit">Medicare opt-out</span>
+                                    }
+                                    @if (p.Flags.AcceptsMedicareAssignment)
+                                    {
+                                        <span class="badge good" title="Accepts Medicare's approved amount as full payment (Care Compare)">Accepts Medicare</span>
+                                    }
+                                    @if (p.Flags.OffersTelehealth)
+                                    {
+                                        <span class="badge good" title="Offers telehealth (Care Compare)">Telehealth</span>
+                                    }
+                                </td>
                                 <td>@p.Credential</td>
                                 <td>@p.PrimarySpecialty</td>
                                 <td>@p.Address1@if (p.Address2 is not null){<br />@p.Address2}</td>

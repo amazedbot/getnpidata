@@ -4,6 +4,9 @@
 [Aa]rtifacts/
 [Tt]est[Rr]esults/
 *.binlog
+*.dll
+*.exe
+*.pdb
 *.nupkg
 *.snupkg
 

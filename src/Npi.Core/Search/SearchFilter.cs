@@ -60,6 +60,30 @@ public sealed record SearchFilter
     /// <summary>Prefix of the credential, ignoring punctuation ("MD" matches "M.D.").</summary>
     public string? Credential { get; init; }
 
+    /// <summary>true: only providers on the HHS-OIG exclusion list (matched by NPI); false: leave them out.</summary>
+    public bool? Excluded { get; init; }
+
+    /// <summary>true: only practitioners with an active Medicare opt-out; false: leave them out.</summary>
+    public bool? OptedOut { get; init; }
+
+    /// <summary>true: only providers eligible to order or refer in Medicare (any program); false: only those who aren't.</summary>
+    public bool? OrderRefer { get; init; }
+
+    /// <summary>true: only clinicians who accept Medicare assignment (Care Compare); false: everyone else.</summary>
+    public bool? AcceptsAssignment { get; init; }
+
+    /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
+    public bool? Telehealth { get; init; }
+
+    /// <summary>primaryCare, dental or mentalHealth: practice locations in a county with an HRSA shortage area of that kind.</summary>
+    public string? Shortage { get; init; }
+
+    /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
+    public bool? MedicareActive { get; init; }
+
+    /// <summary>At least this many years since graduating from medical/professional school (Care Compare), 1–70.</summary>
+    public int? MinYears { get; init; }
+
     /// <summary>Sort key (<see cref="SearchSort"/>), optionally prefixed with "-" for descending. Default "name".</summary>
     public string? Sort { get; init; }
 
@@ -67,5 +91,5 @@ public sealed record SearchFilter
 
     public int PageSize { get; init; } = DefaultPageSize;
 
-    public bool HasLocationFilter => State is not null || CountyFips is not null || City is not null || Zip5 is not null;
+    public bool HasLocationFilter => State is not null || CountyFips is not null || City is not null || Zip5 is not null || Shortage is not null;
 }

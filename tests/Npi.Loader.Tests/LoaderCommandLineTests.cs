@@ -39,7 +39,18 @@ public class LoaderCommandLineTests
         Assert.Equal([@"C:\work\NPPES_Data_Dissemination_100626_101226_Weekly_V2.zip"], invocation?.Arguments);
     }
 
+    [Fact]
+    public void Datasets_takes_an_optional_source_name()
+    {
+        Assert.Equal([], LoaderCommandLine.Parse(["datasets"], out _)?.Arguments);
+        var one = LoaderCommandLine.Parse(["datasets", "oig_leie"], out var error);
+        Assert.Null(error);
+        Assert.Equal(LoaderCommand.Datasets, one?.Command);
+        Assert.Equal(["oig_leie"], one?.Arguments);
+    }
+
     [Theory]
+    [InlineData("datasets", "a", "b")]
     [InlineData("load-file")]
     [InlineData("load-file", "a.zip", "b.zip")]
     [InlineData("run", "extra")]

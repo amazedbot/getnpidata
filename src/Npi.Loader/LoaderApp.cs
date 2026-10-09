@@ -1,5 +1,6 @@
 using System.Globalization;
 using Dapper;
+using Npi.Loader.Datasets;
 using Npi.Loader.Db;
 using Npi.Loader.Load;
 using Npi.Loader.Nppes;
@@ -64,6 +65,9 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         // Stage 2: reference data, reloaded only when its published version changed.
         var referenceOk = await new ReferenceLoader(options, database, http, log).RefreshAllAsync(force: false, ct);
 
+        // Stage 5.5: external datasets joined to NPIs, each reloaded only when its publisher released a new version.
+        var datasetsOk = await new DatasetLoader(options, database, http, log).RefreshAsync(force: false, only: null, ct);
+
         // Stage 3: rebuild the search projection when anything it is built from changed.
         var projectionOk = true;
         var projection = new ProjectionBuilder(database, log, options.MinRowRatio);
@@ -84,9 +88,9 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             log.Information("Search projection is current");
         }
 
-        log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; projection {Projection}",
-            plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED");
-        return failures == 0 && referenceOk && projectionOk ? 0 : 1;
+        log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; datasets {Datasets}; projection {Projection}",
+            plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", datasetsOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED");
+        return failures == 0 && referenceOk && datasetsOk && projectionOk ? 0 : 1;
     }
 
     /// <summary>The <c>project</c> command: rebuild the search projection now.</summary>
@@ -102,6 +106,13 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     {
         await EnsureReadyAsync(ct);
         return await new ReferenceLoader(options, database, http, log).RefreshAllAsync(force: true, ct) ? 0 : 1;
+    }
+
+    /// <summary>The <c>datasets</c> command: reload every Stage 5.5 dataset (or the named one) even if unchanged.</summary>
+    public async Task<int> DatasetsAsync(string? only, CancellationToken ct)
+    {
+        await EnsureReadyAsync(ct);
+        return await new DatasetLoader(options, database, http, log).RefreshAsync(force: true, only, ct) ? 0 : 1;
     }
 
     public async Task<int> LoadFileAsync(string zipPath, CancellationToken ct)

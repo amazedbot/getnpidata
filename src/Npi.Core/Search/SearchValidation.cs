@@ -54,11 +54,14 @@ public static partial class SearchValidation
             Npi = Clean(filter.Npi, nameof(SearchFilter.Npi)),
             Gender = Clean(filter.Gender, nameof(SearchFilter.Gender), upper: true),
             Credential = Clean(filter.Credential, nameof(SearchFilter.Credential)),
+            Shortage = Clean(filter.Shortage, nameof(SearchFilter.Shortage)),
             Sort = Clean(filter.Sort, nameof(SearchFilter.Sort)),
         };
 
         if (f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
-                LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null })
+                LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
+                Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null,
+                MedicareActive: null, Shortage: null })
         {
             Error("filter", "Enter at least one search filter.");
         }
@@ -114,6 +117,16 @@ public static partial class SearchValidation
         if (f.Gender is not null and not ("M" or "F"))
         {
             Error(nameof(SearchFilter.Gender), "Gender must be M or F.");
+        }
+
+        if (f.Shortage is not null && !AreaService.Disciplines.ContainsKey(f.Shortage))
+        {
+            Error(nameof(SearchFilter.Shortage), "Shortage must be primaryCare, dental or mentalHealth.");
+        }
+
+        if (f.MinYears is < 1 or > 70)
+        {
+            Error(nameof(SearchFilter.MinYears), "Years in practice must be between 1 and 70.");
         }
 
         if (f.Page < 1)

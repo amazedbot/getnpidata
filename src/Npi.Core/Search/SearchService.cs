@@ -20,6 +20,9 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
     private sealed record ZipCountyRow(string Zip5, string CountyName);
 
+    // EXISTS yields a BIGINT; CAST keeps the type fixed for Dapper.
+    private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer, long AcceptsAssignment, long Telehealth, long BilledMedicare);
+
     private sealed record PageRow(string Npi, long Total);
 
     /// <summary>Validates the filter and returns one page of results with the total count.</summary>
@@ -100,6 +103,39 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         }
     }
 
+    /// <summary>The most NPIs <see cref="LookupAsync"/> accepts at once (the CSV upload goes through in batches).</summary>
+    public const int MaxLookupBatch = 1000;
+
+    /// <summary>
+    /// Bulk lookup (Stage 5.5 item 8): every requested NPI in the given order (duplicates removed), with its
+    /// summary when it is an active provider. Invalid NPIs (format or check digit) are reported, not looked up.
+    /// </summary>
+    public async Task<IReadOnlyList<LookupRow>> LookupAsync(IReadOnlyList<string> npis, CancellationToken ct)
+    {
+        if (npis.Count > MaxLookupBatch)
+        {
+            throw new ArgumentException($"At most {MaxLookupBatch} NPIs per lookup.", nameof(npis));
+        }
+
+        var requested = npis.Select(n => n.Trim()).Where(n => n.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        var valid = requested.Where(InputFormats.HasValidCheckDigit).ToList();
+        var found = new Dictionary<string, ProviderSummary>(StringComparer.Ordinal);
+        if (valid.Count > 0)
+        {
+            await using var connection = await OpenAsync(ct);
+            var query = new SearchQuery(new SearchFilter(), taxonomyCodes: null, radiusCenter: null); // no location filter: primary location first
+            foreach (var summary in await SummarizeAsync(connection, query, valid, ct))
+            {
+                found[summary.Npi] = summary;
+            }
+        }
+
+        return requested.Select(n => !InputFormats.HasValidCheckDigit(n)
+                ? new LookupRow(n, LookupStatus.Invalid, null)
+                : found.TryGetValue(n, out var p) ? new LookupRow(n, LookupStatus.Found, p) : new LookupRow(n, LookupStatus.NotFound, null))
+            .ToList();
+    }
+
     private async Task<SearchQuery> PrepareAsync(MySqlConnection connection, SearchFilter filter, CancellationToken ct)
     {
         var f = SearchValidation.Normalize(filter);
@@ -157,6 +193,10 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             }
         }
 
+        var flags = (await connection.QueryAsync<FlagRow>(new CommandDefinition(EnrichmentSql.FlagsSql, new { npis }, cancellationToken: ct)))
+            .ToDictionary(f => f.Npi, f => new ProviderFlags(f.Excluded != 0, f.OptedOut != 0, f.OrderRefer != 0, f.AcceptsAssignment != 0, f.Telehealth != 0,
+                f.BilledMedicare != 0));
+
         var result = new List<ProviderSummary>(npis.Count);
         foreach (var npi in npis)
         {
@@ -182,7 +222,10 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 l?.Phone ?? p.Phone,
                 p.Gender,
                 p.EnumerationDate is null ? null : DateOnly.FromDateTime(p.EnumerationDate.Value),
-                p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value)));
+                p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value))
+            {
+                Flags = flags.GetValueOrDefault(npi, ProviderFlags.None),
+            });
         }
 
         return result;
@@ -218,4 +261,8 @@ public static class ProviderNames
     /// <summary>"11701-1234", "11701", or the raw postal code for foreign addresses.</summary>
     public static string? Zip(string? zip5, string? zip4, string? postalCode) =>
         zip5 is null ? postalCode : zip4 is null ? zip5 : $"{zip5}-{zip4}";
+
+    /// <summary>A raw NPPES postal code for display: US "117011234" → "11701-1234"; anything else unchanged.</summary>
+    public static string? PostalCode(string? raw, string? countryCode) =>
+        raw is { Length: 9 } && raw.All(char.IsAsciiDigit) && (countryCode is null or "US") ? $"{raw[..5]}-{raw[5..]}" : raw;
 }

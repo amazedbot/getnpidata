@@ -47,6 +47,17 @@ public static class ApiEndpoints
             .WithDescription("Same filters as /providers (paging ignored), streamed with no row cap. UTF-8 with BOM.")
             .Produces(StatusCodes.Status200OK, contentType: "text/csv").ProducesValidationProblem();
 
+        api.MapPost("/providers/lookup", LookupAsync)
+            .WithName("LookupProviders").WithTags("Providers")
+            .WithSummary("Look up many NPIs at once")
+            .WithDescription($"Up to {SearchService.MaxLookupBatch} NPIs per request. Every requested NPI comes back once, in order, with status found, notFound (unknown or deactivated) or invalid (format or check digit).");
+
+        api.MapPost("/providers/lookup.csv", LookupCsvAsync)
+            .WithName("LookupProvidersCsv").WithTags("Providers")
+            .WithSummary("Look up many NPIs at once, as CSV")
+            .WithDescription("Same request as /providers/lookup; the summary columns plus Requested NPI and Lookup Status.")
+            .Produces(StatusCodes.Status200OK, contentType: "text/csv").ProducesValidationProblem();
+
         api.MapGet("/providers/{npi}", GetProviderAsync)
             .WithName("GetProvider").WithTags("Providers")
             .WithSummary("One provider")
@@ -65,6 +76,11 @@ public static class ApiEndpoints
 
         api.MapGet("/states/{state}/counties", GetCountiesAsync)
             .WithName("ListCounties").WithTags("Lookups").WithSummary("Counties of one state, with FIPS codes").CacheOutput(CachePolicy);
+
+        api.MapGet("/counties/{fips}", GetCountyAsync)
+            .WithName("GetCounty").WithTags("Lookups").WithSummary("County population and shortage areas")
+            .WithDescription("Census population estimate and HRSA Health Professional Shortage Areas (primary care, dental, mental health) in force.")
+            .CacheOutput(CachePolicy);
 
         api.MapGet("/meta", GetMetaAsync)
             .WithName("GetMeta").WithTags("Meta").WithSummary("Data versions")
@@ -90,6 +106,32 @@ public static class ApiEndpoints
         }
     }
 
+    private static Dictionary<string, string[]>? ValidateLookup(LookupRequest? request) =>
+        request?.Npis is not { Count: > 0 } npis
+            ? new() { ["npis"] = ["Send {\"npis\": [\"1234567893\", …]} with at least one NPI."] }
+            : npis.Count > SearchService.MaxLookupBatch
+                ? new() { ["npis"] = [$"At most {SearchService.MaxLookupBatch} NPIs per request."] }
+                : null;
+
+    private static async Task<Results<Ok<LookupResponse>, ValidationProblem>> LookupAsync(LookupRequest? request, SearchService search, CancellationToken ct) =>
+        ValidateLookup(request) is { } errors
+            ? TypedResults.ValidationProblem(errors)
+            : TypedResults.Ok(new LookupResponse(await search.LookupAsync(request!.Npis!, ct)));
+
+    private static async Task<IResult> LookupCsvAsync(LookupRequest? request, HttpContext http, SearchService search, CancellationToken ct)
+    {
+        if (ValidateLookup(request) is { } errors)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
+        var rows = await search.LookupAsync(request!.Npis!, ct);
+        http.Response.ContentType = "text/csv; charset=utf-8";
+        http.Response.Headers.ContentDisposition = $"attachment; filename=\"npi_lookup_{DateTime.UtcNow:yyyyMMdd}.csv\"";
+        await ProviderCsv.WriteLookupAsync(rows.ToAsyncEnumerable(), http.Response.Body, ct);
+        return Results.Empty;
+    }
+
     private static async Task<Results<Ok<ProviderDetail>, ProblemHttpResult>> GetProviderAsync(string npi, ProviderDetailService details, CancellationToken ct) =>
         await details.GetAsync(npi, ct) is { } provider
             ? TypedResults.Ok(provider)
@@ -110,6 +152,9 @@ public static class ApiEndpoints
         var counties = await geography.GetCountiesAsync(state, ct);
         return counties.Count > 0 ? TypedResults.Ok(counties) : NotFound($"Unknown state '{state}'.");
     }
+
+    private static async Task<Results<Ok<CountyFacts>, ProblemHttpResult>> GetCountyAsync(string fips, AreaService areas, CancellationToken ct) =>
+        await areas.GetCountyAsync(fips, ct) is { } county ? TypedResults.Ok(county) : NotFound($"Unknown county FIPS '{fips}'.");
 
     private static async Task<Results<Ok<ApiMeta>, ProblemHttpResult>> GetMetaAsync(GeographyCatalog geography, CancellationToken ct) =>
         await geography.GetDataVersionAsync(ct) is { } version
@@ -132,3 +177,9 @@ public sealed record ApiMeta(
 
     private static DateTimeOffset Utc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
 }
+
+/// <summary>POST /api/v1/providers/lookup body.</summary>
+public sealed record LookupRequest(IReadOnlyList<string>? Npis);
+
+/// <summary>POST /api/v1/providers/lookup response: one row per requested NPI, in request order.</summary>
+public sealed record LookupResponse(IReadOnlyList<LookupRow> Items);

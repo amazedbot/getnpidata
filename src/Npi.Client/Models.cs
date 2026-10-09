@@ -42,6 +42,31 @@ public sealed class ProviderSummary
     public DateTime? EnumerationDate { get; set; }
 
     public DateTime? LastUpdateDate { get; set; }
+
+    /// <summary>Badges from the joined datasets (exclusion, Medicare opt-out, order/refer eligibility).</summary>
+    public ProviderFlags Flags { get; set; } = new();
+}
+
+/// <summary>Yes/no facts from the joined datasets.</summary>
+public sealed class ProviderFlags
+{
+    /// <summary>On the HHS-OIG List of Excluded Individuals/Entities (matched by NPI).</summary>
+    public bool Excluded { get; set; }
+
+    /// <summary>Has an active Medicare opt-out affidavit.</summary>
+    public bool OptedOutOfMedicare { get; set; }
+
+    /// <summary>Eligible to order or refer in at least one Medicare program.</summary>
+    public bool CanOrderAndRefer { get; set; }
+
+    /// <summary>Accepts Medicare's approved amount as full payment (Care Compare).</summary>
+    public bool AcceptsMedicareAssignment { get; set; }
+
+    /// <summary>Offers telehealth (Care Compare).</summary>
+    public bool OffersTelehealth { get; set; }
+
+    /// <summary>Billed Medicare Part B or Part D in the latest CMS data year.</summary>
+    public bool BilledMedicare { get; set; }
 }
 
 /// <summary>One page of search results.</summary>
@@ -127,6 +152,386 @@ public sealed class ProviderDetail
     public IReadOnlyList<ProviderLocation> Locations { get; set; } = [];
 
     public IReadOnlyList<string> OtherNames { get; set; } = [];
+
+    /// <summary>Registration details (authorized official, parent organization, mailing address); null when none are published.</summary>
+    public ProviderProfile? Profile { get; set; }
+
+    /// <summary>Other identifiers, e.g. state Medicaid numbers.</summary>
+    public IReadOnlyList<ProviderIdentifier> Identifiers { get; set; } = [];
+
+    /// <summary>Direct messaging addresses, FHIR endpoints and websites published in NPPES.</summary>
+    public IReadOnlyList<ProviderEndpoint> Endpoints { get; set; } = [];
+
+    /// <summary>OIG exclusions, Medicare opt-out and order/refer eligibility.</summary>
+    public ProviderCompliance Compliance { get; set; } = new();
+
+    /// <summary>Medicare Care Compare facts; null when the NPI isn't listed there.</summary>
+    public ProviderCareCompare? CareCompare { get; set; }
+
+    /// <summary>Medicare-certified hospitals and nursing homes held by this organization NPI.</summary>
+    public IReadOnlyList<CertifiedFacility> Facilities { get; set; } = [];
+
+    /// <summary>Medicare Part B services in the latest data year; null when none.</summary>
+    public MedicareServices? MedicareServices { get; set; }
+
+    /// <summary>Medicare Part D prescribing in the latest data year; null when none.</summary>
+    public MedicarePrescribing? MedicarePrescribing { get; set; }
+
+    /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
+    public IndustryPayments? IndustryPayments { get; set; }
+}
+
+/// <summary>Open Payments (Sunshine Act) general payments from drug and device makers to one NPI.</summary>
+public sealed class IndustryPayments
+{
+    /// <summary>Program year.</summary>
+    public int Year { get; set; }
+
+    public double TotalAmount { get; set; }
+
+    public int Records { get; set; }
+
+    public int Payers { get; set; }
+
+    /// <summary>Amounts by nature of payment, largest first.</summary>
+    public IReadOnlyList<IndustryPaymentKind> ByNature { get; set; } = [];
+
+    /// <summary>The three largest payers.</summary>
+    public IReadOnlyList<IndustryPayer> TopPayers { get; set; } = [];
+}
+
+/// <summary>Payments of one kind (e.g. "Food and Beverage", "Consulting Fee").</summary>
+public sealed class IndustryPaymentKind
+{
+    public string Nature { get; set; } = "";
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>A company that paid the recipient.</summary>
+public sealed class IndustryPayer
+{
+    public string Name { get; set; } = "";
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>Medicare Part B activity in one data year. Counts under 11 are suppressed by CMS (null).</summary>
+public sealed class MedicareServices
+{
+    public int Year { get; set; }
+
+    public string? ProviderType { get; set; }
+
+    public bool? Participating { get; set; }
+
+    public int? DistinctServices { get; set; }
+
+    public int? Beneficiaries { get; set; }
+
+    public double? Services { get; set; }
+
+    public double? AllowedAmount { get; set; }
+
+    public double? PaymentAmount { get; set; }
+
+    public double? AverageBeneficiaryAge { get; set; }
+
+    /// <summary>HCC risk score of the provider's patients (1.0 = average Medicare patient).</summary>
+    public double? AverageRiskScore { get; set; }
+
+    /// <summary>The five most frequent services.</summary>
+    public IReadOnlyList<MedicareService> TopServices { get; set; } = [];
+}
+
+/// <summary>One Medicare Part B service (HCPCS code).</summary>
+public sealed class MedicareService
+{
+    public string Hcpcs { get; set; } = "";
+
+    public string? Description { get; set; }
+
+    public bool IsDrug { get; set; }
+
+    /// <summary>"Facility" or "Office".</summary>
+    public string? PlaceOfService { get; set; }
+
+    public int? Beneficiaries { get; set; }
+
+    public double? Services { get; set; }
+
+    public double? AveragePayment { get; set; }
+}
+
+/// <summary>Medicare Part D prescribing in one data year.</summary>
+public sealed class MedicarePrescribing
+{
+    public int Year { get; set; }
+
+    public string? PrescriberType { get; set; }
+
+    public int? Claims { get; set; }
+
+    public double? DrugCost { get; set; }
+
+    public int? Beneficiaries { get; set; }
+
+    public int? BrandClaims { get; set; }
+
+    public int? GenericClaims { get; set; }
+
+    public int? OpioidClaims { get; set; }
+
+    /// <summary>Percent of claims that are for opioids.</summary>
+    public double? OpioidRate { get; set; }
+
+    public int? AntibioticClaims { get; set; }
+}
+
+/// <summary>What Medicare Care Compare publishes about a clinician.</summary>
+public sealed class ProviderCareCompare
+{
+    public string? MedicalSchool { get; set; }
+
+    public int? GraduationYear { get; set; }
+
+    public string? PrimarySpecialty { get; set; }
+
+    public string? SecondarySpecialties { get; set; }
+
+    public bool AcceptsMedicareAssignment { get; set; }
+
+    public bool OffersTelehealth { get; set; }
+
+    public IReadOnlyList<GroupPractice> GroupPractices { get; set; } = [];
+
+    public IReadOnlyList<FacilityAffiliation> Facilities { get; set; } = [];
+}
+
+/// <summary>A group practice the clinician bills Medicare through.</summary>
+public sealed class GroupPractice
+{
+    /// <summary>Medicare PECOS associate ID of the group.</summary>
+    public string OrgPacId { get; set; } = "";
+
+    public string? Name { get; set; }
+
+    public int? Members { get; set; }
+
+    public bool AcceptsMedicareAssignment { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+}
+
+/// <summary>A facility where the clinician works.</summary>
+public sealed class FacilityAffiliation
+{
+    /// <summary>e.g. "Hospital", "Nursing home", "Home health agency".</summary>
+    public string FacilityType { get; set; } = "";
+
+    /// <summary>CMS Certification Number.</summary>
+    public string Ccn { get; set; } = "";
+
+    public string? Name { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    /// <summary>Care Compare overall star rating, 1–5.</summary>
+    public int? OverallRating { get; set; }
+
+    /// <summary>The facility's own organization NPI, when known.</summary>
+    public string? Npi { get; set; }
+}
+
+/// <summary>A Medicare-certified hospital or nursing home with its Care Compare ratings.</summary>
+public sealed class CertifiedFacility
+{
+    public string Ccn { get; set; } = "";
+
+    /// <summary>"hospital" or "nursing_home".</summary>
+    public string Kind { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Type { get; set; }
+
+    public string? Ownership { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? Phone { get; set; }
+
+    public bool? EmergencyServices { get; set; }
+
+    public int? CertifiedBeds { get; set; }
+
+    public int? OverallRating { get; set; }
+
+    public int? InspectionRating { get; set; }
+
+    public int? StaffingRating { get; set; }
+
+    public int? QualityRating { get; set; }
+
+    /// <summary>Clinicians Care Compare lists as affiliated with this facility.</summary>
+    public int AffiliatedClinicians { get; set; }
+}
+
+/// <summary>Compliance facts about a provider.</summary>
+public sealed class ProviderCompliance
+{
+    /// <summary>HHS-OIG exclusions matched by NPI (usually none).</summary>
+    public IReadOnlyList<OigExclusion> Exclusions { get; set; } = [];
+
+    public MedicareOptOut? OptOut { get; set; }
+
+    public MedicareOrderReferring? OrderReferring { get; set; }
+}
+
+/// <summary>An entry on the HHS-OIG List of Excluded Individuals/Entities.</summary>
+public sealed class OigExclusion
+{
+    /// <summary>OIG authority code, e.g. 1128b4.</summary>
+    public string? Type { get; set; }
+
+    public string? TypeDescription { get; set; }
+
+    public DateTime? ExclusionDate { get; set; }
+
+    public DateTime? WaiverDate { get; set; }
+
+    public string? WaiverState { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? Specialty { get; set; }
+}
+
+/// <summary>A Medicare opt-out affidavit.</summary>
+public sealed class MedicareOptOut
+{
+    public string? Specialty { get; set; }
+
+    public DateTime? EffectiveDate { get; set; }
+
+    public DateTime? EndDate { get; set; }
+
+    /// <summary>True while the opt-out is in effect.</summary>
+    public bool Active { get; set; }
+
+    public bool? CanOrderAndRefer { get; set; }
+}
+
+/// <summary>The Medicare programs in which the provider may order or refer.</summary>
+public sealed class MedicareOrderReferring
+{
+    public bool PartB { get; set; }
+
+    public bool DurableMedicalEquipment { get; set; }
+
+    public bool HomeHealth { get; set; }
+
+    public bool PowerMobilityDevices { get; set; }
+
+    public bool Hospice { get; set; }
+}
+
+/// <summary>NPPES registration details that are shown but not searched.</summary>
+public sealed class ProviderProfile
+{
+    public bool? IsSoleProprietor { get; set; }
+
+    /// <summary>True when this organization NPI is a subpart of <see cref="ParentOrganization"/>.</summary>
+    public bool? IsOrganizationSubpart { get; set; }
+
+    public string? ParentOrganization { get; set; }
+
+    public AuthorizedOfficial? AuthorizedOfficial { get; set; }
+
+    public MailingAddress? MailingAddress { get; set; }
+
+    public string? PracticeFax { get; set; }
+}
+
+/// <summary>The person an organization registered as its authorized official.</summary>
+public sealed class AuthorizedOfficial
+{
+    public string Name { get; set; } = "";
+
+    public string? Credential { get; set; }
+
+    public string? Title { get; set; }
+
+    public string? Phone { get; set; }
+}
+
+/// <summary>NPPES business mailing address.</summary>
+public sealed class MailingAddress
+{
+    public string? Address1 { get; set; }
+
+    public string? Address2 { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? PostalCode { get; set; }
+
+    public string? CountryCode { get; set; }
+
+    public string? Phone { get; set; }
+
+    public string? Fax { get; set; }
+}
+
+/// <summary>An identifier other than the NPI.</summary>
+public sealed class ProviderIdentifier
+{
+    public string Identifier { get; set; } = "";
+
+    /// <summary>NPPES type code, e.g. "05".</summary>
+    public string? TypeCode { get; set; }
+
+    /// <summary>Description of <see cref="TypeCode"/>, e.g. "Medicaid".</summary>
+    public string? Type { get; set; }
+
+    public string? State { get; set; }
+
+    public string? Issuer { get; set; }
+}
+
+/// <summary>An electronic endpoint published in NPPES.</summary>
+public sealed class ProviderEndpoint
+{
+    /// <summary>e.g. "DIRECT", "FHIR", "CONNECT".</summary>
+    public string? Type { get; set; }
+
+    public string? TypeDescription { get; set; }
+
+    public string Endpoint { get; set; } = "";
+
+    public string? Description { get; set; }
+
+    public string? Use { get; set; }
+
+    public string? Content { get; set; }
+
+    public string? AffiliationName { get; set; }
+
+    public string? AffiliationCity { get; set; }
+
+    public string? AffiliationState { get; set; }
 }
 
 /// <summary>A state or territory.</summary>
@@ -144,6 +549,71 @@ public sealed class CountyInfo
     public string Fips { get; set; } = "";
 
     public string Name { get; set; } = "";
+}
+
+/// <summary>What a bulk lookup found for one NPI.</summary>
+public enum LookupStatus
+{
+    /// <summary>An active provider; <see cref="LookupRow.Provider"/> is set.</summary>
+    Found,
+
+    /// <summary>Unknown, or deactivated (deactivated NPIs are never shown).</summary>
+    NotFound,
+
+    /// <summary>Not 10 digits, or the check digit is wrong.</summary>
+    Invalid,
+}
+
+/// <summary>One requested NPI in a bulk lookup.</summary>
+public sealed class LookupRow
+{
+    public string Npi { get; set; } = "";
+
+    public LookupStatus Status { get; set; }
+
+    public ProviderSummary? Provider { get; set; }
+}
+
+/// <summary>The API's bulk lookup response.</summary>
+public sealed class LookupResponse
+{
+    public IReadOnlyList<LookupRow> Items { get; set; } = [];
+}
+
+/// <summary>Population and shortage-area facts about a county.</summary>
+public sealed class CountyFacts
+{
+    /// <summary>Five-digit county FIPS code.</summary>
+    public string Fips { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string State { get; set; } = "";
+
+    /// <summary>Census population estimate for <see cref="PopulationYear"/>.</summary>
+    public int? Population { get; set; }
+
+    public int? PopulationYear { get; set; }
+
+    /// <summary>HRSA Health Professional Shortage Areas in force, per discipline.</summary>
+    public IReadOnlyList<CountyShortage> Shortages { get; set; } = [];
+}
+
+/// <summary>HRSA shortage areas of one discipline in a county.</summary>
+public sealed class CountyShortage
+{
+    /// <summary>PC (primary care), DH (dental) or MH (mental health).</summary>
+    public string Discipline { get; set; } = "";
+
+    public string DisciplineName { get; set; } = "";
+
+    /// <summary>True when the whole county is a shortage area.</summary>
+    public bool WholeCounty { get; set; }
+
+    public int ShortageAreas { get; set; }
+
+    /// <summary>Highest HRSA score (0-26; higher = greater need).</summary>
+    public int? MaxScore { get; set; }
 }
 
 /// <summary>Where the served data comes from.</summary>

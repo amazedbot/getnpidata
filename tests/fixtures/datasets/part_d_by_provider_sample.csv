@@ -1,0 +1,3 @@
+Prscrbr_NPI,Prscrbr_Last_Org_Name,Prscrbr_Type,Tot_Clms,Tot_30day_Fills,Tot_Drug_Cst,Tot_Day_Suply,Tot_Benes,Brnd_Sprsn_Flag,Brnd_Tot_Clms,Gnrc_Tot_Clms,Opioid_Tot_Clms,Opioid_Prscrbr_Rate,Antbtc_Tot_Clms,Bene_Avg_Age
+1000000012,Baker,Internal Medicine,1200,1500.5,45678.91,36000,300,,400,800,24,2.0,51,74
+1000000046,Nunez,Pediatrics,15,15,123.4,450,,*,,15,,,,

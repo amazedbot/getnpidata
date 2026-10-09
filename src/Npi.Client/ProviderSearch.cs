@@ -53,6 +53,30 @@ public sealed class ProviderSearch
     /// <summary>Credential, punctuation ignored ("M.D." = "MD").</summary>
     public string? Credential { get; set; }
 
+    /// <summary>true: only providers on the HHS-OIG exclusion list (matched by NPI); false: leave them out.</summary>
+    public bool? Excluded { get; set; }
+
+    /// <summary>true: only practitioners with an active Medicare opt-out; false: leave them out.</summary>
+    public bool? OptedOut { get; set; }
+
+    /// <summary>true: only providers eligible to order or refer in Medicare; false: only those who aren't.</summary>
+    public bool? OrderRefer { get; set; }
+
+    /// <summary>true: only clinicians who accept Medicare assignment (Care Compare); false: everyone else.</summary>
+    public bool? AcceptsAssignment { get; set; }
+
+    /// <summary>true: only clinicians who offer telehealth (Care Compare); false: everyone else.</summary>
+    public bool? Telehealth { get; set; }
+
+    /// <summary>primaryCare, dental or mentalHealth: a practice location in a county with an HRSA shortage area of that kind.</summary>
+    public string? Shortage { get; set; }
+
+    /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
+    public bool? MedicareActive { get; set; }
+
+    /// <summary>At least this many years since graduation (Care Compare), 1–70.</summary>
+    public int? MinYears { get; set; }
+
     /// <summary>name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix "-" for descending.</summary>
     public string? Sort { get; set; }
 
@@ -77,6 +101,7 @@ public sealed class ProviderSearch
         }
 
         void AddInt(string name, int? value) => Add(name, value?.ToString(CultureInfo.InvariantCulture));
+        void AddBool(string name, bool? value) => Add(name, value is null ? null : value.Value ? "true" : "false");
 
         Add("classification", Classification);
         Add("specialization", Specialization);
@@ -93,6 +118,14 @@ public sealed class ProviderSearch
         AddInt("entityType", EntityType);
         Add("gender", Gender);
         Add("credential", Credential);
+        AddBool("excluded", Excluded);
+        AddBool("optedOut", OptedOut);
+        AddBool("orderRefer", OrderRefer);
+        AddBool("acceptsAssignment", AcceptsAssignment);
+        AddBool("telehealth", Telehealth);
+        AddInt("minYears", MinYears);
+        AddBool("medicareActive", MedicareActive);
+        Add("shortage", Shortage);
         Add("sort", Sort);
         AddInt("page", Page);
         AddInt("pageSize", PageSize);

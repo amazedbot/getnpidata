@@ -19,6 +19,25 @@ public sealed record ProviderSummary(
     DateOnly? LastUpdateDate)
 {
     public string EntityTypeName => EntityType == 2 ? "Organization" : "Individual";
+
+    /// <summary>Badges from the Stage 5.5 datasets (exclusion, Medicare opt-out, order/refer eligibility).</summary>
+    public ProviderFlags Flags { get; init; } = ProviderFlags.None;
 }
+
+/// <summary>The status of one NPI in a bulk lookup.</summary>
+public enum LookupStatus
+{
+    /// <summary>An active provider; <see cref="LookupRow.Provider"/> is set.</summary>
+    Found,
+
+    /// <summary>Well-formed but unknown, or deactivated (deactivated NPIs are never shown).</summary>
+    NotFound,
+
+    /// <summary>Not 10 digits, or the check digit is wrong (a typo).</summary>
+    Invalid,
+}
+
+/// <summary>One requested NPI and what the lookup found for it.</summary>
+public sealed record LookupRow(string Npi, LookupStatus Status, ProviderSummary? Provider);
 
 public sealed record SearchResult(IReadOnlyList<ProviderSummary> Items, int Page, int PageSize, long TotalCount, DateOnly? DataAsOf);

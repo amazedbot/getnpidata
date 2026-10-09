@@ -40,6 +40,24 @@ public sealed class LoaderOptions
     /// <summary>Census 2020 county codes; fallback names for county FIPS the Gazetteer lacks (territories).</summary>
     public string CountyCodes2020Url { get; set; } = "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt";
 
+    /// <summary>data.cms.gov DCAT catalog listing every CMS dataset release (Stage 5.5).</summary>
+    public string CmsCatalogUrl { get; set; } = "https://data.cms.gov/data.json";
+
+    /// <summary>Provider Data Catalog (Care Compare) metastore; a dataset id is appended.</summary>
+    public string ProviderDataMetastoreUrl { get; set; } = "https://data.cms.gov/provider-data/api/1/metastore/schemas/dataset/items/";
+
+    /// <summary>HHS-OIG LEIE full list of excluded individuals and entities.</summary>
+    public string LeieUrl { get; set; } = "https://oig.hhs.gov/exclusions/downloadables/UPDATED.csv";
+
+    /// <summary>HRSA HPSA detail files; {discipline} is PC, DH or MH.</summary>
+    public string HrsaHpsaUrlTemplate { get; set; } = "https://data.hrsa.gov/DataDownload/DD_Files/BCD_HPSA_FCT_DET_{discipline}.csv";
+
+    /// <summary>Open Payments metastore (DKAN) listing every dataset; "&lt;year&gt; General Payment Data" entries are used.</summary>
+    public string OpenPaymentsCatalogUrl { get; set; } = "https://openpaymentsdata.cms.gov/api/1/metastore/schemas/dataset/items?show-reference-ids=false";
+
+    /// <summary>Census population estimates datasets folder (vintage folders "2020-YYYY/" below it).</summary>
+    public string CensusPopulationBaseUrl { get; set; } = "https://www2.census.gov/programs-surveys/popest/datasets/";
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");

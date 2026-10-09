@@ -1,0 +1,3 @@
+Rndrng_NPI,Rndrng_Prvdr_Last_Org_Name,Rndrng_Prvdr_First_Name,Rndrng_Prvdr_Type,Rndrng_Prvdr_Mdcr_Prtcptg_Ind,Tot_HCPCS_Cds,Tot_Benes,Tot_Srvcs,Tot_Sbmtd_Chrg,Tot_Mdcr_Alowd_Amt,Tot_Mdcr_Pymt_Amt,Bene_Avg_Age,Bene_CC_PH_Arthritis_V2_Pct,Bene_Avg_Risk_Scre
+1000000004,O'Brien,Jose,Chiropractic,Y,4,212,1840,90123.5,40000.123456,31234.56789012,72,,0.9123
+1000000012,Baker,Al,Internal Medicine,N,25,,3000.5,1,2,3,,,

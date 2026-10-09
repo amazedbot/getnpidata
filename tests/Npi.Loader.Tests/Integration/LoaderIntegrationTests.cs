@@ -20,6 +20,7 @@ public sealed class LoaderIntegrationTests : IDisposable
     private const string CityWithBackslashes = @"C:\new\Nork \N \t";                   // must not be unescaped
     private const string UnicodeLegalName = "Smith, Jones & Co, LLC — Zürich 北京 ☺"; // utf8mb4
     private static readonly string LongLegalName = new('W', 100);                     // V2 width (V1 was 70)
+    private const string EndpointWithCommasAndBraces = @"https://fhir.example.org/r4/{tenant},a?x=1,2";
 
     private readonly string _folder = Directory.CreateTempSubdirectory("npi-it-").FullName;
     private readonly CancellationToken _ct = TestContext.Current.CancellationToken;
@@ -57,6 +58,7 @@ public sealed class LoaderIntegrationTests : IDisposable
             .OtherName(A, "{Braces} Inc", "5", "")
             .OtherName(B, "Smith & Jones", "3", "01/15/2025")
             .Location(B, "1 Main St, Bldg {2}", "", "Queen Creek", "AZ", "851426027", "US", "4808471015")
+            .Endpoint(A, "FHIR", EndpointWithCommasAndBraces, "FHIR R4, {patient access}", "O'Brien Clinic, P.C.", "Amityville", "NY")
             .Write(_folder, "NPPES_Data_Dissemination_September_2026_V2.zip", lineTerminator);
 
         Assert.Equal(0, await LoadFileAsync(db, zip));
@@ -87,6 +89,10 @@ public sealed class LoaderIntegrationTests : IDisposable
 
         Assert.Equal("1 Main St, Bldg {2}", await db.ScalarAsync<string>(
             "SELECT Provider_Secondary_Practice_Location_Address_Line_1 FROM practice_locations WHERE NPI = @B", new { B }));
+
+        Assert.Equal((A, "FHIR", EndpointWithCommasAndBraces, "FHIR R4, {patient access}", "O'Brien Clinic, P.C.", "Y"),
+            (await db.QueryAsync<(string, string, string, string, string, string)>(
+                "SELECT NPI, Endpoint_Type, Endpoint, Endpoint_Description, Affiliation_Legal_Business_Name, Affiliation FROM endpoints")).Single());
 
         Assert.Equal([(A, 0), (B, 0), (C, 1)], await db.QueryAsync<(string, int)>("SELECT NPI, Is_Deactivated FROM npidata ORDER BY NPI"));
         Assert.Equal("Completed", await db.ScalarAsync<string>("SELECT status FROM downlog WHERE filename = 'NPPES_Data_Dissemination_September_2026_V2.zip'"));
@@ -126,7 +132,9 @@ public sealed class LoaderIntegrationTests : IDisposable
             .OtherName(A, "A1", "3", "01/01/2020")
             .OtherName(B, "B1", "3", "01/01/2020")
             .OtherName(B, "B2", "3", "")
-            .Location(B, "B location");
+            .Location(B, "B location")
+            .Endpoint(A, "DIRECT", "a@direct.example.org")
+            .Endpoint(B, "DIRECT", "b-old@direct.example.org");
         Assert.Equal(0, await LoadFileAsync(db, monthly.Write(_folder, "NPPES_Data_Dissemination_September_2026_V2.zip")));
 
         var weekly = new NppesZipBuilder()
@@ -136,6 +144,8 @@ public sealed class LoaderIntegrationTests : IDisposable
             .OtherName(A, "A-stale", "3", "")
             .OtherName(B, "B3", "3", "")
             .OtherName(D, "D1", "3", "")
+            .Endpoint(A, "DIRECT", "a-stale@direct.example.org")
+            .Endpoint(B, "FHIR", "https://b.example.org/fhir")
             .Write(_folder, "NPPES_Data_Dissemination_091426_092026_Weekly_V2.zip");
 
         Assert.Equal(0, await LoadFileAsync(db, weekly));
@@ -146,6 +156,18 @@ public sealed class LoaderIntegrationTests : IDisposable
         Assert.Equal([(A, "A1"), (B, "B3"), (D, "D1")],
             await db.QueryAsync<(string, string)>("SELECT NPI, Provider_Other_Organization_Name FROM other_names ORDER BY NPI, ID"));
         Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM practice_locations WHERE NPI = @B", new { B }));
+        Assert.Equal([(A, "a@direct.example.org"), (B, "https://b.example.org/fhir")],
+            await db.QueryAsync<(string, string)>("SELECT NPI, Endpoint FROM endpoints ORDER BY NPI, ID"));
+
+        // A weekly without an endpoint file updates npidata and the other child tables but keeps the endpoints.
+        var noEndpoints = new NppesZipBuilder()
+            .Provider(B, ("Provider_Last_Name_Legal_Name", "Bravo-Again"), ("Last_Update_Date", "09/22/2026"))
+            .OtherName(B, "B4", "3", "")
+            .WithoutEndpointFile()
+            .Write(_folder, "NPPES_Data_Dissemination_092126_092726_Weekly_V2.zip");
+        Assert.Equal(0, await LoadFileAsync(db, noEndpoints));
+        Assert.Equal("Bravo-Again", await db.ScalarAsync<string>("SELECT Provider_Last_Name_Legal_Name FROM npidata WHERE NPI = @B", new { B }));
+        Assert.Equal("https://b.example.org/fhir", await db.ScalarAsync<string>("SELECT Endpoint FROM endpoints WHERE NPI = @B", new { B }));
     }
 
     [Fact]

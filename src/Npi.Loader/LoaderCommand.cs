@@ -8,6 +8,7 @@ public enum LoaderCommand
     Discover,
     LoadFile,
     Reference,
+    Datasets,
     Project,
     Publish,
 }
@@ -24,6 +25,7 @@ public static class LoaderCommandLine
         ["discover"] = LoaderCommand.Discover,
         ["load-file"] = LoaderCommand.LoadFile,
         ["reference"] = LoaderCommand.Reference,
+        ["datasets"] = LoaderCommand.Datasets,
         ["project"] = LoaderCommand.Project,
         ["publish"] = LoaderCommand.Publish,
     };
@@ -37,6 +39,7 @@ public static class LoaderCommandLine
           discover         List the NPPES files that run would process (dry run)
           load-file <zip>  Load one NPPES zip manually
           reference        Refresh NUCC / HUD / Census reference data
+          datasets [name]  Reload the Stage 5.5 datasets (OIG, CMS, …), or just one
           project          Rebuild the search projection tables
           publish          Sync the search projection to Azure
         """;
@@ -58,6 +61,11 @@ public static class LoaderCommandLine
         }
 
         var rest = args.Skip(1).ToArray();
+        if (command == LoaderCommand.Datasets && rest.Length <= 1)
+        {
+            return new LoaderInvocation(command, rest);
+        }
+
         var expected = command == LoaderCommand.LoadFile ? 1 : 0;
         if (rest.Length != expected)
         {

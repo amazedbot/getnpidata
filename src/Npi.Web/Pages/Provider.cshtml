@@ -21,6 +21,188 @@
     <dt>Last updated</dt><dd>@p.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>
 </dl>
 
+@{ var compliance = p.Compliance; }
+@if (compliance.Exclusions.Count > 0)
+{
+    <div class="notice alert" role="note">
+        <strong>On the HHS-OIG List of Excluded Individuals/Entities.</strong>
+        Federal health care programs don't pay for items or services this provider furnishes, orders or prescribes.
+        <ul>
+            @foreach (var x in compliance.Exclusions)
+            {
+                <li>
+                    Excluded @x.ExclusionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    under @x.Type@if (x.TypeDescription is not null){<span> (@x.TypeDescription)</span>}
+                    @if (x.WaiverDate is not null){<span>; waiver @x.WaiverDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) in @x.WaiverState</span>}
+                </li>
+            }
+        </ul>
+        <span class="muted">Matched by NPI. Confirm at <a href="https://exclusions.oig.hhs.gov/">exclusions.oig.hhs.gov</a>.</span>
+    </div>
+}
+
+@if (compliance.OptOut is not null || compliance.OrderReferring is not null)
+{
+    <h2>Medicare</h2>
+    <dl class="facts">
+        @if (compliance.OptOut is { } optOut)
+        {
+            <dt>Opt-out</dt>
+            <dd>
+                @(optOut.Active ? "Opted out of Medicare" : "Opt-out ended")
+                (@optOut.EffectiveDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) to @optOut.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+                @if (optOut.Specialty is not null){<span class="muted"> · @optOut.Specialty</span>}
+            </dd>
+        }
+        @if (compliance.OrderReferring is { } orders)
+        {
+            var programs = new[] { (orders.PartB, "Part B"), (orders.DurableMedicalEquipment, "DME"), (orders.HomeHealth, "home health"),
+                                   (orders.PowerMobilityDevices, "power mobility devices"), (orders.Hospice, "hospice") }
+                .Where(x => x.Item1).Select(x => x.Item2).ToList();
+            <dt>May order/refer</dt>
+            <dd>@(programs.Count > 0 ? string.Join(", ", programs) : "No programs")</dd>
+        }
+    </dl>
+}
+
+@if (p.Facilities.Count > 0)
+{
+    <h2>Medicare-certified facilities</h2>
+    @foreach (var fac in p.Facilities)
+    {
+        <dl class="facts">
+            <dt>@(fac.Kind == "hospital" ? "Hospital" : "Nursing home")</dt>
+            <dd><strong>@fac.Name</strong> <span class="muted">CCN @fac.Ccn · @fac.City, @fac.State</span></dd>
+            @if (fac.Type is not null){<dt>Type</dt><dd>@fac.Type</dd>}
+            @if (fac.Ownership is not null){<dt>Ownership</dt><dd>@fac.Ownership</dd>}
+            @if (fac.EmergencyServices is { } er){<dt>Emergency services</dt><dd>@(er ? "Yes" : "No")</dd>}
+            @if (fac.CertifiedBeds is not null){<dt>Certified beds</dt><dd>@fac.CertifiedBeds</dd>}
+            <dt>Overall rating</dt><dd>@Stars(fac.OverallRating)</dd>
+            @if (fac.Kind == "nursing_home")
+            {
+                <dt>Health inspections</dt><dd>@Stars(fac.InspectionRating)</dd>
+                <dt>Staffing</dt><dd>@Stars(fac.StaffingRating)</dd>
+                <dt>Quality measures</dt><dd>@Stars(fac.QualityRating)</dd>
+            }
+            @if (fac.AffiliatedClinicians > 0){<dt>Affiliated clinicians</dt><dd>@fac.AffiliatedClinicians.ToString("N0", CultureInfo.InvariantCulture)</dd>}
+        </dl>
+    }
+    <p class="muted">Ratings from Medicare Care Compare.</p>
+}
+
+@if (p.CareCompare is { } cc)
+{
+    <h2>Medicare Care Compare</h2>
+    <dl class="facts">
+        @if (cc.MedicalSchool is not null || cc.GraduationYear is not null)
+        {
+            <dt>Education</dt>
+            <dd>@(cc.MedicalSchool == "OTHER" ? "Other school" : cc.MedicalSchool)@if (cc.GraduationYear is { } year){<span>, graduated @year (@(DateTime.Today.Year - year) years ago)</span>}</dd>
+        }
+        @if (cc.PrimarySpecialty is not null)
+        {
+            <dt>Medicare specialty</dt><dd>@cc.PrimarySpecialty@if (cc.SecondarySpecialties is not null){<span class="muted"> · also @cc.SecondarySpecialties</span>}</dd>
+        }
+        <dt>Accepts Medicare assignment</dt><dd>@(cc.AcceptsMedicareAssignment ? "Yes" : "Not always")</dd>
+        <dt>Telehealth</dt><dd>@(cc.OffersTelehealth ? "Offered" : "Not listed")</dd>
+    </dl>
+    @if (cc.GroupPractices.Count > 0)
+    {
+        <h3>Group practices</h3>
+        <ul>
+            @foreach (var g in cc.GroupPractices)
+            {
+                <li>@(g.Name ?? "Group " + g.OrgPacId)@if (g.Members is not null){<span class="muted"> · @g.Members members</span>}@if (g.City is not null){<span class="muted"> · @g.City, @g.State</span>}</li>
+            }
+        </ul>
+    }
+    @if (cc.Facilities.Count > 0)
+    {
+        <h3>Facility affiliations</h3>
+        <ul>
+            @foreach (var a in cc.Facilities)
+            {
+                <li>
+                    @a.FacilityType:
+                    @if (a.Npi is not null){<a href="/provider/@a.Npi">@(a.Name ?? "CCN " + a.Ccn)</a>} else {<span>@(a.Name ?? "CCN " + a.Ccn)</span>}
+                    @if (a.City is not null){<span class="muted"> · @a.City, @a.State</span>}
+                    @if (a.OverallRating is not null){<span class="muted"> · @Stars(a.OverallRating)</span>}
+                </li>
+            }
+        </ul>
+    }
+}
+
+@if (p.MedicareServices is { } mu)
+{
+    <h2>Medicare services (@mu.Year)</h2>
+    <dl class="facts">
+        @if (mu.ProviderType is not null){<dt>Medicare provider type</dt><dd>@mu.ProviderType@if (mu.Participating == false){<span class="muted"> · non-participating</span>}</dd>}
+        <dt>Patients</dt><dd>@Count(mu.Beneficiaries)</dd>
+        <dt>Services</dt><dd>@Count(mu.Services)@if (mu.DistinctServices is not null){<span class="muted"> · @mu.DistinctServices distinct procedure codes</span>}</dd>
+        <dt>Medicare paid</dt><dd>@Money(mu.PaymentAmount)@if (mu.AllowedAmount is not null){<span class="muted"> of @Money(mu.AllowedAmount) allowed</span>}</dd>
+        @if (mu.AverageRiskScore is not null){<dt>Patients' average risk score</dt><dd>@mu.AverageRiskScore.Value.ToString("0.00", CultureInfo.InvariantCulture) <span class="muted">(1.00 = average Medicare patient)</span></dd>}
+    </dl>
+    @if (mu.TopServices.Count > 0)
+    {
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Most frequent Medicare services</caption>
+                <thead><tr><th scope="col">Code</th><th scope="col">Service</th><th scope="col">Setting</th><th scope="col">Patients</th><th scope="col">Services</th><th scope="col">Avg. Medicare payment</th></tr></thead>
+                <tbody>
+                    @foreach (var s in mu.TopServices)
+                    {
+                        <tr><td>@s.Hcpcs</td><td>@s.Description</td><td>@s.PlaceOfService</td><td>@Count(s.Beneficiaries)</td><td>@Count(s.Services)</td><td>@Money(s.AveragePayment)</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@if (p.MedicarePrescribing is { } rx)
+{
+    <h2>Medicare Part D prescribing (@rx.Year)</h2>
+    <dl class="facts">
+        <dt>Prescriptions (claims)</dt><dd>@Count(rx.Claims)@if (rx.Beneficiaries is not null){<span class="muted"> for @Count(rx.Beneficiaries) patients</span>}</dd>
+        <dt>Drug cost</dt><dd>@Money(rx.DrugCost)</dd>
+        @if (rx.BrandClaims is not null && rx.Claims is > 0){<dt>Brand-name share</dt><dd>@((100.0 * rx.BrandClaims.Value / rx.Claims.Value).ToString("0", CultureInfo.InvariantCulture))% of claims</dd>}
+        @if (rx.OpioidRate is not null){<dt>Opioid prescribing rate</dt><dd>@rx.OpioidRate.Value.ToString("0.0", CultureInfo.InvariantCulture)% of claims</dd>}
+        @if (rx.AntibioticClaims is not null){<dt>Antibiotic claims</dt><dd>@Count(rx.AntibioticClaims)</dd>}
+    </dl>
+}
+
+@if (p.MedicareServices is not null || p.MedicarePrescribing is not null)
+{
+    <p class="muted">From CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers data (traditional Medicare only; counts under 11 are suppressed by CMS).</p>
+}
+
+@if (p.IndustryPayments is { } pay)
+{
+    <h2>Industry payments (@pay.Year)</h2>
+    <p>
+        <strong>@Money(pay.TotalAmount)</strong> in @pay.Records.ToString("N0", CultureInfo.InvariantCulture) general payment@(pay.Records == 1 ? "" : "s")
+        from @pay.Payers company@(pay.Payers == 1 ? "" : "ies") (drug and device makers, as reported to CMS Open Payments).
+    </p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Industry payments by kind</caption>
+            <thead><tr><th scope="col">Kind of payment</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+            <tbody>
+                @foreach (var k in pay.ByNature)
+                {
+                    <tr><td>@k.Nature</td><td>@Money(k.Amount)</td><td>@k.Records.ToString("N0", CultureInfo.InvariantCulture)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (pay.TopPayers.Count > 0)
+    {
+        <p>Top payers: @string.Join("; ", pay.TopPayers.Select(t => $"{t.Name} ({Money(t.Amount)})"))</p>
+    }
+    <p class="muted">General payments only (research payments and ownership interests are not included). Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
+}
+
 <h2>Specialties</h2>
 <div class="table-wrap">
     <table>
@@ -61,6 +243,82 @@
     </table>
 </div>
 
+@if (p.Profile is { } profile && (profile.AuthorizedOfficial is not null || profile.ParentOrganization is not null || profile.MailingAddress is not null
+                                   || profile.IsSoleProprietor == true || profile.PracticeFax is not null))
+{
+    <h2>Registration details</h2>
+    <dl class="facts">
+        @if (profile.AuthorizedOfficial is { } official)
+        {
+            <dt>Authorized official</dt>
+            <dd>
+                @official.Name@if (official.Credential is not null){<span>, @official.Credential</span>}
+                @if (official.Title is not null){<br /><span class="muted">@official.Title</span>}
+                @if (official.Phone is not null){<br />@Format.Phone(official.Phone)}
+            </dd>
+        }
+        @if (profile.ParentOrganization is not null)
+        {
+            <dt>Parent organization</dt><dd>@profile.ParentOrganization@if (profile.IsOrganizationSubpart == true){<span class="muted"> (this NPI is a subpart)</span>}</dd>
+        }
+        @if (profile.IsSoleProprietor == true)
+        {
+            <dt>Sole proprietor</dt><dd>Yes</dd>
+        }
+        @if (profile.MailingAddress is { } mail)
+        {
+            <dt>Mailing address</dt>
+            <dd>
+                @mail.Address1@if (mail.Address2 is not null){<br />@mail.Address2}<br />
+                @mail.City, @mail.State @mail.PostalCode@if (mail.CountryCode is not null && mail.CountryCode != "US"){<span> @mail.CountryCode</span>}
+                @if (mail.Phone is not null){<br /><span>Phone @Format.Phone(mail.Phone)</span>}
+                @if (mail.Fax is not null){<br /><span>Fax @Format.Phone(mail.Fax)</span>}
+            </dd>
+        }
+        @if (profile.PracticeFax is not null)
+        {
+            <dt>Practice fax</dt><dd>@Format.Phone(profile.PracticeFax)</dd>
+        }
+    </dl>
+}
+
+@if (p.Endpoints.Count > 0)
+{
+    <h2>Electronic endpoints</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Type</th><th scope="col">Endpoint</th><th scope="col">Use</th><th scope="col">Affiliation</th></tr></thead>
+            <tbody>
+                @foreach (var e in p.Endpoints)
+                {
+                    <tr>
+                        <td>@(e.TypeDescription ?? e.Type)</td>
+                        <td class="break">@e.Endpoint@if (e.Description is not null){<br /><span class="muted">@e.Description</span>}</td>
+                        <td>@e.Use</td>
+                        <td>@e.AffiliationName@if (e.AffiliationCity is not null){<br /><span class="muted">@e.AffiliationCity, @e.AffiliationState</span>}</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (p.Identifiers.Count > 0)
+{
+    <h2>Other identifiers</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Identifier</th><th scope="col">Type</th><th scope="col">State</th><th scope="col">Issuer</th></tr></thead>
+            <tbody>
+                @foreach (var i in p.Identifiers)
+                {
+                    <tr><td>@i.Identifier</td><td>@i.Type</td><td>@i.State</td><td>@i.Issuer</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
 @if (p.OtherNames.Count > 0)
 {
     <h2>Other names</h2>
@@ -73,3 +331,11 @@
 }
 
 <p class="muted">Verify details with the official <a href="https://npiregistry.cms.hhs.gov/provider-view/@p.Npi">NPPES NPI Registry</a>.</p>
+
+@functions {
+    private static string Count(double? value) => value is null ? "Suppressed" : value.Value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string Money(double? value) => value is null ? "Suppressed" : value.Value.ToString("$#,##0", CultureInfo.InvariantCulture);
+
+    private static string Stars(int? rating) => rating is >= 1 and <= 5 ? new string('★', rating.Value) + new string('☆', 5 - rating.Value) + $" ({rating}/5)" : "Not rated";
+}

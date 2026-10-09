@@ -127,13 +127,243 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.False(await builder.IsStaleAsync(_ct));
         var before = await db.QueryAsync<(string, byte[])>("SELECT npi, row_hash FROM provider ORDER BY npi");
 
-        // Change only a secondary location of B: B's hash changes, nobody else's.
+        // Change only a secondary location of B, A's endpoint and D's authorized official: exactly their hashes change.
         await db.ExecuteAsync("UPDATE practice_locations SET Provider_Secondary_Practice_Location_Address_Line_1 = '2 New Rd' WHERE NPI = @B", new { B });
+        await db.ExecuteAsync("UPDATE endpoints SET Endpoint = 'obrien2@direct.example.org' WHERE NPI = @A", new { A });
+        await db.ExecuteAsync("UPDATE npidata SET Authorized_Official_Title_or_Position = 'CEO' WHERE NPI = @D", new { D });
         await builder.BuildAsync(_ct);
         var after = await db.QueryAsync<(string, byte[])>("SELECT npi, row_hash FROM provider ORDER BY npi");
 
         var changed = before.Zip(after).Where(p => !p.First.Item2.SequenceEqual(p.Second.Item2)).Select(p => p.First.Item1);
-        Assert.Equal([B], changed);
+        Assert.Equal([A, B, D], changed);
+    }
+
+    [Fact]
+    public async Task Detail_shows_registration_details_identifiers_and_endpoints()
+    {
+        await using var db = await SeededAsync();
+        var details = new ProviderDetailService(db.ConnectionString);
+
+        var d = await details.GetAsync(D, _ct);
+        Assert.NotNull(d?.Profile);
+        Assert.Equal(new AuthorizedOfficial("DR. PAT SMITH", "DDS", "OWNER, PRESIDENT", "7185550100"), d.Profile.AuthorizedOfficial);
+        Assert.Equal("SMITH HOLDINGS INC", d.Profile.ParentOrganization);
+        Assert.True(d.Profile.IsOrganizationSubpart);
+        Assert.Equal(new MailingAddress("PO BOX 12", null, "BROOKLYN", "NY", "11201-0012", "US", null, "7185550199"), d.Profile.MailingAddress);
+        Assert.Equal([new ProviderIdentifier("MCD-123", "05", "Medicaid", "NY", null), new ProviderIdentifier("X9", "01", "Other", null, "BLUE PLAN")],
+            d.Identifiers);
+        Assert.Empty(d.Endpoints);
+
+        var a = await details.GetAsync(A, _ct);
+        Assert.Equal([new ProviderEndpoint("DIRECT", "Direct Messaging Address", "obrien@direct.example.org", "Direct address", null, null,
+            "O'BRIEN CHIROPRACTIC, PC", "AMITYVILLE", "NY")], a!.Endpoints);
+        Assert.Null(a.Profile!.AuthorizedOfficial); // individuals have none
+        Assert.Empty(a.Identifiers);
+
+        // The deactivated NPI's endpoint never reaches the projection.
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_endpoint WHERE npi = @C", new { C }));
+    }
+
+    [Fact]
+    public async Task Compliance_filters_badges_and_details()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO oig_exclusion (npi, business_name, exclusion_type, exclusion_date) VALUES
+              (@A, NULL, '1128b4', '2025-01-15'), (@C, NULL, '1128a1', '2020-01-01'), (NULL, 'NO NPI LLC', '1128a1', '2021-01-01');
+            INSERT INTO medicare_opt_out (npi, specialty, effective_date, end_date, can_order_refer) VALUES
+              (@B, 'Chiropractic', '2024-01-30', '2099-01-30', 1), (@E, 'Pediatrics', '2018-01-01', '2020-01-01', 0);
+            INSERT INTO medicare_order_referring (npi, part_b, dme, hha, pmd, hospice) VALUES
+              (@A, 1, 1, 0, 0, 0), (@B, 0, 0, 0, 0, 0), (@E, 1, 0, 0, 0, 0), (@E, 0, 0, 0, 0, 1);
+            """, new { A, B, C, E });
+        var search = Search(db);
+
+        // Exclusions are matched by NPI; the deactivated C is never returned, and the NPI-less entry matches nobody.
+        Assert.Equal([A], await Npis(search, new SearchFilter { Excluded = true }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { Excluded = true, State = "NY", Classification = "Chiropractor" }));
+        Assert.Equal([B], await Npis(search, new SearchFilter { Excluded = false, Classification = "Chiropractor" }));
+
+        // Only active opt-outs count (E's ended in 2020).
+        Assert.Equal([B], await Npis(search, new SearchFilter { OptedOut = true }));
+        Assert.Equal([A, D, E], await Npis(search, new SearchFilter { OptedOut = false, State = "NY" }));
+
+        // Order/refer: eligible in any program.
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { OrderRefer = true, State = "NY" }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { OrderRefer = false, State = "NY" }));
+
+        var flags = (await search.SearchAsync(new SearchFilter { State = "NY" }, _ct)).Items.ToDictionary(i => i.Npi, i => i.Flags);
+        Assert.Equal(new ProviderFlags(true, false, true, false, false, false), flags[A]);
+        Assert.Equal(new ProviderFlags(false, true, false, false, false, false), flags[B]);
+        Assert.Equal(ProviderFlags.None, flags[D]);
+        Assert.Equal(new ProviderFlags(false, false, true, false, false, false), flags[E]);
+
+        var csvFlags = new Dictionary<string, ProviderFlags>();
+        await foreach (var item in search.SearchAllAsync(new SearchFilter { State = "NY" }, _ct))
+        {
+            csvFlags[item.Npi] = item.Flags;
+        }
+
+        Assert.Equal(flags, csvFlags);
+
+        var details = new ProviderDetailService(db.ConnectionString);
+        var a = (await details.GetAsync(A, _ct))!.Compliance;
+        Assert.Equal([new OigExclusion("1128b4", "License revocation, suspension or surrender", new DateOnly(2025, 1, 15), null, null, null, null)], a.Exclusions);
+        Assert.Equal(new MedicareOrderReferring(true, true, false, false, false), a.OrderReferring);
+        Assert.Null(a.OptOut);
+
+        var b = (await details.GetAsync(B, _ct))!.Compliance;
+        Assert.Equal(new MedicareOptOut("Chiropractic", new DateOnly(2024, 1, 30), new DateOnly(2099, 1, 30), true, true), b.OptOut);
+        Assert.Empty(b.Exclusions);
+
+        var e = (await details.GetAsync(E, _ct))!.Compliance;
+        Assert.False(e.OptOut!.Active);
+        Assert.Equal(new MedicareOrderReferring(true, false, false, false, true), e.OrderReferring); // two rows merged
+
+        Assert.Null((await details.GetAsync(D, _ct))!.Compliance.OrderReferring);
+    }
+
+    [Fact]
+    public async Task Care_compare_filters_badges_and_facility_details()
+    {
+        await using var db = await SeededAsync();
+        var year = DateTime.UtcNow.Year;
+        await db.ExecuteAsync(
+            """
+            INSERT INTO cc_clinician (npi, medical_school, graduation_year, primary_specialty, accepts_assignment, telehealth) VALUES
+              (@A, 'NEW YORK CHIROPRACTIC COLLEGE', @old, 'CHIROPRACTIC', 1, 1), (@B, 'OTHER', @recent, 'CHIROPRACTIC', 0, 1), (@E, NULL, NULL, 'PEDIATRICS', 1, 0);
+            INSERT INTO cc_group (npi, org_pac_id, group_name, members, accepts_assignment) VALUES (@A, '1234567890', 'ISLAND SPINE, PLLC', 12, 1);
+            INSERT INTO cc_facility_affiliation (npi, facility_type, ccn) VALUES (@A, 'Hospital', '330045'), (@A, 'Home health agency', '337002'), (@B, 'Hospital', '330045');
+            INSERT INTO cms_hospital (ccn, name, city, state, hospital_type, ownership, emergency_services, overall_rating) VALUES
+              ('330045', 'GOOD SAMARITAN HOSPITAL', 'WEST ISLIP', 'NY', 'Acute Care Hospitals', 'Voluntary non-profit - Church', 1, 3);
+            INSERT INTO cms_facility_npi (ccn, npi, kind) VALUES ('330045', @D, 'hospital');
+            """, new { A, B, D, E, old = year - 25, recent = year - 3 });
+        var search = Search(db);
+
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { AcceptsAssignment = true }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { AcceptsAssignment = false, State = "NY" }));
+        Assert.Equal([A, B], await Npis(search, new SearchFilter { Telehealth = true, State = "NY" }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { MinYears = 20, Classification = "Chiropractor" }));
+        Assert.Equal([A, B], await Npis(search, new SearchFilter { MinYears = 2, Classification = "Chiropractor" }));
+
+        var flags = (await search.SearchAsync(new SearchFilter { State = "NY" }, _ct)).Items.ToDictionary(i => i.Npi, i => i.Flags);
+        Assert.Equal(new ProviderFlags(false, false, false, true, true, false), flags[A]);
+        Assert.Equal(new ProviderFlags(false, false, false, false, true, false), flags[B]);
+
+        var details = new ProviderDetailService(db.ConnectionString);
+        var a = (await details.GetAsync(A, _ct))!.CareCompare!;
+        Assert.Equal(("NEW YORK CHIROPRACTIC COLLEGE", year - 25, true, true), (a.MedicalSchool, a.GraduationYear, a.AcceptsMedicareAssignment, a.OffersTelehealth));
+        Assert.Equal([new GroupPractice("1234567890", "ISLAND SPINE, PLLC", 12, true, null, null)], a.GroupPractices);
+        Assert.Equal(
+            [new FacilityAffiliation("Home health agency", "337002", null, null, null, null, null),
+             new FacilityAffiliation("Hospital", "330045", "GOOD SAMARITAN HOSPITAL", "WEST ISLIP", "NY", 3, D)],
+            a.Facilities);
+        Assert.Null((await details.GetAsync(D, _ct))!.CareCompare);
+
+        // The hospital's own NPI shows its Care Compare facility, with the clinicians affiliated with it.
+        var hospital = Assert.Single((await details.GetAsync(D, _ct))!.Facilities);
+        Assert.Equal(("330045", "hospital", "GOOD SAMARITAN HOSPITAL", true, 3, 2), (hospital.Ccn, hospital.Kind, hospital.Name, hospital.EmergencyServices,
+            hospital.OverallRating, hospital.AffiliatedClinicians));
+    }
+
+    [Fact]
+    public async Task Medicare_activity_filter_badge_and_details()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO medicare_utilization (npi, data_year, provider_type, participating, distinct_services, beneficiaries, services, allowed_amount,
+              payment_amount, avg_risk_score) VALUES (@A, 2024, 'Chiropractic', 1, 4, 212, 1840, 40000.5, 31234.56, 0.91);
+            INSERT INTO medicare_top_service (npi, service_rank, data_year, hcpcs, description, is_drug, place_of_service, beneficiaries, services, avg_payment)
+              VALUES (@A, 1, 2024, '98940', 'Chiropractic manipulative treatment', 0, 'O', 150, 900, 28.12), (@A, 2, 2024, '98941', 'CMT 3-4 regions', 0, 'F', NULL, 600, 35);
+            INSERT INTO medicare_part_d (npi, data_year, prescriber_type, claims, drug_cost, beneficiaries, brand_claims, generic_claims, opioid_claims, opioid_rate)
+              VALUES (@E, 2024, 'Pediatrics', 15, 123.4, NULL, NULL, 15, NULL, NULL);
+            """, new { A, E });
+        var search = Search(db);
+
+        Assert.Equal([A, E], await Npis(search, new SearchFilter { MedicareActive = true }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { MedicareActive = false, State = "NY" }));
+        Assert.True((await search.SearchAsync(new SearchFilter { Npi = A }, _ct)).Items.Single().Flags.BilledMedicare);
+
+        var details = new ProviderDetailService(db.ConnectionString);
+        var a = (await details.GetAsync(A, _ct))!;
+        Assert.Equal((2024, "Chiropractic", true, 212, 31234.56), (a.MedicareServices!.Year, a.MedicareServices.ProviderType, a.MedicareServices.Participating,
+            a.MedicareServices.Beneficiaries, a.MedicareServices.PaymentAmount));
+        Assert.Equal([new MedicareService("98940", "Chiropractic manipulative treatment", false, "Office", 150, 900, 28.12),
+                      new MedicareService("98941", "CMT 3-4 regions", false, "Facility", null, 600, 35)], a.MedicareServices.TopServices);
+        Assert.Null(a.MedicarePrescribing);
+
+        var e = (await details.GetAsync(E, _ct))!;
+        Assert.Null(e.MedicareServices);
+        Assert.Equal(new MedicarePrescribing(2024, "Pediatrics", 15, 123.4, null, null, 15, null, null, null), e.MedicarePrescribing);
+    }
+
+    [Fact]
+    public async Task Shortage_filter_and_county_facts()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO county_shortage (county_fips, discipline, whole_county, hpsa_count, max_score) VALUES
+              ('36103', 'PC', 0, 1, 14), ('36103', 'DH', 1, 1, NULL), ('36047', 'MH', 0, 2, 19);
+            INSERT INTO county_population (county_fips, state_fips, county_code, population, year) VALUES ('36103', '36', '103', 1530000, 2025);
+            """);
+        var search = Search(db);
+
+        // A in Amityville (11701: Nassau and Suffolk), B's secondary location and E in Farmingdale (Suffolk); B and D in Brooklyn (Kings).
+        Assert.Equal([A, B, E], await Npis(search, new SearchFilter { Shortage = "primaryCare" }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { Shortage = "mentalHealth" }));
+        Assert.Equal([A, B], await Npis(search, new SearchFilter { Shortage = "dental", Classification = "Chiropractor" }));
+        var error = await Assert.ThrowsAsync<SearchValidationException>(() => search.SearchAsync(new SearchFilter { Shortage = "vision" }, _ct));
+        Assert.Contains(nameof(SearchFilter.Shortage), error.Errors.Keys);
+
+        var areas = new AreaService(db.ConnectionString);
+        var suffolk = await areas.GetCountyAsync("36103", _ct);
+        Assert.Equal(("Suffolk County", "NY", (int?)1530000, (int?)2025), (suffolk!.Name, suffolk.State, suffolk.Population, suffolk.PopulationYear));
+        Assert.Equal([new CountyShortage("PC", "Primary care", false, 1, 14), new CountyShortage("DH", "Dental", true, 1, null)], suffolk.Shortages);
+        Assert.Null((await areas.GetCountyAsync("36047", _ct))!.Population);
+        Assert.Null(await areas.GetCountyAsync("99999", _ct));
+    }
+
+    [Fact]
+    public async Task Industry_payments_detail()
+    {
+        await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO open_payments_summary (npi, program_year, total_amount, records, payers) VALUES (@B, 2025, 2563.35, 5, 4);
+            INSERT INTO open_payments_nature (npi, nature, amount, records) VALUES (@B, 'Consulting Fee', 2500, 1), (@B, 'Food and Beverage', 63.35, 4);
+            INSERT INTO open_payments_payer (npi, payer_rank, payer, amount, records) VALUES (@B, 1, 'Medtronic USA Inc.', 2500, 1), (@B, 2, 'Pfizer, Inc.', 40, 2);
+            """, new { B });
+        var details = new ProviderDetailService(db.ConnectionString);
+
+        var b = (await details.GetAsync(B, _ct))!.IndustryPayments!;
+        Assert.Equal((2025, 2563.35, 5, 4), (b.Year, b.TotalAmount, b.Records, b.Payers));
+        Assert.Equal([new IndustryPaymentKind("Consulting Fee", 2500, 1), new IndustryPaymentKind("Food and Beverage", 63.35, 4)], b.ByNature);
+        Assert.Equal([new IndustryPayer("Medtronic USA Inc.", 2500, 1), new IndustryPayer("Pfizer, Inc.", 40, 2)], b.TopPayers);
+        Assert.Null((await details.GetAsync(A, _ct))!.IndustryPayments);
+    }
+
+    [Fact]
+    public async Task Bulk_lookup_keeps_request_order_and_reports_each_npi()
+    {
+        await using var db = await SeededAsync();
+        var search = Search(db);
+
+        var rows = await search.LookupAsync([E, C, "1234567890", A, E, " "], _ct);
+
+        Assert.Equal([(E, LookupStatus.Found), (C, LookupStatus.NotFound), ("1234567890", LookupStatus.Invalid), (A, LookupStatus.Found)],
+            rows.Select(r => (r.Npi, r.Status)));
+        Assert.Equal("NUÑEZ, ELENA", rows[0].Provider!.Name);
+        Assert.Equal("AMITYVILLE", rows[3].Provider!.City); // the primary location: a lookup has no location filter
+
+        using var csv = new MemoryStream();
+        await ProviderCsv.WriteLookupAsync(rows.ToAsyncEnumerable(), csv, _ct);
+        var lines = System.Text.Encoding.UTF8.GetString(csv.ToArray()).TrimStart('\uFEFF').Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.StartsWith("Requested NPI,Lookup Status,NPI,Entity Type,Name", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith($"{E},Found,{E},Individual,", lines[1], StringComparison.Ordinal);
+        Assert.Equal($"{C},Not found or deactivated", lines[2]);
+        Assert.Equal("1234567890,Invalid NPI", lines[3]);
     }
 
     private static SearchService Search(TestDatabase db) => new(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
@@ -180,6 +410,15 @@ public sealed class SearchIntegrationTests : IDisposable
                 ("Healthcare_Provider_Taxonomy_Code_1", Chiro), ("Provider_Business_Practice_Location_Address_Postal_Code", "11701"),
                 ("Provider_Business_Practice_Location_Address_State_Name", "NY"), ("NPI_Deactivation_Date", "01/01/2025"))
             .Provider(D, ("Entity_Type_Code", "2"), ("Provider_Organization_Name_Legal_Business_Name", "SMITH, JONES & CO, LLC"),
+                ("Authorized_Official_Name_Prefix_Text", "DR."), ("Authorized_Official_First_Name", "PAT"), ("Authorized_Official_Last_Name", "SMITH"),
+                ("Authorized_Official_Credential_Text", "DDS"), ("Authorized_Official_Title_or_Position", "OWNER, PRESIDENT"),
+                ("Authorized_Official_Telephone_Number", "7185550100"),
+                ("Is_Organization_Subpart", "Y"), ("Parent_Organization_LBN", "SMITH HOLDINGS INC"), ("Parent_Organization_TIN", "<UNAVAIL>"),
+                ("Provider_First_Line_Business_Mailing_Address", "PO BOX 12"), ("Provider_Business_Mailing_Address_City_Name", "BROOKLYN"),
+                ("Provider_Business_Mailing_Address_State_Name", "NY"), ("Provider_Business_Mailing_Address_Postal_Code", "112010012"),
+                ("Provider_Business_Mailing_Address_Country_Code", "US"), ("Provider_Business_Mailing_Address_Fax_Number", "7185550199"),
+                ("Other_Provider_Identifier_1", "MCD-123"), ("Other_Provider_Identifier_Type_Code_1", "05"), ("Other_Provider_Identifier_State_1", "NY"),
+                ("Other_Provider_Identifier_2", "X9"), ("Other_Provider_Identifier_Type_Code_2", "01"), ("Other_Provider_Identifier_Issuer_2", "BLUE PLAN"),
                 ("Healthcare_Provider_Taxonomy_Code_1", Dentist), ("Healthcare_Provider_Primary_Taxonomy_Switch_1", "Y"),
                 ("Provider_First_Line_Business_Practice_Location_Address", "5 Atlantic Ave"),
                 ("Provider_Business_Practice_Location_Address_City_Name", "BROOKLYN"), ("Provider_Business_Practice_Location_Address_State_Name", "NY"),
@@ -192,6 +431,8 @@ public sealed class SearchIntegrationTests : IDisposable
                 ("Provider_Business_Practice_Location_Address_Postal_Code", "11735"), ("Last_Update_Date", "10/04/2026"))
             .Location(B, "300 Conklin St", "", "FARMINGDALE", "NY", "117351234", "US", "5165550100")
             .OtherName(D, "SJC DENTAL", "3", "01/01/2020")
+            .Endpoint(A, "DIRECT", "obrien@direct.example.org", "Direct address", "O'BRIEN CHIROPRACTIC, PC", "AMITYVILLE", "NY")
+            .Endpoint(C, "DIRECT", "deactivated@direct.example.org")
             .Write(_folder, "NPPES_Data_Dissemination_September_2026_V2.zip");
 
         using var http = new HttpClient();

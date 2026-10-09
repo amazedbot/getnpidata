@@ -1,0 +1,4 @@
+First Name,Last Name,npi,Specialty,Optout Effective Date,Optout End Date,First Line Street Address,Second Line Street Address,City Name,State Code,Zip code,Eligible to Order and Refer,Last updated
+Al,Baker,1000000012,Psychiatry,01/30/2024,01/30/2099,10 COURT ST,,BROOKLYN,NY,112010001,Y,02/16/2026
+Elena,Nunez,1000000046,Pediatrics,01/01/2018,01/01/2020,200 MAIN ST,,FARMINGDALE,NY,11735,N,01/02/2020
+Al,Baker,1000000012,Psychiatry,01/30/2022,01/30/2024,10 COURT ST,,BROOKLYN,NY,112010001,Y,02/16/2024

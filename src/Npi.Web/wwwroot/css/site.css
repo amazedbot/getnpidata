@@ -49,6 +49,13 @@ header {
 .brand { font-weight: 600; color: var(--fg); text-decoration: none; }
 a { color: var(--accent); }
 .muted { color: var(--muted); }
+.badge { display: inline-block; margin: 0.1rem 0 0.1rem 0.25rem; padding: 0 0.4rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.75rem; white-space: nowrap; }
+.badge.alert { color: var(--error); border-color: var(--error); font-weight: 600; }
+.badge.good { color: var(--accent); border-color: var(--accent); }
+.notice { border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; margin: 1rem 0; }
+.notice.alert { border-color: var(--error); }
+.notice.alert > strong { color: var(--error); }
+.notice ul { margin: 0.4rem 0; }
 .lede { color: var(--muted); margin-top: -0.5rem; }
 
 .skip { position: absolute; left: -999px; }
@@ -114,6 +121,7 @@ button, .button {
 .results-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+td.break { overflow-wrap: anywhere; max-width: 32rem; }
 table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
 th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { background: var(--panel); white-space: nowrap; }
@@ -135,3 +143,7 @@ footer {
     color: var(--muted);
     font-size: 0.875rem;
 }
+
+.field.wide { flex: 1 1 100%; }
+textarea { width: 100%; font: inherit; padding: 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+header nav { margin-left: auto; }

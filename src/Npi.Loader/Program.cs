@@ -66,6 +66,7 @@ try
         LoaderCommand.Run => await app.RunAsync(cts.Token),
         LoaderCommand.LoadFile => await app.LoadFileAsync(invocation.Arguments[0], cts.Token),
         LoaderCommand.Reference => await app.ReferenceAsync(cts.Token),
+        LoaderCommand.Datasets => await app.DatasetsAsync(invocation.Arguments.Count > 0 ? invocation.Arguments[0] : null, cts.Token),
         LoaderCommand.Project => await app.ProjectAsync(cts.Token),
         _ => throw new InvalidOperationException($"Unhandled command {invocation.Command}"),
     };

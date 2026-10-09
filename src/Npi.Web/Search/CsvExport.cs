@@ -26,7 +26,15 @@ public static class CsvExport
 
         http.Response.ContentType = "text/csv; charset=utf-8";
         http.Response.Headers.ContentDisposition = $"attachment; filename=\"npi_search_{DateTime.UtcNow:yyyyMMdd}.csv\"";
-        await ProviderCsv.WriteAsync(search.SearchAllAsync(filter, ct), http.Response.Body, ct);
+        try
+        {
+            await ProviderCsv.WriteAsync(search.SearchAllAsync(filter, ct), http.Response.Body, ct);
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // The client stopped the download; MySqlConnector reports that as a cancelled or interrupted query. Nothing to answer.
+        }
+
         return Results.Empty;
     }
 }
