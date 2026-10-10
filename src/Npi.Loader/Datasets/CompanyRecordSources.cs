@@ -152,7 +152,9 @@ public sealed class FdaEnforcementSource : DatasetSource
 /// SEC EDGAR's list of registrants with a ticker (CIK, name, ticker, exchange). SEC's fair-access policy asks every
 /// automated client to identify itself with a contact e-mail, so the source runs only when <see cref="LoaderOptions.SecUserAgent"/>
 /// is set (user-secrets; it is private). Without it the source records the version "not configured" and loads nothing
-/// (the run doesn't fail); setting it later changes the version, so the next run loads the list.
+/// (the run doesn't fail); setting it later changes the version, so the next run loads the list. With the registrants it
+/// loads the hand-made list of subsidiaries and their public parents (<c>company_parents.csv</c>, embedded) into
+/// <c>company_parent</c>; the list's hash is part of the version, so an edited list reloads.
 /// </summary>
 public sealed class SecCompanySource : DatasetSource
 {
@@ -176,6 +178,34 @@ public sealed class SecCompanySource : DatasetSource
 
     public const string NotConfigured = "not configured";
 
+    public sealed record Parent(string CompanyId, int ParentCik, string? Note);
+
+    /// <summary>The embedded company_parents.csv: company_id, company, parent_cik, parent, note (the names are for people reading it).</summary>
+    public static IReadOnlyList<Parent> ReadParents()
+    {
+        using var stream = typeof(SecCompanySource).Assembly.GetManifestResourceStream("company_parents.csv")
+            ?? throw new InvalidOperationException("company_parents.csv is not embedded in the loader.");
+        using var reader = new StreamReader(stream);
+        var parents = new List<Parent>();
+        _ = reader.ReadLine();
+        while (reader.ReadLine() is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var f = Csv.CsvHeader.ParseLine(line);
+            parents.Add(new Parent(f[0].Trim(), int.Parse(f[2], CultureInfo.InvariantCulture), f.Count > 4 ? CompanyRecords.Trim(f[4], 100) : null));
+        }
+
+        return parents;
+    }
+
+    /// <summary>A short hash of the parent list (part of the version).</summary>
+    public static string ParentsHash() =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", ReadParents().Select(p => $"{p.CompanyId},{p.ParentCik},{p.Note}")))))[..8];
+
     public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(context.Options.SecUserAgent))
@@ -188,7 +218,7 @@ public sealed class SecCompanySource : DatasetSource
         response.EnsureSuccessStatusCode();
         var modified = response.Content.Headers.LastModified?.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)
             ?? response.Headers.ETag?.Tag ?? $"checked {DateTime.UtcNow:yyyy-MM-dd}";
-        return new DatasetRelease(modified, new Uri(context.Options.SecCompanyTickersUrl));
+        return new DatasetRelease($"{modified} parents {ParentsHash()}", new Uri(context.Options.SecCompanyTickersUrl));
     }
 
     /// <summary>company_tickers_exchange.json: {"fields": ["cik", "name", "ticker", "exchange"], "data": [[320193, "Apple Inc.", "AAPL", "Nasdaq"], …]}.</summary>
@@ -228,11 +258,22 @@ public sealed class SecCompanySource : DatasetSource
         }
 
         await using var connection = await context.Database.OpenAsync(ct);
-        var counts = await TableSwap.ReplaceAsync(connection, ["sec_company"], context.Options.MinRowRatio, () =>
-            CompanyRecords.InsertAsync(connection,
+        var parents = ReadParents();
+        var ciks = companies.Select(c => c.Cik).ToHashSet();
+        foreach (var missing in parents.Where(p => !ciks.Contains(p.ParentCik)))
+        {
+            context.Log.Warning("company_parents.csv: CIK {Cik} (company {CompanyId}) is not in the SEC ticker list; it shows nothing", missing.ParentCik, missing.CompanyId);
+        }
+
+        var counts = await TableSwap.ReplaceAsync(connection, ["sec_company", "company_parent"], context.Options.MinRowRatio, async () =>
+        {
+            await CompanyRecords.InsertAsync(connection,
                 "INSERT IGNORE INTO `sec_company_staging` (`cik`, `ticker`, `name`, `name_key`, `exchange`) VALUES (@cik, @ticker, @name, @key, @exchange)",
                 companies.Select(c => new { cik = c.Cik, ticker = CompanyRecords.Trim(c.Ticker, 20), name = CompanyRecords.Trim(c.Name, 255) ?? "", key = CompanyNames.Key(c.Name), exchange = CompanyRecords.Trim(c.Exchange, 40) }),
-                ct), ct);
+                ct);
+            await CompanyRecords.InsertAsync(connection, "INSERT INTO `company_parent_staging` (`company_id`, `parent_cik`, `note`) VALUES (@CompanyId, @ParentCik, @Note)",
+                parents, ct);
+        }, ct);
         return counts["sec_company"];
     }
 }
@@ -311,7 +352,7 @@ public sealed partial class OigCiaSource : DatasetSource
         for (var page = 1; page <= last && page <= MaxPages; page++)
         {
             var url = page == 1 ? baseUrl : new Uri(baseUrl, $"?page={page}");
-            var (agreements, pageLast) = ParsePage(await context.Http.GetStringAsync(url, ct), url);
+            var (agreements, pageLast) = ParsePage(await GetWithRetryAsync(context, url, ct), url);
             if (agreements.Count == 0)
             {
                 break;
@@ -326,6 +367,23 @@ public sealed partial class OigCiaSource : DatasetSource
         }
 
         return all.Count > 0 ? all.Values.ToList() : throw new InvalidDataException("OIG's integrity agreement list had no agreements; the page changed?");
+    }
+
+    // About 17 pages a crawl: a passing network error on one shouldn't fail the whole list.
+    private static async Task<string> GetWithRetryAsync(DatasetContext context, Uri url, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await context.Http.GetStringAsync(url, ct);
+            }
+            catch (HttpRequestException ex) when (attempt < context.Options.DownloadAttempts)
+            {
+                context.Log.Warning("OIG list page {Url} failed ({Message}); retrying", url, ex.Message);
+                await Task.Delay(TimeSpan.FromSeconds(5 * attempt), ct);
+            }
+        }
     }
 
     private static string Version(IReadOnlyList<Agreement> agreements) =>

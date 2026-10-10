@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Npi.Core.Search;
 
@@ -10,8 +11,12 @@ namespace Npi.Core.Search;
 /// and joining words (INC, LLC, CO, THE, AND …) and single letters, distinct and sorted. Two names match only when their
 /// keys are equal, so "LILLY USA, LLC" (LILLY USA) is not "ELI LILLY AND COMPANY" (ELI LILLY).
 /// </summary>
-public static class CompanyNames
+public static partial class CompanyNames
 {
+    // SEC appends the state of incorporation to some names: "VERTEX PHARMACEUTICALS INC / MA", "ICU MEDICAL INC/DE".
+    [GeneratedRegex(@"\s*/\s*[A-Za-z]{2,3}\s*$")]
+    private static partial Regex StateSuffix();
+
     private static readonly HashSet<string> Ignored = new(StringComparer.Ordinal)
     {
         "INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "COMPANIES", "LLC", "LP", "LLP", "LTD", "LIMITED", "PLC", "SA", "AG",
@@ -27,7 +32,7 @@ public static class CompanyNames
         }
 
         var folded = new StringBuilder(name.Length);
-        foreach (var c in name.Normalize(NormalizationForm.FormD))
+        foreach (var c in StateSuffix().Replace(name, "").Normalize(NormalizationForm.FormD))
         {
             if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
             {

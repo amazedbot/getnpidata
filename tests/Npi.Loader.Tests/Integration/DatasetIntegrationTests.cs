@@ -56,7 +56,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
-             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("sec_companies", "2026-10-09T06:00:00Z"),
+             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("sec_companies", $"2026-10-09T06:00:00Z parents {SecCompanySource.ParentsHash()}"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null)]))],
@@ -349,6 +349,12 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Null((await companies.GetAsync("100000000002", _ct))!.Recalls);
         Assert.Equal([(78003, "PFE", "NYSE")], pfizer.SecListings.Select(l => (l.Cik, l.Ticker, l.Exchange)));
         Assert.Equal("https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000078003", pfizer.SecListings[0].EdgarUrl);
+        Assert.False(pfizer.SecListings[0].IsParent);
+        // The hand-made parent list is loaded with the registrants; a listed subsidiary shows its parent (here a test row).
+        Assert.Equal(SecCompanySource.ReadParents().Count, await db.ScalarAsync<long>("SELECT COUNT(*) FROM company_parent"));
+        await db.ExecuteAsync("INSERT INTO company_parent (company_id, parent_cik, note) VALUES ('100000000002', 59478, 'test subsidiary')");
+        var medtronic = Assert.Single((await companies.GetAsync("100000000002", _ct))!.SecListings);
+        Assert.Equal(("LLY", true, "test subsidiary"), (medtronic.Ticker, medtronic.IsParent, medtronic.Note));
         Assert.Empty(pfizer.IntegrityAgreements);
         var snap = Assert.Single((await companies.GetAsync("100000000010", _ct))!.IntegrityAgreements);
         Assert.Equal(("Suspended", (DateOnly?)new DateOnly(2026, 10, 1)), (snap.Status, snap.StatusDate));

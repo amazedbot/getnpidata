@@ -455,6 +455,12 @@ public sealed class CompanySecListing
 
     public string? Exchange { get; set; }
 
+    /// <summary>True for the parent company of a subsidiary (from a hand-made list), false for a registrant of the same name.</summary>
+    public bool IsParent { get; set; }
+
+    /// <summary>For a parent: how they're related ("U.S. subsidiary", "acquired 2021" …).</summary>
+    public string? Note { get; set; }
+
     public string EdgarUrl { get; set; } = "";
 }
 
