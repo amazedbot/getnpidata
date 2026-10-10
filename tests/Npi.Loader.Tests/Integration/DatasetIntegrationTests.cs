@@ -52,15 +52,16 @@ public sealed class DatasetIntegrationTests : IDisposable
                  + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
-             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("hrsa_hpsa", "HPSA 2026-10-08"),
+             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"), ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
-             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"),
+             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("sec_companies", "2026-10-09T06:00:00Z"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null)]))],
-            await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
+            await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source <> 'oig_cia' ORDER BY source"));
+        Assert.StartsWith("3 agreements ", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'oig_cia'"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
             "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name LIKE 'county\\_%\\_old' OR table_name LIKE 'open\\_payments\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
@@ -332,11 +333,26 @@ public sealed class DatasetIntegrationTests : IDisposable
         // The list: largest payments (general + research) first; a name matches any part of a name or another name.
         var all = await companies.SearchAsync(null, 1, 50, _ct);
         Assert.Equal(["100000000001", "100000000009"], all.Items.Take(2).Select(c => c.Id));
-        Assert.Equal(4, all.TotalCount); // Pfizer, Medtronic, Acme, Smith & Nephew
+        Assert.Equal(5, all.TotalCount); // Pfizer, Medtronic, Acme, Smith & Nephew, SNAP Diagnostics
         Assert.Equal(["100000000001"], (await companies.SearchAsync("fizer inc", 1, 50, _ct)).Items.Select(c => c.Id));
         Assert.Equal(["100000000009"], (await companies.SearchAsync("nephew", 1, 50, _ct)).Items.Select(c => c.Id));
         Assert.Equal(7000.0, (await companies.SearchAsync("acme", 1, 50, _ct)).Items.Single().OwnershipValue);
         Assert.Empty((await companies.SearchAsync("100%", 1, 50, _ct)).Items); // wildcards are literal
+
+        // Public records, matched by name key: FDA recalls ("Pfizer Inc." = "Pfizer, Inc."; the duplicate report is loaded once per file;
+        // "Medtronic, L.L.C." is not "Medtronic USA Inc."), SEC tickers and OIG agreements (one entity of "SNAP Diagnostics, LLC and Gil Raviv").
+        var recalls = pfizer.Recalls!;
+        Assert.Equal((2, 2, 0, 2), (recalls.Total, recalls.ClassI, recalls.ClassII, recalls.Ongoing));
+        Assert.Equal(["Pfizer Inc."], recalls.Firms);
+        Assert.Equal([("D-0001-2026", "Devices"), ("D-0001-2026", "Drugs")], recalls.Latest.Select(r => (r.RecallNumber, r.ProductType)).Order());
+        Assert.Equal(new DateOnly(2026, 8, 20), recalls.Latest[0].Initiated);
+        Assert.Null((await companies.GetAsync("100000000002", _ct))!.Recalls);
+        Assert.Equal([(78003, "PFE", "NYSE")], pfizer.SecListings.Select(l => (l.Cik, l.Ticker, l.Exchange)));
+        Assert.Equal("https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000078003", pfizer.SecListings[0].EdgarUrl);
+        Assert.Empty(pfizer.IntegrityAgreements);
+        var snap = Assert.Single((await companies.GetAsync("100000000010", _ct))!.IntegrityAgreements);
+        Assert.Equal(("Suspended", (DateOnly?)new DateOnly(2026, 10, 1)), (snap.Status, snap.StatusDate));
+        Assert.Equal(3L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM oig_cia"));
 
         // The provider page links its payers and top companies to the company pages.
         var detail = (await new ProviderDetailService(db.ConnectionString).GetAsync("1000000012", _ct))!;
@@ -402,6 +418,10 @@ public sealed class DatasetIntegrationTests : IDisposable
                 HrsaHpsaUrlTemplate = "https://hrsa.test/BCD_HPSA_FCT_DET_{discipline}.csv",
                 CensusPopulationBaseUrl = "https://census.test/popest/",
                 OpenPaymentsCatalogUrl = "https://op.test/items",
+                FdaDownloadIndexUrl = "https://fda.test/download.json",
+                SecCompanyTickersUrl = "https://sec.test/company_tickers_exchange.json",
+                SecUserAgent = "getnpidata-tests ci@example.test",
+                OigCiaUrl = "https://oig.test/browse-cias/",
             },
             db.Database, new HttpClient(server), Logger.None, clock: clock);
 
@@ -440,6 +460,23 @@ public sealed class DatasetIntegrationTests : IDisposable
             {
                 var json = $$"""{"modified":"{{entry.Modified}}","distribution":[{"downloadURL":"https://pdc.test/files/{{entry.File}}","mediaType":"text/csv"}]}""";
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
+            }
+
+            if (url.StartsWith("https://fda.test/", StringComparison.Ordinal) && url.EndsWith(".zip", StringComparison.Ordinal))
+            {
+                // openFDA bulk files are zipped JSON; the drug and device files share one fixture.
+                using var zipped = new MemoryStream();
+                using (var zip = new System.IO.Compression.ZipArchive(zipped, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+                {
+                    zip.CreateEntryFromFile(Fixtures.Path("datasets/fda_enforcement_sample.json"), "enforcement-0001-of-0001.json");
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(zipped.ToArray()) });
+            }
+
+            if (url.StartsWith("https://oig.test/browse-cias/?page=", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html><body>No more agreements.</body></html>") });
             }
 
             if (url.Contains("/api/views/", StringComparison.Ordinal))
@@ -481,6 +518,9 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://hrsa.test/BCD_HPSA_FCT_DET_DH.csv" => "datasets/hpsa_DH_sample.csv",
                 "https://hrsa.test/BCD_HPSA_FCT_DET_MH.csv" => "datasets/hpsa_MH_sample.csv",
                 "https://census.test/popest/" => "datasets/census_popest_listing.html",
+                "https://fda.test/download.json" => "datasets/fda_download_index_sample.json",
+                "https://sec.test/company_tickers_exchange.json" => "datasets/sec_company_tickers_sample.json",
+                "https://oig.test/browse-cias/" => "datasets/oig_cia_page_sample.html",
                 "https://www.mbp.state.md.us/forms/doctor_list_revised.csv" => "datasets/state_md_doctors.csv",
                 "https://www.mbp.state.md.us/forms/allied_health_list.csv" => "datasets/state_md_allied.csv",
                 "https://op.test/items" => "datasets/open_payments_catalog_sample.json",
@@ -505,6 +545,10 @@ public sealed class DatasetIntegrationTests : IDisposable
             if (url.StartsWith("https://oig.test", StringComparison.Ordinal))
             {
                 content.Headers.LastModified = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+            }
+            else if (url.StartsWith("https://sec.test", StringComparison.Ordinal))
+            {
+                content.Headers.LastModified = new DateTimeOffset(2026, 10, 9, 6, 0, 0, TimeSpan.Zero);
             }
             else if (url.StartsWith("https://www.mbp.state.md.us", StringComparison.Ordinal))
             {

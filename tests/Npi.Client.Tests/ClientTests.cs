@@ -114,6 +114,10 @@ public class ClientTests
     [InlineData(typeof(Server.CompanyProduct), typeof(CompanyProduct))]
     [InlineData(typeof(Server.CompanySpecialty), typeof(CompanySpecialty))]
     [InlineData(typeof(Server.CompanyRecipient), typeof(CompanyRecipient))]
+    [InlineData(typeof(Server.CompanyRecalls), typeof(CompanyRecalls))]
+    [InlineData(typeof(Server.CompanyRecall), typeof(CompanyRecall))]
+    [InlineData(typeof(Server.CompanySecListing), typeof(CompanySecListing))]
+    [InlineData(typeof(Server.CompanyIntegrityAgreement), typeof(CompanyIntegrityAgreement))]
     [InlineData(typeof(Server.LookupRow), typeof(LookupRow))]
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)

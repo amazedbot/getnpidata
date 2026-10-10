@@ -199,3 +199,6 @@ button.secondary, .button.secondary { background: var(--bg); color: var(--accent
 /* One-line forms (company search). */
 .inline-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 1rem 0; }
 .inline-form input { flex: 1 1 14rem; min-width: 0; max-width: 28rem; }
+
+/* Long free text in a table cell (FDA recall products and reasons). */
+td.long { min-width: 14rem; max-width: 32rem; overflow-wrap: anywhere; }
