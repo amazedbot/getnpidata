@@ -94,7 +94,7 @@
             <dd><a href="@lic.SourceUrl">@lic.SourceName</a>@if (lic.VerifyUrl is not null){<text> · </text><a href="@lic.VerifyUrl">verify this license</a>}</dd>
         </dl>
     }
-    <p class="muted">From state open data (@string.Join(", ", Npi.Core.Search.StateLicenseSources.States); New York publishes board actions only), matched to this NPI by
+    <p class="muted">From state licensing boards (@string.Join(", ", Npi.Core.Search.StateLicenseSources.States); New York publishes board actions only, Maryland current licenses only, the Florida complaints list recent cases only), matched to this NPI by
         license state, number and last name. Always confirm with the state board before relying on it.</p>
 }
 

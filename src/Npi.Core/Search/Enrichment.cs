@@ -107,10 +107,14 @@ public static class StateLicenseSources
         ["wa_doh"] = ("Washington State Department of Health credentials", "https://data.wa.gov/d/qxh8-f4bd"),
         ["il_idfpr"] = ("Illinois Department of Financial and Professional Regulation licenses", "https://illinois-edp.data.socrata.com/d/pzzh-kp68"),
         ["co_dora"] = ("Colorado Department of Regulatory Agencies licenses", "https://data.colorado.gov/d/7s5z-vewr"),
+        ["de_dpr"] = ("Delaware Division of Professional Regulation licenses and actions", "https://data.delaware.gov/d/pjnv-eaih"),
+        ["ct_elicense"] = ("Connecticut eLicense credentials", "https://data.ct.gov/d/ngch-56tr"),
+        ["md_bop"] = ("Maryland Board of Physicians practitioner lists", "https://www.mbp.state.md.us/"),
+        ["fl_doh"] = ("Florida Department of Health, MQA licenses and administrative complaints", "https://mqa-internet.doh.state.fl.us/MQASearchServices/"),
     };
 
-    /// <summary>The states covered: NY (board actions only), TX, WA, IL, CO.</summary>
-    public static readonly IReadOnlyList<string> States = ["CO", "IL", "NY", "TX", "WA"];
+    /// <summary>The states covered: NY (board actions only), CT and MD (status and a discipline flag), TX, WA, IL, CO, DE, FL.</summary>
+    public static readonly IReadOnlyList<string> States = ["CO", "CT", "DE", "FL", "IL", "MD", "NY", "TX", "WA"];
 
     public static string Name(string source) => Sources.TryGetValue(source, out var s) ? s.Name : source;
 
