@@ -187,6 +187,14 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Empty(await Npis(search, new SearchFilter { OrgName = "jones dentist", NameMatch = "similar" }));
 
         Assert.Equal(2L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_org_name WHERE npi = @D", new { D }));
+
+        // The ranking distance as MySQL computes it: swapped letters cost less than a wrong one; case and accents don't count.
+        foreach (var (name, expected) in new[] { ("SMIHT", 0L), ("SMITH", 2L), ("smidt", 3L), ("SMOOT", 6L), ("SMÍHT", 0L) })
+        {
+            Assert.Equal((name, expected), (name, await db.ScalarAsync<long>(
+                $"SELECT {NameSearch.DistanceSql("CAST(@name AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_0900_ai_ci", "@typed", 5)}",
+                new { name, typed = "Smiht" })));
+        }
     }
 
     [Fact]

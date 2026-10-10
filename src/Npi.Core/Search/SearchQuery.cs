@@ -61,7 +61,7 @@ public sealed class SearchQuery
 
         // Names (Stage 3.3 prefix match; Stage 5.5 item 9 "similar": people also by sound, organizations by words anywhere).
         var similar = filter.NameMatch == NameSearch.Similar;
-        var relevance = new List<string>();
+        var distances = new List<string>(); // per similar person name: how far it is from what was typed
         void PersonName(string? value, string column, string parameter)
         {
             if (value is null)
@@ -75,7 +75,7 @@ public sealed class SearchQuery
                 Parameters.Add(parameter + "Sound", value);
                 providerTemplates.Add(("name",
                     $"({{0}}.{column}_name LIKE @{parameter} OR {{0}}.{column}_phonetic = {NameSearch.PhoneticSql("@" + parameter + "Sound")})"));
-                relevance.Add($"(p.{column}_name LIKE @{parameter}) DESC"); // what was typed, before what sounds like it
+                distances.Add(NameSearch.DistanceSql($"p.{column}_name", "@" + parameter + "Sound", value.Length));
             }
             else
             {
@@ -281,7 +281,9 @@ public sealed class SearchQuery
         }
         else if (providerTemplates.Any(t => t.Kind == "name"))
         {
-            _driver = "SELECT d.npi FROM provider d WHERE " + string.Join(" AND ", providerTemplates.Where(t => t.Kind == "name").Select(t => Format(t.Template, "d")));
+            // DISTINCT keeps MySQL from merging the derived table (see the date driver): a map search for "smith john" on
+            // Long Island took 5.7 s scanning the area's points instead of starting from the few thousand candidates.
+            _driver = "SELECT DISTINCT d.npi FROM provider d WHERE " + string.Join(" AND ", providerTemplates.Where(t => t.Kind == "name").Select(t => Format(t.Template, "d")));
             drivenBy.Add("name");
             _driverKind = "name";
         }
@@ -327,12 +329,17 @@ public sealed class SearchQuery
         if (similar && filter.Sort is null)
         {
             // Best matches first, then the normal name order. Only the default sort: an explicit sort is honoured as asked.
+            // Organizations: the driver's score (legal-name prefix, then FULLTEXT relevance), else the prefix match.
+            // People: the closest spelling (last + first name distances added up).
             if (orgDriver is not null)
             {
-                relevance.Insert(0, _driverKind == "org" ? "c.score DESC" : "(p.org_name LIKE @orgName) DESC");
+                _relevance.Add(_driverKind == "org" ? "c.score DESC" : "(p.org_name LIKE @orgName) DESC");
             }
 
-            _relevance.AddRange(relevance);
+            if (distances.Count > 0)
+            {
+                _relevance.Add("(" + string.Join(" + ", distances) + ") ASC");
+            }
         }
 
         Parameters.Add("take", filter.PageSize);

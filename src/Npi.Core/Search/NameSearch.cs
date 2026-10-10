@@ -44,6 +44,26 @@ public static class NameSearch
     public static bool CanSoundLike(string name) =>
         name.ToUpperInvariant().Any(c => c is >= 'A' and <= 'Z' || Folds.Any(f => f.From[0] == c));
 
+    /// <summary>Only this many leading characters of a typed name count towards <see cref="DistanceSql"/>.</summary>
+    public const int MaxScoredLength = 20;
+
+    /// <summary>
+    /// How far a name is from what was typed, for ranking "similar" people (lower = closer; 0 = the same name):
+    /// letters that differ position by position, plus twice the difference in length, plus twice each typed letter the
+    /// name lacks (so swapped letters, a common typo, cost less than a wrong or extra letter). "SMIHT": SMITH 2, SMIDT 3,
+    /// SMIDTH 3, SMOOT 6. A rough edit distance in plain SQL (MySQL has none); comparisons use the
+    /// column's accent- and case-insensitive collation. <paramref name="parameter"/> holds the typed name, of
+    /// <paramref name="typedLength"/> characters; only numbers from C# enter the SQL text.
+    /// </summary>
+    public static string DistanceSql(string column, string parameter, int typedLength)
+    {
+        var n = Math.Clamp(typedLength, 1, MaxScoredLength);
+        var positions = string.Join(" + ", Enumerable.Range(1, n).Select(i => $"(SUBSTRING({column}, {i}, 1) <> SUBSTRING({parameter}, {i}, 1))"));
+        // NOT LIKE, not LOCATE: LOCATE is accent-sensitive even under an accent-insensitive collation (Í ≠ I).
+        var missing = string.Join(" + ", Enumerable.Range(1, n).Select(i => $"({column} NOT LIKE CONCAT('%', SUBSTRING({parameter}, {i}, 1), '%'))"));
+        return $"(COALESCE({positions} + 2 * ABS(CHAR_LENGTH({column}) - CHAR_LENGTH({parameter})) + 2 * ({missing}), {MaxScoredLength * 4}))";
+    }
+
     // InnoDB's default FULLTEXT stopwords of 3+ letters (shorter words are never indexed): a required stopword would match nothing.
     private static readonly HashSet<string> Stopwords = new(StringComparer.OrdinalIgnoreCase)
     {

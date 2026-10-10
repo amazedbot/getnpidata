@@ -164,7 +164,7 @@ public class SearchQueryTests
     [Theory]
     [InlineData("npi", "FROM (SELECT @npi AS npi) c JOIN provider p ON p.npi = c.npi WHERE p.last_name LIKE @lastName")]
     [InlineData("taxonomy", "FROM (SELECT DISTINCT t.npi FROM provider_taxonomy t WHERE t.taxonomy_code IN @taxonomyCodes) c JOIN provider p ON p.npi = c.npi WHERE p.last_name LIKE @lastName")]
-    [InlineData("name", "FROM (SELECT d.npi FROM provider d WHERE d.last_name LIKE @lastName) c JOIN provider p ON p.npi = c.npi WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state)")]
+    [InlineData("name", "FROM (SELECT DISTINCT d.npi FROM provider d WHERE d.last_name LIKE @lastName) c JOIN provider p ON p.npi = c.npi WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state)")]
     [InlineData("location", "FROM (SELECT DISTINCT l.npi FROM provider_location l WHERE l.state = @state) c JOIN provider p ON p.npi = c.npi WHERE p.gender = @gender")]
     [InlineData("credential", "FROM (SELECT d.npi FROM provider d WHERE d.credential_key LIKE @credential) c JOIN provider p ON p.npi = c.npi WHERE p.entity_type = @entityType")]
     [InlineData("attributes", "FROM provider p WHERE p.entity_type = @entityType AND p.gender = @gender")]
@@ -268,7 +268,8 @@ public class SearchQueryTests
 
         Assert.Contains("(d.last_name LIKE @lastName OR d.last_phonetic = LEFT(SOUNDEX(", query.PageSql, StringComparison.Ordinal);
         Assert.Contains("(d.first_name LIKE @firstName OR d.first_phonetic = LEFT(SOUNDEX(", query.PageSql, StringComparison.Ordinal);
-        Assert.Contains("ORDER BY (p.last_name LIKE @lastName) DESC, (p.first_name LIKE @firstName) DESC, p.sort_name ASC", query.PageSql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY ((COALESCE((SUBSTRING(p.last_name, 1, 1) <> SUBSTRING(@lastNameSound, 1, 1))", query.PageSql, StringComparison.Ordinal);
+        Assert.Contains("(p.first_name NOT LIKE CONCAT('%', SUBSTRING(@firstNameSound, 3, 1), '%'))), 80))) ASC, p.sort_name ASC", query.PageSql, StringComparison.Ordinal);
         Assert.Equal("Smiht", query.Parameters.Get<string>("lastNameSound"));
 
         // An explicit sort is honoured as asked; the default "prefix" match is unchanged.
