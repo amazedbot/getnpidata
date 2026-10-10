@@ -443,6 +443,7 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(("device", 10, 1, 2, 7), (pumpEvents.Kind, pumpEvents.Reports, pumpEvents.Deaths, pumpEvents.Injuries, pumpEvents.Malfunctions));
         Assert.Equal(0, ozempicPage.AdverseEvents!.Reports); // asked, nothing found
         Assert.Null((await products.GetAsync("guardian-4-sensor", _ct))!.AdverseEvents); // no device record, so not asked
+        Assert.Null(ibrance.AdverseEvents); // openFDA kept failing (500): skipped, asked again on the next run
         Assert.Equal(("apixaban", 482, 71), (eliquis.Trials!.QueryName, eliquis.Trials.Studies, eliquis.Trials.Recruiting));
         Assert.Equal("https://clinicaltrials.gov/search?intr=apixaban", eliquis.Trials.SearchUrl);
 
@@ -605,6 +606,11 @@ public sealed class DatasetIntegrationTests : IDisposable
             // openFDA counts and ClinicalTrials.gov totals (part 3): a few known answers, nothing for everything else.
             if (url.StartsWith("https://openfda.test/", StringComparison.Ordinal) || url.StartsWith("https://ct.test/", StringComparison.Ordinal))
             {
+                if (url.Contains("medicinalproduct:%22IBRANCE%22", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)); // openFDA fails now and then
+                }
+
                 var answer = url switch
                 {
                     _ when url.Contains("medicinalproduct:%22ELIQUIS%22", StringComparison.Ordinal) => """{"results":[{"term":1,"count":100},{"term":2,"count":40}]}""",
