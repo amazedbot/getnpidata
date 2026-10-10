@@ -233,7 +233,7 @@ public sealed partial class FdaProductSource : DatasetSource
                     labels, ct);
                 await CompanyRecords.InsertAsync(connection, "INSERT INTO `fda_drug_label_ndc_staging` (`ndc_key`, `set_id`) VALUES (@Key, @SetId)",
                     labelNdcs.Select(l => new { l.Key, l.SetId }), ct);
-                context.Log.Information("FDA drug labels: {Labels:N0} of the {Wanted:N0} product NDCs in Open Payments", labels.Count, wantedKeys.Count);
+                context.Log.Information("FDA drug labels: {Labels:N0} for {Wanted:N0} listings (the products named in Open Payments and the listings under their applications)", labels.Count, wantedKeys.Count);
 
                 // GUDID records of the device identifiers named in Open Payments.
                 var wantedDevices = (await connection.QueryAsync<string>(new CommandDefinition(

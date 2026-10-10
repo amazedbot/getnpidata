@@ -278,7 +278,7 @@ public sealed class ProductService(string connectionString)
         if (d is null)
         {
             // The reported NDC isn't listed (or there is none): a drug or biological of the same brand name, under the
-            // application most of its listings use.
+            // application most of its listings use, the maker's own listing (labeler named like the sponsor) before a repackager's.
             matchedBy = "name";
             d = await connection.QueryFirstOrDefaultAsync<DrugRow>(new CommandDefinition(
                 columns + """
@@ -287,7 +287,7 @@ public sealed class ProductService(string connectionString)
                 LEFT JOIN fda_application a ON a.application_number = n.application_number
                 WHERE p.slug = @slug AND p.kind IN ('Drug', 'Biological')
                 ORDER BY (SELECT COUNT(*) FROM fda_ndc_product n2 WHERE n2.brand_name = n.brand_name AND n2.application_number <=> n.application_number) DESC,
-                         a.sponsor IS NULL, n.pharm_classes IS NULL, n.product_ndc
+                         a.sponsor IS NULL, n.labeler NOT LIKE CONCAT(SUBSTRING_INDEX(a.sponsor, ' ', 1), '%'), n.pharm_classes IS NULL, n.product_ndc
                 LIMIT 1
                 """, new { slug }, cancellationToken: ct));
         }
