@@ -37,6 +37,36 @@
    "report_date": "20260930",
    "product_description": "duplicate",
    "reason_for_recall": "dup"
+  },
+  {
+   "recall_number": "D-0100-2025",
+   "recalling_firm": "Some Repackager LLC",
+   "classification": "Class II",
+   "status": "Terminated",
+   "recall_initiation_date": "20250505",
+   "report_date": "20250601",
+   "product_description": "Eliquis (apixaban) tablets, 5 mg, 60-count bottles, NDC 0003-0894-21",
+   "reason_for_recall": "Mislabeled strength"
+  },
+  {
+   "recall_number": "Z-0200-2024",
+   "recalling_firm": "Medtronic USA Inc.",
+   "classification": "Class I",
+   "status": "Ongoing",
+   "recall_initiation_date": "20240404",
+   "report_date": "20240501",
+   "product_description": "MiniMed 780G insulin pump, model MMT-1886",
+   "reason_for_recall": "Retainer ring may break"
+  },
+  {
+   "recall_number": "Z-0201-2024",
+   "recalling_firm": "Other Pump Maker",
+   "classification": "Class II",
+   "status": "Ongoing",
+   "recall_initiation_date": "20240405",
+   "report_date": "20240501",
+   "product_description": "Pump accessory compatible with MiniMed 780G",
+   "reason_for_recall": "Not a recall of the product"
   }
  ]
 }

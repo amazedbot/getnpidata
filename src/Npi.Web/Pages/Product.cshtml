@@ -41,6 +41,15 @@
     A payment is not evidence of wrongdoing, but you may want to know about it when your provider recommends this product.
 </div>
 
+@{ var currentShortages = p.Shortages.Where(s => s.Status is "Current").ToList(); }
+@if (currentShortages.Count > 0)
+{
+    <div class="notice alert" role="note">
+        <strong>FDA lists a current shortage</strong> of @(currentShortages[0].GenericName ?? p.Name)@(currentShortages[0].Availability is { } av ? $" ({av.ToLowerInvariant()})" : "").
+        See “Drug shortages” below.
+    </div>
+}
+
 @if (p.Drug is { } drug)
 {
     @if (drug.BoxedWarning is not null)
@@ -129,6 +138,135 @@
         </div>
         <p class="muted">A 510(k) clearance means FDA found the device substantially equivalent to one already on the market; a PMA approval follows FDA's review of clinical evidence (high-risk devices).</p>
     }
+}
+
+@if (p.Spending.Count > 0)
+{
+    var newest = p.Spending.Max(s => s.Year);
+    <h2>What Medicare and Medicaid spend on it</h2>
+    <p>
+        @foreach (var g in p.Spending.Where(s => s.Year == newest).GroupBy(s => s.Program))
+        {
+            var total = g.Sum(s => s.Spending);
+            var benes = g.Sum(s => s.Beneficiaries ?? 0);
+            <text>@g.Key: <strong>@Format.Money(total)</strong> in @newest@(benes > 0 ? $" for {Format.Number((long)benes)} patients" : ""). </text>
+        }
+    </p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Spending by program and year</caption>
+            <thead><tr><th scope="col">Program</th><th scope="col">Year</th><th scope="col">Spending</th><th scope="col">Claims</th><th scope="col">Patients</th><th scope="col">Per unit</th></tr></thead>
+            <tbody>
+                @foreach (var s in p.Spending)
+                {
+                    <tr>
+                        <td>@s.Program@if (!string.Equals(s.BrandName, p.Name, StringComparison.OrdinalIgnoreCase)){<span class="muted"> (@s.BrandName)</span>}</td>
+                        <td>@s.Year</td><td>@Format.Money(s.Spending)</td>
+                        <td>@(s.Claims is { } c ? Format.Number((long)c) : "—")</td><td>@(s.Beneficiaries is { } b ? Format.Number((long)b) : "—")</td>
+                        <td>@(s.PerUnit is { } u ? u.ToString("$#,##0.00", CultureInfo.InvariantCulture) : "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">CMS Medicare Part D (pharmacy), Part B (given in a clinic or hospital outpatient department) and Medicaid spending by drug, matched by brand name; gross spending before manufacturer rebates. Small counts are suppressed by CMS.</p>
+}
+
+@if (p.Prices.Count > 0)
+{
+    <h2>What pharmacies pay (NADAC)</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">NADAC prices of the drug's packages</caption>
+            <thead><tr><th scope="col">Package</th><th scope="col">NDC</th><th scope="col">Price per unit</th><th scope="col">Type</th><th scope="col">As of</th></tr></thead>
+            <tbody>
+                @foreach (var pr in p.Prices)
+                {
+                    <tr>
+                        <td>@pr.Description</td><td>@pr.Ndc</td>
+                        <td>@pr.PerUnit.ToString("$#,##0.00###", CultureInfo.InvariantCulture)@(pr.PricingUnit is null ? "" : $" per {pr.PricingUnit.ToLowerInvariant()}")</td>
+                        <td>@pr.Kind</td><td>@pr.EffectiveDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">Medicaid's National Average Drug Acquisition Cost: what retail pharmacies pay on average, from a weekly survey; not the price you pay.</p>
+}
+
+@if (p.Shortages.Count > 0)
+{
+    <h2>Drug shortages</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">FDA drug shortage listings</caption>
+            <thead><tr><th scope="col">Status</th><th scope="col">Product</th><th scope="col">Company</th><th scope="col">Availability</th><th scope="col">Reason</th><th scope="col">Updated</th></tr></thead>
+            <tbody>
+                @foreach (var s in p.Shortages)
+                {
+                    <tr>
+                        <td>@s.Status</td><td class="long">@(s.Presentation ?? s.GenericName)</td><td>@s.Company</td><td>@s.Availability</td>
+                        <td class="long">@s.Reason@if (s.RelatedInfo is not null){<span class="muted"> · @s.RelatedInfo</span>}</td>
+                        <td>@s.UpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">FDA's drug shortage list, matched by the drug's NDC or generic name. See <a href="https://dps.fda.gov/drugshortages">FDA's drug shortage database</a>.</p>
+}
+
+@if (p.Recalls is { } recalls)
+{
+    <h2>FDA recalls</h2>
+    <p>
+        <strong>@Format.Number(recalls.Total)</strong> recall@(recalls.Total == 1 ? "" : "s") naming it since 2004
+        (Class I, the most serious: @Format.Number(recalls.ClassI); Class II: @Format.Number(recalls.ClassII); Class III: @Format.Number(recalls.ClassIII)).
+    </p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">The newest FDA recalls naming the product</caption>
+            <thead><tr><th scope="col">Started</th><th scope="col">Recall</th><th scope="col">Class</th><th scope="col">Firm</th><th scope="col">Product</th><th scope="col">Reason</th></tr></thead>
+            <tbody>
+                @foreach (var r in recalls.Latest)
+                {
+                    <tr>
+                        <td>@r.Initiated?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td><td>@r.RecallNumber</td><td>@r.Classification</td><td>@r.Firm</td>
+                        <td class="long">@r.Product</td><td class="long">@r.Reason</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">FDA enforcement reports whose product description names this @(p.Drug is not null || p.Kind is "Drug" or "Biological" ? "drug (by name or NDC)" : "device, by a company paying for it"). Class I: may cause serious harm or death; Class II: temporary or reversible harm; Class III: unlikely to cause harm.</p>
+}
+
+@if (p.AdverseEvents is { Reports: > 0 } ae)
+{
+    <h2>Adverse event reports</h2>
+    <p>
+        @if (ae.Kind == "drug")
+        {
+            <text>FDA has received <strong>@Format.Number(ae.Reports ?? 0)</strong> adverse event reports naming “@ae.QueryName”@(ae.Serious is { } serious ? $", {Format.Number(serious)} of them serious (death, hospitalization, disability or other serious outcome)" : "").</text>
+        }
+        else
+        {
+            <text>FDA has received <strong>@Format.Number(ae.Reports ?? 0)</strong> medical device reports for “@ae.QueryName”: @Format.Number(ae.Deaths ?? 0) deaths, @Format.Number(ae.Injuries ?? 0) injuries, @Format.Number(ae.Malfunctions ?? 0) malfunctions.</text>
+        }
+    </p>
+    <p class="muted">
+        From FDA's @(ae.Kind == "drug" ? "FAERS" : "MAUDE") database via <a href="@ae.QueryUrl">openFDA</a>, counted @ae.FetchedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture).
+        Anyone can file a report, and a report does not prove the product caused the event; counts grow with how widely a product is used. Do not stop a treatment without talking to your doctor.
+    </p>
+}
+
+@if (p.Trials is { Studies: > 0 } trials)
+{
+    <h2>Clinical trials</h2>
+    <p>
+        <strong>@Format.Number(trials.Studies ?? 0)</strong> studies on ClinicalTrials.gov list “@trials.QueryName” as an intervention@(trials.Recruiting is > 0 ? $", {Format.Number(trials.Recruiting.Value)} recruiting now" : "").
+        <a href="@trials.SearchUrl">Search them on ClinicalTrials.gov</a>.
+    </p>
 }
 
 @if (p.Companies.Count > 0)

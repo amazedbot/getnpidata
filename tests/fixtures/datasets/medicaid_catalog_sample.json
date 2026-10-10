@@ -1,0 +1,30 @@
+[
+ {
+  "title": "NADAC (National Average Drug Acquisition Cost) 2025",
+  "modified": "2025-12-30",
+  "distribution": [
+   {
+    "data": {
+     "downloadURL": "https://medicaid.test/nadac-2025.csv",
+     "mediaType": "text/csv"
+    }
+   }
+  ]
+ },
+ {
+  "title": "NADAC (National Average Drug Acquisition Cost) 2026",
+  "modified": "2026-10-06",
+  "distribution": [
+   {
+    "data": {
+     "downloadURL": "https://medicaid.test/nadac-national-average-drug-acquisition-cost-10-07-2026.csv",
+     "mediaType": "text/csv"
+    }
+   }
+  ]
+ },
+ {
+  "title": "State Drug Utilization Data 2026",
+  "distribution": []
+ }
+]

@@ -320,6 +320,140 @@ public sealed class ProductDetail
 
     /// <summary>FDA's GUDID facts for the device identifier named most.</summary>
     public ProductDeviceInfo? Device { get; set; }
+
+    /// <summary>Medicare Part D / Part B and Medicaid spending by year.</summary>
+    public IReadOnlyList<ProductSpending> Spending { get; set; } = [];
+
+    /// <summary>NADAC pharmacy acquisition prices of its packages.</summary>
+    public IReadOnlyList<ProductPrice> Prices { get; set; } = [];
+
+    /// <summary>FDA drug shortage listings.</summary>
+    public IReadOnlyList<ProductShortage> Shortages { get; set; } = [];
+
+    /// <summary>FDA recalls naming it; null when none.</summary>
+    public ProductRecalls? Recalls { get; set; }
+
+    /// <summary>Adverse event report counts from openFDA; null until counted.</summary>
+    public ProductAdverseEvents? AdverseEvents { get; set; }
+
+    /// <summary>ClinicalTrials.gov study counts; null until counted.</summary>
+    public ProductTrials? Trials { get; set; }
+}
+
+/// <summary>Spending on a drug in one program and year.</summary>
+public sealed class ProductSpending
+{
+    /// <summary>"Part D", "Part B" or "Medicaid".</summary>
+    public string Program { get; set; } = "";
+
+    public string BrandName { get; set; } = "";
+
+    public string GenericName { get; set; } = "";
+
+    public int Year { get; set; }
+
+    public double Spending { get; set; }
+
+    public double? Units { get; set; }
+
+    public double? Claims { get; set; }
+
+    public double? Beneficiaries { get; set; }
+
+    public double? PerUnit { get; set; }
+}
+
+/// <summary>A NADAC price of one package NDC.</summary>
+public sealed class ProductPrice
+{
+    public string Ndc { get; set; } = "";
+
+    public string? Description { get; set; }
+
+    public double PerUnit { get; set; }
+
+    public string? PricingUnit { get; set; }
+
+    public DateTime? EffectiveDate { get; set; }
+
+    /// <summary>B (brand) or G (generic).</summary>
+    public string? Classification { get; set; }
+
+    public string? Kind { get; set; }
+}
+
+/// <summary>An FDA drug shortage listing.</summary>
+public sealed class ProductShortage
+{
+    public string? GenericName { get; set; }
+
+    public string? Company { get; set; }
+
+    public string? Presentation { get; set; }
+
+    /// <summary>Current, To Be Discontinued or Resolved.</summary>
+    public string? Status { get; set; }
+
+    public string? Availability { get; set; }
+
+    public string? Reason { get; set; }
+
+    public string? RelatedInfo { get; set; }
+
+    public DateTime? InitialDate { get; set; }
+
+    public DateTime? UpdateDate { get; set; }
+}
+
+/// <summary>FDA recalls naming a product.</summary>
+public sealed class ProductRecalls
+{
+    public int Total { get; set; }
+
+    public int ClassI { get; set; }
+
+    public int ClassII { get; set; }
+
+    public int ClassIII { get; set; }
+
+    public IReadOnlyList<CompanyRecall> Latest { get; set; } = [];
+}
+
+/// <summary>Adverse event report counts from openFDA (FAERS for drugs, MAUDE for devices).</summary>
+public sealed class ProductAdverseEvents
+{
+    /// <summary>"drug" or "device".</summary>
+    public string Kind { get; set; } = "";
+
+    public string QueryName { get; set; } = "";
+
+    public int? Reports { get; set; }
+
+    public int? Serious { get; set; }
+
+    public int? Deaths { get; set; }
+
+    public int? Injuries { get; set; }
+
+    public int? Malfunctions { get; set; }
+
+    public DateTime FetchedAt { get; set; }
+
+    public string QueryUrl { get; set; } = "";
+}
+
+/// <summary>ClinicalTrials.gov study counts.</summary>
+public sealed class ProductTrials
+{
+    public string QueryName { get; set; } = "";
+
+    public int? Studies { get; set; }
+
+    public int? Recruiting { get; set; }
+
+    public DateTime FetchedAt { get; set; }
+
+    public string SearchUrl { get; set; } = "";
 }
 
 /// <summary>What a drug or biological is, from FDA's NDC directory, Drugs@FDA and its label.</summary>

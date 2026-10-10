@@ -20,7 +20,7 @@ public class CompanyRecordParsingTests
             rows.Add(row!);
         }
 
-        Assert.Equal(["D-0001-2026", "D-0002-2025", "D-0001-2026"], rows.Select(r => r.recall_number));
+        Assert.Equal(["D-0001-2026", "D-0002-2025", "D-0001-2026", "D-0100-2025", "Z-0200-2024", "Z-0201-2024"], rows.Select(r => r.recall_number));
         Assert.Equal("Tablets \"30 count\" [blister] {lot 1}", rows[0].product_description);
     }
 
