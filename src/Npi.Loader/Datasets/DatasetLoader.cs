@@ -94,6 +94,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new OpenPaymentsSource(),
         new OpenPaymentsYearSource(),
         new OpenPaymentsCompanySource(),
+        new OpenPaymentsEntitySource(),
     ];
 
     private readonly IReadOnlyList<DatasetSource> _sources = sources ?? AllSources;

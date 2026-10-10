@@ -25,6 +25,7 @@ builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
 builder.Services.AddSingleton(_ => new MapService(connectionString));
+builder.Services.AddSingleton(_ => new CompanyService(connectionString));
 builder.Services.Configure<MapOptions>(builder.Configuration.GetSection(MapOptions.Section));
 builder.Services.AddRazorPages();
 builder.Services.AddHealthChecks();

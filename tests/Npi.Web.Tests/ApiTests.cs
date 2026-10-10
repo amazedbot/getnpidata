@@ -52,6 +52,8 @@ public class ApiTests
     [InlineData("/api/v1/providers?state=NY&pageSize=500", "pageSize")]
     [InlineData("/api/v1/providers.csv?npi=12", "npi")]
     [InlineData("/export.csv?zip=117", "zip")]
+    [InlineData("/api/v1/companies?pageSize=500", "pageSize")]
+    [InlineData("/api/v1/companies?page=0", "page")]
     public async Task Errors_are_keyed_by_query_parameter_name(string url, string parameter)
     {
         await using var factory = new ApiFactory();
@@ -85,6 +87,14 @@ public class ApiTests
     {
         await using var factory = new ApiFactory();
         var problem = await ProblemAsync(await factory.CreateClient().GetAsync("/api/v1/providers/123", Ct), HttpStatusCode.NotFound);
+        Assert.Equal(404, problem.GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public async Task Malformed_company_id_is_not_found()
+    {
+        await using var factory = new ApiFactory();
+        var problem = await ProblemAsync(await factory.CreateClient().GetAsync("/api/v1/companies/" + new string('9', 21), Ct), HttpStatusCode.NotFound);
         Assert.Equal(404, problem.GetProperty("status").GetInt32());
     }
 

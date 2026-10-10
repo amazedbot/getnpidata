@@ -1,0 +1,174 @@
+@page "/company/{id}"
+@using System.Globalization
+@model CompanyModel
+@{
+    var c = Model.Company;
+    ViewData["Title"] = c.Name;
+    var years = c.Years;
+    var showResearch = years.Any(y => y.Research > 0);
+    var showOwnership = years.Any(y => y.OwnershipInvested > 0 || y.OwnershipValue > 0);
+    var recipientResearch = c.TopProviders.Any(r => r.Research > 0);
+    var recipientAssociated = c.TopProviders.Any(r => r.AssociatedResearch > 0);
+    var recipientOwnership = c.TopProviders.Any(r => r.Ownership > 0);
+}
+
+<p><a href="/companies">‹ All companies</a></p>
+
+<h1>@c.Name</h1>
+
+<dl class="facts">
+    @if (c.OtherNames.Count > 0)
+    {
+        <dt>Also reported as</dt><dd>@string.Join("; ", c.OtherNames)</dd>
+    }
+    @if (c.State is not null || c.Country is not null)
+    {
+        <dt>Located in</dt><dd>@string.Join(", ", new[] { c.State, c.Country }.Where(x => !string.IsNullOrWhiteSpace(x)))</dd>
+    }
+    <dt>Open Payments ID</dt><dd>@c.Id</dd>
+    @if (c.FirstYear is not null)
+    {
+        <dt>Years reported</dt><dd>@c.FirstYear–@c.LastYear</dd>
+    }
+    @if (c.Providers is { } providers)
+    {
+        <dt>Providers paid</dt><dd>@Format.Number(providers) <span class="muted">(NPIs, all years)</span></dd>
+    }
+</dl>
+
+<p>
+    <strong>@Format.Money(c.General)</strong> in general payments (meals, consulting, speaking, travel, gifts …)
+    @if (c.Research > 0)
+    {
+        <text>and <strong>@Format.Money(c.Research)</strong> in research payments</text>
+    }
+    to doctors, other prescribers and teaching hospitals@(c.FirstYear is null ? "" : $" in {c.FirstYear}–{c.LastYear}").
+    @if (c.OwnershipValue > 0 || c.OwnershipInvested > 0)
+    {
+        <text>Physicians also reported ownership or investment interests in it worth <strong>@Format.Money(c.OwnershipValue)</strong>.</text>
+    }
+</p>
+<div class="notice" role="note">
+    Companies that make drugs, devices and supplies must report what they give to doctors and teaching hospitals (the Sunshine Act).
+    A payment is not evidence of wrongdoing, but it may matter to you as a patient: ask your provider about it if it does.
+</div>
+
+@if (years.Count > 0)
+{
+    <h2>Payments by year</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">The company's payments by program year</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Year</th><th scope="col">General payments</th>
+                    @if (showResearch) { <th scope="col">Research</th> }
+                    @if (showOwnership) { <th scope="col">Ownership invested</th><th scope="col">Ownership value</th> }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var y in years)
+                {
+                    <tr>
+                        <td>@y.Year</td><td>@Format.Amount(y.General, y.GeneralRecords)</td>
+                        @if (showResearch) { <td>@Format.Amount(y.Research, y.ResearchRecords)</td> }
+                        @if (showOwnership) { <td>@Format.Amount(y.OwnershipInvested)</td><td>@Format.Amount(y.OwnershipValue)</td> }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">Amount (number of payments).</p>
+}
+
+@if (c.ByNature.Count > 0)
+{
+    <h2>What the general payments were for (@c.DetailYear)</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">General payments by kind</caption>
+            <thead><tr><th scope="col">Kind of payment</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+            <tbody>
+                @foreach (var n in c.ByNature)
+                {
+                    <tr><td>@n.Nature</td><td>@Format.Money(n.Amount)</td><td>@Format.Number(n.Records)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (c.TopProducts.Count > 0)
+{
+    <h2>Products named in its payments (@c.DetailYear)</h2>
+    <p class="muted">The drug, device or supply a payment was related to (the first one named), by general payments in @c.DetailYear.</p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Products named in the company's general payments</caption>
+            <thead><tr><th scope="col">Product</th><th scope="col">Type</th><th scope="col">Category</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+            <tbody>
+                @foreach (var p in c.TopProducts)
+                {
+                    <tr><td>@p.Name</td><td>@p.Kind</td><td>@p.Category</td><td>@Format.Money(p.Amount)</td><td>@Format.Number(p.Records)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (c.TopSpecialties.Count > 0)
+{
+    <h2>Specialties it pays the most</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Specialties of the providers the company paid, all years</caption>
+            <thead><tr><th scope="col">Specialty</th><th scope="col">Providers</th><th scope="col">Amount, all kinds</th></tr></thead>
+            <tbody>
+                @foreach (var s in c.TopSpecialties)
+                {
+                    <tr><td>@s.Specialty</td><td>@Format.Number(s.Providers)</td><td>@Format.Money(s.Amount)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">Active providers by their primary specialty in NPPES, over every published year.</p>
+}
+
+@if (c.TopProviders.Count > 0)
+{
+    <h2>Providers it paid the most</h2>
+    <p class="muted">The @c.TopProviders.Count active providers with the largest amounts of any kind from this company, over every published year.</p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">The providers the company paid the most</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">General</th>
+                    @if (recipientResearch) { <th scope="col">Research</th> }
+                    @if (recipientAssociated) { <th scope="col" title="Research funding paid to an institution where this provider was a principal investigator">Research as investigator</th> }
+                    @if (recipientOwnership) { <th scope="col">Ownership</th> }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in c.TopProviders)
+                {
+                    <tr>
+                        <td><a href="/provider/@r.Npi">@r.Name</a>@if (r.Credential is not null){<span class="muted">, @r.Credential</span>}</td>
+                        <td>@r.Specialty</td>
+                        <td>@string.Join(", ", new[] { r.City, r.State }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
+                        <td>@Format.Amount(r.General)</td>
+                        @if (recipientResearch) { <td>@Format.Amount(r.Research)</td> }
+                        @if (recipientAssociated) { <td>@Format.Amount(r.AssociatedResearch)</td> }
+                        @if (recipientOwnership) { <td>@Format.Amount(r.Ownership)</td> }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<p class="muted">
+    Source: CMS Open Payments, every published program year (the products and kinds of payment: @(c.DetailYear?.ToString(CultureInfo.InvariantCulture) ?? "the newest year")).
+    Ownership is the value of an ownership or investment interest (as reported), not a payment.
+    See the company's own record at <a href="@c.OpenPaymentsUrl">openpaymentsdata.cms.gov</a>.
+</p>

@@ -195,3 +195,7 @@ button.secondary, .button.secondary { background: var(--bg); color: var(--accent
 .combo-list li .muted { font-size: 0.8rem; }
 .combo-list li.empty { cursor: default; color: var(--muted); }
 .combo-list.align-right { left: auto; right: 0; }
+
+/* One-line forms (company search). */
+.inline-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 1rem 0; }
+.inline-form input { flex: 1 1 14rem; min-width: 0; max-width: 28rem; }

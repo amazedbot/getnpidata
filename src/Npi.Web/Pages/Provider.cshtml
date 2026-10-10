@@ -262,7 +262,15 @@
     </div>
     @if (pay.TopPayers.Count > 0)
     {
-        <p>Top payers: @string.Join("; ", pay.TopPayers.Select(t => $"{t.Name} ({Money(t.Amount)})"))</p>
+        <p>Top payers:
+            @for (var i = 0; i < pay.TopPayers.Count; i++)
+            {
+                var t = pay.TopPayers[i];
+                if (i > 0) { <text>; </text> }
+                if (t.CompanyId is not null) { <a href="/company/@Uri.EscapeDataString(t.CompanyId)">@t.Name</a> } else { <text>@t.Name</text> }
+                <text> (@Money(t.Amount))</text>
+            }
+        </p>
     }
     <p class="muted">General payments only; research payments and ownership interests are under “Industry payments by year”. Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
 }
@@ -310,7 +318,7 @@
     @if (history.TopCompanies.Count > 0)
     {
         <h3>Top companies, all years</h3>
-        <p class="muted">The five companies with the largest amounts of any kind, over every published year.</p>
+        <p class="muted">The five companies with the largest amounts of any kind, over every published year. Select a company for what it pays, for which products, and to whom.</p>
         <div class="table-wrap">
             <table>
                 <caption class="visually-hidden">The companies that paid this provider the most over all program years</caption>
@@ -326,7 +334,7 @@
                     @foreach (var c in history.TopCompanies)
                     {
                         <tr>
-                            <td>@c.Name</td><td>@Amount(c.General, null)</td>
+                            <td>@if (c.CompanyId is not null){<a href="/company/@Uri.EscapeDataString(c.CompanyId)">@c.Name</a>}else{@c.Name}</td><td>@Amount(c.General, null)</td>
                             @if (showResearch) { <td>@Amount(c.Research, null)</td> }
                             @if (showAssociated) { <td>@Amount(c.AssociatedResearch, null)</td> }
                             @if (showOwnership) { <td>@Amount(c.Ownership, null)</td> }
