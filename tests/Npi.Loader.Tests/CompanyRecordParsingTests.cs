@@ -55,6 +55,13 @@ public class CompanyRecordParsingTests
         Assert.Contains(CompanyNames.Key("Ten Healthcare"), OigCiaSource.EntityKeys("Thyroid Specialty Laboratory, Inc. d.b.a. Ten Healthcare; 3890 Management, LLC"));
     }
 
+    [Theory]
+    [InlineData("MiniMed 780G", "MiniMed 780G")]
+    [InlineData("Humira (adalimumab) Pen: 40 mg", "Humira adalimumab Pen 40 mg")]
+    [InlineData("Dr. Smith's \"best\" gel", "Dr. Smith s best gel")]
+    [InlineData("T-Fix+ 2/0", "T-Fix+ 2/0")]
+    public void Api_names_keep_only_searchable_characters(string name, string expected) => Assert.Equal(expected, ProductApiCacheSource.Clean(name));
+
     [Fact]
     public void Sec_ticker_file_keeps_registrants_with_a_ticker()
     {

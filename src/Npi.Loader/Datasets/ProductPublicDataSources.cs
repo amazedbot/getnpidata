@@ -282,13 +282,21 @@ public abstract class ProductApiCacheSource : DatasetSource
             LIMIT @limit
             """, new { before = DateTime.UtcNow - maxAge, limit }, cancellationToken: ct))).ToList();
 
-    /// <summary>GET a JSON answer; null when the API says there's nothing (404); throws <see cref="RateLimitedException"/> on 429.</summary>
+    /// <summary>
+    /// GET a JSON answer; null when the API says there's nothing (404); throws <see cref="RateLimitedException"/> on 429 and
+    /// <see cref="RejectedException"/> when the API refuses the question (400: a name it can't search).
+    /// </summary>
     protected static async Task<JsonDocument?> GetJsonAsync(DatasetContext context, string url, CancellationToken ct)
     {
         using var response = await context.Http.GetAsync(url, ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
+        }
+
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+        {
+            throw new RejectedException();
         }
 
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -303,8 +311,15 @@ public abstract class ProductApiCacheSource : DatasetSource
 
     protected sealed class RateLimitedException : Exception;
 
+    protected sealed class RejectedException : Exception;
+
+    /// <summary>A name the APIs can search: letters, digits, spaces and - . / + only, spaces collapsed.</summary>
+    public static string Clean(string name) =>
+        string.Join(' ', new string(name.Select(c => char.IsLetterOrDigit(c) || c is '-' or '.' or '/' or '+' ? c : ' ').ToArray())
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
     /// <summary>A name as a quoted search phrase: double quotes and backslashes removed.</summary>
-    protected static string Phrase(string name) => Uri.EscapeDataString("\"" + name.Replace("\"", "", StringComparison.Ordinal).Replace("\\", "", StringComparison.Ordinal) + "\"");
+    protected static string Phrase(string name) => Uri.EscapeDataString("\"" + Clean(name) + "\"");
 
     // Drugs and biologicals by their FDA brand name (else the product name); devices by their GUDID brand name.
     protected const string Products =
@@ -361,6 +376,10 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
                 context.Log.Warning("openFDA rate limit reached after {Done:N0} products; the rest continue on the next run", done);
                 break;
             }
+            catch (RejectedException)
+            {
+                context.Log.Debug("openFDA refused the search for {Query}; stored as unknown", query);
+            }
 
             await connection.ExecuteAsync(new CommandDefinition(
                 """
@@ -407,10 +426,10 @@ public sealed class ProductTrialSource : ProductApiCacheSource
         var done = 0L;
         foreach (var (slug, _, query) in await CandidatesAsync(connection, Drugs, "product_trials", MaxAge, context.Options.ClinicalTrialsPerRun, ct))
         {
-            int? studies, recruiting;
+            int? studies = null, recruiting = null;
             try
             {
-                var term = Uri.EscapeDataString(query);
+                var term = Uri.EscapeDataString(Clean(query));
                 studies = Total(await GetJsonAsync(context, $"{context.Options.ClinicalTrialsApiUrl}?query.intr={term}&countTotal=true&pageSize=1&fields=NCTId", ct));
                 await Task.Delay(context.Options.ApiRequestDelay, ct);
                 recruiting = Total(await GetJsonAsync(context, $"{context.Options.ClinicalTrialsApiUrl}?query.intr={term}&filter.overallStatus=RECRUITING&countTotal=true&pageSize=1&fields=NCTId", ct));
@@ -419,6 +438,10 @@ public sealed class ProductTrialSource : ProductApiCacheSource
             {
                 context.Log.Warning("ClinicalTrials.gov rate limit reached after {Done:N0} products; the rest continue on the next run", done);
                 break;
+            }
+            catch (RejectedException)
+            {
+                context.Log.Debug("ClinicalTrials.gov refused the search for {Query}; stored as unknown", query);
             }
 
             await connection.ExecuteAsync(new CommandDefinition(

@@ -66,6 +66,8 @@ Rules:
 | `068_open_payments_products.sql` | Product pages (item 19, part 1): every product named in the newest year's general and research payments, its companies, kinds of payment, specialties, top providers and studies; each provider's top products. |
 | `069_fda_products.sql` | What a product is (item 19, part 2): FDA's NDC directory, Drugs@FDA approvals, the labels and GUDID device records of the products named in Open Payments, 510(k)/PMA decisions; `op_product.ndc_key`. |
 | `070_fda_ndc_lookups.sql` | Brand-name and application indexes on the NDC directory (product pages, item 19 part 2). |
+| `071_product_public_data.sql` | Product pages, part 3 (item 19): CMS spending by drug, NADAC prices, FDA shortages, the adverse event and ClinicalTrials.gov caches; FULLTEXT on FDA recall descriptions. |
+| `072_nadac_classification.sql` | NADAC classification widened for B-ANDA / B-BIO (item 19, part 3). |
 
 ## 001_baseline.sql
 

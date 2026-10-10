@@ -15,8 +15,8 @@ public sealed record ProductSpending(string Program, string BrandName, string Ge
 /// <summary>A NADAC price (what pharmacies pay on average, per unit) of one package NDC of the product.</summary>
 public sealed record ProductPrice(string Ndc, string? Description, double PerUnit, string? PricingUnit, DateOnly? EffectiveDate, string? Classification)
 {
-    /// <summary>"Brand" or "Generic" (NADAC's rate-setting classification B / G).</summary>
-    public string? Kind => Classification switch { "B" => "Brand", "G" => "Generic", _ => null };
+    /// <summary>NADAC's rate-setting classification in words: B brand, G generic, B-ANDA a brand under a generic approval, B-BIO a biological.</summary>
+    public string? Kind => Classification switch { "B" => "Brand", "G" => "Generic", "B-ANDA" => "Branded generic", "B-BIO" => "Biological", _ => Classification };
 }
 
 /// <summary>An FDA drug shortage listing for the product's NDC or its generic name.</summary>
