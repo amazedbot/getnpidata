@@ -10,7 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 // The site reads the search projection. Production: App Service connection string "RemoteMySql"
-// (CLAUDE.md §7 Stage 6.2). Locally it can point at npi_test via user-secrets.
+// (CLAUDE.md §7 Stage 6.2). Locally it points at workplace via user-secrets (read-only login, §8).
 var connectionString = builder.Configuration.GetConnectionString("RemoteMySql");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
