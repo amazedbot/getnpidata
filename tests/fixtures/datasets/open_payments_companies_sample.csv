@@ -1,0 +1,11 @@
+Recipient_ID,Recipient_Type,Covered_Recipient_NPI,Covered_Recipient_Profile_First_Name,Covered_Recipient_Profile_Middle_Name,Covered_Recipient_Profile_Last_Name,Teaching_Hospital_Name,Payment_Type,AMGPO_Name,AMGPO_ID,Number_of_Transaction,Total_Amount
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,General,"Pfizer, Inc.",100000000001,2,40.00
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,Research,"Pfizer, Inc.",100000000001,1,1000.00
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,Associated Research,Medtronic USA Inc.,100000000002,3,50000.00
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,General,Medtronic USA Inc.,100000000002,1,2500.00
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,Ownership/investment,Acme Devices LLC,100000000003,1,7000.00
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,General,AbbVie Inc.,100000000004,1,12.25
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,General,Small Co,100000000005,1,5.00
+11,Covered Recipient Physician,1000000012,AL,,BAKER,,General,Tiny Co,100000000006,1,1.00
+20,Covered Recipient Non-Physician Practitioner,1000000046,ELENA,,NUÑEZ,,General,AbbVie Inc.,100000000004,1,35.50
+40,Covered Recipient Teaching Hospital,,,,,GOOD HOSPITAL,Research,"Pfizer, Inc.",100000000001,5,90000.00

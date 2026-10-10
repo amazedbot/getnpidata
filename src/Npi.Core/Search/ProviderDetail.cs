@@ -78,6 +78,9 @@ public sealed record ProviderDetail(
     /// <summary>Open Payments general payments in the newest program year; null when none (Stage 5.5 item 6).</summary>
     public IndustryPayments? IndustryPayments { get; init; }
 
+    /// <summary>Open Payments per program year and the top companies over all years; null when none (Stage 5.5 item 13).</summary>
+    public IndustryPaymentHistory? PaymentHistory { get; init; }
+
     /// <summary>Changes recorded since change tracking began, newest first (Stage 5.5 item 11).</summary>
     public IReadOnlyList<ProviderChange> Changes { get; init; } = [];
 }
@@ -132,6 +135,12 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record PaymentKindRow(string Nature, double Amount, int Records);
 
     private sealed record PayerRow(string Payer, double Amount, int Records);
+
+    private sealed record PaymentYearRow(short Year, double General, int GeneralRecords, double Research, int ResearchRecords,
+        double AssociatedResearch, int AssociatedResearchRecords, double OwnershipInvested, double OwnershipValue, int OwnershipRecords);
+
+    private sealed record PaymentCompanyRow(string Company, double Total, double General, double Research, double AssociatedResearch,
+        double Ownership, int Records);
 
     private sealed record ChangeRow(DateTime DetectedAt, string ChangeType, string? OldValue, string? NewValue);
 
@@ -283,6 +292,21 @@ public sealed class ProviderDetailService(string connectionString)
                 payers.Select(p => new IndustryPayer(p.Payer, p.Amount, p.Records)).ToList());
         }
 
+        var paymentYears = (await connection.QueryAsync<PaymentYearRow>(new CommandDefinition(
+            """
+            SELECT program_year AS Year, general_amount AS General, general_records AS GeneralRecords, research_amount AS Research,
+                   research_records AS ResearchRecords, associated_research_amount AS AssociatedResearch,
+                   associated_research_records AS AssociatedResearchRecords, invested_amount AS OwnershipInvested, interest_value AS OwnershipValue,
+                   ownership_records AS OwnershipRecords
+            FROM open_payments_year WHERE npi = @npi ORDER BY program_year DESC
+            """, new { npi }, cancellationToken: ct))).ToList();
+        var paymentCompanies = (await connection.QueryAsync<PaymentCompanyRow>(new CommandDefinition(
+            """
+            SELECT company AS Company, total_amount AS Total, general_amount AS General, research_amount AS Research,
+                   associated_research_amount AS AssociatedResearch, ownership_amount AS Ownership, records AS Records
+            FROM open_payments_company WHERE npi = @npi ORDER BY company_rank
+            """, new { npi }, cancellationToken: ct))).ToList();
+
         var facilities = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
             """
             SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
@@ -336,6 +360,11 @@ public sealed class ProviderDetailService(string connectionString)
                     orderRefer.Pmd == 1, orderRefer.Hospice == 1)),
             CareCompare = careCompare,
             IndustryPayments = industry,
+            PaymentHistory = paymentYears.Count == 0 && paymentCompanies.Count == 0 ? null : new IndustryPaymentHistory(
+                paymentYears.Select(y => new IndustryPaymentYear(y.Year, y.General, y.GeneralRecords, y.Research, y.ResearchRecords, y.AssociatedResearch,
+                    y.AssociatedResearchRecords, y.OwnershipInvested, y.OwnershipValue, y.OwnershipRecords)).ToList(),
+                paymentCompanies.Select(c => new IndustryPaymentCompany(c.Company, c.Total, c.General, c.Research, c.AssociatedResearch, c.Ownership,
+                    c.Records)).ToList()),
             Changes = changes.Select(c => new ProviderChange(DateOnly.FromDateTime(c.DetectedAt), c.ChangeType, c.OldValue, c.NewValue)).ToList(),
             MedicareServices = utilization is null ? null : new MedicareServices(utilization.DataYear, utilization.ProviderType,
                 utilization.Participating is null ? null : utilization.Participating != 0, utilization.DistinctServices, utilization.Beneficiaries,

@@ -200,7 +200,79 @@
     {
         <p>Top payers: @string.Join("; ", pay.TopPayers.Select(t => $"{t.Name} ({Money(t.Amount)})"))</p>
     }
-    <p class="muted">General payments only (research payments and ownership interests are not included). Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
+    <p class="muted">General payments only; research payments and ownership interests are under “Industry payments by year”. Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
+}
+
+@* Stage 5.5 item 13: every published program year, with research and ownership; columns that are all zero are left out. *@
+@if (p.PaymentHistory is { } history)
+{
+    var years = history.Years;
+    var showResearch = years.Any(y => y.Research > 0) || history.TopCompanies.Any(c => c.Research > 0);
+    var showAssociated = years.Any(y => y.AssociatedResearch > 0) || history.TopCompanies.Any(c => c.AssociatedResearch > 0);
+    var showOwnership = years.Any(y => y.OwnershipInvested > 0 || y.OwnershipValue > 0) || history.TopCompanies.Any(c => c.Ownership > 0);
+    <h2>Industry payments by year</h2>
+    @if (years.Count > 0)
+    {
+        <p>
+            <strong>@Money(years.Sum(y => y.General + y.Research))</strong> paid to this provider in @years.Count program year@(years.Count == 1 ? "" : "s")
+            (@(years.Min(y => y.Year))–@(years.Max(y => y.Year)))@(showAssociated ? $", plus {Money(years.Sum(y => y.AssociatedResearch))} of research funding where they were a principal investigator" : "").
+        </p>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Industry payments by program year</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Year</th><th scope="col">General payments</th>
+                        @if (showResearch) { <th scope="col">Research</th> }
+                        @if (showAssociated) { <th scope="col" title="Research funding paid to an institution where this provider was a principal investigator">Research as investigator</th> }
+                        @if (showOwnership) { <th scope="col">Ownership invested</th><th scope="col">Ownership value</th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var y in years)
+                    {
+                        <tr>
+                            <td>@y.Year</td>
+                            <td>@Amount(y.General, y.GeneralRecords)</td>
+                            @if (showResearch) { <td>@Amount(y.Research, y.ResearchRecords)</td> }
+                            @if (showAssociated) { <td>@Amount(y.AssociatedResearch, y.AssociatedResearchRecords)</td> }
+                            @if (showOwnership) { <td>@Amount(y.OwnershipInvested, null)</td><td>@Amount(y.OwnershipValue, null)</td> }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    @if (history.TopCompanies.Count > 0)
+    {
+        <h3>Top companies, all years</h3>
+        <p class="muted">The five companies with the largest amounts of any kind, over every published year.</p>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">The companies that paid this provider the most over all program years</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Company</th><th scope="col">General</th>
+                        @if (showResearch) { <th scope="col">Research</th> }
+                        @if (showAssociated) { <th scope="col">Research as investigator</th> }
+                        @if (showOwnership) { <th scope="col">Ownership</th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in history.TopCompanies)
+                    {
+                        <tr>
+                            <td>@c.Name</td><td>@Amount(c.General, null)</td>
+                            @if (showResearch) { <td>@Amount(c.Research, null)</td> }
+                            @if (showAssociated) { <td>@Amount(c.AssociatedResearch, null)</td> }
+                            @if (showOwnership) { <td>@Amount(c.Ownership, null)</td> }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    <p class="muted">CMS Open Payments, every published program year. Research as investigator is funding paid to a hospital or institution for research this provider led. Ownership is the value of an ownership or investment interest (as reported), not a payment. Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
 }
 
 <h2>Specialties</h2>
@@ -359,6 +431,10 @@
     private static string Count(double? value) => value is null ? "Suppressed" : value.Value.ToString("N0", CultureInfo.InvariantCulture);
 
     private static string Money(double? value) => value is null ? "Suppressed" : value.Value.ToString("$#,##0", CultureInfo.InvariantCulture);
+
+    // An Open Payments amount: "—" for none, else the dollars and, when given, how many payments.
+    private static string Amount(double value, int? records) => value <= 0 ? "—"
+        : records is > 0 ? $"{Money(value)} ({records.Value.ToString("N0", CultureInfo.InvariantCulture)})" : Money(value);
 
     private static string Stars(int? rating) => rating is >= 1 and <= 5 ? new string('★', rating.Value) + new string('☆', 5 - rating.Value) + $" ({rating}/5)" : "Not rated";
 }

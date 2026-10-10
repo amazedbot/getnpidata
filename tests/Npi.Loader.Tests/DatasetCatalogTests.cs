@@ -55,6 +55,18 @@ public class DatasetCatalogTests
         Assert.EndsWith("/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv", release.Url.AbsoluteUri, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Open_payments_summaries_are_found_by_their_exact_title()
+    {
+        using var stream = File.OpenRead(Fixtures.Path("datasets/open_payments_catalog_sample.json"));
+        var release = OpenPaymentsSummarySource.ParseCatalog(stream, "Payments grouped by physician (distinct) for all years");
+
+        Assert.Equal("PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv", release.Version);
+
+        using var again = File.OpenRead(Fixtures.Path("datasets/open_payments_catalog_sample.json"));
+        Assert.Throws<InvalidDataException>(() => OpenPaymentsSummarySource.ParseCatalog(again, "Payments grouped by physician"));
+    }
+
     [Theory]
     [InlineData(CsvValue.Npi, "IF(TRIM(@c0) REGEXP '^[0-9]{10}$' AND TRIM(@c0) <> '0000000000', TRIM(@c0), NULL)")]
     [InlineData(CsvValue.DateYmd, "STR_TO_DATE(NULLIF(NULLIF(TRIM(@c0), ''), '00000000'), '%Y%m%d')")]

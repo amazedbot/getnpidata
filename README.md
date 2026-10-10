@@ -44,7 +44,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | Paged, sortable results with the total match count | Website grid, API JSON |
 | Search **on a map**: pins at practice street addresses, "Search in this area", near me, and a sortable table of the pins in view | Website `/map` ("View on map" from any search) |
 | Download **every** match as CSV, streamed, with no row cap | "Download CSV" button, `/export.csv`, `/api/v1/providers.csv` |
-| See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, Care Compare, facilities, Medicare services and prescribing, industry payments, and the changes recorded between NPPES updates (name, credential, primary specialty, primary address) | `/provider/{npi}`, `/api/v1/providers/{npi}` |
+| See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, Care Compare, facilities, Medicare services and prescribing, industry payments (newest year by kind; every year since 2019 with research and ownership interests; top companies over all years), and the changes recorded between NPPES updates (name, credential, primary specialty, primary address) | `/provider/{npi}`, `/api/v1/providers/{npi}` |
 | Look up thousands of NPIs at once (paste or upload a file) and download the details, in your order | `/lookup`, `POST /api/v1/providers/lookup[.csv]` |
 | County insights: population and HRSA Health Professional Shortage Areas | Search page (when a county is chosen), `/api/v1/counties/{fips}` |
 | Look up the lists behind the filters: classifications, specializations, states, counties (FIPS) | `/api/v1/taxonomy/…`, `/api/v1/states/…` |
@@ -228,7 +228,7 @@ by parameter and `RetryAfter`. Build the NuGet package with `dotnet pack src/Npi
 | [Medicare Care Compare (Provider Data Catalog)](https://data.cms.gov/provider-data/) | Clinicians, group practices, hospital affiliations, hospitals and nursing homes | Monthly |
 | CMS Hospital and SNF Enrollments | Linking facilities (CCN) to NPIs | Quarterly |
 | [Medicare Physician & Other Practitioners, Part D Prescribers](https://data.cms.gov/) | Medicare services (totals + top 5), prescribing | Yearly |
-| [CMS Open Payments](https://openpaymentsdata.cms.gov/) | Industry payments: totals, by kind, top 3 payers (newest program year) | Yearly |
+| [CMS Open Payments](https://openpaymentsdata.cms.gov/) | Industry payments: totals, by kind, top 3 payers (newest program year); per program year since 2019: general, research, research as principal investigator, ownership/investment interests; top 5 companies over all years (CMS's own summaries) | Yearly |
 | [HRSA HPSA](https://data.hrsa.gov/) | Health Professional Shortage Areas by county | Weekly |
 | [Census population estimates](https://www.census.gov/programs-surveys/popest.html) | County population | Yearly |
 

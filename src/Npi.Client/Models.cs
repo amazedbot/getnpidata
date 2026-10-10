@@ -180,6 +180,9 @@ public sealed class ProviderDetail
     /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
     public IndustryPayments? IndustryPayments { get; set; }
 
+    /// <summary>Open Payments per program year (2019 on) and the top companies over all years; null when none.</summary>
+    public IndustryPaymentHistory? PaymentHistory { get; set; }
+
     /// <summary>Changes recorded since change tracking began (October 2026), newest first.</summary>
     public IReadOnlyList<ProviderChange> Changes { get; set; } = [];
 }
@@ -232,6 +235,61 @@ public sealed class IndustryPayer
     public string Name { get; set; } = "";
 
     public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>Open Payments over every published program year.</summary>
+public sealed class IndustryPaymentHistory
+{
+    /// <summary>Newest year first.</summary>
+    public IReadOnlyList<IndustryPaymentYear> Years { get; set; } = [];
+
+    /// <summary>The five companies that paid the most over all years.</summary>
+    public IReadOnlyList<IndustryPaymentCompany> TopCompanies { get; set; } = [];
+}
+
+/// <summary>
+/// One program year: general payments, research payments, research funding as a principal investigator (paid to an
+/// institution), and ownership or investment interests (amount invested, value of the interest).
+/// </summary>
+public sealed class IndustryPaymentYear
+{
+    public int Year { get; set; }
+
+    public double General { get; set; }
+
+    public int GeneralRecords { get; set; }
+
+    public double Research { get; set; }
+
+    public int ResearchRecords { get; set; }
+
+    public double AssociatedResearch { get; set; }
+
+    public int AssociatedResearchRecords { get; set; }
+
+    public double OwnershipInvested { get; set; }
+
+    public double OwnershipValue { get; set; }
+
+    public int OwnershipRecords { get; set; }
+}
+
+/// <summary>A company among the recipient's top payers over all years, by payment type.</summary>
+public sealed class IndustryPaymentCompany
+{
+    public string Name { get; set; } = "";
+
+    public double Total { get; set; }
+
+    public double General { get; set; }
+
+    public double Research { get; set; }
+
+    public double AssociatedResearch { get; set; }
+
+    public double Ownership { get; set; }
 
     public int Records { get; set; }
 }

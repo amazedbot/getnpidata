@@ -53,6 +53,8 @@ Rules:
 | `055_provider_change.sql` | `provider_change`: the change log each projection appends to (item 11). |
 | `056_provider_phonetic.sql` | Soundex keys of last/first names as indexed virtual columns on `provider`, for similar-name search (item 9). |
 | `057_provider_org_name.sql` | `provider_org_name`: organization legal + other names with a FULLTEXT index, for word-anywhere search (item 9); filled once from the current projection. |
+| `058_open_payments_year.sql` | Open Payments per NPI and program year: general, research, research as principal investigator, ownership (item 13). |
+| `059_open_payments_company.sql` | The top 5 companies per NPI over all program years, by payment type (item 13). |
 
 ## 001_baseline.sql
 

@@ -87,6 +87,8 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new ShortageAreaSource(),
         new CountyPopulationSource(),
         new OpenPaymentsSource(),
+        new OpenPaymentsYearSource(),
+        new OpenPaymentsCompanySource(),
     ];
 
     private readonly IReadOnlyList<DatasetSource> _sources = sources ?? AllSources;
