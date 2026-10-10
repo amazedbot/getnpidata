@@ -1,0 +1,7 @@
+"Covered_Recipient_Profile_ID","Program_Year","Covered_Recipient_Profile_Type","Covered_Recipient_NPI","Covered_Recipient_Profile_First_Name","Covered_Recipient_Profile_Last_Name","General_Total_Payment","Research_Total_Payment","Invested_Total_Amount","Interest_Total_Amount","General_Total_Transactions","Research_Total_Transactions","Invested_Total_Transactions","Interest_Total_Transactions","Total_Associated_Research_Payments","Total_Associated_Research_Transactions","Has_Multiple_IDs"
+"11","2024","Covered Recipient Physician","1000000012","AL","BAKER","100.5","0.0","0.0","0.0","3","0","0","0","0.0","0","true"
+"11","2025","Covered Recipient Physician","1000000012","AL","BAKER","2500.0","1000.0","7000.0","7500.0","1","1","1","1","50000.0","3","true"
+"12","2025","Covered Recipient Physician","1000000012","ALBERT","BAKER","63.35","0.0","0.0","0.0","4","0","0","0","0.0","0","true"
+"11","All","Covered Recipient Physician","1000000012","AL","BAKER","2663.85","1000.0","7000.0","7500.0","8","1","1","1","50000.0","3","true"
+"20","2025","Covered Recipient Non-Physician Practitioner","1000000046","ELENA","NUÑEZ","35.5","0.0","0.0","0.0","1","0","0","0","0.0","0","false"
+"30","2025","Covered Recipient Physician","","NO","NPI","99.0","0.0","0.0","0.0","1","0","0","0","0.0","0","false"

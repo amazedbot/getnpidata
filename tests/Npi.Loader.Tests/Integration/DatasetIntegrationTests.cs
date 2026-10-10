@@ -145,6 +145,41 @@ public sealed class DatasetIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Open_payments_history_sums_profiles_per_year_and_keeps_the_top_companies()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+
+        // Two CMS profiles of one NPI are summed per year; the "All" rows and the NPI-less row are left out.
+        Assert.Equal(
+            [
+                ("1000000012", (short)2024, 100.5, 3, 0.0, 0.0, 0.0, 0.0),
+                ("1000000012", (short)2025, 2563.35, 5, 1000.0, 50000.0, 7000.0, 7500.0),
+                ("1000000046", (short)2025, 35.5, 1, 0.0, 0.0, 0.0, 0.0),
+            ],
+            await db.QueryAsync<(string, short, double, int, double, double, double, double)>(
+                """
+                SELECT npi, program_year, general_amount, general_records, research_amount, associated_research_amount, invested_amount, interest_value
+                FROM open_payments_year ORDER BY npi, program_year
+                """));
+
+        // The top five by total over every payment type ("Tiny Co" is sixth); the teaching hospital (no NPI) is left out.
+        Assert.Equal(
+            [
+                ("Medtronic USA Inc.", 52500.0, 2500.0, 0.0, 50000.0, 0.0), ("Acme Devices LLC", 7000.0, 0.0, 0.0, 0.0, 7000.0),
+                ("Pfizer, Inc.", 1040.0, 40.0, 1000.0, 0.0, 0.0), ("AbbVie Inc.", 12.25, 12.25, 0.0, 0.0, 0.0), ("Small Co", 5.0, 5.0, 0.0, 0.0, 0.0),
+            ],
+            await db.QueryAsync<(string, double, double, double, double, double)>(
+                """
+                SELECT company, total_amount, general_amount, research_amount, associated_research_amount, ownership_amount
+                FROM open_payments_company WHERE npi = '1000000012' ORDER BY company_rank
+                """));
+        Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM open_payments_company WHERE npi = '1000000046'"));
+        Assert.Equal(0L, await db.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('open_payments_year_raw_staging', 'open_payments_company_raw_staging')"));
+    }
+
+    [Fact]
     public async Task Unchanged_datasets_are_not_downloaded_again()
     {
         await using var db = await TestDatabase.CreateAsync();
@@ -257,6 +292,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://census.test/popest/" => "datasets/census_popest_listing.html",
                 "https://op.test/items" => "datasets/open_payments_catalog_sample.json",
                 "https://op.test/PGYR2025_P06302026/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv" => "datasets/open_payments_sample.csv",
+                "https://op.test/SMRY_P06302026/PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv" => "datasets/open_payments_years_sample.csv",
+                "https://op.test/SMRY_P06302026/PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv" => "datasets/open_payments_companies_sample.csv",
                 "https://census.test/popest/2020-2025/counties/totals/co-est2025-alldata.csv" => "datasets/census_population_sample.csv",
                 _ => null,
             };

@@ -28,6 +28,21 @@ public sealed record IndustryPayer(string Name, double Amount, int Records);
 public sealed record IndustryPayments(int Year, double TotalAmount, int Records, int Payers, IReadOnlyList<IndustryPaymentKind> ByNature,
     IReadOnlyList<IndustryPayer> TopPayers);
 
+/// <summary>
+/// Open Payments in one program year (Stage 5.5 item 13): general payments; research payments made to the provider;
+/// research funding where the provider was a principal investigator (paid to an institution); and ownership or
+/// investment interests (amount invested, value of the interest).
+/// </summary>
+public sealed record IndustryPaymentYear(int Year, double General, int GeneralRecords, double Research, int ResearchRecords,
+    double AssociatedResearch, int AssociatedResearchRecords, double OwnershipInvested, double OwnershipValue, int OwnershipRecords);
+
+/// <summary>A company among the recipient's top payers over every published program year, by payment type.</summary>
+public sealed record IndustryPaymentCompany(string Name, double Total, double General, double Research, double AssociatedResearch,
+    double Ownership, int Records);
+
+/// <summary>Open Payments over every published program year (2019 on): totals per year and the top companies.</summary>
+public sealed record IndustryPaymentHistory(IReadOnlyList<IndustryPaymentYear> Years, IReadOnlyList<IndustryPaymentCompany> TopCompanies);
+
 /// <summary>Medicare Part D prescribing in one data year (Stage 5.5 item 5b).</summary>
 public sealed record MedicarePrescribing(int Year, string? PrescriberType, int? Claims, double? DrugCost, int? Beneficiaries, int? BrandClaims,
     int? GenericClaims, int? OpioidClaims, double? OpioidRate, int? AntibioticClaims);

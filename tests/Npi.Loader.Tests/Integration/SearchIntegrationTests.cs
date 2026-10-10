@@ -418,6 +418,24 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal([new IndustryPaymentKind("Consulting Fee", 2500, 1), new IndustryPaymentKind("Food and Beverage", 63.35, 4)], b.ByNature);
         Assert.Equal([new IndustryPayer("Medtronic USA Inc.", 2500, 1), new IndustryPayer("Pfizer, Inc.", 40, 2)], b.TopPayers);
         Assert.Null((await details.GetAsync(A, _ct))!.IndustryPayments);
+
+        // Every program year (item 13), newest first, and the top companies over all years. A provider with history but no
+        // payments in the newest year still gets it.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO open_payments_year VALUES (@B, 2024, 100.5, 3, 0, 0, 0, 0, 0, 0, 0), (@B, 2025, 2563.35, 5, 1000, 1, 50000, 3, 7000, 7500, 1),
+                                                  (@A, 2021, 12, 1, 0, 0, 0, 0, 0, 0, 0);
+            INSERT INTO open_payments_company VALUES (@B, 1, 'Medtronic USA Inc.', 52500, 2500, 0, 50000, 0, 4), (@B, 2, 'Acme Devices LLC', 7000, 0, 0, 0, 7000, 1);
+            """, new { A, B });
+        var history = (await details.GetAsync(B, _ct))!.PaymentHistory!;
+        Assert.Equal([new IndustryPaymentYear(2025, 2563.35, 5, 1000, 1, 50000, 3, 7000, 7500, 1), new IndustryPaymentYear(2024, 100.5, 3, 0, 0, 0, 0, 0, 0, 0)],
+            history.Years);
+        Assert.Equal([new IndustryPaymentCompany("Medtronic USA Inc.", 52500, 2500, 0, 50000, 0, 4), new IndustryPaymentCompany("Acme Devices LLC", 7000, 0, 0, 0, 7000, 1)],
+            history.TopCompanies);
+        var a = (await details.GetAsync(A, _ct))!;
+        Assert.Null(a.IndustryPayments);
+        Assert.Equal([2021], a.PaymentHistory!.Years.Select(y => y.Year));
+        Assert.Null((await details.GetAsync(D, _ct))!.PaymentHistory);
     }
 
     [Fact]
