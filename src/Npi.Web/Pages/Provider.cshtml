@@ -84,7 +84,7 @@
             <dd><strong>@lic.LicenseNumber</strong>@if (lic.LicenseType is not null){<span class="muted"> · @lic.LicenseType</span>}</dd>
             @if (lic.Status is not null){<dt>Status</dt><dd>@lic.Status</dd>}
             @if (lic.ExpirationDate is { } exp){<dt>Expires</dt><dd>@exp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>}
-            @if (lic.Discipline is not null){<dt>Discipline on record</dt><dd>@lic.Discipline</dd>}
+            @if (lic.Discipline is not null){<dt>Discipline on record</dt><dd>@(lic.Discipline.ToUpperInvariant() switch { "Y" or "YES" => "Yes", "N" or "NO" => "No", "NONE" => "None", _ => lic.Discipline })</dd>}
             @foreach (var a in lic.Actions)
             {
                 <dt>Board action @(a.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))</dt>

@@ -1,3 +1,4 @@
+using Npi.Core.Search;
 using System.Net;
 using System.Net.Http.Headers;
 using Npi.Loader.Datasets;
