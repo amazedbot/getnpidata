@@ -280,7 +280,7 @@
                 var pr = pay.TopProducts[i];
                 if (i > 0) { <text>; </text> }
                 <a href="/product/@pr.Slug">@pr.Name</a>
-                <text> (@Money(pr.Amount))</text>
+                <text> (@Money(pr.Amount)@(pr.MedicareClaims is { } mc ? $"; {mc.ToString("N0", CultureInfo.InvariantCulture)} Medicare Part D claims of it" : ""))</text>
             }
         </p>
     }

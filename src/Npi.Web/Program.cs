@@ -71,6 +71,10 @@ app.UseSwaggerUI(o =>
     o.DocumentTitle = "getnpidata API";
 });
 
+// A product's paid prescribers as CSV, every row (Stage 5.5 item 19, part 4).
+app.MapGet("/product/{slug}/prescribers.csv", (string slug, HttpContext http, ProductService products, CancellationToken ct) =>
+    Npi.Web.Api.ApiEndpoints.PrescribersCsvAsync(slug, http, products, ct));
+
 // Streamed CSV of every match, no row cap (CLAUDE.md §7 Stage 4). Same query string as the search page.
 app.MapGet("/export.csv", CsvExport.HandleAsync);
 

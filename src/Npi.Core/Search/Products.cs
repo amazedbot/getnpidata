@@ -113,6 +113,9 @@ public sealed record ProductDetail(string Slug, string Name, string? Kind, strin
 
     /// <summary>ClinicalTrials.gov study counts (part 3); null until asked.</summary>
     public ProductTrials? Trials { get; init; }
+
+    /// <summary>Medicare Part D prescribing and how much of it the paid providers wrote (part 4); null without a Part D brand.</summary>
+    public ProductPrescribing? Prescribing { get; init; }
 }
 
 /// <summary>One product in a list.</summary>
@@ -197,6 +200,42 @@ public sealed class ProductService(string connectionString)
             .ToList(), page, pageSize, total);
     }
 
+    public const int PrescriberPageSize = 50;
+
+    public const int MaxPrescriberPageSize = 200;
+
+    /// <summary>The sorts of <see cref="PrescribersAsync"/>: paid (default), claims, cost, name.</summary>
+    public static IEnumerable<string> PrescriberSorts => ProductPrescribingData.Sorts.Keys;
+
+    /// <summary>
+    /// The active providers paid in payments naming the product who prescribed it to Medicare patients (part 4), a page at
+    /// a time; null when the product is unknown or has no Part D brand.
+    /// </summary>
+    public async Task<ProductPrescriberPage?> PrescribersAsync(string slug, string? sort, int page, int pageSize, CancellationToken ct)
+    {
+        if (page < 1 || pageSize < 1 || pageSize > MaxPrescriberPageSize)
+        {
+            throw new ArgumentOutOfRangeException(nameof(pageSize), $"Page must be ≥ 1 and the page size 1–{MaxPrescriberPageSize}.");
+        }
+
+        sort = string.IsNullOrWhiteSpace(sort) ? "paid" : sort.Trim();
+        if (!ProductPrescribingData.Sorts.ContainsKey(sort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(sort), $"Sort by one of {string.Join(", ", PrescriberSorts)}.");
+        }
+
+        if (string.IsNullOrWhiteSpace(slug) || slug.Length > 200)
+        {
+            return null;
+        }
+
+        await using var connection = new MySqlConnection(connectionString);
+        return await ProductPrescribingData.PageAsync(connection, slug, sort, page, pageSize, ct);
+    }
+
+    /// <summary>Every row of <see cref="PrescribersAsync"/>, largest payments first, streamed (CSV; no cap).</summary>
+    public IAsyncEnumerable<ProductPrescriber> AllPrescribersAsync(string slug, CancellationToken ct) => ProductPrescribingData.AllAsync(connectionString, slug, ct);
+
     /// <summary>One product by its slug, or null.</summary>
     public async Task<ProductDetail?> GetAsync(string slug, CancellationToken ct)
     {
@@ -278,6 +317,7 @@ public sealed class ProductService(string connectionString)
                 isDrug ? [p.Name, drug?.BrandName, drug?.ProductNdc, p.Ndc] : [p.Name], ct),
             AdverseEvents = await ProductPublicData.AdverseEventsAsync(connection, slug, ct),
             Trials = await ProductPublicData.TrialsAsync(connection, slug, ct),
+            Prescribing = await ProductPrescribingData.SummaryAsync(connection, slug, ct),
         };
     }
 

@@ -1,0 +1,68 @@
+@page "/product/{slug}/prescribers"
+@using System.Globalization
+@model ProductPrescribersModel
+@{
+    var p = Model.Product;
+    var rx = p.Prescribing!;
+    var r = Model.Result;
+    ViewData["Title"] = $"{p.Name}: paid providers who prescribe it";
+    string Header(string key, string label) => r.Sort == key ? $"{label} ▼" : label;
+}
+
+<p><a href="/product/@p.Slug">‹ @p.Name</a></p>
+
+<h1>Providers paid for @p.Name who prescribed it</h1>
+<p>
+    <strong>@Format.Number(rx.PaidPrescribers)</strong> of the @Format.Number(rx.PaidProviders) active providers paid in @rx.PaymentYear payments naming @p.Name
+    wrote Medicare Part D claims for it in @rx.Year (@string.Join(", ", rx.Brands)): <strong>@Format.Number(rx.PaidClaims)</strong> claims@(rx.PaidClaimShare is { } share ? $", {share.ToString("P1", CultureInfo.InvariantCulture)} of all its Medicare claims" : "").
+</p>
+<div class="notice" role="note">
+    Being paid by a drug's maker and prescribing that drug are both legal and common, for example by doctors who speak about a drug they use.
+    The two years differ: Part D prescribing (@rx.Year) is published a year later than Open Payments (@rx.PaymentYear).
+</div>
+
+<p><a href="/product/@p.Slug/prescribers.csv">Download all @Format.Number(r.TotalCount) as CSV</a></p>
+
+<div class="table-wrap">
+    <table>
+        <caption class="visually-hidden">Paid providers who prescribed the drug</caption>
+        <thead>
+            <tr>
+                <th scope="col"><a href="@Model.PageUrl("name", 1)">@Header("name", "Provider")</a></th>
+                <th scope="col">Specialty</th><th scope="col">Location</th>
+                <th scope="col"><a href="@Model.PageUrl("paid", 1)">@Header("paid", "Paid")</a></th>
+                <th scope="col"><a href="@Model.PageUrl("claims", 1)">@Header("claims", "Medicare claims")</a></th>
+                <th scope="col"><a href="@Model.PageUrl("cost", 1)">@Header("cost", "Part D drug cost")</a></th>
+                <th scope="col">Patients</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var x in r.Items)
+            {
+                <tr>
+                    <td><a href="/provider/@x.Npi">@x.Name</a>@if (x.Credential is not null){<span class="muted">, @x.Credential</span>}</td>
+                    <td>@x.Specialty</td>
+                    <td>@string.Join(", ", new[] { x.City, x.State }.Where(v => !string.IsNullOrWhiteSpace(v)))</td>
+                    <td>@Format.Amount(x.Paid, x.Payments)</td>
+                    <td>@Format.Number(x.Claims)</td>
+                    <td>@(x.DrugCost is { } c ? Format.Money(c) : "—")</td>
+                    <td>@(x.Beneficiaries is { } b ? Format.Number(b) : "fewer than 11")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+@if (Model.PageCount > 1)
+{
+    <nav class="pager" aria-label="Pages">
+        @if (r.Page > 1) { <a href="@Model.PageUrl(r.Sort, r.Page - 1)" rel="prev">‹ Previous</a> }
+        <span>Page @r.Page of @Format.Number(Model.PageCount)</span>
+        @if (r.Page < Model.PageCount) { <a href="@Model.PageUrl(r.Sort, r.Page + 1)" rel="next">Next ›</a> }
+    </nav>
+}
+
+<p class="muted">
+    Paid: general payments naming @p.Name in @rx.PaymentYear (amount and number of payments), from CMS Open Payments. Claims, drug cost and patients:
+    CMS Medicare Part D Prescribers by Provider and Drug, @rx.Year, matched by brand name; Part D covers Medicare's outpatient prescriptions only,
+    and CMS suppresses counts under 11. Active providers only.
+</p>

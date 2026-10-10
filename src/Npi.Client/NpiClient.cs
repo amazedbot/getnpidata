@@ -198,6 +198,24 @@ public sealed class NpiClient : IDisposable
         return await ReadJsonAsync<ProductDetail>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The paid providers who prescribed a product to Medicare patients, a page at a time (sort: paid, claims, cost, name),
+    /// or null when the product is unknown or has no Part D prescribing.
+    /// </summary>
+    public async Task<ProductPrescriberPage?> GetProductPrescribersAsync(string slug, string sort = "paid", int page = 1, int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var path = $"api/v1/products/{Segment(slug, nameof(slug))}/prescribers?sort={Uri.EscapeDataString(sort)}"
+                   + $"&page={page.ToString(System.Globalization.CultureInfo.InvariantCulture)}&pageSize={pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        using var response = await SendAsync(path, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<ProductPrescriberPage>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>States and territories.</summary>
     public Task<IReadOnlyList<StateInfo>> GetStatesAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<StateInfo>>("api/v1/states", cancellationToken);

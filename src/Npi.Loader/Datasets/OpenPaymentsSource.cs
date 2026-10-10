@@ -133,7 +133,7 @@ public sealed partial class OpenPaymentsSource : DatasetSource
 
                 var counts = await TableSwap.ReplaceAsync(connection,
                     ["open_payments_summary", "open_payments_nature", "open_payments_payer", "op_company_nature", "op_company_product", "op_product",
-                     "op_product_company", "op_product_nature", "op_product_specialty", "op_product_recipient", "op_provider_product"],
+                     "op_product_company", "op_product_nature", "op_product_specialty", "op_product_recipient", "op_provider_product", "op_product_npi"],
                     context.Options.MinRowRatio, async () =>
                     {
                         await Database.ExecuteAsync(connection,
@@ -198,6 +198,14 @@ public sealed partial class OpenPaymentsSource : DatasetSource
                             {MostUsed("category", "c")}
                             {MostUsed("ndc", "d")}
                             {MostUsed("device_id", "i")}
+                            """, ct);
+                        // Every (product, NPI) pair of the drugs and biologicals, for the prescribing overlap (part 4).
+                        await Database.ExecuteAsync(connection,
+                            $"""
+                            INSERT INTO `op_product_npi_staging` (`slug`, `npi`, `amount`, `records`)
+                            SELECT s.`slug`, s.`npi`, s.`amount`, s.`records`
+                            FROM `{ProductNpis}` s JOIN `op_product_staging` p ON p.`slug` = s.`slug`
+                            WHERE p.`kind` IN ('Drug', 'Biological')
                             """, ct);
                         await Database.ExecuteAsync(connection,
                             $"""

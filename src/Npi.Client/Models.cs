@@ -231,6 +231,9 @@ public sealed class IndustryPayments
 /// <summary>A product named in general payments to a provider.</summary>
 public sealed class IndustryProduct
 {
+    /// <summary>The provider's Medicare Part D claims of the drug; null when the product has no Part D brand.</summary>
+    public int? MedicareClaims { get; set; }
+
     public string Slug { get; set; } = "";
 
     public string Name { get; set; } = "";
@@ -338,6 +341,87 @@ public sealed class ProductDetail
 
     /// <summary>ClinicalTrials.gov study counts; null until counted.</summary>
     public ProductTrials? Trials { get; set; }
+
+    /// <summary>Medicare Part D prescribing and the paid providers' share of it; null without a Part D brand.</summary>
+    public ProductPrescribing? Prescribing { get; set; }
+}
+
+/// <summary>Medicare Part D prescribing of a drug and how much of it the providers paid in payments naming it wrote.</summary>
+public sealed class ProductPrescribing
+{
+    /// <summary>The Part D data year.</summary>
+    public int Year { get; set; }
+
+    /// <summary>The Open Payments program year.</summary>
+    public int PaymentYear { get; set; }
+
+    /// <summary>The Part D brand names matched.</summary>
+    public IReadOnlyList<string> Brands { get; set; } = [];
+
+    public int Prescribers { get; set; }
+
+    public long Claims { get; set; }
+
+    public double? DrugCost { get; set; }
+
+    /// <summary>Active providers paid in payments naming the product.</summary>
+    public int PaidProviders { get; set; }
+
+    /// <summary>Of them, those who prescribed it.</summary>
+    public int PaidPrescribers { get; set; }
+
+    public long PaidClaims { get; set; }
+
+    public double? PaidDrugCost { get; set; }
+
+    public double? PaidPrescriberShare { get; set; }
+
+    public double? PaidClaimShare { get; set; }
+}
+
+/// <summary>A page of paid providers who prescribed a product.</summary>
+public sealed class ProductPrescriberPage
+{
+    public string Slug { get; set; } = "";
+
+    public IReadOnlyList<ProductPrescriber> Items { get; set; } = [];
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+
+    public string Sort { get; set; } = "";
+}
+
+/// <summary>A paid provider who prescribed the product to Medicare patients.</summary>
+public sealed class ProductPrescriber
+{
+    public string Npi { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Credential { get; set; }
+
+    public string? Specialty { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    /// <summary>General payments naming the product.</summary>
+    public double Paid { get; set; }
+
+    public int Payments { get; set; }
+
+    /// <summary>Medicare Part D claims of the product.</summary>
+    public int Claims { get; set; }
+
+    public double? DrugCost { get; set; }
+
+    /// <summary>Null when CMS suppressed a count under 11.</summary>
+    public int? Beneficiaries { get; set; }
 }
 
 /// <summary>Spending on a drug in one program and year.</summary>

@@ -102,6 +102,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new DrugShortageSource(),
         new ProductAdverseEventSource(),
         new ProductTrialSource(),
+        new PartDDrugPrescriberSource(),
         new FdaEnforcementSource(),
         new SecCompanySource(),
         new OigCiaSource(),

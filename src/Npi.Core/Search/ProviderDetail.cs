@@ -309,11 +309,14 @@ public sealed class ProviderDetailService(string connectionString)
                 FROM op_provider_product pp LEFT JOIN op_product p ON p.slug = pp.slug
                 WHERE pp.npi = @npi ORDER BY pp.product_rank
                 """, new { npi }, cancellationToken: ct));
+            var productList = products.ToList();
+            var claims = await ProductPrescribingData.ClaimsOfProviderAsync(connection, npi,
+                productList.Where(p => p.Kind is "Drug" or "Biological").Select(p => p.Slug), ct);
             industry = new IndustryPayments(payments.ProgramYear, payments.TotalAmount, payments.Records, payments.Payers,
                 kinds.Select(k => new IndustryPaymentKind(k.Nature, k.Amount, k.Records)).ToList(),
                 payers.Select(p => new IndustryPayer(p.Payer, p.Amount, p.Records, p.CompanyId)).ToList())
             {
-                TopProducts = products.ToList(),
+                TopProducts = productList.Select(p => claims.TryGetValue(p.Slug, out var c) ? p with { MedicareClaims = c } : p).ToList(),
             };
         }
 

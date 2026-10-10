@@ -33,7 +33,11 @@ public sealed record IndustryPayments(int Year, double TotalAmount, int Records,
 }
 
 /// <summary>A product named in general payments to the provider: its product page key, name, type and the amount of payments naming it.</summary>
-public sealed record IndustryProduct(string Slug, string Name, string? Kind, double Amount, int Records);
+public sealed record IndustryProduct(string Slug, string Name, string? Kind, double Amount, int Records)
+{
+    /// <summary>The provider's Medicare Part D claims of the drug (part 4); null when the product has no Part D brand.</summary>
+    public int? MedicareClaims { get; init; }
+}
 
 /// <summary>
 /// Open Payments in one program year (Stage 5.5 item 13): general payments; research payments made to the provider;
