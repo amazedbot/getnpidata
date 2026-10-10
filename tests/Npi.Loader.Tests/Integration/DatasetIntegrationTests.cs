@@ -47,7 +47,9 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
              ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("hrsa_hpsa", "HPSA 2026-10-08"),
-             ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv")],
+             ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
+             ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
+             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +

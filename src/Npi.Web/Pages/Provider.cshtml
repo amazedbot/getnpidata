@@ -246,12 +246,13 @@
     @if (history.TopCompanies.Count > 0)
     {
         <h3>Top companies, all years</h3>
+        <p class="muted">The five companies with the largest amounts of any kind, over every published year.</p>
         <div class="table-wrap">
             <table>
                 <caption class="visually-hidden">The companies that paid this provider the most over all program years</caption>
                 <thead>
                     <tr>
-                        <th scope="col">Company</th><th scope="col">Total</th><th scope="col">General</th>
+                        <th scope="col">Company</th><th scope="col">General</th>
                         @if (showResearch) { <th scope="col">Research</th> }
                         @if (showAssociated) { <th scope="col">Research as investigator</th> }
                         @if (showOwnership) { <th scope="col">Ownership</th> }
@@ -261,7 +262,7 @@
                     @foreach (var c in history.TopCompanies)
                     {
                         <tr>
-                            <td>@c.Name</td><td>@Money(c.Total)</td><td>@Amount(c.General, null)</td>
+                            <td>@c.Name</td><td>@Amount(c.General, null)</td>
                             @if (showResearch) { <td>@Amount(c.Research, null)</td> }
                             @if (showAssociated) { <td>@Amount(c.AssociatedResearch, null)</td> }
                             @if (showOwnership) { <td>@Amount(c.Ownership, null)</td> }
@@ -271,7 +272,7 @@
             </table>
         </div>
     }
-    <p class="muted">CMS Open Payments, every published program year. Research as investigator is funding paid to a hospital or institution for research this provider led. Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
+    <p class="muted">CMS Open Payments, every published program year. Research as investigator is funding paid to a hospital or institution for research this provider led. Ownership is the value of an ownership or investment interest (as reported), not a payment. Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
 }
 
 <h2>Specialties</h2>

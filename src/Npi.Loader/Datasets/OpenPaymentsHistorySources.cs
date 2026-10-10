@@ -109,7 +109,7 @@ public sealed class OpenPaymentsYearSource : OpenPaymentsSummarySource
                       ROUND(SUM(COALESCE(`associated_research_amount`, 0)), 2), SUM(COALESCE(`associated_research_records`, 0)),
                       ROUND(SUM(COALESCE(`invested_amount`, 0)), 2), ROUND(SUM(COALESCE(`interest_value`, 0)), 2), SUM(COALESCE(`ownership_records`, 0))
                     FROM `{raw}`
-                    WHERE `npi` IS NOT NULL AND `program_year` REGEXP '^[0-9]{4}$'
+                    WHERE `npi` IS NOT NULL AND `program_year` REGEXP '^[0-9]+$'
                     GROUP BY `npi`, CAST(`program_year` AS UNSIGNED)
                     """, ct), ct);
             return counts["open_payments_year"];
