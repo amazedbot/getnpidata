@@ -52,14 +52,29 @@ public static class CsvTableLoader
 {
     /// <param name="characterSet">The file's encoding as a MySQL character set: utf8mb4, or latin1 for Windows-1252 files.</param>
     /// <param name="constants">Columns set to a fixed value on every row (e.g. which file the row came from).</param>
+    /// <param name="delimiter">The field separator (',' or, for some state license files, '|').</param>
+    /// <param name="headerStartsWith">
+    /// When the file starts with other lines (a letterhead), the header is the first line whose first field is this; the
+    /// lines before it are skipped. Null: the first line is the header.
+    /// </param>
     /// <returns>The number of rows loaded.</returns>
     public static async Task<long> LoadAsync(MySqlConnection connection, string path, string table, IReadOnlyList<CsvColumn> columns, CancellationToken ct,
-        string characterSet = "utf8mb4", IReadOnlyDictionary<string, string>? constants = null)
+        string characterSet = "utf8mb4", IReadOnlyDictionary<string, string>? constants = null, char delimiter = ',', string? headerStartsWith = null)
     {
         CsvHeader header;
+        var skipped = 0;
         await using (var headerStream = File.OpenRead(path))
         {
-            header = CsvHeader.Read(headerStream);
+            header = CsvHeader.Read(headerStream, delimiter);
+            while (headerStartsWith is not null && !string.Equals(header.Columns[0].Trim().TrimStart('\uFEFF'), headerStartsWith, StringComparison.Ordinal))
+            {
+                if (++skipped > 100)
+                {
+                    throw new InvalidDataException($"{Path.GetFileName(path)} has no header line starting with '{headerStartsWith}' in its first 100 lines.");
+                }
+
+                header = CsvHeader.Read(headerStream, delimiter);
+            }
         }
 
         var positions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -92,12 +107,12 @@ public static class CsvTableLoader
             Local = true,
             SourceStream = data,
             CharacterSet = characterSet,
-            FieldTerminator = ",",
+            FieldTerminator = delimiter.ToString(),
             FieldQuotationCharacter = '"',
             FieldQuotationOptional = true,
             EscapeCharacter = StagingLoader.NoEscape,
             LineTerminator = header.LineTerminator,
-            NumberOfLinesToSkip = 1,
+            NumberOfLinesToSkip = skipped + 1,
         };
 
         for (var i = 0; i < header.Columns.Count; i++)

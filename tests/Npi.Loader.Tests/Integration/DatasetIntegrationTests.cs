@@ -55,7 +55,8 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"),
-             ("state_licenses", "NY 2026-10-02T20:04:24Z | TX 2026-10-02T20:04:24Z | WA 2026-10-02T20:04:24Z | IL 2026-10-02T20:04:24Z | CO 2026-10-02T20:04:24Z")],
+             ("state_licenses", "NY 2026-10-02T20:04:24Z | TX 2026-10-02T20:04:24Z | WA 2026-10-02T20:04:24Z | IL 2026-10-02T20:04:24Z | CO 2026-10-02T20:04:24Z | DE 2026-10-02T20:04:24Z | DE 2026-10-02T20:04:24Z | CT 2026-10-02T20:04:24Z"
+                 + " | MD 2026-10-01T00:00:00Z | MD 2026-10-01T00:00:00Z | FL none | FL none")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
@@ -100,21 +101,39 @@ public sealed class DatasetIntegrationTests : IDisposable
             """
             INSERT INTO provider (npi, entity_type, last_name, first_name, sort_name) VALUES
               ('1000000004', 1, 'O''BRIEN', 'JOSE', 'O''BRIEN, JOSE'), ('1000000012', 1, 'GARCIA', 'MARIA', 'GARCIA, MARIA'),
-              ('1000000020', 1, 'LEE', 'ANN', 'LEE, ANN'), ('1000000038', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA'), ('1000000046', 1, 'OTHER', 'PAT', 'OTHER, PAT');
+              ('1000000020', 1, 'LEE', 'ANN', 'LEE, ANN'), ('1000000038', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA'), ('1000000046', 1, 'OTHER', 'PAT', 'OTHER, PAT'),
+              ('1000000053', 1, 'BROWN', 'KIM', 'BROWN, KIM'), ('1000000061', 1, 'SINGH', 'JOSEPH', 'SINGH, JOSEPH'), ('1000000079', 1, 'PATEL', 'RAJ', 'PATEL, RAJ'),
+              ('1000000087', 1, 'JONES', 'AMY', 'JONES, AMY'), ('1000000095', 1, 'ACOSTA', 'GILBERTO', 'ACOSTA, GILBERTO');
             INSERT INTO provider_taxonomy (npi, slot, taxonomy_code, is_primary, license_no, license_state) VALUES
               ('1000000004', 1, '207Q00000X', 1, 'MD-174744', 'NY'), ('1000000012', 1, '207Q00000X', 1, 'N1234', 'TX'),
               ('1000000020', 1, '207Q00000X', 1, 'MD00012345', 'WA'), ('1000000020', 2, '207Q00000X', 0, '036.098765', 'IL'),
-              ('1000000038', 1, '207Q00000X', 1, 'DR.0042345', 'CO'), ('1000000046', 1, '207Q00000X', 1, '1234', 'TX');
+              ('1000000038', 1, '207Q00000X', 1, 'DR.0042345', 'CO'), ('1000000046', 1, '207Q00000X', 1, '1234', 'TX'),
+              ('1000000053', 1, '207Q00000X', 1, '0024514', 'DE'), ('1000000061', 1, '207Q00000X', 1, '050192', 'CT'),
+              ('1000000079', 1, '207Q00000X', 1, 'D12345', 'MD'), ('1000000087', 1, '363A00000X', 1, 'C1234', 'MD'),
+              ('1000000095', 1, '207Q00000X', 1, 'ME80978', 'FL');
             """);
+        // Florida's files are dropped by the owner into the state files folder (PROF_ALL inside its zip).
+        var florida = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "FL")).FullName;
+        using (var zip = System.IO.Compression.ZipFile.Open(Path.Combine(florida, "PROF_ALL.zip"), System.IO.Compression.ZipArchiveMode.Create))
+        {
+            zip.CreateEntryFromFile(Fixtures.Path("datasets/state_fl_prof_all.txt"), "dbdumps/ldms/PROF_ALL.txt");
+        }
+
+        File.Copy(Fixtures.Path("datasets/state_fl_dxe004dd.txt"), Path.Combine(florida, "dxe004dd.txt"));
         Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: "state_licenses", _ct));
 
         // O'BRIEN = "OBrien" is not equal (the apostrophe), but the second row ("O'BRIEN") is; GARCIA's N1234 matches, and the
-        // other TX provider's "1234" doesn't (name); the placeholder "000000" and "Someone Else" never match.
+        // other TX provider's "1234" doesn't (name); the placeholder "000000" and "Someone Else" never match. DE's "C1-0024514"
+        // matches NPPES "0024514" by its last digits; CT's full name "JOSEPH U SINGH" matches SINGH, "MARIA SINGHAL" doesn't;
+        // MD's letterhead lines are skipped; FL's pipe rows load (a stray " included), the row with an extra field is left out.
         Assert.Equal(
             [
                 ("1000000004", "NY", "action", (DateTime?)new DateTime(2019, 1, 15)), ("1000000012", "TX", "license", new DateTime(2010, 1, 1)),
                 ("1000000020", "IL", "license", new DateTime(2024, 5, 1)), ("1000000020", "WA", "license", null),
                 ("1000000038", "CO", "license", new DateTime(2021, 7, 11)), ("1000000038", "CO", "license", new DateTime(2023, 10, 9)),
+                ("1000000053", "DE", "license", null), ("1000000053", "DE", "action", new DateTime(2025, 3, 4)),
+                ("1000000061", "CT", "license", null), ("1000000079", "MD", "license", null), ("1000000087", "MD", "license", null),
+                ("1000000095", "FL", "license", null), ("1000000095", "FL", "action", new DateTime(2026, 9, 25)),
             ],
             await db.QueryAsync<(string, string, string, DateTime?)>(
                 "SELECT npi, state, kind, action_date FROM provider_state_license ORDER BY npi, state, action_date"));
@@ -132,6 +151,11 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal("FAILURE TO COMPLETE CME", lee[0].Actions[0].Description);
         var ny = Assert.Single((await details.GetAsync("1000000004", _ct))!.StateLicenses);
         Assert.Equal((null, "Censure and reprimand."), (ny.Status, ny.Actions.Single().Action));
+        var fl = Assert.Single((await details.GetAsync("1000000095", _ct))!.StateLicenses);
+        Assert.Equal(("Clear/Active", "Y", "AC Filed", new DateOnly(2028, 1, 31)), (fl.Status, fl.Discipline, fl.Actions.Single().Action, fl.ExpirationDate));
+        var ct = Assert.Single((await details.GetAsync("1000000061", _ct))!.StateLicenses);
+        Assert.Equal(("Physician/Surgeon", "ACTIVE"), (ct.LicenseType, ct.Status));
+        Assert.Equal(("D0012345", "A", "N"), (await details.GetAsync("1000000079", _ct))!.StateLicenses.Select(l => (l.LicenseNumber, l.Status, l.Discipline)).Single());
     }
 
     [Fact]
@@ -312,6 +336,7 @@ public sealed class DatasetIntegrationTests : IDisposable
             {
                 WorkFolder = _folder,
                 LogFolder = _folder,
+                StateLicenseFilesFolder = Path.Combine(_folder, "state-files"),
                 DownloadAttempts = 1,
                 CmsCatalogUrl = "https://cms.test/data.json",
                 ProviderDataMetastoreUrl = "https://pdc.test/items/",
@@ -398,6 +423,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://hrsa.test/BCD_HPSA_FCT_DET_DH.csv" => "datasets/hpsa_DH_sample.csv",
                 "https://hrsa.test/BCD_HPSA_FCT_DET_MH.csv" => "datasets/hpsa_MH_sample.csv",
                 "https://census.test/popest/" => "datasets/census_popest_listing.html",
+                "https://www.mbp.state.md.us/forms/doctor_list_revised.csv" => "datasets/state_md_doctors.csv",
+                "https://www.mbp.state.md.us/forms/allied_health_list.csv" => "datasets/state_md_allied.csv",
                 "https://op.test/items" => "datasets/open_payments_catalog_sample.json",
                 "https://op.test/PGYR2025_P06302026/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv" => "datasets/open_payments_sample.csv",
                 "https://op.test/SMRY_P06302026/PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv" => "datasets/open_payments_years_sample.csv",
@@ -418,6 +445,10 @@ public sealed class DatasetIntegrationTests : IDisposable
             if (url.StartsWith("https://oig.test", StringComparison.Ordinal))
             {
                 content.Headers.LastModified = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+            }
+            else if (url.StartsWith("https://www.mbp.state.md.us", StringComparison.Ordinal))
+            {
+                content.Headers.LastModified = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
             }
             else if (url.StartsWith("https://hrsa.test", StringComparison.Ordinal))
             {

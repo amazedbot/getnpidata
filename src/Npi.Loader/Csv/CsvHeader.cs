@@ -8,7 +8,8 @@ public sealed record CsvHeader(IReadOnlyList<string> Columns, string LineTermina
     private const int MaxHeaderBytes = 1 << 20;
 
     /// <summary>Reads the first line of <paramref name="stream"/> (consuming only that line's bytes and a little more).</summary>
-    public static CsvHeader Read(Stream stream)
+    /// <param name="delimiter">The field separator: ',' for CSV, '|' for some state license files (Stage 5.5 item 15).</param>
+    public static CsvHeader Read(Stream stream, char delimiter = ',')
     {
         var bytes = new List<byte>(16 * 1024);
         int b;
@@ -28,11 +29,11 @@ public sealed record CsvHeader(IReadOnlyList<string> Columns, string LineTermina
 
         var crlf = bytes.Count > 0 && bytes[^1] == '\r';
         var line = Encoding.UTF8.GetString(bytes.ToArray(), 0, bytes.Count - (crlf ? 1 : 0));
-        return new CsvHeader(ParseLine(line), crlf ? "\r\n" : "\n");
+        return new CsvHeader(ParseLine(line, delimiter), crlf ? "\r\n" : "\n");
     }
 
     /// <summary>Splits one CSV line. Fields may be enclosed in double quotes; "" inside quotes is a literal quote.</summary>
-    public static IReadOnlyList<string> ParseLine(string line)
+    public static IReadOnlyList<string> ParseLine(string line, char delimiter = ',')
     {
         var fields = new List<string>();
         var field = new StringBuilder();
@@ -60,7 +61,7 @@ public sealed record CsvHeader(IReadOnlyList<string> Columns, string LineTermina
             {
                 inQuotes = true;
             }
-            else if (c == ',')
+            else if (c == delimiter)
             {
                 fields.Add(field.ToString());
                 field.Clear();

@@ -1,0 +1,2 @@
+Respondent Name|License Number|Profession|Addr Line 1|Addr Line 2|City|State|Zip|Case Number|Case Activity Type|Case Activity Date|
+ACOSTA, GILBERTO  M.D.|80978|Medical Doctor|1 MAIN ST||MIAMI|FL|33101|202420246|AC Filed|09/25/2026|

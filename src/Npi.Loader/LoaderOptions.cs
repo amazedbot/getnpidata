@@ -91,6 +91,14 @@ public sealed class LoaderOptions
     /// </summary>
     public bool SkipMapBuild { get; set; }
 
+    /// <summary>
+    /// State license files the owner downloads from boards that require a sign-in, one subfolder per state (FL), Stage 5.5
+    /// item 15. Default: %ProgramData%\getnpidata\state-files.
+    /// </summary>
+    public string StateLicenseFilesFolder { get; set; } = "";
+
+    public string ResolvedStateLicenseFilesFolder => Resolve(StateLicenseFilesFolder, "state-files");
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");
