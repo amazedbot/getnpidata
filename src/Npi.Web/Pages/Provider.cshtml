@@ -65,6 +65,39 @@
     </dl>
 }
 
+@* Stage 5.5 item 15: state license records and board actions, matched by license state, number and last name. *@
+@{
+    var coveredLicenses = p.Taxonomies.Where(t => t.LicenseState is not null && Npi.Core.Search.StateLicenseSources.States.Contains(t.LicenseState)).ToList();
+}
+@if (p.StateLicenses.Count > 0 || coveredLicenses.Count > 0)
+{
+    <h2>State licenses and board actions</h2>
+    @if (p.StateLicenses.Count == 0)
+    {
+        <p>No record matching this provider's @string.Join(", ", coveredLicenses.Select(t => t.LicenseState).Distinct()) license was found in the state's published data
+            (for New York, that means no public Board for Professional Medical Conduct action).</p>
+    }
+    @foreach (var lic in p.StateLicenses)
+    {
+        <dl class="facts">
+            <dt>@lic.State license</dt>
+            <dd><strong>@lic.LicenseNumber</strong>@if (lic.LicenseType is not null){<span class="muted"> · @lic.LicenseType</span>}</dd>
+            @if (lic.Status is not null){<dt>Status</dt><dd>@lic.Status</dd>}
+            @if (lic.ExpirationDate is { } exp){<dt>Expires</dt><dd>@exp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>}
+            @if (lic.Discipline is not null){<dt>Discipline on record</dt><dd>@lic.Discipline</dd>}
+            @foreach (var a in lic.Actions)
+            {
+                <dt>Board action @(a.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))</dt>
+                <dd>@a.Action@if (a.Description is not null){<br /><span class="muted">@a.Description</span>}</dd>
+            }
+            <dt>Source</dt>
+            <dd><a href="@lic.SourceUrl">@lic.SourceName</a>@if (lic.VerifyUrl is not null){<text> · </text><a href="@lic.VerifyUrl">verify this license</a>}</dd>
+        </dl>
+    }
+    <p class="muted">From state open data (@string.Join(", ", Npi.Core.Search.StateLicenseSources.States); New York publishes board actions only), matched to this NPI by
+        license state, number and last name. Always confirm with the state board before relying on it.</p>
+}
+
 @if (p.Facilities.Count > 0)
 {
     <h2>Medicare-certified facilities</h2>

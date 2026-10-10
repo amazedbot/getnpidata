@@ -81,6 +81,42 @@ public sealed record CertifiedFacility(string Ccn, string Kind, string Name, str
     public HospitalOutcomes? Outcomes { get; init; }
 }
 
+/// <summary>One action a state board took on a license (Stage 5.5 item 15).</summary>
+public sealed record StateBoardAction(DateOnly? Date, string? Action, string? Description);
+
+/// <summary>
+/// A state license record matched to this NPI (Stage 5.5 item 15) by license state, number and last name, from the
+/// state's open data (<see cref="SourceName"/>, <see cref="SourceUrl"/>). NY publishes only board actions, so its
+/// records have no status. <see cref="Discipline"/> is the state's own wording (e.g. "Yes", "NONE", "Y").
+/// </summary>
+public sealed record StateLicenseRecord(string State, string Source, string? LicenseNumber, string? LicenseType, string? Status, DateOnly? ExpirationDate,
+    string? Discipline, string? VerifyUrl, IReadOnlyList<StateBoardAction> Actions)
+{
+    public string SourceName => StateLicenseSources.Name(Source);
+
+    public string SourceUrl => StateLicenseSources.Url(Source);
+}
+
+/// <summary>The state datasets behind <see cref="StateLicenseRecord"/> (the loader's StateLicenseSource reads the same ones).</summary>
+public static class StateLicenseSources
+{
+    private static readonly Dictionary<string, (string Name, string Url)> Sources = new(StringComparer.Ordinal)
+    {
+        ["ny_bpmc"] = ("NY Department of Health, Board for Professional Medical Conduct actions", "https://health.data.ny.gov/d/ebmi-8ctw"),
+        ["tx_tmb"] = ("Texas Medical Board licenses", "https://data.texas.gov/d/tm3v-pfq9"),
+        ["wa_doh"] = ("Washington State Department of Health credentials", "https://data.wa.gov/d/qxh8-f4bd"),
+        ["il_idfpr"] = ("Illinois Department of Financial and Professional Regulation licenses", "https://illinois-edp.data.socrata.com/d/pzzh-kp68"),
+        ["co_dora"] = ("Colorado Department of Regulatory Agencies licenses", "https://data.colorado.gov/d/7s5z-vewr"),
+    };
+
+    /// <summary>The states covered: NY (board actions only), TX, WA, IL, CO.</summary>
+    public static readonly IReadOnlyList<string> States = ["CO", "IL", "NY", "TX", "WA"];
+
+    public static string Name(string source) => Sources.TryGetValue(source, out var s) ? s.Name : source;
+
+    public static string Url(string source) => Sources.TryGetValue(source, out var s) ? s.Url : "";
+}
+
 /// <summary>A count of a hospital's measures in one group and how many CMS rates better / worse than the national rate.</summary>
 public sealed record OutcomeCounts(int? Measures, int? Better, int? Worse);
 

@@ -100,6 +100,8 @@ public class ClientTests
     [InlineData(typeof(Server.OutcomeCounts), typeof(OutcomeCounts))]
     [InlineData(typeof(Server.HospitalOutcomes), typeof(HospitalOutcomes))]
     [InlineData(typeof(Server.MipsScore), typeof(MipsScore))]
+    [InlineData(typeof(Server.StateLicenseRecord), typeof(StateLicenseRecord))]
+    [InlineData(typeof(Server.StateBoardAction), typeof(StateBoardAction))]
     [InlineData(typeof(Server.IndustryPaymentYear), typeof(IndustryPaymentYear))]
     [InlineData(typeof(Server.IndustryPaymentCompany), typeof(IndustryPaymentCompany))]
     [InlineData(typeof(Server.IndustryPaymentKind), typeof(IndustryPaymentKind))]

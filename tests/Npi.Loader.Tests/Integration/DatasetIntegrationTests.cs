@@ -53,7 +53,8 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
-             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv")],
+             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"),
+             ("state_licenses", "NY 2026-10-02T20:04:24Z | TX 2026-10-02T20:04:24Z | WA 2026-10-02T20:04:24Z | IL 2026-10-02T20:04:24Z | CO 2026-10-02T20:04:24Z")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
@@ -87,6 +88,49 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal([("330045", "1000000038", "hospital"), ("331501", "1000000038", "hospice"), ("335001", "1000000046", "nursing_home"),
                 ("337001", "1000000038", "home_health")],
             await db.QueryAsync<(string, string, string)>("SELECT ccn, npi, kind FROM cms_facility_npi ORDER BY ccn"));
+    }
+
+    [Fact]
+    public async Task State_licenses_match_by_state_number_and_last_name()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        // Providers with NPPES licenses written the way NPPES has them (punctuation, leading zeros, other prefixes).
+        await db.ExecuteAsync(
+            """
+            INSERT INTO provider (npi, entity_type, last_name, first_name, sort_name) VALUES
+              ('1000000004', 1, 'O''BRIEN', 'JOSE', 'O''BRIEN, JOSE'), ('1000000012', 1, 'GARCIA', 'MARIA', 'GARCIA, MARIA'),
+              ('1000000020', 1, 'LEE', 'ANN', 'LEE, ANN'), ('1000000038', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA'), ('1000000046', 1, 'OTHER', 'PAT', 'OTHER, PAT');
+            INSERT INTO provider_taxonomy (npi, slot, taxonomy_code, is_primary, license_no, license_state) VALUES
+              ('1000000004', 1, '207Q00000X', 1, 'MD-174744', 'NY'), ('1000000012', 1, '207Q00000X', 1, 'N1234', 'TX'),
+              ('1000000020', 1, '207Q00000X', 1, 'MD00012345', 'WA'), ('1000000020', 2, '207Q00000X', 0, '036.098765', 'IL'),
+              ('1000000038', 1, '207Q00000X', 1, 'DR.0042345', 'CO'), ('1000000046', 1, '207Q00000X', 1, '1234', 'TX');
+            """);
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: "state_licenses", _ct));
+
+        // O'BRIEN = "OBrien" is not equal (the apostrophe), but the second row ("O'BRIEN") is; GARCIA's N1234 matches, and the
+        // other TX provider's "1234" doesn't (name); the placeholder "000000" and "Someone Else" never match.
+        Assert.Equal(
+            [
+                ("1000000004", "NY", "action", (DateTime?)new DateTime(2019, 1, 15)), ("1000000012", "TX", "license", new DateTime(2010, 1, 1)),
+                ("1000000020", "IL", "license", new DateTime(2024, 5, 1)), ("1000000020", "WA", "license", null),
+                ("1000000038", "CO", "license", new DateTime(2021, 7, 11)), ("1000000038", "CO", "license", new DateTime(2023, 10, 9)),
+            ],
+            await db.QueryAsync<(string, string, string, DateTime?)>(
+                "SELECT npi, state, kind, action_date FROM provider_state_license ORDER BY npi, state, action_date"));
+        Assert.Equal(0L, await db.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'state_license_raw_staging'"));
+
+        // The provider page groups a license's rows and lists its actions, newest first.
+        var details = new ProviderDetailService(db.ConnectionString);
+        var co = Assert.Single((await details.GetAsync("1000000038", _ct))!.StateLicenses);
+        Assert.Equal(("CO", "42345", "Active", new DateOnly(2027, 4, 30)), (co.State, co.LicenseNumber, co.Status, co.ExpirationDate));
+        Assert.Equal(["Stipulation", "Letter of Admonition"], co.Actions.Select(a => a.Action));
+        Assert.StartsWith("https://www.colorado.gov/", co.VerifyUrl, StringComparison.Ordinal);
+        var lee = (await details.GetAsync("1000000020", _ct))!.StateLicenses;
+        Assert.Equal([("IL", "Y", 1), ("WA", "Yes", 0)], lee.Select(l => (l.State, l.Discipline, l.Actions.Count)));
+        Assert.Equal("FAILURE TO COMPLETE CME", lee[0].Actions[0].Description);
+        var ny = Assert.Single((await details.GetAsync("1000000004", _ct))!.StateLicenses);
+        Assert.Equal((null, "Censure and reprimand."), (ny.Status, ny.Actions.Single().Action));
     }
 
     [Fact]
@@ -312,6 +356,18 @@ public sealed class DatasetIntegrationTests : IDisposable
             {
                 var json = $$"""{"modified":"{{entry.Modified}}","distribution":[{"downloadURL":"https://pdc.test/files/{{entry.File}}","mediaType":"text/csv"}]}""";
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
+            }
+
+            if (url.Contains("/api/views/", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"rowsUpdatedAt":1790971464}""") });
+            }
+
+            if (url.Contains("/resource/", StringComparison.Ordinal))
+            {
+                var id = url.Split("/resource/")[1].Split('.')[0];
+                var bytes1 = File.ReadAllBytes(Fixtures.Path($"datasets/state_{id}.csv"));
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes1) });
             }
 
             string? fixture = url switch

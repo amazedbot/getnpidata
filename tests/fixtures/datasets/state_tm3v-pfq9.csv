@@ -1,0 +1,3 @@
+"license_number","last_name","first_name","license_type","registration_status","license_expiration_date","disciplinary_status","current_board_action_date","current_board_action_description","license_status"
+"N1234","GARCIA","MARIA","Physician License","ACTIVE","2027-08-31T00:00:00.000","NONE","01/01/2010","PRESCRIPTIVE RESTRICTION: no schedule II drugs.","NONE"
+"K1234","SMITH","JOHN","Physician License","ACTIVE","2027-08-31T00:00:00.000","NONE","","","NONE"

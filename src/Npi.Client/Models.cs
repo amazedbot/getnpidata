@@ -180,6 +180,9 @@ public sealed class ProviderDetail
     /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
     public IndustryPayments? IndustryPayments { get; set; }
 
+    /// <summary>State license records and board actions (CO, IL, NY actions, TX, WA open data) matched by license state, number and last name.</summary>
+    public IReadOnlyList<StateLicenseRecord> StateLicenses { get; set; } = [];
+
     /// <summary>MIPS scores in the newest program year, best first.</summary>
     public IReadOnlyList<MipsScore> MipsScores { get; set; } = [];
 
@@ -491,6 +494,44 @@ public sealed class HospitalOutcomes
     public OutcomeCounts Safety { get; set; } = new();
 
     public OutcomeCounts Readmissions { get; set; } = new();
+}
+
+/// <summary>One action a state board took on a license.</summary>
+public sealed class StateBoardAction
+{
+    public DateTime? Date { get; set; }
+
+    public string? Action { get; set; }
+
+    public string? Description { get; set; }
+}
+
+/// <summary>A state license record from the state's open data. New York publishes only board actions (no status).</summary>
+public sealed class StateLicenseRecord
+{
+    public string State { get; set; } = "";
+
+    /// <summary>ny_bpmc, tx_tmb, wa_doh, il_idfpr or co_dora.</summary>
+    public string Source { get; set; } = "";
+
+    public string? LicenseNumber { get; set; }
+
+    public string? LicenseType { get; set; }
+
+    public string? Status { get; set; }
+
+    public DateTime? ExpirationDate { get; set; }
+
+    /// <summary>The state's own wording, e.g. "Yes", "NONE", "Y".</summary>
+    public string? Discipline { get; set; }
+
+    public string? VerifyUrl { get; set; }
+
+    public IReadOnlyList<StateBoardAction> Actions { get; set; } = [];
+
+    public string SourceName { get; set; } = "";
+
+    public string SourceUrl { get; set; } = "";
 }
 
 /// <summary>One MIPS score (0-100; null when a category wasn't scored).</summary>
