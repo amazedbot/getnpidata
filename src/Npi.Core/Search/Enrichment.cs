@@ -26,7 +26,14 @@ public sealed record IndustryPayer(string Name, double Amount, int Records, stri
 
 /// <summary>Open Payments (Sunshine Act) general payments from drug and device makers to this NPI (Stage 5.5 item 6).</summary>
 public sealed record IndustryPayments(int Year, double TotalAmount, int Records, int Payers, IReadOnlyList<IndustryPaymentKind> ByNature,
-    IReadOnlyList<IndustryPayer> TopPayers);
+    IReadOnlyList<IndustryPayer> TopPayers)
+{
+    /// <summary>The products named most in these payments (item 19), linked to the product pages.</summary>
+    public IReadOnlyList<IndustryProduct> TopProducts { get; init; } = [];
+}
+
+/// <summary>A product named in general payments to the provider: its product page key, name, type and the amount of payments naming it.</summary>
+public sealed record IndustryProduct(string Slug, string Name, string? Kind, double Amount, int Records);
 
 /// <summary>
 /// Open Payments in one program year (Stage 5.5 item 13): general payments; research payments made to the provider;

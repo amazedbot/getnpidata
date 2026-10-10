@@ -303,9 +303,18 @@ public sealed class ProviderDetailService(string connectionString)
             var payers = await connection.QueryAsync<PayerRow>(new CommandDefinition(
                 "SELECT payer AS Payer, amount AS Amount, records AS Records, company_id AS CompanyId FROM open_payments_payer WHERE npi = @npi ORDER BY payer_rank",
                 new { npi }, cancellationToken: ct));
+            var products = await connection.QueryAsync<IndustryProduct>(new CommandDefinition(
+                """
+                SELECT pp.slug AS Slug, COALESCE(p.name, pp.slug) AS Name, p.kind AS Kind, pp.amount AS Amount, pp.records AS Records
+                FROM op_provider_product pp LEFT JOIN op_product p ON p.slug = pp.slug
+                WHERE pp.npi = @npi ORDER BY pp.product_rank
+                """, new { npi }, cancellationToken: ct));
             industry = new IndustryPayments(payments.ProgramYear, payments.TotalAmount, payments.Records, payments.Payers,
                 kinds.Select(k => new IndustryPaymentKind(k.Nature, k.Amount, k.Records)).ToList(),
-                payers.Select(p => new IndustryPayer(p.Payer, p.Amount, p.Records, p.CompanyId)).ToList());
+                payers.Select(p => new IndustryPayer(p.Payer, p.Amount, p.Records, p.CompanyId)).ToList())
+            {
+                TopProducts = products.ToList(),
+            };
         }
 
         var paymentYears = (await connection.QueryAsync<PaymentYearRow>(new CommandDefinition(

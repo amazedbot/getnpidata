@@ -56,6 +56,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
+             ("open_payments_research", "2025 OP_DTL_RSRCH_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("sec_companies", $"2026-10-09T06:00:00Z parents {SecCompanySource.ParentsHash()}"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
@@ -316,7 +317,8 @@ public sealed class DatasetIntegrationTests : IDisposable
         // 2025 natures and products over every recipient, the teaching hospital included; "ELIQUIS" and " Eliquis " are one product.
         Assert.Equal(2025, pfizer.DetailYear);
         Assert.Equal([("Royalty or License", 10000.0), ("Food and Beverage", 40.0)], pfizer.ByNature.Select(n => (n.Nature, n.Amount)));
-        Assert.Equal([("IBRANCE", 10000.0, 1), ("ELIQUIS", 40.0, 2)], pfizer.TopProducts.Select(p => (p.Name, p.Amount, p.Records)));
+        // Every product a payment names counts (payment 1001 names ELIQUIS and IBRANCE), each linked by its slug.
+        Assert.Equal([("IBRANCE", 10018.57, 2, "ibrance"), ("ELIQUIS", 40.0, 2, "eliquis")], pfizer.TopProducts.Select(p => (p.Name, p.Amount, p.Records, p.Slug)));
         Assert.Equal(("Drug", "Cardiology"), (pfizer.TopProducts[1].Kind, pfizer.TopProducts[1].Category));
         // Over all years: the active providers it paid, by specialty, with their credentials and city.
         var baker = Assert.Single(pfizer.TopProviders);
@@ -360,10 +362,39 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(("Suspended", (DateOnly?)new DateOnly(2026, 10, 1)), (snap.Status, snap.StatusDate));
         Assert.Equal(3L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM oig_cia"));
 
+        // Product pages (item 19, part 1): "ELIQUIS" and " Eliquis " are one product named by its most paid spelling.
+        var products = new ProductService(db.ConnectionString);
+        var eliquis = (await products.GetAsync("eliquis", _ct))!;
+        Assert.Equal(("Eliquis", "Drug", "Cardiology", 2025, 40.0, 2, 1, 1), (eliquis.Name, eliquis.Kind, eliquis.Category, eliquis.Year, eliquis.Amount,
+            eliquis.Records, eliquis.CompanyCount, eliquis.Providers));
+        Assert.Equal([("100000000001", "Pfizer, Inc.", 40.0)], eliquis.Companies.Select(c => (c.CompanyId, c.Name, c.Amount)));
+        Assert.Equal([("Food and Beverage", 40.0)], eliquis.ByNature.Select(n => (n.Nature, n.Amount)));
+        Assert.Equal([("1000000012", "BAKER, AL", "MD, PhD", 40.0, 2)], eliquis.TopProviders.Select(r => (r.Npi, r.Name, r.Credential, r.Amount, r.Records)));
+        Assert.Equal([("Internal Medicine", 1, 40.0)], eliquis.TopSpecialties.Select(x => (x.Specialty, x.Providers, x.Amount)));
+        // The teaching hospital's payment counts for the product, not for a provider; research counts every recipient.
+        var ibrance = (await products.GetAsync("ibrance", _ct))!;
+        Assert.Equal((10018.57, 2, 1), (ibrance.Amount, ibrance.Records, ibrance.Providers));
+        Assert.Equal((76000.0, 3, 2), (ibrance.Research!.Amount, ibrance.Research.Records, ibrance.Research.Studies));
+        var paloma = ibrance.Research.TopStudies[0];
+        Assert.Equal(("NCT01740427", 75000.0, 2, "Pfizer, Inc.", "https://clinicaltrials.gov/study/NCT01740427"),
+            (paloma.NctId, paloma.Amount, paloma.Records, paloma.CompanyName, paloma.ClinicalTrialsUrl));
+        Assert.Equal(1000.0, eliquis.Research!.Amount);
+        Assert.Equal("0169-4130-13", (await products.GetAsync("ozempic", _ct))!.Ndc);
+        Assert.Equal("00763000636251", (await products.GetAsync("minimed-780g", _ct))!.DeviceId);
+        Assert.Null(await products.GetAsync("no-such-product", _ct));
+        var list = await products.SearchAsync(null, null, 1, 50, _ct);
+        Assert.Equal(["ibrance", "guardian-4-sensor", "minimed-780g", "eliquis", "pico", "ozempic"], list.Items.Select(p => p.Slug));
+        Assert.Equal(["guardian-4-sensor", "minimed-780g", "pico"], (await products.SearchAsync(null, "Device", 1, 50, _ct)).Items.Select(p => p.Slug));
+        Assert.Equal(["eliquis"], (await products.SearchAsync("liqu", null, 1, 50, _ct)).Items.Select(p => p.Slug));
+
         // The provider page links its payers and top companies to the company pages.
         var detail = (await new ProviderDetailService(db.ConnectionString).GetAsync("1000000012", _ct))!;
         Assert.Equal("100000000002", detail.IndustryPayments!.TopPayers[0].CompanyId);
         Assert.Equal("100000000002", detail.PaymentHistory!.TopCompanies[0].CompanyId);
+        // …and its top products (tied amounts by slug) to the product pages.
+        Assert.Equal(["guardian-4-sensor", "minimed-780g", "eliquis", "ibrance", "ozempic"], detail.IndustryPayments.TopProducts.Select(p => p.Slug));
+        Assert.Equal(("Guardian 4 Sensor", "Device", 2500.0), (detail.IndustryPayments.TopProducts[0].Name, detail.IndustryPayments.TopProducts[0].Kind,
+            detail.IndustryPayments.TopProducts[0].Amount));
     }
 
     [Fact]
@@ -531,6 +562,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://www.mbp.state.md.us/forms/allied_health_list.csv" => "datasets/state_md_allied.csv",
                 "https://op.test/items" => "datasets/open_payments_catalog_sample.json",
                 "https://op.test/PGYR2025_P06302026/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv" => "datasets/open_payments_sample.csv",
+                "https://op.test/PGYR2025_P06302026/OP_DTL_RSRCH_PGYR2025_P06302026_06032026.csv" => "datasets/open_payments_research_sample.csv",
                 "https://op.test/SMRY_P06302026/PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv" => "datasets/open_payments_years_sample.csv",
                 "https://op.test/SMRY_P06302026/PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv" => "datasets/open_payments_companies_sample.csv",
                 "https://op.test/SMRY_P06302026/PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv" => "datasets/op_company_profile_sample.csv",

@@ -25,6 +25,8 @@ await npi.DownloadProvidersCsvAsync(new ProviderSearch { Classification = "Chiro
 | `GetProviderAsync(npi)` | `GET /api/v1/providers/{npi}` |
 | `SearchCompaniesAsync(name, page, pageSize)` | `GET /api/v1/companies` |
 | `GetCompanyAsync(id)` | `GET /api/v1/companies/{id}` (null if unknown) |
+| `SearchProductsAsync(name, kind, page, pageSize)` | `GET /api/v1/products` |
+| `GetProductAsync(slug)` | `GET /api/v1/products/{slug}` (null if unknown) |
 | `GetClassificationsAsync()` / `GetSpecializationsAsync(c)` | `GET /api/v1/taxonomy/classifications[/{c}/specializations]` |
 | `GetStatesAsync()` / `GetCountiesAsync(st)` | `GET /api/v1/states[/{st}/counties]` |
 | `GetMetaAsync()` | `GET /api/v1/meta` |

@@ -223,6 +223,181 @@ public sealed class IndustryPayments
 
     /// <summary>The three largest payers.</summary>
     public IReadOnlyList<IndustryPayer> TopPayers { get; set; } = [];
+
+    /// <summary>The products named most in these payments; <see cref="IndustryProduct.Slug"/> is for <see cref="NpiClient.GetProductAsync"/>.</summary>
+    public IReadOnlyList<IndustryProduct> TopProducts { get; set; } = [];
+}
+
+/// <summary>A product named in general payments to a provider.</summary>
+public sealed class IndustryProduct
+{
+    public string Slug { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Kind { get; set; }
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>A page of products named in Open Payments, largest payments first.</summary>
+public sealed class ProductPage
+{
+    public IReadOnlyList<ProductSummary> Items { get; set; } = [];
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+}
+
+/// <summary>One product in a list.</summary>
+public sealed class ProductSummary
+{
+    public string Slug { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    /// <summary>Drug, Biological, Device or Medical Supply.</summary>
+    public string? Kind { get; set; }
+
+    public string? Category { get; set; }
+
+    public int Year { get; set; }
+
+    /// <summary>General payments naming the product (a payment naming several products counts for each).</summary>
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+
+    public int Companies { get; set; }
+
+    public int Providers { get; set; }
+}
+
+/// <summary>A product named in Open Payments: who pays for it, what for, to whom, and research naming it.</summary>
+public sealed class ProductDetail
+{
+    public string Slug { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Kind { get; set; }
+
+    public string? Category { get; set; }
+
+    /// <summary>The NDC (drug code) used most in the payments.</summary>
+    public string? Ndc { get; set; }
+
+    /// <summary>The device identifier (GUDID primary DI) used most in the payments.</summary>
+    public string? DeviceId { get; set; }
+
+    public int Year { get; set; }
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+
+    public int CompanyCount { get; set; }
+
+    public int Providers { get; set; }
+
+    public IReadOnlyList<ProductCompany> Companies { get; set; } = [];
+
+    public IReadOnlyList<ProductNature> ByNature { get; set; } = [];
+
+    public IReadOnlyList<ProductSpecialty> TopSpecialties { get; set; } = [];
+
+    public IReadOnlyList<ProductRecipient> TopProviders { get; set; } = [];
+
+    public ProductResearch? Research { get; set; }
+}
+
+/// <summary>A company whose payments named the product.</summary>
+public sealed class ProductCompany
+{
+    public string CompanyId { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>Payments naming the product, of one kind.</summary>
+public sealed class ProductNature
+{
+    public string Nature { get; set; } = "";
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>A specialty paid in payments naming the product.</summary>
+public sealed class ProductSpecialty
+{
+    public string Specialty { get; set; } = "";
+
+    public int Providers { get; set; }
+
+    public double Amount { get; set; }
+}
+
+/// <summary>An active provider paid in payments naming the product.</summary>
+public sealed class ProductRecipient
+{
+    public string Npi { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Credential { get; set; }
+
+    public string? Specialty { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>Research payments naming the product.</summary>
+public sealed class ProductResearch
+{
+    public int Year { get; set; }
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+
+    public int Studies { get; set; }
+
+    public IReadOnlyList<ProductStudy> TopStudies { get; set; } = [];
+}
+
+/// <summary>A research study naming the product.</summary>
+public sealed class ProductStudy
+{
+    public string? Study { get; set; }
+
+    public string? NctId { get; set; }
+
+    public string? CompanyId { get; set; }
+
+    public string? CompanyName { get; set; }
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+
+    public string? ClinicalTrialsUrl { get; set; }
 }
 
 /// <summary>Payments of one kind (e.g. "Food and Beverage", "Consulting Fee").</summary>
@@ -514,6 +689,9 @@ public sealed class CompanyNature
 /// <summary>A product named first on the company's general payments.</summary>
 public sealed class CompanyProduct
 {
+    /// <summary>The product page's key, for <see cref="NpiClient.GetProductAsync"/>.</summary>
+    public string? Slug { get; set; }
+
     public string Name { get; set; } = "";
 
     /// <summary>Drug, Device, Biological or Medical Supply.</summary>

@@ -54,6 +54,8 @@ public class ApiTests
     [InlineData("/export.csv?zip=117", "zip")]
     [InlineData("/api/v1/companies?pageSize=500", "pageSize")]
     [InlineData("/api/v1/companies?page=0", "page")]
+    [InlineData("/api/v1/products?kind=Pill", "kind")]
+    [InlineData("/api/v1/products?pageSize=0", "pageSize")]
     public async Task Errors_are_keyed_by_query_parameter_name(string url, string parameter)
     {
         await using var factory = new ApiFactory();
@@ -171,7 +173,7 @@ public class ApiTests
         [
             "/api/v1/providers", "/api/v1/providers.csv", "/api/v1/providers/lookup", "/api/v1/providers/lookup.csv", "/api/v1/providers/{npi}", "/api/v1/taxonomy/classifications",
             "/api/v1/taxonomy/classifications/{classification}/specializations", "/api/v1/states", "/api/v1/states/{state}/counties",
-            "/api/v1/counties/{fips}", "/api/v1/meta", "/api/v1/credentials", "/api/v1/companies", "/api/v1/companies/{id}",
+            "/api/v1/counties/{fips}", "/api/v1/meta", "/api/v1/credentials", "/api/v1/companies", "/api/v1/companies/{id}", "/api/v1/products", "/api/v1/products/{slug}",
         ];
         Assert.Equal(expected.Order(), paths.EnumerateObject().Select(p => p.Name).Order());
 
