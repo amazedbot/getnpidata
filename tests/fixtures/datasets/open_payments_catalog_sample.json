@@ -96,5 +96,33 @@
     }
    }
   ]
+ },
+ {
+  "title": "Reporting entity profile information",
+  "modified": "2026-06-30",
+  "distribution": [
+   {
+    "identifier": "x",
+    "data": {
+     "title": "Reporting entity profile information",
+     "mediaType": "text/csv",
+     "downloadURL": "https://op.test/SMRY_P06302026/PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv"
+    }
+   }
+  ]
+ },
+ {
+  "title": "Payments grouped by reporting entities",
+  "modified": "2026-06-30",
+  "distribution": [
+   {
+    "identifier": "x",
+    "data": {
+     "title": "Payments grouped by reporting entities",
+     "mediaType": "text/csv",
+     "downloadURL": "https://op.test/SMRY_P06302026/PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"
+    }
+   }
+  ]
  }
 ]
