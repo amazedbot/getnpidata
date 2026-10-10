@@ -225,13 +225,25 @@ public sealed class StateLicenseSource : DatasetSource
 
     public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
     {
-        var versions = new List<string>();
+        var versions = new List<(string State, string? Version)>();
         foreach (var dataset in Datasets)
         {
-            versions.Add($"{dataset.State} {await dataset.VersionAsync(context, ct) ?? "none"}");
+            versions.Add((dataset.State, await dataset.VersionAsync(context, ct)));
         }
 
-        return new DatasetRelease(string.Join(" | ", versions), new Uri("https://data.cms.gov/"));
+        context.Log.Information("State licenses versions: {Versions}", string.Join(" | ", versions.Select(v => $"{v.State} {v.Version ?? "none"}")));
+        return new DatasetRelease(CombineVersions(versions), new Uri("https://data.cms.gov/"));
+    }
+
+    /// <summary>
+    /// One short version for all the datasets (reference_data.version holds 200 characters): the states with data and a
+    /// hash of every dataset's version, so any change reloads them all.
+    /// </summary>
+    public static string CombineVersions(IReadOnlyList<(string State, string? Version)> versions)
+    {
+        var all = string.Join(" | ", versions.Select(v => $"{v.State} {v.Version ?? "none"}"));
+        var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(all)))[..12];
+        return $"{string.Join(" ", versions.Where(v => v.Version is not null).Select(v => v.State).Distinct().Order(StringComparer.Ordinal))} {hash}";
     }
 
     /// <summary>When the dataset's rows last changed (Socrata <c>rowsUpdatedAt</c>, Unix seconds), as a UTC timestamp.</summary>

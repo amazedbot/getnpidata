@@ -1,4 +1,5 @@
 using Npi.Core.Search;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using Npi.Loader.Datasets;
@@ -55,8 +56,9 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"),
-             ("state_licenses", "NY 2026-10-02T20:04:24Z | TX 2026-10-02T20:04:24Z | WA 2026-10-02T20:04:24Z | IL 2026-10-02T20:04:24Z | CO 2026-10-02T20:04:24Z | DE 2026-10-02T20:04:24Z | DE 2026-10-02T20:04:24Z | CT 2026-10-02T20:04:24Z"
-                 + " | MD 2026-10-01T00:00:00Z | MD 2026-10-01T00:00:00Z | FL none | FL none")],
+             ("state_licenses", StateLicenseSource.CombineVersions(
+                 [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
+                  ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null)]))],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
@@ -114,7 +116,7 @@ public sealed class DatasetIntegrationTests : IDisposable
             """);
         // Florida's files are dropped by the owner into the state files folder (PROF_ALL inside its zip).
         var florida = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "FL")).FullName;
-        using (var zip = System.IO.Compression.ZipFile.Open(Path.Combine(florida, "PROF_ALL.zip"), System.IO.Compression.ZipArchiveMode.Create))
+        using (var zip = ZipFile.Open(Path.Combine(florida, "PROF_ALL.zip"), ZipArchiveMode.Create))
         {
             zip.CreateEntryFromFile(Fixtures.Path("datasets/state_fl_prof_all.txt"), "dbdumps/ldms/PROF_ALL.txt");
         }
