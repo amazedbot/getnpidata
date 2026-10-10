@@ -182,7 +182,7 @@
     <h2>Industry payments (@pay.Year)</h2>
     <p>
         <strong>@Money(pay.TotalAmount)</strong> in @pay.Records.ToString("N0", CultureInfo.InvariantCulture) general payment@(pay.Records == 1 ? "" : "s")
-        from @pay.Payers company@(pay.Payers == 1 ? "" : "ies") (drug and device makers, as reported to CMS Open Payments).
+        from @pay.Payers.ToString("N0", CultureInfo.InvariantCulture) @(pay.Payers == 1 ? "company" : "companies") (drug and device makers, as reported to CMS Open Payments).
     </p>
     <div class="table-wrap">
         <table>
