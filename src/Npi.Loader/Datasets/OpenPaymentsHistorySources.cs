@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Dapper;
+using Npi.Core.Search;
 using Npi.Loader.Db;
 
 namespace Npi.Loader.Datasets;
@@ -221,7 +223,9 @@ public sealed class OpenPaymentsCompanySource : OpenPaymentsSummarySource
 
 /// <summary>
 /// The companies themselves (item 17): CMS's reporting entity profiles (name, other names, state, country) and their
-/// payments per program year (general, research, ownership invested and value), over every published year.
+/// payments per program year (general, research, ownership invested and value), over every published year. Also the
+/// name keys of each company's names (<see cref="CompanyNames.Key"/>), which match it to FDA recalls, SEC registrants
+/// and OIG integrity agreements.
 /// </summary>
 public sealed class OpenPaymentsEntitySource : DatasetSource
 {
@@ -291,7 +295,7 @@ public sealed class OpenPaymentsEntitySource : DatasetSource
                 context.Log.Information("Loaded {Rows:N0} rows of {File}", rows, Path.GetFileName(file));
             }
 
-            var counts = await TableSwap.ReplaceAsync(connection, ["op_company", "op_company_year"], context.Options.MinRowRatio, async () =>
+            var counts = await TableSwap.ReplaceAsync(connection, ["op_company", "op_company_year", "op_company_key"], context.Options.MinRowRatio, async () =>
             {
                 await Database.ExecuteAsync(connection,
                     """
@@ -339,6 +343,16 @@ public sealed class OpenPaymentsEntitySource : DatasetSource
                       FROM `op_company_year_staging` GROUP BY `company_id`
                     ) t ON t.`company_id` = ids.`company_id`
                     """, ct);
+                var names = await connection.QueryAsync<(string Id, string Name, string? OtherNames)>(new CommandDefinition(
+                    "SELECT `company_id`, `name`, `other_names` FROM `op_company_staging`", cancellationToken: ct));
+                var keys = names
+                    .SelectMany(n => new[] { n.Name }.Concat((n.OtherNames ?? "").Split(" | ", StringSplitOptions.RemoveEmptyEntries))
+                        .Select(CompanyNames.Key).OfType<string>().Distinct(StringComparer.Ordinal).Select(k => new { id = n.Id, key = k }))
+                    .ToList();
+                await using var tx = await connection.BeginTransactionAsync(ct);
+                await connection.ExecuteAsync(new CommandDefinition(
+                    "INSERT INTO `op_company_key_staging` (`company_id`, `name_key`) VALUES (@id, @key)", keys, tx, cancellationToken: ct));
+                await tx.CommitAsync(ct);
             }, ct);
             return counts["op_company"];
         }

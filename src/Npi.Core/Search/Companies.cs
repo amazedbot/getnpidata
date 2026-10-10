@@ -32,9 +32,39 @@ public sealed record CompanyDetail(string Id, string Name, IReadOnlyList<string>
     int? DetailYear, IReadOnlyList<CompanyNature> ByNature, IReadOnlyList<CompanyProduct> TopProducts, IReadOnlyList<CompanySpecialty> TopSpecialties,
     IReadOnlyList<CompanyRecipient> TopProviders, IReadOnlyList<CompanySummary> SimilarNames)
 {
+    /// <summary>FDA recalls by a firm of the same name; null when none matched. A name match, not a verified identity.</summary>
+    public CompanyRecalls? Recalls { get; init; }
+
+    /// <summary>SEC registrants of the same name (public companies). A name match, not a verified identity.</summary>
+    public IReadOnlyList<CompanySecListing> SecListings { get; init; } = [];
+
+    /// <summary>OIG integrity agreements naming an entity of the same name, newest status first. A name match, not a verified identity.</summary>
+    public IReadOnlyList<CompanyIntegrityAgreement> IntegrityAgreements { get; init; } = [];
+
     /// <summary>The company's page on CMS's Open Payments site.</summary>
     public string OpenPaymentsUrl => $"https://openpaymentsdata.cms.gov/company/{Uri.EscapeDataString(Id)}";
 }
+
+/// <summary>An FDA recall (enforcement report) by a firm whose name matches the company.</summary>
+public sealed record CompanyRecall(string RecallNumber, string ProductType, string? Firm, string? Classification, string? Status, DateOnly? Initiated,
+    string? Product, string? Reason);
+
+/// <summary>
+/// FDA recalls by firms whose name matches the company's (openFDA drug and device enforcement reports, since 2004):
+/// counts by class (Class I is the most serious), how many are ongoing, the newest <see cref="CompanyService.MaxRecalls"/> and the
+/// firm names that matched.
+/// </summary>
+public sealed record CompanyRecalls(int Total, int ClassI, int ClassII, int ClassIII, int Ongoing, IReadOnlyList<string> Firms,
+    IReadOnlyList<CompanyRecall> Latest);
+
+/// <summary>A public company registered with the SEC whose name matches (EDGAR CIK, ticker, exchange).</summary>
+public sealed record CompanySecListing(int Cik, string Ticker, string Name, string? Exchange)
+{
+    public string EdgarUrl => $"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={Cik:D10}";
+}
+
+/// <summary>An HHS-OIG Corporate Integrity Agreement (or other integrity agreement) naming an entity whose name matches.</summary>
+public sealed record CompanyIntegrityAgreement(string Name, string? Location, string? Type, string? Status, DateOnly? StatusDate, string Url);
 
 /// <summary>One company in a list: payments (general + research) over every published year, and how many NPIs it paid.</summary>
 public sealed record CompanySummary(string Id, string Name, string? State, string? Country, double Payments, double OwnershipValue, int? Providers,
@@ -49,6 +79,8 @@ public sealed partial class CompanyService(string connectionString)
     public const int MaxPageSize = 100;
 
     public const int MaxSimilarNames = 10;
+
+    public const int MaxRecalls = 20;
 
     // Words that don't identify a company.
     private static readonly HashSet<string> CommonWords = new(StringComparer.OrdinalIgnoreCase)
@@ -79,6 +111,13 @@ public sealed partial class CompanyService(string connectionString)
     private sealed record ProductRow(string Product, string? Kind, string? Category, double Amount, int Records);
 
     private sealed record SpecialtyRow(string Specialty, int Providers, double Amount);
+
+    private sealed record RecallCountRow(long Total, long ClassI, long ClassII, long ClassIII, long Ongoing);
+
+    private sealed record RecallRow(string RecallNumber, string ProductType, string? Firm, string? Classification, string? Status, DateTime? Initiated,
+        string? Product, string? Reason);
+
+    private sealed record AgreementRow(string Name, string? Location, string? Type, string? Status, DateTime? StatusDate, string Url);
 
     private sealed record RecipientRow(string Npi, string? SortName, string? Specialty, string? City, string? State, double Total, double General,
         double Research, double Associated, double Ownership, int Records);
@@ -191,6 +230,50 @@ public sealed partial class CompanyService(string connectionString)
                     r.FirstYear, r.LastYear)).ToList();
         }
 
+        // Public records matched by name key (op_company_key ↔ each source's key).
+        var recallCounts = await connection.QuerySingleAsync<RecallCountRow>(new CommandDefinition(
+            """
+            SELECT COUNT(*) AS Total, CAST(COALESCE(SUM(f.classification = 'Class I'), 0) AS SIGNED) AS ClassI,
+                   CAST(COALESCE(SUM(f.classification = 'Class II'), 0) AS SIGNED) AS ClassII,
+                   CAST(COALESCE(SUM(f.classification = 'Class III'), 0) AS SIGNED) AS ClassIII, CAST(COALESCE(SUM(f.status = 'Ongoing'), 0) AS SIGNED) AS Ongoing
+            FROM fda_enforcement f WHERE f.firm_key IN (SELECT k.name_key FROM op_company_key k WHERE k.company_id = @id)
+            """, new { id }, cancellationToken: ct));
+        CompanyRecalls? recalls = null;
+        if (recallCounts.Total > 0)
+        {
+            var latest = await connection.QueryAsync<RecallRow>(new CommandDefinition(
+                $"""
+                SELECT recall_number AS RecallNumber, product_type AS ProductType, firm AS Firm, classification AS Classification, status AS Status,
+                       initiation_date AS Initiated, product_description AS Product, reason AS Reason
+                FROM fda_enforcement WHERE firm_key IN (SELECT k.name_key FROM op_company_key k WHERE k.company_id = @id)
+                ORDER BY initiation_date DESC, recall_number DESC LIMIT {MaxRecalls}
+                """, new { id }, cancellationToken: ct));
+            var firms = await connection.QueryAsync<string>(new CommandDefinition(
+                """
+                SELECT firm FROM fda_enforcement WHERE firm_key IN (SELECT k.name_key FROM op_company_key k WHERE k.company_id = @id) AND firm IS NOT NULL
+                GROUP BY firm ORDER BY COUNT(*) DESC, firm LIMIT 5
+                """, new { id }, cancellationToken: ct));
+            recalls = new CompanyRecalls((int)recallCounts.Total, (int)recallCounts.ClassI, (int)recallCounts.ClassII, (int)recallCounts.ClassIII,
+                (int)recallCounts.Ongoing,
+                firms.ToList(),
+                latest.Select(r => new CompanyRecall(r.RecallNumber, r.ProductType, r.Firm, r.Classification, r.Status,
+                    r.Initiated is { } d ? DateOnly.FromDateTime(d) : null, r.Product, r.Reason)).ToList());
+        }
+
+        var sec = (await connection.QueryAsync<CompanySecListing>(new CommandDefinition(
+            """
+            SELECT s.cik AS Cik, s.ticker AS Ticker, s.name AS Name, s.exchange AS Exchange
+            FROM sec_company s WHERE s.name_key IN (SELECT k.name_key FROM op_company_key k WHERE k.company_id = @id)
+            ORDER BY s.cik, s.ticker
+            """, new { id }, cancellationToken: ct))).ToList();
+        var agreements = await connection.QueryAsync<AgreementRow>(new CommandDefinition(
+            """
+            SELECT a.name AS Name, a.location AS Location, a.agreement_type AS Type, a.status AS Status, a.status_date AS StatusDate, a.url AS Url
+            FROM oig_cia a
+            WHERE a.slug IN (SELECT e.slug FROM oig_cia_entity e JOIN op_company_key k ON k.name_key = e.name_key WHERE k.company_id = @id)
+            ORDER BY a.status_date DESC, a.name
+            """, new { id }, cancellationToken: ct));
+
         return new CompanyDetail(company.Id, company.Name,
             (company.OtherNames ?? "").Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(n => !string.Equals(n, company.Name, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
@@ -203,6 +286,12 @@ public sealed partial class CompanyService(string connectionString)
             specialties.Select(s => new CompanySpecialty(s.Specialty, s.Providers, s.Amount)).ToList(),
             recipients.Select(r => new CompanyRecipient(r.Npi, r.SortName ?? r.Npi, credentials.GetValueOrDefault(r.Npi), r.Specialty, r.City, r.State,
                 r.Total, r.General, r.Research, r.Associated, r.Ownership, r.Records)).ToList(),
-            similar);
+            similar)
+        {
+            Recalls = recalls,
+            SecListings = sec,
+            IntegrityAgreements = agreements.Select(a => new CompanyIntegrityAgreement(a.Name, a.Location, a.Type, a.Status,
+                a.StatusDate is { } d ? DateOnly.FromDateTime(d) : null, a.Url)).ToList(),
+        };
     }
 }

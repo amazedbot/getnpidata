@@ -1,0 +1,42 @@
+{
+ "meta": {
+  "disclaimer": "Do not rely on openFDA [sic] {x}",
+  "results": {
+   "skip": 0,
+   "limit": 2,
+   "total": 2
+  }
+ },
+ "results": [
+  {
+   "recall_number": "D-0001-2026",
+   "recalling_firm": "Pfizer Inc.",
+   "classification": "Class I",
+   "status": "Ongoing",
+   "recall_initiation_date": "20260820",
+   "report_date": "20260930",
+   "product_description": "Tablets \"30 count\" [blister] {lot 1}",
+   "reason_for_recall": "Mislabeling ]}"
+  },
+  {
+   "recall_number": "D-0002-2025",
+   "recalling_firm": "Medtronic, L.L.C.",
+   "classification": "Class II",
+   "status": "Terminated",
+   "recall_initiation_date": "20250101",
+   "report_date": "bad",
+   "product_description": "Pump",
+   "reason_for_recall": "Software"
+  },
+  {
+   "recall_number": "D-0001-2026",
+   "recalling_firm": "Pfizer Inc.",
+   "classification": "Class I",
+   "status": "Ongoing",
+   "recall_initiation_date": "20260820",
+   "report_date": "20260930",
+   "product_description": "duplicate",
+   "reason_for_recall": "dup"
+  }
+ ]
+}

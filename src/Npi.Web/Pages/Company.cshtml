@@ -48,6 +48,15 @@
         <text>Physicians also reported ownership or investment interests in it worth <strong>@Format.Money(c.OwnershipValue)</strong>.</text>
     }
 </p>
+@{ var activeAgreements = c.IntegrityAgreements.Where(a => string.Equals(a.Status, "Effective", StringComparison.OrdinalIgnoreCase)).ToList(); }
+@if (activeAgreements.Count > 0)
+{
+    <div class="notice alert" role="note">
+        <strong>Under an HHS-OIG integrity agreement.</strong>
+        An entity of this name agreed to OIG oversight after settling a federal health care fraud case
+        (@string.Join("; ", activeAgreements.Select(a => a.Name))). See “Integrity agreements” below.
+    </div>
+}
 <div class="notice" role="note">
     Companies that make drugs, devices and supplies must report what they give to doctors and teaching hospitals (the Sunshine Act).
     A payment is not evidence of wrongdoing, but it may matter to you as a patient: ask your provider about it if it does.
@@ -167,6 +176,71 @@
     </div>
 }
 
+@if (c.Recalls is { } recalls)
+{
+    <h2>FDA recalls</h2>
+    <p>
+        <strong>@Format.Number(recalls.Total)</strong> drug and device recall@(recalls.Total == 1 ? "" : "s") since 2004
+        (Class I, the most serious: @Format.Number(recalls.ClassI); Class II: @Format.Number(recalls.ClassII); Class III: @Format.Number(recalls.ClassIII))@(recalls.Ongoing > 0 ? $", {Format.Number(recalls.Ongoing)} listed by FDA as ongoing" : "").
+        Recalling firm: @string.Join("; ", recalls.Firms).
+    </p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">The newest FDA recalls</caption>
+            <thead><tr><th scope="col">Started</th><th scope="col">Recall</th><th scope="col">Class</th><th scope="col">Status</th><th scope="col">Product</th><th scope="col">Reason</th></tr></thead>
+            <tbody>
+                @foreach (var r in recalls.Latest)
+                {
+                    <tr>
+                        <td>@r.Initiated?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                        <td>@r.RecallNumber <span class="muted">(@(r.ProductType == "Devices" ? "device" : "drug"))</span></td>
+                        <td>@r.Classification</td><td>@r.Status</td>
+                        <td class="long">@r.Product</td><td class="long">@r.Reason</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">
+        The newest @recalls.Latest.Count, from FDA enforcement reports (openFDA), matched to this company by the recalling firm's name; a firm of the
+        same name is not always the same company. Class I: may cause serious harm or death; Class II: temporary or reversible harm; Class III: unlikely to cause harm.
+        Search every recall at <a href="https://www.accessdata.fda.gov/scripts/ires/index.cfm">FDA's Enforcement Report</a>.
+    </p>
+}
+
+@if (c.SecListings.Count > 0)
+{
+    <h2>Public company (SEC)</h2>
+    <ul>
+        @foreach (var s in c.SecListings)
+        {
+            <li><a href="@s.EdgarUrl">@s.Name</a>: @s.Ticker@(s.Exchange is null ? "" : $" on {s.Exchange}") <span class="muted">· SEC CIK @s.Cik</span></li>
+        }
+    </ul>
+    <p class="muted">SEC EDGAR registrants of the same name, with their filings (annual reports, ownership). A name match: a parent or subsidiary under another name isn't found.</p>
+}
+
+@if (c.IntegrityAgreements.Count > 0)
+{
+    <h2>Integrity agreements (HHS-OIG)</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">OIG integrity agreements</caption>
+            <thead><tr><th scope="col">Agreement with</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Location</th></tr></thead>
+            <tbody>
+                @foreach (var a in c.IntegrityAgreements)
+                {
+                    <tr>
+                        <td><a href="@a.Url">@a.Name</a></td><td>@a.Type</td>
+                        <td>@a.Status @a.StatusDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td><td>@a.Location</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">Companies that settle federal health care fraud cases may agree to years of OIG oversight (a Corporate Integrity Agreement). Matched to this company by name. Details at <a href="https://oig.hhs.gov/compliance/corporate-integrity-agreements/">oig.hhs.gov</a>.</p>
+}
+
 @if (c.SimilarNames.Count > 0)
 {
     <h2>Similar company names</h2>
@@ -180,7 +254,7 @@
 }
 
 <p class="muted">
-    Source: CMS Open Payments, every published program year (the products and kinds of payment: @(c.DetailYear?.ToString(CultureInfo.InvariantCulture) ?? "the newest year")).
+    Sources: CMS Open Payments, every published program year (the products and kinds of payment: @(c.DetailYear?.ToString(CultureInfo.InvariantCulture) ?? "the newest year")).
     Ownership is the value of an ownership or investment interest (as reported), not a payment.
     See the company's own record at <a href="@c.OpenPaymentsUrl">openpaymentsdata.cms.gov</a>.
 </p>

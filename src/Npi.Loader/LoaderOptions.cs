@@ -58,6 +58,21 @@ public sealed class LoaderOptions
     /// <summary>Census population estimates datasets folder (vintage folders "2020-YYYY/" below it).</summary>
     public string CensusPopulationBaseUrl { get; set; } = "https://www2.census.gov/programs-surveys/popest/datasets/";
 
+    /// <summary>openFDA bulk download index; the drug and device enforcement (recall) files are loaded (Stage 5.5 item 17).</summary>
+    public string FdaDownloadIndexUrl { get; set; } = "https://api.fda.gov/download.json";
+
+    /// <summary>SEC EDGAR registrants with tickers.</summary>
+    public string SecCompanyTickersUrl { get; set; } = "https://www.sec.gov/files/company_tickers_exchange.json";
+
+    /// <summary>
+    /// User-Agent for SEC EDGAR, which asks for a contact e-mail ("getnpidata name@example.com"). Private: user-secrets only.
+    /// Empty: the SEC source is skipped.
+    /// </summary>
+    public string SecUserAgent { get; set; } = "";
+
+    /// <summary>HHS-OIG's list of Corporate Integrity Agreements (pages ?page=2, …).</summary>
+    public string OigCiaUrl { get; set; } = "https://oig.hhs.gov/compliance/corporate-integrity-agreements/browse-cias/";
+
     /// <summary>US Census Bureau batch geocoder (Stage 5.5 item 10, map search).</summary>
     public string CensusGeocoderUrl { get; set; } = "https://geocoding.geo.census.gov/geocoder/locations/addressbatch";
 

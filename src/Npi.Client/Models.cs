@@ -390,8 +390,89 @@ public sealed class CompanyDetail
     /// <summary>Other companies sharing the name's distinctive word (may be related; a name match only).</summary>
     public IReadOnlyList<CompanySummary> SimilarNames { get; set; } = [];
 
+    /// <summary>FDA recalls by a firm of the same name; null when none matched.</summary>
+    public CompanyRecalls? Recalls { get; set; }
+
+    /// <summary>SEC registrants of the same name.</summary>
+    public IReadOnlyList<CompanySecListing> SecListings { get; set; } = [];
+
+    /// <summary>OIG integrity agreements naming an entity of the same name.</summary>
+    public IReadOnlyList<CompanyIntegrityAgreement> IntegrityAgreements { get; set; } = [];
+
     /// <summary>The company's page on CMS's Open Payments site.</summary>
     public string OpenPaymentsUrl { get; set; } = "";
+}
+
+/// <summary>FDA recalls (drug and device enforcement reports) by firms whose name matches the company's.</summary>
+public sealed class CompanyRecalls
+{
+    public int Total { get; set; }
+
+    public int ClassI { get; set; }
+
+    public int ClassII { get; set; }
+
+    public int ClassIII { get; set; }
+
+    public int Ongoing { get; set; }
+
+    /// <summary>The recalling firm names that matched.</summary>
+    public IReadOnlyList<string> Firms { get; set; } = [];
+
+    /// <summary>Newest first.</summary>
+    public IReadOnlyList<CompanyRecall> Latest { get; set; } = [];
+}
+
+/// <summary>One FDA recall.</summary>
+public sealed class CompanyRecall
+{
+    public string RecallNumber { get; set; } = "";
+
+    /// <summary>Drugs or Devices.</summary>
+    public string ProductType { get; set; } = "";
+
+    public string? Firm { get; set; }
+
+    public string? Classification { get; set; }
+
+    public string? Status { get; set; }
+
+    public DateTime? Initiated { get; set; }
+
+    public string? Product { get; set; }
+
+    public string? Reason { get; set; }
+}
+
+/// <summary>A public company registered with the SEC.</summary>
+public sealed class CompanySecListing
+{
+    public int Cik { get; set; }
+
+    public string Ticker { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Exchange { get; set; }
+
+    public string EdgarUrl { get; set; } = "";
+}
+
+/// <summary>An HHS-OIG integrity agreement.</summary>
+public sealed class CompanyIntegrityAgreement
+{
+    public string Name { get; set; } = "";
+
+    public string? Location { get; set; }
+
+    public string? Type { get; set; }
+
+    /// <summary>Effective, Closed, Suspended, …</summary>
+    public string? Status { get; set; }
+
+    public DateTime? StatusDate { get; set; }
+
+    public string Url { get; set; } = "";
 }
 
 /// <summary>A company's payments in one program year.</summary>
