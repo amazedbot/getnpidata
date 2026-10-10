@@ -33,10 +33,15 @@ public sealed record ProductResearch(int Year, double Amount, int Records, int S
 /// other labelers listing the same generic name (generics, repackagers, authorized generics); <see cref="GenericMakers"/>
 /// those of them with an ANDA (approved generics).
 /// </summary>
+/// <remarks>
+/// <see cref="MatchedBy"/> is "ndc" (the NDC reported in the payments is listed) or "name" (it isn't, and the brand name matched:
+/// the listing chosen is the one under the application most listings of that name use). A listing without a drug class or
+/// label borrows them from a listing of the same generic name / the same application.
+/// </remarks>
 public sealed record ProductDrugInfo(string ProductNdc, string? BrandName, string? GenericName, string? ActiveIngredients, string? DosageForm,
     string? Route, string? Labeler, string? MarketingCategory, string? ApplicationNumber, string? ProductType, string? PharmClasses, string? Sponsor,
     DateOnly? ApprovalDate, DateOnly? MarketingStart, int OtherMakers, int GenericMakers, string? Indications, string? BoxedWarning,
-    DateOnly? LabelDate, string? LabelSetId)
+    DateOnly? LabelDate, string? LabelSetId, string MatchedBy = "ndc")
 {
     /// <summary>The label on DailyMed (NLM), when FDA's files had one.</summary>
     public string? DailyMedUrl => LabelSetId is null ? null : $"https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={Uri.EscapeDataString(LabelSetId)}";
@@ -112,7 +117,7 @@ public sealed class ProductService(string connectionString)
     private sealed record ProductRow(string Slug, string Name, string? Kind, string? Category, string? Ndc, string? DeviceId, short Year, double Amount,
         int Records, int Companies, int Providers);
 
-    private sealed record DrugRow(string ProductNdc, string? BrandName, string? GenericName, string? ActiveIngredients, string? DosageForm, string? Route,
+    private sealed record DrugRow(string ProductNdc, string? NdcKey, string? BrandName, string? GenericName, string? ActiveIngredients, string? DosageForm, string? Route,
         string? Labeler, string? MarketingCategory, string? ApplicationNumber, string? ProductType, string? PharmClasses, string? Sponsor, DateTime? ApprovalDate,
         DateTime? MarketingStart, long OtherMakers, long GenericMakers);
 
@@ -249,9 +254,8 @@ public sealed class ProductService(string connectionString)
 
     private static async Task<ProductDrugInfo?> GetDrugAsync(MySqlConnection connection, string slug, CancellationToken ct)
     {
-        var d = await connection.QueryFirstOrDefaultAsync<DrugRow>(new CommandDefinition(
-            """
-            SELECT n.product_ndc AS ProductNdc, n.brand_name AS BrandName, n.generic_name AS GenericName, n.active_ingredients AS ActiveIngredients,
+        const string columns = """
+            SELECT n.product_ndc AS ProductNdc, n.ndc_key AS NdcKey, n.brand_name AS BrandName, n.generic_name AS GenericName, n.active_ingredients AS ActiveIngredients,
                    n.dosage_form AS DosageForm, n.route AS Route, n.labeler AS Labeler, n.marketing_category AS MarketingCategory,
                    n.application_number AS ApplicationNumber, n.product_type AS ProductType, n.pharm_classes AS PharmClasses, a.sponsor AS Sponsor,
                    a.approval_date AS ApprovalDate, n.marketing_start AS MarketingStart,
@@ -260,6 +264,11 @@ public sealed class ProductService(string connectionString)
                    (SELECT COUNT(DISTINCT o.labeler) FROM fda_ndc_product o
                      WHERE o.generic_name = n.generic_name AND o.labeler <> n.labeler AND o.marketing_category = 'ANDA') AS GenericMakers
             FROM op_product p
+            """;
+        var matchedBy = "ndc";
+        var d = await connection.QueryFirstOrDefaultAsync<DrugRow>(new CommandDefinition(
+            columns + """
+
             JOIN fda_ndc_product n ON n.ndc_key = p.ndc_key
             LEFT JOIN fda_application a ON a.application_number = n.application_number
             WHERE p.slug = @slug
@@ -268,20 +277,49 @@ public sealed class ProductService(string connectionString)
             """, new { slug }, cancellationToken: ct));
         if (d is null)
         {
+            // The reported NDC isn't listed (or there is none): a drug or biological of the same brand name, under the
+            // application most of its listings use.
+            matchedBy = "name";
+            d = await connection.QueryFirstOrDefaultAsync<DrugRow>(new CommandDefinition(
+                columns + """
+
+                JOIN fda_ndc_product n ON n.brand_name = p.name
+                LEFT JOIN fda_application a ON a.application_number = n.application_number
+                WHERE p.slug = @slug AND p.kind IN ('Drug', 'Biological')
+                ORDER BY (SELECT COUNT(*) FROM fda_ndc_product n2 WHERE n2.brand_name = n.brand_name AND n2.application_number <=> n.application_number) DESC,
+                         a.sponsor IS NULL, n.pharm_classes IS NULL, n.product_ndc
+                LIMIT 1
+                """, new { slug }, cancellationToken: ct));
+        }
+
+        if (d is null)
+        {
             return null;
         }
 
+        // The listing's own label, else the newest label of a listing under the same application.
         var label = await connection.QueryFirstOrDefaultAsync<LabelRow>(new CommandDefinition(
             """
             SELECT l.set_id AS SetId, l.effective_date AS EffectiveDate, l.indications AS Indications, l.boxed_warning AS BoxedWarning
-            FROM op_product p JOIN fda_drug_label_ndc ln ON ln.ndc_key = p.ndc_key JOIN fda_drug_label l ON l.set_id = ln.set_id
-            WHERE p.slug = @slug
+            FROM fda_drug_label_ndc ln JOIN fda_drug_label l ON l.set_id = ln.set_id
+            WHERE ln.ndc_key = @key
             ORDER BY l.effective_date DESC, l.set_id
             LIMIT 1
-            """, new { slug }, cancellationToken: ct));
+            """, new { key = d.NdcKey }, cancellationToken: ct))
+            ?? (d.ApplicationNumber is null ? null : await connection.QueryFirstOrDefaultAsync<LabelRow>(new CommandDefinition(
+                """
+                SELECT l.set_id AS SetId, l.effective_date AS EffectiveDate, l.indications AS Indications, l.boxed_warning AS BoxedWarning
+                FROM fda_ndc_product n2 JOIN fda_drug_label_ndc ln ON ln.ndc_key = n2.ndc_key JOIN fda_drug_label l ON l.set_id = ln.set_id
+                WHERE n2.application_number = @app
+                ORDER BY l.effective_date DESC, l.set_id
+                LIMIT 1
+                """, new { app = d.ApplicationNumber }, cancellationToken: ct)));
+        var classes = d.PharmClasses ?? (d.GenericName is null ? null : await connection.QueryFirstOrDefaultAsync<string>(new CommandDefinition(
+            "SELECT pharm_classes FROM fda_ndc_product WHERE generic_name = @generic AND pharm_classes IS NOT NULL AND pharm_classes <> '' ORDER BY product_ndc LIMIT 1",
+            new { generic = d.GenericName }, cancellationToken: ct)));
         return new ProductDrugInfo(d.ProductNdc, d.BrandName, d.GenericName, d.ActiveIngredients, d.DosageForm, d.Route, d.Labeler, d.MarketingCategory,
-            d.ApplicationNumber, d.ProductType, d.PharmClasses, d.Sponsor, ToDate(d.ApprovalDate), ToDate(d.MarketingStart), (int)d.OtherMakers,
-            (int)d.GenericMakers, label?.Indications, label?.BoxedWarning, ToDate(label?.EffectiveDate), label?.SetId);
+            d.ApplicationNumber, d.ProductType, classes, d.Sponsor, ToDate(d.ApprovalDate), ToDate(d.MarketingStart), (int)d.OtherMakers,
+            (int)d.GenericMakers, label?.Indications, label?.BoxedWarning, ToDate(label?.EffectiveDate), label?.SetId, matchedBy);
     }
 
     private static async Task<ProductDeviceInfo?> GetDeviceAsync(MySqlConnection connection, string slug, CancellationToken ct)

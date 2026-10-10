@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Dapper;
 using MySqlConnector;
 using Npi.Loader.Db;
@@ -19,8 +20,12 @@ namespace Npi.Loader.Datasets;
 /// The files are streamed record by record (<see cref="JsonArrayStream"/>) and deleted after use. Run after
 /// <c>open_payments</c>, whose products decide which labels and devices are kept.
 /// </summary>
-public sealed class FdaProductSource : DatasetSource
+public sealed partial class FdaProductSource : DatasetSource
 {
+    // A package NDC as printed on a label ("NDC 0003-0893-21").
+    [GeneratedRegex(@"\b(\d{4,5}-\d{3,4})-\d{1,2}\b")]
+    private static partial Regex PrintedNdc();
+
     public static readonly (string Category, string Endpoint)[] Files =
         [("drug", "ndc"), ("drug", "drugsfda"), ("drug", "label"), ("device", "udi"), ("device", "510k"), ("device", "pma")];
 
@@ -173,11 +178,19 @@ public sealed class FdaProductSource : DatasetSource
                     applications, ct);
                 context.Log.Information("Drugs@FDA: {Rows:N0} applications", applications.Count);
 
-                // The labels of the products named in Open Payments: by the directory's set ID, or by the label's own product NDCs.
+                // The labels of the products named in Open Payments and of every listing under the same FDA applications (the page
+                // borrows a repackager's label when the maker's listing has none), also for products matched by brand name: by the
+                // directory's set ID, the label's own product NDCs, or the package NDCs printed on it (FDA's annotations are missing
+                // for some products).
                 var wanted = (await connection.QueryAsync<(string Key, string? SetId)>(new CommandDefinition(
                     """
-                    SELECT DISTINCT p.`ndc_key`, n.`spl_set_id` FROM `op_product` p LEFT JOIN `fda_ndc_product_staging` n ON n.`ndc_key` = p.`ndc_key`
-                    WHERE p.`ndc_key` IS NOT NULL
+                    SELECT DISTINCT p.`ndc_key`, NULL FROM `op_product` p WHERE p.`ndc_key` IS NOT NULL
+                    UNION
+                    SELECT DISTINCT n2.`ndc_key`, n2.`spl_set_id` FROM `fda_ndc_product_staging` n2
+                    WHERE n2.`ndc_key` IS NOT NULL AND n2.`application_number` IN (
+                      SELECT n.`application_number` FROM `op_product` p
+                      JOIN `fda_ndc_product_staging` n ON n.`ndc_key` = p.`ndc_key` OR (p.`kind` IN ('Drug', 'Biological') AND n.`brand_name` = p.`name`)
+                      WHERE n.`application_number` IS NOT NULL)
                     """, cancellationToken: ct))).ToList();
                 var wantedKeys = wanted.Select(w => w.Key).ToHashSet(StringComparer.Ordinal);
                 var keysBySetId = wanted.Where(w => w.SetId is not null).GroupBy(w => w.SetId!, StringComparer.Ordinal)
@@ -192,7 +205,10 @@ public sealed class FdaProductSource : DatasetSource
                         continue;
                     }
 
-                    var keys = Strings(Obj(r, "openfda"), "product_ndc").Select(NdcKey).OfType<string>().Where(wantedKeys.Contains).ToHashSet(StringComparer.Ordinal);
+                    var printed = Strings(r, "package_label_principal_display_panel").Concat(Strings(r, "how_supplied"))
+                        .SelectMany(t => PrintedNdc().Matches(t).Select(m => m.Groups[1].Value));
+                    var keys = Strings(Obj(r, "openfda"), "product_ndc").Concat(printed).Select(NdcKey).OfType<string>().Where(wantedKeys.Contains)
+                        .ToHashSet(StringComparer.Ordinal);
                     if (keysBySetId.TryGetValue(setId, out var byDirectory))
                     {
                         keys.UnionWith(byDirectory);

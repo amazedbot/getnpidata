@@ -86,7 +86,7 @@
         <p class="muted">From the FDA drug label@(drug.LabelDate is { } ld ? $" of {ld.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}" : "")@(drug.DailyMedUrl is null ? "." : "")
             @if (drug.DailyMedUrl is not null){<text>; the full label (dosage, side effects, interactions) is on <a href="@drug.DailyMedUrl">DailyMed</a>.</text>}</p>
     }
-    <p class="muted">FDA's NDC directory and Drugs@FDA, matched by the product's NDC @drug.ProductNdc as reported in the payments. Not medical advice: ask your doctor or pharmacist.</p>
+    <p class="muted">FDA's NDC directory and Drugs@FDA, @(drug.MatchedBy == "name" ? $"matched by the brand name (the NDC reported in the payments isn't listed with FDA); listing {drug.ProductNdc}" : $"matched by the product's NDC {drug.ProductNdc} as reported in the payments"). Not medical advice: ask your doctor or pharmacist.</p>
 }
 
 @if (p.Device is { } device)

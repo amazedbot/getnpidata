@@ -380,22 +380,26 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(("NCT01740427", 75000.0, 2, "Pfizer, Inc.", "https://clinicaltrials.gov/study/NCT01740427"),
             (paloma.NctId, paloma.Amount, paloma.Records, paloma.CompanyName, paloma.ClinicalTrialsUrl));
         Assert.Equal(1000.0, eliquis.Research!.Amount);
-        Assert.Equal("0169-4130-13", (await products.GetAsync("ozempic", _ct))!.Ndc);
+        Assert.Equal("0169-4132-12", (await products.GetAsync("ozempic", _ct))!.Ndc);
         Assert.Equal("00763000636251", (await products.GetAsync("minimed-780g", _ct))!.DeviceId);
         Assert.Null(await products.GetAsync("no-such-product", _ct));
 
-        // Part 2, what it is: Eliquis by its NDC 0003-0893-21 (directory 0003-0893), its application and label. The repackager
-        // under the same application isn't another maker; the ANDA generic is.
+        // Part 2, what it is: Eliquis by its NDC 0003-0893-21 (directory 0003-0893) and its application. That listing has no
+        // FDA annotations, so the drug class comes from another listing of the generic name and the label from a listing under
+        // the same application (the repackager's). The repackager isn't another maker; the ANDA generic is.
         var drug = eliquis.Drug!;
         Assert.Equal(("0003-0893", "ELIQUIS", "apixaban", "APIXABAN 5 mg/1", "Factor Xa Inhibitor", "BRISTOL MYERS SQUIBB", (DateOnly?)new DateOnly(2012, 12, 28), 1, 1),
             (drug.ProductNdc, drug.BrandName, drug.GenericName, drug.ActiveIngredients, drug.PharmClasses, drug.Sponsor, drug.ApprovalDate, drug.OtherMakers, drug.GenericMakers));
         Assert.StartsWith("WARNING: (A) PREMATURE DISCONTINUATION", drug.BoxedWarning, StringComparison.Ordinal);
         Assert.Equal("https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=e9481622-7cc6-418a-acb6-c5450daae9b0", drug.DailyMedUrl);
         Assert.EndsWith("ApplNo=202155", drug.DrugsAtFdaUrl, StringComparison.Ordinal);
+        Assert.Equal("ndc", drug.MatchedBy);
         Assert.Null(eliquis.Device);
-        // Ozempic's label is found by the label's own product NDCs (no set ID in the directory); it has no boxed warning.
+        // Ozempic's reported NDC 0169-4132 isn't listed, so it is matched by brand name (listing 0169-4130); its label is found by
+        // the label's own product NDCs (no set ID in the directory); it has no boxed warning.
         var ozempic = (await products.GetAsync("ozempic", _ct))!.Drug!;
-        Assert.Equal(("adec4fd2-6858-4c99-91d4-531f5f2a2d79", (string?)null, 0), (ozempic.LabelSetId, ozempic.BoxedWarning, ozempic.OtherMakers));
+        Assert.Equal(("name", "0169-4130", "adec4fd2-6858-4c99-91d4-531f5f2a2d79", (string?)null, 0),
+            (ozempic.MatchedBy, ozempic.ProductNdc, ozempic.LabelSetId, ozempic.BoxedWarning, ozempic.OtherMakers));
         Assert.StartsWith("OZEMPIC is indicated", ozempic.Indications, StringComparison.Ordinal);
         // MiniMed by its device identifier: GUDID facts and its decisions (the PMA original, not the supplement; the 510(k)).
         var pump = (await products.GetAsync("minimed-780g", _ct))!.Device!;

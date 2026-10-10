@@ -371,6 +371,9 @@ public sealed class ProductDrugInfo
     public string? DailyMedUrl { get; set; }
 
     public string? DrugsAtFdaUrl { get; set; }
+
+    /// <summary>"ndc" (the reported NDC is listed) or "name" (matched by brand name).</summary>
+    public string MatchedBy { get; set; } = "ndc";
 }
 
 /// <summary>What a device is, from FDA's GUDID.</summary>
