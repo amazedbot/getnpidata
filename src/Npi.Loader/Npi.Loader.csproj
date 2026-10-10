@@ -28,6 +28,7 @@
   <ItemGroup>
     <!-- Migrations ship inside the assembly, so the exe and the tests always use the same SQL. -->
     <EmbeddedResource Include="..\..\db\migrations\*.sql" LogicalName="migrations/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Datasets\company_parents.csv" LogicalName="company_parents.csv" />
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

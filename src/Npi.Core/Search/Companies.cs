@@ -57,8 +57,11 @@ public sealed record CompanyRecall(string RecallNumber, string ProductType, stri
 public sealed record CompanyRecalls(int Total, int ClassI, int ClassII, int ClassIII, int Ongoing, IReadOnlyList<string> Firms,
     IReadOnlyList<CompanyRecall> Latest);
 
-/// <summary>A public company registered with the SEC whose name matches (EDGAR CIK, ticker, exchange).</summary>
-public sealed record CompanySecListing(int Cik, string Ticker, string Name, string? Exchange)
+/// <summary>
+/// A public company registered with the SEC (EDGAR CIK, ticker, exchange): of the same name, or, with <see cref="IsParent"/>,
+/// the parent company from a hand-made list of subsidiaries (<see cref="Note"/>: "U.S. subsidiary", "acquired 2021" …).
+/// </summary>
+public sealed record CompanySecListing(int Cik, string Ticker, string Name, string? Exchange, bool IsParent = false, string? Note = null)
 {
     public string EdgarUrl => $"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={Cik:D10}";
 }
@@ -116,6 +119,8 @@ public sealed partial class CompanyService(string connectionString)
 
     private sealed record RecallRow(string RecallNumber, string ProductType, string? Firm, string? Classification, string? Status, DateTime? Initiated,
         string? Product, string? Reason);
+
+    private sealed record SecRow(int Cik, string Ticker, string Name, string? Exchange, long IsParent, string? Note);
 
     private sealed record AgreementRow(string Name, string? Location, string? Type, string? Status, DateTime? StatusDate, string Url);
 
@@ -260,12 +265,17 @@ public sealed partial class CompanyService(string connectionString)
                     r.Initiated is { } d ? DateOnly.FromDateTime(d) : null, r.Product, r.Reason)).ToList());
         }
 
-        var sec = (await connection.QueryAsync<CompanySecListing>(new CommandDefinition(
+        var sec = (await connection.QueryAsync<SecRow>(new CommandDefinition(
             """
-            SELECT s.cik AS Cik, s.ticker AS Ticker, s.name AS Name, s.exchange AS Exchange
+            SELECT s.cik AS Cik, s.ticker AS Ticker, s.name AS Name, s.exchange AS Exchange, CAST(0 AS SIGNED) AS IsParent, NULL AS Note
             FROM sec_company s WHERE s.name_key IN (SELECT k.name_key FROM op_company_key k WHERE k.company_id = @id)
-            ORDER BY s.cik, s.ticker
-            """, new { id }, cancellationToken: ct))).ToList();
+            UNION ALL
+            SELECT s.cik, s.ticker, s.name, s.exchange, CAST(1 AS SIGNED), p.note
+            FROM company_parent p JOIN sec_company s ON s.cik = p.parent_cik
+            WHERE p.company_id = @id AND p.parent_cik NOT IN (SELECT s2.cik FROM sec_company s2 JOIN op_company_key k ON k.name_key = s2.name_key WHERE k.company_id = @id)
+            ORDER BY IsParent, Cik, Ticker
+            """, new { id }, cancellationToken: ct)))
+            .Select(r => new CompanySecListing(r.Cik, r.Ticker, r.Name, r.Exchange, r.IsParent != 0, r.Note)).ToList();
         var agreements = await connection.QueryAsync<AgreementRow>(new CommandDefinition(
             """
             SELECT a.name AS Name, a.location AS Location, a.agreement_type AS Type, a.status AS Status, a.status_date AS StatusDate, a.url AS Url

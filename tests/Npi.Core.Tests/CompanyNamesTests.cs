@@ -12,6 +12,8 @@ public class CompanyNamesTests
     [InlineData("Nestlé Health Science", "NESTLE HEALTH SCIENCE")]
     [InlineData("Boston Scientific Corporation", "BOSTON SCIENTIFIC CORP")]
     [InlineData("Medtronic, L.L.C.", "MEDTRONIC")]
+    [InlineData("VERTEX PHARMACEUTICALS INCORPORATED", "VERTEX PHARMACEUTICALS INC / MA")]
+    [InlineData("ICU Medical Inc", "ICU MEDICAL INC/DE")]
     public void Spellings_of_one_company_share_a_key(string a, string b) =>
         Assert.Equal(CompanyNames.Key(a), CompanyNames.Key(b));
 

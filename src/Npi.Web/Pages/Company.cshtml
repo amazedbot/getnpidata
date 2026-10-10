@@ -214,10 +214,10 @@
     <ul>
         @foreach (var s in c.SecListings)
         {
-            <li><a href="@s.EdgarUrl">@s.Name</a>: @s.Ticker@(s.Exchange is null ? "" : $" on {s.Exchange}") <span class="muted">· SEC CIK @s.Cik</span></li>
+            <li>@if (s.IsParent){<text>Parent company: </text>}<a href="@s.EdgarUrl">@s.Name</a>: @s.Ticker@(s.Exchange is null ? "" : $" on {s.Exchange}") <span class="muted">· SEC CIK @s.Cik@(s.IsParent ? $" · {s.Note ?? "subsidiary"}, from our list of known parent companies" : "")</span></li>
         }
     </ul>
-    <p class="muted">SEC EDGAR registrants of the same name, with their filings (annual reports, ownership). A name match: a parent or subsidiary under another name isn't found.</p>
+    <p class="muted">SEC EDGAR registrants with their filings (annual reports, ownership): of the same name (a name match), or the parent company of a subsidiary from a hand-made list of the larger drug and device makers.</p>
 }
 
 @if (c.IntegrityAgreements.Count > 0)

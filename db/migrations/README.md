@@ -62,6 +62,7 @@ Rules:
 | `064_state_license_raw_keys.sql` | A last-digits license key, full names and an id on the state license template (more states, item 15). |
 | `065_open_payments_companies.sql` | Company pages (item 17): companies, their payments per year, natures, products, specialties and top providers; company IDs on the per-NPI payer tables. |
 | `066_company_records.sql` | FDA recalls, SEC registrants and OIG integrity agreements for the company pages, matched by name key (item 17 extras). |
+| `067_company_parent.sql` | The hand-made list of subsidiaries and their public parent companies (SEC CIK), item 17. |
 
 ## 001_baseline.sql
 
