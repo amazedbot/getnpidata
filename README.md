@@ -37,6 +37,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | Capability | Where |
 |---|---|
 | Search by specialty, location (state, county, city, ZIP, radius), name, NPI, credential, gender and entity type | Website `/`, API `/api/v1/providers` |
+| Find names despite typos or a different spelling, and organizations by any words of their legal or DBA name | "Name match: Similar" on the search and map pages, `nameMatch=similar` |
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
 | Find **new providers** (NPI issued in the last 30/90/365 days) and **recently updated** records in any area; sort newest first for a feed | Same (`newWithinDays`, `updatedWithinDays`) |
 | See compliance and Medicare badges on every result | Website grid, CSV and API flags |
@@ -70,6 +71,7 @@ At least one filter is required. Filters combine with AND.
 | `radius` | Miles around `zip`, 1–100 | `10` |
 | `lastName`, `firstName` | Name prefix (individuals) | `smi` |
 | `orgName` | Organization name prefix | `north shore` |
+| `nameMatch` | `prefix` (default) or `similar`: last/first names also match by sound, so typos and spelling variants are found ("Smiht" → Smith, "Nunes" → Nuñez, "Jonhson" → Johnson); organization names match when every word appears anywhere in the legal name or another (DBA) name, in any order. Closest matches come first unless you choose a sort | `similar` |
 | `npi` | Exact ten-digit NPI | `1003000126` |
 | `entityType` | `1` = individual, `2` = organization | `2` |
 | `gender` | `F` or `M` (individuals) | `F` |

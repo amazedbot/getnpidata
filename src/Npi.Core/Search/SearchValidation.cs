@@ -57,6 +57,7 @@ public static partial class SearchValidation
             Credential = Clean(filter.Credential, nameof(SearchFilter.Credential)),
             Shortage = Clean(filter.Shortage, nameof(SearchFilter.Shortage)),
             Sort = Clean(filter.Sort, nameof(SearchFilter.Sort)),
+            NameMatch = Clean(filter.NameMatch, nameof(SearchFilter.NameMatch))?.ToLowerInvariant() is { } match && match != NameSearch.Prefix ? match : null,
         };
 
         if (requireFilter && f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
@@ -138,6 +139,11 @@ public static partial class SearchValidation
         if (f.UpdatedWithinDays is < 1 or > SearchFilter.MaxWithinDays)
         {
             Error(nameof(SearchFilter.UpdatedWithinDays), $"Updated within must be between 1 and {SearchFilter.MaxWithinDays:N0} days.");
+        }
+
+        if (f.NameMatch is not null and not NameSearch.Similar)
+        {
+            Error(nameof(SearchFilter.NameMatch), "Name match must be prefix or similar.");
         }
 
         if (f.Page < 1)

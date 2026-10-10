@@ -41,6 +41,9 @@ public sealed class ProviderSearch
     /// <summary>Organization name prefix.</summary>
     public string? OrgName { get; set; }
 
+    /// <summary>"prefix" (default) or "similar": people also by sound, organizations by words anywhere in any of their names.</summary>
+    public string? NameMatch { get; set; }
+
     /// <summary>Ten-digit NPI.</summary>
     public string? Npi { get; set; }
 
@@ -120,6 +123,7 @@ public sealed class ProviderSearch
         Add("lastName", LastName);
         Add("firstName", FirstName);
         Add("orgName", OrgName);
+        Add("nameMatch", NameMatch);
         Add("npi", Npi);
         AddInt("entityType", EntityType);
         Add("gender", Gender);

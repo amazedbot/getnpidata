@@ -20,7 +20,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
     public static readonly string[] Tables =
     [
         "provider", "provider_taxonomy", "provider_location", "provider_other_name", "provider_search",
-        "provider_profile", "provider_identifier", "provider_endpoint",
+        "provider_profile", "provider_identifier", "provider_endpoint", "provider_org_name",
     ];
 
     private const int TaxonomySlots = 15;
@@ -65,6 +65,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             await StepAsync(connection, "provider_location (primary)", PrimaryLocationSql, ct);
             await StepAsync(connection, "provider_location (secondary)", SecondaryLocationSql, ct);
             await StepAsync(connection, "provider_other_name", OtherNameSql, ct);
+            await StepAsync(connection, "provider_org_name", OrgNameSql, ct);
             await StepAsync(connection, "provider_search", SearchSql, ct);
             await StepAsync(connection, "provider_profile", ProfileSql, ct);
             await StepAsync(connection, "provider_identifier", IdentifierSql(), ct);
@@ -386,6 +387,19 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         JOIN `provider_staging` p ON p.`npi` = e.`NPI`
         WHERE {Text("e.`Endpoint`")} IS NOT NULL
         ORDER BY e.`NPI`, e.`ID`
+        """;
+
+    // Organization legal and other names, one row each, for the word-anywhere search (Stage 5.5 item 9, FULLTEXT).
+    // Derived from provider and provider_other_name, so not part of row_hash.
+    private const string OrgNameSql = """
+        INSERT INTO `provider_org_name_staging` (`npi`, `name`)
+        SELECT x.`npi`, x.`name`
+        FROM (
+          SELECT p.`npi`, p.`org_name` AS `name` FROM `provider_staging` p WHERE p.`org_name` IS NOT NULL
+          UNION
+          SELECT o.`npi`, o.`name` FROM `provider_other_name_staging` o
+        ) x
+        ORDER BY x.`npi`
         """;
 
     // Every (taxonomy code, location area) pair of each provider; DISTINCT because two locations can

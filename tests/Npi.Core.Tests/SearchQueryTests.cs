@@ -164,7 +164,7 @@ public class SearchQueryTests
     [Theory]
     [InlineData("npi", "FROM (SELECT @npi AS npi) c JOIN provider p ON p.npi = c.npi WHERE p.last_name LIKE @lastName")]
     [InlineData("taxonomy", "FROM (SELECT DISTINCT t.npi FROM provider_taxonomy t WHERE t.taxonomy_code IN @taxonomyCodes) c JOIN provider p ON p.npi = c.npi WHERE p.last_name LIKE @lastName")]
-    [InlineData("name", "FROM (SELECT d.npi FROM provider d WHERE d.last_name LIKE @lastName) c JOIN provider p ON p.npi = c.npi WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state)")]
+    [InlineData("name", "FROM (SELECT DISTINCT d.npi FROM provider d WHERE d.last_name LIKE @lastName) c JOIN provider p ON p.npi = c.npi WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state)")]
     [InlineData("location", "FROM (SELECT DISTINCT l.npi FROM provider_location l WHERE l.state = @state) c JOIN provider p ON p.npi = c.npi WHERE p.gender = @gender")]
     [InlineData("credential", "FROM (SELECT d.npi FROM provider d WHERE d.credential_key LIKE @credential) c JOIN provider p ON p.npi = c.npi WHERE p.entity_type = @entityType")]
     [InlineData("attributes", "FROM provider p WHERE p.entity_type = @entityType AND p.gender = @gender")]
@@ -251,6 +251,58 @@ public class SearchQueryTests
         Assert.Contains("FROM (SELECT DISTINCT l.npi FROM provider_location l", older.PageSql, StringComparison.Ordinal);
         Assert.Contains("p.last_update_date >= @updatedSince", older.PageSql, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("North Shore, the L.I. hospital", "+north* +shore* +hospital*")]
+    [InlineData("St. Mary's", "+mary*")]
+    [InlineData("ACME acme Clinic", "+acme* +clinic*")]
+    [InlineData("NY", null)]
+    [InlineData("the", null)]
+    public void Organization_words_are_required_word_prefixes(string name, string? expected) =>
+        Assert.Equal(expected, NameSearch.OrganizationWords(name));
+
+    [Fact]
+    public void Similar_people_names_match_by_prefix_or_sound_with_prefix_matches_first()
+    {
+        var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { LastName = "Smiht", FirstName = "Jon", NameMatch = "SIMILAR", State = "NY" }), null, null);
+
+        Assert.Contains("(d.last_name LIKE @lastName OR d.last_phonetic = LEFT(SOUNDEX(", query.PageSql, StringComparison.Ordinal);
+        Assert.Contains("(d.first_name LIKE @firstName OR d.first_phonetic = LEFT(SOUNDEX(", query.PageSql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY ((COALESCE((SUBSTRING(p.last_name, 1, 1) <> SUBSTRING(@lastNameSound, 1, 1))", query.PageSql, StringComparison.Ordinal);
+        Assert.Contains("(p.first_name NOT LIKE CONCAT('%', SUBSTRING(@firstNameSound, 3, 1), '%'))), 80))) ASC, p.sort_name ASC", query.PageSql, StringComparison.Ordinal);
+        Assert.Equal("Smiht", query.Parameters.Get<string>("lastNameSound"));
+
+        // An explicit sort is honoured as asked; the default "prefix" match is unchanged.
+        Assert.Contains("ORDER BY p.npi ASC",
+            new SearchQuery(SearchValidation.Normalize(new SearchFilter { LastName = "Smiht", NameMatch = "similar", Sort = "npi" }), null, null).PageSql, StringComparison.Ordinal);
+        var prefix = new SearchQuery(SearchValidation.Normalize(new SearchFilter { LastName = "Smiht", NameMatch = "prefix" }), null, null);
+        Assert.Null(prefix.Filter.NameMatch);
+        Assert.DoesNotContain("phonetic", prefix.PageSql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Similar_organization_names_drive_from_the_fulltext_table_ranked_by_relevance()
+    {
+        var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { OrgName = "shore north", NameMatch = "similar" }), null, null);
+
+        Assert.Contains("FROM provider_org_name o WHERE MATCH(o.name) AGAINST (@orgWords IN BOOLEAN MODE)", query.PageSql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY c.score DESC, p.sort_name ASC", query.PageSql, StringComparison.Ordinal);
+        Assert.Equal("+shore* +north*", query.Parameters.Get<string>("orgWords"));
+        Assert.True(query.HasSelectiveDriver);
+
+        // With a specialty + location driving, the words are a per-candidate check and the legal-name prefix ranks first.
+        var checkedOnly = new SearchQuery(SearchValidation.Normalize(new SearchFilter { OrgName = "shore north", NameMatch = "similar", State = "NY" }), ["282N00000X"], null);
+        Assert.Contains("p.npi IN (SELECT o.npi FROM provider_org_name o WHERE MATCH", checkedOnly.PageSql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY (p.org_name LIKE @orgName) DESC, p.sort_name", checkedOnly.PageSql, StringComparison.Ordinal);
+
+        // No indexable word: the prefix match alone.
+        Assert.DoesNotContain("MATCH", new SearchQuery(SearchValidation.Normalize(new SearchFilter { OrgName = "NY", NameMatch = "similar" }), null, null).PageSql,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Name_match_must_be_prefix_or_similar() =>
+        Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { LastName = "x", NameMatch = "fuzzy" }));
 
     [Fact]
     public void Sorts_without_an_index_have_no_sort_index_plan() =>

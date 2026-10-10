@@ -16,6 +16,16 @@ public class MigrationTests
     }
 
     [Fact]
+    public void The_phonetic_columns_use_the_same_expression_as_the_search()
+    {
+        // Migration 056 stores the key the search computes for the typed name; if they drift, similar names find nothing.
+        var sql = MigrationRunner.LoadEmbedded().Single(m => m.Version == 56).Sql;
+
+        Assert.Contains($"`last_phonetic` VARCHAR(10) GENERATED ALWAYS AS ({Npi.Core.Search.NameSearch.PhoneticSql("`last_name`")}) VIRTUAL", sql, StringComparison.Ordinal);
+        Assert.Contains($"`first_phonetic` VARCHAR(10) GENERATED ALWAYS AS ({Npi.Core.Search.NameSearch.PhoneticSql("`first_name`")}) VIRTUAL", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Checksums_ignore_line_endings()
     {
         var lf = new Migration(1, "x", "SELECT 1;\nSELECT 2;\n");
