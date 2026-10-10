@@ -254,6 +254,8 @@ public sealed partial class OpenPaymentsSource : DatasetSource
                             WHERE `rnk` <= {TopProviderProducts}
                             """, ct);
                     }, ct);
+                // The prescribing overlap joins these payments with Part D (part 4).
+                await ProductPrescribingBuilder.RebuildAsync(connection, context, ct);
                 return counts["open_payments_summary"];
             }
             finally

@@ -58,6 +58,7 @@ public sealed class PartDDrugPrescriberSource : DatasetSource
                         """, ct);
                 }, ct);
                 context.Log.Information("Part D brand prescribers: {Rows:N0} for {Brands:N0} brands", counts["part_d_brand_prescriber"], counts["part_d_brand"]);
+                await ProductPrescribingBuilder.RebuildAsync(connection, context, ct);
                 return counts["part_d_brand_prescriber"];
             }
             finally
