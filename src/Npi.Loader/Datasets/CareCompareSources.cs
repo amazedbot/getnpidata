@@ -175,16 +175,33 @@ public sealed class FacilityEnrollmentSource : DatasetSource
                 files.Add((await context.DownloadAsync(found, $"cms_{kind}_enrollments.csv", ct), kind));
             }
 
+            // Into a scratch table first: some enrollments have no CCN or no valid NPI (hospice, 2026-07), and an NPI can be
+            // enrolled for one CCN under two kinds; only complete, distinct pairs go into cms_facility_npi.
+            const string raw = "cms_facility_npi_raw_staging";
             await using var connection = await context.Database.OpenAsync(ct);
-            var counts = await TableSwap.ReplaceAsync(connection, ["cms_facility_npi"], context.Options.MinRowRatio, async () =>
+            try
             {
+                await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{raw}`", ct);
+                await Database.ExecuteAsync(connection,
+                    $"CREATE TABLE `{raw}` (`ccn` VARCHAR(10) NULL, `npi` CHAR(10) NULL, `kind` VARCHAR(20) NOT NULL) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+                    ct);
                 foreach (var (path, kind) in files)
                 {
-                    await CsvTableLoader.LoadAsync(connection, path, "cms_facility_npi_staging", Columns, ct, "latin1",
-                        new Dictionary<string, string> { ["kind"] = kind });
+                    await CsvTableLoader.LoadAsync(connection, path, raw, Columns, ct, "latin1", new Dictionary<string, string> { ["kind"] = kind });
                 }
-            }, ct);
-            return counts["cms_facility_npi"];
+
+                var counts = await TableSwap.ReplaceAsync(connection, ["cms_facility_npi"], context.Options.MinRowRatio, () =>
+                    Database.ExecuteAsync(connection,
+                        $"""
+                        INSERT INTO `cms_facility_npi_staging` (`ccn`, `npi`, `kind`)
+                        SELECT `ccn`, `npi`, MIN(`kind`) FROM `{raw}` WHERE `ccn` IS NOT NULL AND `npi` IS NOT NULL GROUP BY `ccn`, `npi`
+                        """, ct), ct);
+                return counts["cms_facility_npi"];
+            }
+            finally
+            {
+                await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{raw}`", CancellationToken.None);
+            }
         }
         finally
         {

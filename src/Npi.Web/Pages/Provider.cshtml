@@ -96,7 +96,7 @@
             @if (fac.AffiliatedClinicians > 0){<dt>Affiliated clinicians</dt><dd>@fac.AffiliatedClinicians.ToString("N0", CultureInfo.InvariantCulture)</dd>}
         </dl>
     }
-    <p class="muted">Ratings from Medicare Care Compare. Deaths, safety and readmissions count the hospital's measures that CMS rates better or worse than the national rate; the rest are no different.</p>
+    <p class="muted">Ratings from Medicare Care Compare.@if (p.Facilities.Any(f => f.Outcomes is not null)){<text> Deaths, safety and readmissions count the hospital's measures that CMS rates better or worse than the national rate; the rest are no different.</text>}</p>
 }
 
 @* Stage 5.5 item 14: MIPS, Medicare's clinician quality program (Care Compare). *@
@@ -476,7 +476,7 @@
         : "Not rated";
 
     // "2 better, 1 worse of 11" (the rest are no different from the national rate).
-    private static string Outcome(OutcomeCounts c) => c.Measures is not > 0 ? "Not available"
+    private static string Outcome(Npi.Core.Search.OutcomeCounts c) => c.Measures is not > 0 ? "Not available"
         : $"{c.Better ?? 0} better, {c.Worse ?? 0} worse than national, of {c.Measures}";
 
     private static string Stars(int? rating) => rating is >= 1 and <= 5 ? new string('★', rating.Value) + new string('☆', 5 - rating.Value) + $" ({rating}/5)" : "Not rated";
