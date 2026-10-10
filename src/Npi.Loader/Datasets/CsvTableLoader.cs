@@ -31,6 +31,12 @@ public enum CsvValue
 
     /// <summary>A decimal number ("3.5", "-2"); anything else ("-", "Not Available", blank) → NULL.</summary>
     OptionalNumber,
+
+    /// <summary>
+    /// A date written as YYYY-MM-DD (optionally with a time, as Socrata exports it) or MM/DD/YYYY (optionally with a
+    /// time); anything else → NULL.
+    /// </summary>
+    FlexibleDate,
 }
 
 /// <summary>One CSV column to load: its header (matched case-insensitively) and the table column it goes to.</summary>
@@ -126,6 +132,9 @@ public static class CsvTableLoader
         CsvValue.Npi => $"IF(TRIM({variable}) REGEXP '^[0-9]{{10}}$' AND TRIM({variable}) <> '0000000000', TRIM({variable}), NULL)",
         CsvValue.Number => $"NULLIF(TRIM({variable}), '')",
         CsvValue.OptionalWholeNumber => $"IF(TRIM({variable}) REGEXP '^[0-9]+$', TRIM({variable}), NULL)",
+        CsvValue.FlexibleDate =>
+            $"CASE WHEN TRIM({variable}) REGEXP '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}' THEN STR_TO_DATE(LEFT(TRIM({variable}), 10), '%Y-%m-%d') " +
+            $"WHEN TRIM({variable}) REGEXP '^[0-9]{{1,2}}/[0-9]{{1,2}}/[0-9]{{4}}' THEN STR_TO_DATE(SUBSTRING_INDEX(TRIM({variable}), ' ', 1), '%m/%d/%Y') END",
         CsvValue.OptionalNumber => $"IF(TRIM({variable}) REGEXP '^-?[0-9]+([.][0-9]+)?$', TRIM({variable}), NULL)",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };

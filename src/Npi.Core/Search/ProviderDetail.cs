@@ -78,6 +78,9 @@ public sealed record ProviderDetail(
     /// <summary>Open Payments general payments in the newest program year; null when none (Stage 5.5 item 6).</summary>
     public IndustryPayments? IndustryPayments { get; init; }
 
+    /// <summary>State license records and board actions matched to this NPI (Stage 5.5 item 15); empty when none.</summary>
+    public IReadOnlyList<StateLicenseRecord> StateLicenses { get; init; } = [];
+
     /// <summary>MIPS scores in the newest program year, best first (Stage 5.5 item 14).</summary>
     public IReadOnlyList<MipsScore> MipsScores { get; init; } = [];
 
@@ -125,6 +128,9 @@ public sealed class ProviderDetailService(string connectionString)
         sbyte? EmergencyServices, int? CertifiedBeds, long? OverallRating, long? InspectionRating, long? StaffingRating, long? QualityRating, long AffiliatedClinicians,
         long? SurveyRating, double? QualityOfCare, long? MortMeasures, long? MortBetter, long? MortWorse, long? SafetyMeasures, long? SafetyBetter,
         long? SafetyWorse, long? ReadmMeasures, long? ReadmBetter, long? ReadmWorse);
+
+    private sealed record StateLicenseRow(string State, string Kind, string Source, string? LicenseNumber, string? LicenseType, string? Status,
+        DateTime? ExpirationDate, string? Discipline, DateTime? ActionDate, string? Action, string? Description, string? VerifyUrl);
 
     private sealed record MipsRow(short Year, string? Source, string? Organization, double? FinalScore, double? Quality, double? Pi, double? Ia, double? Cost);
 
@@ -354,6 +360,29 @@ public sealed class ProviderDetailService(string connectionString)
             ORDER BY c.detected_at DESC, c.id DESC LIMIT 100
             """, new { npi }, cancellationToken: ct));
 
+        var stateRows = await connection.QueryAsync<StateLicenseRow>(new CommandDefinition(
+            """
+            SELECT state AS State, kind AS Kind, source AS Source, license_number AS LicenseNumber, license_type AS LicenseType, status AS Status,
+                   expiration_date AS ExpirationDate, discipline AS Discipline, action_date AS ActionDate, action AS Action, description AS Description,
+                   verify_url AS VerifyUrl
+            FROM provider_state_license WHERE npi = @npi ORDER BY state, license_number, action_date DESC, id
+            """, new { npi }, cancellationToken: ct));
+        // One record per license; its actions newest first. A license row without an action (most of them) adds none; an action
+        // row (NY) or a license row with an action (CO has one row per case) adds one.
+        var stateLicenses = stateRows
+            .GroupBy(r => (r.State, r.Source, r.LicenseNumber))
+            .Select(g =>
+            {
+                var license = g.FirstOrDefault(r => r.Kind == "license") ?? g.First();
+                var actions = g.Where(r => r.Action is not null || r.Kind == "action")
+                    .Select(r => new StateBoardAction(ToDate(r.ActionDate), r.Action, r.Kind == "action" || r.Source == "il_idfpr" ? r.Description : null))
+                    .Distinct().ToList();
+                return new StateLicenseRecord(g.Key.State, g.Key.Source, g.Key.LicenseNumber, license.LicenseType,
+                    license.Kind == "license" ? license.Status : null, ToDate(license.ExpirationDate), license.Kind == "license" ? license.Discipline : null,
+                    license.VerifyUrl, actions);
+            })
+            .ToList();
+
         var mips = await connection.QueryAsync<MipsRow>(new CommandDefinition(
             """
             SELECT program_year AS Year, source AS Source, facility_name AS Organization, final_score AS FinalScore, quality_score AS Quality,
@@ -410,6 +439,7 @@ public sealed class ProviderDetailService(string connectionString)
                     new OutcomeCounts((int?)f.SafetyMeasures, (int?)f.SafetyBetter, (int?)f.SafetyWorse),
                     new OutcomeCounts((int?)f.ReadmMeasures, (int?)f.ReadmBetter, (int?)f.ReadmWorse)),
             }).ToList(),
+            StateLicenses = stateLicenses,
             MipsScores = mips.Select(m => new MipsScore(m.Year, m.Source, m.Organization, m.FinalScore, m.Quality, m.Pi, m.Ia, m.Cost)).ToList(),
         };
     }

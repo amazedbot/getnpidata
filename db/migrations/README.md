@@ -58,6 +58,7 @@ Rules:
 | `060_cc_mips.sql` | Clinician MIPS scores (individual, group, APM entity), item 14. |
 | `061_cms_hospital_quality.sql` | Hospital outcome measure counts (better/worse than national) and the HCAHPS summary star rating, item 14. |
 | `062_cms_home_health_hospice.sql` | Home health agencies and hospices with their star ratings, item 14. |
+| `063_state_license.sql` | State license records and board actions (NY, TX, WA, IL, CO open data) matched to NPIs, item 15. |
 
 ## 001_baseline.sql
 
