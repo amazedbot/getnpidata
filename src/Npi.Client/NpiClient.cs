@@ -164,6 +164,40 @@ public sealed class NpiClient : IDisposable
         return await ReadJsonAsync<CompanyDetail>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Products named in Open Payments, largest payments first; <paramref name="name"/> matches any part of a name,
+    /// <paramref name="kind"/> is Drug, Biological, Device or Medical Supply (null for any).
+    /// </summary>
+    public Task<ProductPage> SearchProductsAsync(string? name = null, string? kind = null, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+    {
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            query.Add("name=" + Uri.EscapeDataString(name!.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(kind))
+        {
+            query.Add("kind=" + Uri.EscapeDataString(kind!.Trim()));
+        }
+
+        query.Add("page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        query.Add("pageSize=" + pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return GetJsonAsync<ProductPage>("api/v1/products?" + string.Join("&", query), cancellationToken);
+    }
+
+    /// <summary>One product by its slug (from a list, a company's products or a provider's payments), or null when it is unknown.</summary>
+    public async Task<ProductDetail?> GetProductAsync(string slug, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync("api/v1/products/" + Segment(slug, nameof(slug)), cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<ProductDetail>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>States and territories.</summary>
     public Task<IReadOnlyList<StateInfo>> GetStatesAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<StateInfo>>("api/v1/states", cancellationToken);

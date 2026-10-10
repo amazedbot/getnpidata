@@ -110,7 +110,7 @@
 @if (c.TopProducts.Count > 0)
 {
     <h2>Products named in its payments (@c.DetailYear)</h2>
-    <p class="muted">The drug, device or supply a payment was related to (the first one named), by general payments in @c.DetailYear.</p>
+    <p class="muted">The drugs, devices and supplies its general payments in @c.DetailYear named (a payment can name up to five; it counts for each). Select one for who else pays for it and whom.</p>
     <div class="table-wrap">
         <table>
             <caption class="visually-hidden">Products named in the company's general payments</caption>
@@ -118,7 +118,7 @@
             <tbody>
                 @foreach (var p in c.TopProducts)
                 {
-                    <tr><td>@p.Name</td><td>@p.Kind</td><td>@p.Category</td><td>@Format.Money(p.Amount)</td><td>@Format.Number(p.Records)</td></tr>
+                    <tr><td>@if (p.Slug is not null){<a href="/product/@p.Slug">@p.Name</a>}else{@p.Name}</td><td>@p.Kind</td><td>@p.Category</td><td>@Format.Money(p.Amount)</td><td>@Format.Number(p.Records)</td></tr>
                 }
             </tbody>
         </table>

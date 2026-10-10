@@ -1,0 +1,4 @@
+Change_Type,Covered_Recipient_Type,Covered_Recipient_NPI,Applicable_Manufacturer_or_Applicable_GPO_Making_Payment_ID,Applicable_Manufacturer_or_Applicable_GPO_Making_Payment_Name,Name_of_Drug_or_Biological_or_Device_or_Medical_Supply_1,Name_of_Drug_or_Biological_or_Device_or_Medical_Supply_2,Name_of_Drug_or_Biological_or_Device_or_Medical_Supply_3,Name_of_Drug_or_Biological_or_Device_or_Medical_Supply_4,Name_of_Drug_or_Biological_or_Device_or_Medical_Supply_5,Total_Amount_of_Payment_USDollars,Name_of_Study,ClinicalTrials_Gov_Identifier,Program_Year
+NEW,Covered Recipient Teaching Hospital,,100000000001,"Pfizer, Inc.",IBRANCE,,,,,50000,"PALOMA-2, a study of palbociclib, letrozole",NCT01740427,2025
+NEW,Covered Recipient Physician,1000000012,100000000001,"Pfizer, Inc.",Ibrance,,,,,25000,"PALOMA-2, a study of palbociclib, letrozole",NCT01740427,2025
+NEW,Covered Recipient Teaching Hospital,,100000000001,"Pfizer, Inc.",ibrance,ELIQUIS,,,,1000,An investigator study,,2025

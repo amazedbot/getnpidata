@@ -1,0 +1,150 @@
+@page "/product/{slug}"
+@model ProductModel
+@{
+    var p = Model.Product;
+    ViewData["Title"] = p.Name;
+}
+
+<p><a href="/products">‹ All products</a></p>
+
+<h1>@p.Name</h1>
+
+<dl class="facts">
+    @if (p.Kind is not null)
+    {
+        <dt>Type</dt><dd>@p.Kind</dd>
+    }
+    @if (p.Category is not null)
+    {
+        <dt>Category</dt><dd>@p.Category</dd>
+    }
+    @if (p.Ndc is not null)
+    {
+        <dt>NDC (drug code)</dt><dd>@p.Ndc</dd>
+    }
+    @if (p.DeviceId is not null)
+    {
+        <dt>Device identifier</dt><dd>@p.DeviceId</dd>
+    }
+    <dt>Companies paying</dt><dd>@Format.Number(p.CompanyCount)</dd>
+    <dt>Providers paid</dt><dd>@Format.Number(p.Providers)</dd>
+</dl>
+
+<p>
+    <strong>@Format.Money(p.Amount)</strong> in @Format.Number(p.Records) general payment@(p.Records == 1 ? "" : "s") naming this product in @p.Year
+    (meals, consulting, speaking, travel …), from @Format.Number(p.CompanyCount) @(p.CompanyCount == 1 ? "company" : "companies")
+    to @Format.Number(p.Providers) providers@(p.Research is { } r0 ? $", plus {Format.Money(r0.Amount)} of research payments" : "").
+</p>
+<div class="notice" role="note">
+    Drug and device makers report every payment to doctors and teaching hospitals, and which products it was about (the Sunshine Act).
+    A payment is not evidence of wrongdoing, but you may want to know about it when your provider recommends this product.
+</div>
+
+@if (p.Companies.Count > 0)
+{
+    <h2>Companies paying for it</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Companies whose payments named the product</caption>
+            <thead><tr><th scope="col">Company</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+            <tbody>
+                @foreach (var c in p.Companies)
+                {
+                    <tr><td><a href="/company/@Uri.EscapeDataString(c.CompanyId)">@c.Name</a></td><td>@Format.Money(c.Amount)</td><td>@Format.Number(c.Records)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (p.ByNature.Count > 0)
+{
+    <h2>What the payments were for</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Payments naming the product by kind</caption>
+            <thead><tr><th scope="col">Kind of payment</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+            <tbody>
+                @foreach (var n in p.ByNature)
+                {
+                    <tr><td>@n.Nature</td><td>@Format.Money(n.Amount)</td><td>@Format.Number(n.Records)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (p.TopSpecialties.Count > 0)
+{
+    <h2>Specialties paid the most</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Specialties of the providers paid</caption>
+            <thead><tr><th scope="col">Specialty</th><th scope="col">Providers</th><th scope="col">Amount</th></tr></thead>
+            <tbody>
+                @foreach (var s in p.TopSpecialties)
+                {
+                    <tr><td>@s.Specialty</td><td>@Format.Number(s.Providers)</td><td>@Format.Money(s.Amount)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">Active providers by their primary specialty in NPPES.</p>
+}
+
+@if (p.TopProviders.Count > 0)
+{
+    <h2>Providers paid the most</h2>
+    <p class="muted">The @p.TopProviders.Count active providers with the largest general payments naming this product in @p.Year.</p>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Providers paid the most in payments naming the product</caption>
+            <thead><tr><th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+            <tbody>
+                @foreach (var r in p.TopProviders)
+                {
+                    <tr>
+                        <td><a href="/provider/@r.Npi">@r.Name</a>@if (r.Credential is not null){<span class="muted">, @r.Credential</span>}</td>
+                        <td>@r.Specialty</td>
+                        <td>@string.Join(", ", new[] { r.City, r.State }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
+                        <td>@Format.Money(r.Amount)</td><td>@Format.Number(r.Records)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (p.Research is { } research)
+{
+    <h2>Research naming it (@research.Year)</h2>
+    <p>
+        <strong>@Format.Money(research.Amount)</strong> in @Format.Number(research.Records) research payment@(research.Records == 1 ? "" : "s")
+        for @Format.Number(research.Studies) stud@(research.Studies == 1 ? "y" : "ies"), mostly to hospitals and research sites.
+    </p>
+    @if (research.TopStudies.Count > 0)
+    {
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">The largest studies</caption>
+                <thead><tr><th scope="col">Study</th><th scope="col">Sponsor</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+                <tbody>
+                    @foreach (var s in research.TopStudies)
+                    {
+                        <tr>
+                            <td class="long">@(s.Study ?? s.NctId)@if (s.ClinicalTrialsUrl is not null){<text> </text><a href="@s.ClinicalTrialsUrl">@s.NctId</a>}</td>
+                            <td>@if (s.CompanyId is not null){<a href="/company/@Uri.EscapeDataString(s.CompanyId)">@(s.CompanyName ?? s.CompanyId)</a>}</td>
+                            <td>@Format.Money(s.Amount)</td><td>@Format.Number(s.Records)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<p class="muted">
+    Source: CMS Open Payments, @p.Year program year. A payment can name up to five products and counts for each, so amounts of different products
+    can't be added up. Products are grouped by name as companies reported them (“Eliquis” and “ELIQUIS” are one product; “Eliquis 5 mg” is another).
+    Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.
+</p>

@@ -272,6 +272,18 @@
             }
         </p>
     }
+    @if (pay.TopProducts.Count > 0)
+    {
+        <p>Products named most in these payments:
+            @for (var i = 0; i < pay.TopProducts.Count; i++)
+            {
+                var pr = pay.TopProducts[i];
+                if (i > 0) { <text>; </text> }
+                <a href="/product/@pr.Slug">@pr.Name</a>
+                <text> (@Money(pr.Amount))</text>
+            }
+        </p>
+    }
     <p class="muted">General payments only; research payments and ownership interests are under “Industry payments by year”. Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>
 }
 

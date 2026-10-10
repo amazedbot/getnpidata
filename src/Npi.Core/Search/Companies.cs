@@ -12,7 +12,8 @@ public sealed record CompanyYear(int Year, double General, int GeneralRecords, d
 public sealed record CompanyNature(string Nature, double Amount, int Records);
 
 /// <summary>A drug, device or supply named first on the company's general payments in <see cref="CompanyDetail.DetailYear"/>.</summary>
-public sealed record CompanyProduct(string Name, string? Kind, string? Category, double Amount, int Records);
+/// <remarks><see cref="Slug"/> is the product page's key (null in data loaded before product pages).</remarks>
+public sealed record CompanyProduct(string Name, string? Kind, string? Category, double Amount, int Records, string? Slug = null);
 
 /// <summary>A specialty (primary NUCC classification of active providers) the company paid, over every published year.</summary>
 public sealed record CompanySpecialty(string Specialty, int Providers, double Amount);
@@ -111,7 +112,7 @@ public sealed partial class CompanyService(string connectionString)
 
     private sealed record NatureRow(short Year, string Nature, double Amount, int Records);
 
-    private sealed record ProductRow(string Product, string? Kind, string? Category, double Amount, int Records);
+    private sealed record ProductRow(string Product, string? Kind, string? Category, double Amount, int Records, string? Slug);
 
     private sealed record SpecialtyRow(string Specialty, int Providers, double Amount);
 
@@ -196,7 +197,7 @@ public sealed partial class CompanyService(string connectionString)
             "SELECT program_year AS Year, nature AS Nature, amount AS Amount, records AS Records FROM op_company_nature WHERE company_id = @id ORDER BY amount DESC, nature",
             new { id }, cancellationToken: ct))).ToList();
         var products = await connection.QueryAsync<ProductRow>(new CommandDefinition(
-            "SELECT product AS Product, kind AS Kind, category AS Category, amount AS Amount, records AS Records FROM op_company_product WHERE company_id = @id ORDER BY product_rank",
+            "SELECT product AS Product, kind AS Kind, category AS Category, amount AS Amount, records AS Records, slug AS Slug FROM op_company_product WHERE company_id = @id ORDER BY product_rank",
             new { id }, cancellationToken: ct));
         var specialties = await connection.QueryAsync<SpecialtyRow>(new CommandDefinition(
             "SELECT specialty AS Specialty, providers AS Providers, amount AS Amount FROM op_company_specialty WHERE company_id = @id ORDER BY specialty_rank",
@@ -292,7 +293,7 @@ public sealed partial class CompanyService(string connectionString)
             years.Select(y => new CompanyYear(y.Year, y.General, y.GeneralRecords, y.Research, y.ResearchRecords, y.Invested, y.Interest, y.OwnershipRecords)).ToList(),
             natures.Count > 0 ? natures[0].Year : null,
             natures.Select(n => new CompanyNature(n.Nature, n.Amount, n.Records)).ToList(),
-            products.Select(p => new CompanyProduct(p.Product, p.Kind, p.Category, p.Amount, p.Records)).ToList(),
+            products.Select(p => new CompanyProduct(p.Product, p.Kind, p.Category, p.Amount, p.Records, p.Slug)).ToList(),
             specialties.Select(s => new CompanySpecialty(s.Specialty, s.Providers, s.Amount)).ToList(),
             recipients.Select(r => new CompanyRecipient(r.Npi, r.SortName ?? r.Npi, credentials.GetValueOrDefault(r.Npi), r.Specialty, r.City, r.State,
                 r.Total, r.General, r.Research, r.Associated, r.Ownership, r.Records)).ToList(),

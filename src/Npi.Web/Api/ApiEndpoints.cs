@@ -73,6 +73,16 @@ public static class ApiEndpoints
             .WithSummary("One company")
             .WithDescription("Payments per program year, what the newest year's general payments were for and which products they named, the specialties and the active providers it paid the most. 404 for an unknown ID.");
 
+        api.MapGet("/products", SearchProductsAsync)
+            .WithName("SearchProducts").WithTags("Products")
+            .WithSummary("Products named in Open Payments")
+            .WithDescription($"Drugs, biologicals, devices and supplies named in the newest program year's general payments, largest first. name matches any part of the name (or the product's slug); kind is one of {string.Join(", ", ProductService.Kinds)}. pageSize 1–{ProductService.MaxPageSize} (default 50).");
+
+        api.MapGet("/products/{slug}", GetProductAsync)
+            .WithName("GetProduct").WithTags("Products")
+            .WithSummary("One product")
+            .WithDescription("The companies whose payments named it, the kinds of payment, the specialties and active providers paid most, and research naming it. 404 for an unknown slug.");
+
         api.MapGet("/taxonomy/classifications", async (TaxonomyCatalog taxonomy, CancellationToken ct) =>
                 TypedResults.Ok(await taxonomy.GetClassificationsAsync(ct)))
             .WithName("ListClassifications").WithTags("Lookups").WithSummary("NUCC classifications").CacheOutput(CachePolicy);
@@ -204,6 +214,38 @@ public static class ApiEndpoints
 
     private static async Task<Results<Ok<CompanyDetail>, ProblemHttpResult>> GetCompanyAsync(string id, CompanyService companies, CancellationToken ct) =>
         await companies.GetAsync(id, ct) is { } company ? TypedResults.Ok(company) : NotFound($"No company with Open Payments ID '{id}'.");
+
+    private static async Task<Results<Ok<ProductPage>, ValidationProblem>> SearchProductsAsync(
+        string? name, string? kind, int? page, int? pageSize, ProductService products, CancellationToken ct)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (name?.Trim().Length > ProductService.MaxNameLength)
+        {
+            errors["name"] = [$"At most {ProductService.MaxNameLength} characters."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(kind) && !ProductService.Kinds.Contains(kind.Trim()))
+        {
+            errors["kind"] = [$"One of {string.Join(", ", ProductService.Kinds)}."];
+        }
+
+        if (page is < 1)
+        {
+            errors["page"] = ["Must be 1 or more."];
+        }
+
+        if (pageSize is < 1 or > ProductService.MaxPageSize)
+        {
+            errors["pageSize"] = [$"Must be 1–{ProductService.MaxPageSize}."];
+        }
+
+        return errors.Count > 0
+            ? TypedResults.ValidationProblem(errors)
+            : TypedResults.Ok(await products.SearchAsync(name, kind?.Trim(), page ?? 1, pageSize ?? 50, ct));
+    }
+
+    private static async Task<Results<Ok<ProductDetail>, ProblemHttpResult>> GetProductAsync(string slug, ProductService products, CancellationToken ct) =>
+        await products.GetAsync(slug, ct) is { } product ? TypedResults.Ok(product) : NotFound($"No product '{slug}'.");
 
     private static ProblemHttpResult NotFound(string detail) =>
         TypedResults.Problem(statusCode: StatusCodes.Status404NotFound, title: "Not found", detail: detail);
