@@ -269,6 +269,38 @@
     </p>
 }
 
+@if (p.Prescribing is { } rx)
+{
+    <h2>Paid providers who prescribe it</h2>
+    <p>
+        In @rx.Year, <strong>@Format.Number(rx.Prescribers)</strong> providers wrote <strong>@Format.Number(rx.Claims)</strong> Medicare Part D claims
+        for it@(rx.DrugCost is { } cost ? $" ({Format.Money(cost)})" : "").
+        Of the @Format.Number(rx.PaidProviders) active providers paid in @rx.PaymentYear payments naming it,
+        <strong>@Format.Number(rx.PaidPrescribers)</strong>@(rx.PaidPrescriberShare is { } ps ? $" ({ps.ToString("P0", CultureInfo.InvariantCulture)})" : "") prescribed it,
+        writing @Format.Number(rx.PaidClaims) claims@(rx.PaidClaimShare is { } cs ? $": {cs.ToString("P1", CultureInfo.InvariantCulture)} of all its Medicare claims" : "").
+    </p>
+    @if (Model.TopPrescribers is { Items.Count: > 0 } top)
+    {
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Paid providers who prescribed it, paid the most</caption>
+                <thead><tr><th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Paid</th><th scope="col">Medicare claims</th></tr></thead>
+                <tbody>
+                    @foreach (var x in top.Items)
+                    {
+                        <tr>
+                            <td><a href="/provider/@x.Npi">@x.Name</a>@if (x.Credential is not null){<span class="muted">, @x.Credential</span>}</td>
+                            <td>@x.Specialty</td><td>@Format.Money(x.Paid)</td><td>@Format.Number(x.Claims)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p><a href="/product/@p.Slug/prescribers">See all @Format.Number(top.TotalCount) paid providers who prescribed it</a> (sortable, with CSV).</p>
+    }
+    <p class="muted">CMS Medicare Part D Prescribers by Provider and Drug (@string.Join(", ", rx.Brands)), matched by brand name; Part D covers Medicare's outpatient prescriptions only. Being paid by a drug's maker and prescribing it are both legal and common.</p>
+}
+
 @if (p.Companies.Count > 0)
 {
     <h2>Companies paying for it</h2>

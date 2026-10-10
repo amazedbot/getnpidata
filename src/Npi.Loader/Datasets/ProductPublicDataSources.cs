@@ -288,7 +288,28 @@ public abstract class ProductApiCacheSource : DatasetSource
     /// </summary>
     protected static async Task<JsonDocument?> GetJsonAsync(DatasetContext context, string url, CancellationToken ct)
     {
+        // A server error (openFDA answers 500 now and then) is retried twice, then the product is skipped until the next run.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await GetOnceAsync(context, url, ct);
+            }
+            catch (UnavailableException) when (attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
+            }
+        }
+    }
+
+    private static async Task<JsonDocument?> GetOnceAsync(DatasetContext context, string url, CancellationToken ct)
+    {
         using var response = await context.Http.GetAsync(url, ct);
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new UnavailableException();
+        }
+
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
@@ -312,6 +333,8 @@ public abstract class ProductApiCacheSource : DatasetSource
     protected sealed class RateLimitedException : Exception;
 
     protected sealed class RejectedException : Exception;
+
+    protected sealed class UnavailableException : Exception;
 
     /// <summary>A name the APIs can search: letters, digits, spaces and - . / + only, spaces collapsed.</summary>
     public static string Clean(string name) =>
@@ -380,6 +403,11 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
             {
                 context.Log.Debug("openFDA refused the search for {Query}; stored as unknown", query);
             }
+            catch (UnavailableException)
+            {
+                context.Log.Warning("openFDA kept failing for {Query}; asked again on the next run", query);
+                continue;
+            }
 
             await connection.ExecuteAsync(new CommandDefinition(
                 """
@@ -442,6 +470,11 @@ public sealed class ProductTrialSource : ProductApiCacheSource
             catch (RejectedException)
             {
                 context.Log.Debug("ClinicalTrials.gov refused the search for {Query}; stored as unknown", query);
+            }
+            catch (UnavailableException)
+            {
+                context.Log.Warning("ClinicalTrials.gov kept failing for {Query}; asked again on the next run", query);
+                continue;
             }
 
             await connection.ExecuteAsync(new CommandDefinition(

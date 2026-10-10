@@ -9,6 +9,9 @@ public class ProductModel(ProductService products) : PageModel
 {
     public ProductDetail Product { get; private set; } = null!;
 
+    /// <summary>The ten paid prescribers paid the most (part 4); null without Part D prescribing.</summary>
+    public ProductPrescriberPage? TopPrescribers { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(string slug, CancellationToken ct)
     {
         var product = await products.GetAsync(slug, ct);
@@ -18,6 +21,7 @@ public class ProductModel(ProductService products) : PageModel
         }
 
         Product = product;
+        TopPrescribers = product.Prescribing is null ? null : await products.PrescribersAsync(slug, "paid", 1, 10, ct);
         return Page();
     }
 }

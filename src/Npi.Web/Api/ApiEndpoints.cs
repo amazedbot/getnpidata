@@ -83,6 +83,17 @@ public static class ApiEndpoints
             .WithSummary("One product")
             .WithDescription("The companies whose payments named it, the kinds of payment, the specialties and active providers paid most, and research naming it. 404 for an unknown slug.");
 
+        api.MapGet("/products/{slug}/prescribers", GetPrescribersAsync)
+            .WithName("GetProductPrescribers").WithTags("Products")
+            .WithSummary("Paid providers who prescribe the product")
+            .WithDescription($"The active providers paid in payments naming the drug who wrote Medicare Part D claims for it, with the amount paid and their claims, drug cost and patients. sort = {string.Join(" | ", ProductService.PrescriberSorts)} (default paid); pageSize 1–{ProductService.MaxPrescriberPageSize} (default {ProductService.PrescriberPageSize}). 404 for an unknown product or one without Part D prescribing.");
+
+        api.MapGet("/products/{slug}/prescribers.csv", PrescribersCsvAsync)
+            .WithName("ExportProductPrescribersCsv").WithTags("Products")
+            .WithSummary("Paid providers who prescribe the product, as CSV")
+            .WithDescription("Every row of /products/{slug}/prescribers, largest payments first, streamed. UTF-8 with BOM.")
+            .Produces(StatusCodes.Status200OK, contentType: "text/csv");
+
         api.MapGet("/taxonomy/classifications", async (TaxonomyCatalog taxonomy, CancellationToken ct) =>
                 TypedResults.Ok(await taxonomy.GetClassificationsAsync(ct)))
             .WithName("ListClassifications").WithTags("Lookups").WithSummary("NUCC classifications").CacheOutput(CachePolicy);
@@ -246,6 +257,49 @@ public static class ApiEndpoints
 
     private static async Task<Results<Ok<ProductDetail>, ProblemHttpResult>> GetProductAsync(string slug, ProductService products, CancellationToken ct) =>
         await products.GetAsync(slug, ct) is { } product ? TypedResults.Ok(product) : NotFound($"No product '{slug}'.");
+
+    private static async Task<Results<Ok<ProductPrescriberPage>, ValidationProblem, ProblemHttpResult>> GetPrescribersAsync(
+        string slug, string? sort, int? page, int? pageSize, ProductService products, CancellationToken ct)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (sort is not null && !ProductService.PrescriberSorts.Contains(sort, StringComparer.OrdinalIgnoreCase))
+        {
+            errors["sort"] = [$"One of {string.Join(", ", ProductService.PrescriberSorts)}."];
+        }
+
+        if (page is < 1)
+        {
+            errors["page"] = ["Must be 1 or more."];
+        }
+
+        if (pageSize is < 1 or > ProductService.MaxPrescriberPageSize)
+        {
+            errors["pageSize"] = [$"Must be 1–{ProductService.MaxPrescriberPageSize}."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return TypedResults.ValidationProblem(errors);
+        }
+
+        return await products.PrescribersAsync(slug, sort, page ?? 1, pageSize ?? ProductService.PrescriberPageSize, ct) is { } result
+            ? TypedResults.Ok(result)
+            : NotFound($"No product '{slug}' with Medicare Part D prescribing.");
+    }
+
+    /// <summary>The CSV of a product's paid prescribers (the page's download and the API's).</summary>
+    public static async Task<IResult> PrescribersCsvAsync(string slug, HttpContext http, ProductService products, CancellationToken ct)
+    {
+        if (await products.PrescribersAsync(slug, "paid", 1, 1, ct) is null)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Not found", detail: $"No product '{slug}' with Medicare Part D prescribing.");
+        }
+
+        http.Response.ContentType = "text/csv; charset=utf-8";
+        http.Response.Headers.ContentDisposition = $"attachment; filename=\"{slug}_paid_prescribers_{DateTime.UtcNow:yyyyMMdd}.csv\"";
+        await ProductPrescriberCsv.WriteAsync(products.AllPrescribersAsync(slug, ct), http.Response.Body, ct);
+        return Results.Empty;
+    }
 
     private static ProblemHttpResult NotFound(string detail) =>
         TypedResults.Problem(statusCode: StatusCodes.Status404NotFound, title: "Not found", detail: detail);

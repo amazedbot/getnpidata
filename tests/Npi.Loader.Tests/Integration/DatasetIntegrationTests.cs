@@ -62,7 +62,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
              ("open_payments_research", "2025 OP_DTL_RSRCH_PGYR2025_P06302026_06032026.csv"),
-             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("product_adverse_events", today), ("product_trials", today),
+             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("part_d_prescribers", "2024-12-31 MUP_DPR_DY24_NPIBN.csv"), ("product_adverse_events", today), ("product_trials", today),
              ("sec_companies", $"2026-10-09T06:00:00Z parents {SecCompanySource.ParentsHash()}"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
@@ -443,8 +443,28 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(("device", 10, 1, 2, 7), (pumpEvents.Kind, pumpEvents.Reports, pumpEvents.Deaths, pumpEvents.Injuries, pumpEvents.Malfunctions));
         Assert.Equal(0, ozempicPage.AdverseEvents!.Reports); // asked, nothing found
         Assert.Null((await products.GetAsync("guardian-4-sensor", _ct))!.AdverseEvents); // no device record, so not asked
+        Assert.Null(ibrance.AdverseEvents); // openFDA kept failing (500): skipped, asked again on the next run
         Assert.Equal(("apixaban", 482, 71), (eliquis.Trials!.QueryName, eliquis.Trials.Studies, eliquis.Trials.Recruiting));
         Assert.Equal("https://clinicaltrials.gov/search?intr=apixaban", eliquis.Trials.SearchUrl);
+
+        // Part 4, prescribing overlap: Eliquis' Part D brands (also its form "Starter Pack"; the generic's rows are left out), all its
+        // prescribers, and the active providers paid for it who prescribed it.
+        var rx = eliquis.Prescribing!;
+        Assert.Equal(["Eliquis", "Eliquis Starter Pack"], rx.Brands);
+        Assert.Equal((2024, 2025, 3, 205L, 1, 1, 125L), (rx.Year, rx.PaymentYear, rx.Prescribers, rx.Claims, rx.PaidProviders, rx.PaidPrescribers, rx.PaidClaims));
+        Assert.Equal(125.0 / 205, rx.PaidClaimShare!.Value, 6);
+        var prescribers = (await products.PrescribersAsync("eliquis", "claims", 1, 50, _ct))!;
+        var baker2 = Assert.Single(prescribers.Items);
+        Assert.Equal(("1000000012", "BAKER, AL", 40.0, 2, 125, 62500.5, (int?)40), (baker2.Npi, baker2.Name, baker2.Paid, baker2.Payments, baker2.Claims,
+            baker2.DrugCost, baker2.Beneficiaries));
+        Assert.Equal(1, prescribers.TotalCount);
+        Assert.Equal(["1000000012"], await products.AllPrescribersAsync("eliquis", _ct).Select(x => x.Npi).ToListAsync(_ct));
+        Assert.Equal((1, 15L, 1, 15L), ((await products.GetAsync("ozempic", _ct))!.Prescribing is { } oz ? (oz.Prescribers, oz.Claims, oz.PaidPrescribers, oz.PaidClaims) : default));
+        Assert.Null(ibrance.Prescribing); // no Part D brand
+        Assert.Null((await products.GetAsync("minimed-780g", _ct))!.Prescribing); // a device
+        Assert.Null(await products.PrescribersAsync("minimed-780g", null, 1, 50, _ct));
+        // Only drugs and biologicals keep their (product, NPI) pairs.
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM op_product_npi WHERE slug IN ('minimed-780g', 'guardian-4-sensor', 'pico')"));
         var list = await products.SearchAsync(null, null, 1, 50, _ct);
         Assert.Equal(["ibrance", "guardian-4-sensor", "minimed-780g", "eliquis", "pico", "ozempic"], list.Items.Select(p => p.Slug));
         Assert.Equal(["guardian-4-sensor", "minimed-780g", "pico"], (await products.SearchAsync(null, "Device", 1, 50, _ct)).Items.Select(p => p.Slug));
@@ -456,6 +476,8 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal("100000000002", detail.PaymentHistory!.TopCompanies[0].CompanyId);
         // …and its top products (tied amounts by slug) to the product pages.
         Assert.Equal(["guardian-4-sensor", "minimed-780g", "eliquis", "ibrance", "ozempic"], detail.IndustryPayments.TopProducts.Select(p => p.Slug));
+        // …with the provider's Medicare Part D claims of each drug that has a Part D brand.
+        Assert.Equal([null, null, 125, null, 15], detail.IndustryPayments.TopProducts.Select(p => p.MedicareClaims));
         Assert.Equal(("Guardian 4 Sensor", "Device", 2500.0), (detail.IndustryPayments.TopProducts[0].Name, detail.IndustryPayments.TopProducts[0].Kind,
             detail.IndustryPayments.TopProducts[0].Amount));
     }
@@ -584,6 +606,11 @@ public sealed class DatasetIntegrationTests : IDisposable
             // openFDA counts and ClinicalTrials.gov totals (part 3): a few known answers, nothing for everything else.
             if (url.StartsWith("https://openfda.test/", StringComparison.Ordinal) || url.StartsWith("https://ct.test/", StringComparison.Ordinal))
             {
+                if (url.Contains("medicinalproduct:%22IBRANCE%22", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)); // openFDA fails now and then
+                }
+
                 var answer = url switch
                 {
                     _ when url.Contains("medicinalproduct:%22ELIQUIS%22", StringComparison.Ordinal) => """{"results":[{"term":1,"count":100},{"term":2,"count":40}]}""",
@@ -623,6 +650,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://cms.test/files/DSD_PTD_DY24.csv" => "datasets/cms_part_d_spending_sample.csv",
                 "https://cms.test/files/DSD_PTB_DY24.csv" => "datasets/cms_part_b_spending_sample.csv",
                 "https://cms.test/files/DSD_MCD_DY24.csv" => "datasets/cms_medicaid_spending_sample.csv",
+                "https://cms.test/files/MUP_DPR_DY24_NPIBN.csv" => "datasets/part_d_by_provider_and_drug_sample.csv",
                 "https://medicaid.test/items" => "datasets/medicaid_catalog_sample.json",
                 "https://medicaid.test/nadac-national-average-drug-acquisition-cost-10-07-2026.csv" => "datasets/nadac_sample.csv",
                 "https://cms.test/files/OptOut_August2026.csv" => "datasets/optout_sample.csv",
