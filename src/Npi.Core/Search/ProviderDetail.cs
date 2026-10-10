@@ -78,6 +78,9 @@ public sealed record ProviderDetail(
     /// <summary>Open Payments general payments in the newest program year; null when none (Stage 5.5 item 6).</summary>
     public IndustryPayments? IndustryPayments { get; init; }
 
+    /// <summary>MIPS scores in the newest program year, best first (Stage 5.5 item 14).</summary>
+    public IReadOnlyList<MipsScore> MipsScores { get; init; } = [];
+
     /// <summary>Open Payments per program year and the top companies over all years; null when none (Stage 5.5 item 13).</summary>
     public IndustryPaymentHistory? PaymentHistory { get; init; }
 
@@ -119,7 +122,11 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record AffiliationRow(string FacilityType, string Ccn, string? Name, string? City, string? State, long? OverallRating, string? FacilityNpi);
 
     private sealed record FacilityRow(string Ccn, string Kind, string Name, string? Type, string? Ownership, string? City, string? State, string? Phone,
-        sbyte? EmergencyServices, int? CertifiedBeds, long? OverallRating, long? InspectionRating, long? StaffingRating, long? QualityRating, long AffiliatedClinicians);
+        sbyte? EmergencyServices, int? CertifiedBeds, long? OverallRating, long? InspectionRating, long? StaffingRating, long? QualityRating, long AffiliatedClinicians,
+        long? SurveyRating, double? QualityOfCare, long? MortMeasures, long? MortBetter, long? MortWorse, long? SafetyMeasures, long? SafetyBetter,
+        long? SafetyWorse, long? ReadmMeasures, long? ReadmBetter, long? ReadmWorse);
+
+    private sealed record MipsRow(short Year, string? Source, string? Organization, double? FinalScore, double? Quality, double? Pi, double? Ia, double? Cost);
 
     private sealed record UtilizationRow(short DataYear, string? ProviderType, sbyte? Participating, int? DistinctServices, int? Beneficiaries,
         double? Services, double? AllowedAmount, double? PaymentAmount, double? AvgBeneficiaryAge, double? AvgRiskScore);
@@ -239,12 +246,15 @@ public sealed class ProviderDetailService(string connectionString)
                 """, new { npi }, cancellationToken: ct));
             var affiliations = await connection.QueryAsync<AffiliationRow>(new CommandDefinition(
                 """
-                SELECT a.facility_type AS FacilityType, a.ccn AS Ccn, COALESCE(h.name, n.name) AS Name, COALESCE(h.city, n.city) AS City,
-                       COALESCE(h.state, n.state) AS State, CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating,
+                SELECT a.facility_type AS FacilityType, a.ccn AS Ccn, COALESCE(h.name, n.name, hh.name, hs.name) AS Name,
+                       COALESCE(h.city, n.city, hh.city, hs.city) AS City, COALESCE(h.state, n.state, hh.state, hs.state) AS State,
+                       CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating,
                        (SELECT MIN(f.npi) FROM cms_facility_npi f WHERE f.ccn = a.ccn) AS FacilityNpi
                 FROM (SELECT DISTINCT facility_type, ccn FROM cc_facility_affiliation WHERE npi = @npi) a
                 LEFT JOIN cms_hospital h ON h.ccn = a.ccn
                 LEFT JOIN cms_nursing_home n ON n.ccn = a.ccn
+                LEFT JOIN cms_home_health hh ON hh.ccn = a.ccn
+                LEFT JOIN cms_hospice hs ON hs.ccn = a.ccn
                 ORDER BY a.facility_type, Name, a.ccn
                 """, new { npi }, cancellationToken: ct));
             careCompare = new ProviderCareCompare(
@@ -309,16 +319,25 @@ public sealed class ProviderDetailService(string connectionString)
 
         var facilities = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
             """
-            SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
-                   COALESCE(h.ownership, n.ownership) AS Ownership, COALESCE(h.city, n.city) AS City, COALESCE(h.state, n.state) AS State,
-                   COALESCE(h.phone, n.phone) AS Phone, h.emergency_services AS EmergencyServices, n.certified_beds AS CertifiedBeds,
+            SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name, hh.name, hs.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
+                   COALESCE(h.ownership, n.ownership, hh.ownership, hs.ownership) AS Ownership, COALESCE(h.city, n.city, hh.city, hs.city) AS City,
+                   COALESCE(h.state, n.state, hh.state, hs.state) AS State, COALESCE(h.phone, n.phone, hh.phone, hs.phone) AS Phone,
+                   h.emergency_services AS EmergencyServices, n.certified_beds AS CertifiedBeds,
                    CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating, CAST(n.inspection_rating AS SIGNED) AS InspectionRating,
                    CAST(n.staffing_rating AS SIGNED) AS StaffingRating, CAST(n.quality_rating AS SIGNED) AS QualityRating,
-                   (SELECT COUNT(DISTINCT a.npi) FROM cc_facility_affiliation a WHERE a.ccn = f.ccn) AS AffiliatedClinicians
+                   (SELECT COUNT(DISTINCT a.npi) FROM cc_facility_affiliation a WHERE a.ccn = f.ccn) AS AffiliatedClinicians,
+                   CAST(COALESCE(sv.star_rating, hs.family_rating) AS SIGNED) AS SurveyRating, hh.quality_rating AS QualityOfCare,
+                   CAST(h.mort_measures AS SIGNED) AS MortMeasures, CAST(h.mort_better AS SIGNED) AS MortBetter, CAST(h.mort_worse AS SIGNED) AS MortWorse,
+                   CAST(h.safety_measures AS SIGNED) AS SafetyMeasures, CAST(h.safety_better AS SIGNED) AS SafetyBetter,
+                   CAST(h.safety_worse AS SIGNED) AS SafetyWorse, CAST(h.readm_measures AS SIGNED) AS ReadmMeasures,
+                   CAST(h.readm_better AS SIGNED) AS ReadmBetter, CAST(h.readm_worse AS SIGNED) AS ReadmWorse
             FROM cms_facility_npi f
-            LEFT JOIN cms_hospital h ON h.ccn = f.ccn
-            LEFT JOIN cms_nursing_home n ON n.ccn = f.ccn
-            WHERE f.npi = @npi AND COALESCE(h.name, n.name) IS NOT NULL
+            LEFT JOIN cms_hospital h ON f.kind = 'hospital' AND h.ccn = f.ccn
+            LEFT JOIN cms_hospital_survey sv ON f.kind = 'hospital' AND sv.ccn = f.ccn
+            LEFT JOIN cms_nursing_home n ON f.kind = 'nursing_home' AND n.ccn = f.ccn
+            LEFT JOIN cms_home_health hh ON f.kind = 'home_health' AND hh.ccn = f.ccn
+            LEFT JOIN cms_hospice hs ON f.kind = 'hospice' AND hs.ccn = f.ccn
+            WHERE f.npi = @npi AND COALESCE(h.name, n.name, hh.name, hs.name) IS NOT NULL
             ORDER BY f.kind, Name
             """, new { npi }, cancellationToken: ct));
 
@@ -333,6 +352,13 @@ public sealed class ProviderDetailService(string connectionString)
             LEFT JOIN taxonomy_codes n ON c.change_type = 'specialty' AND n.Taxonomy_Code = c.new_value
             WHERE c.npi = @npi AND c.change_type IN ('name', 'credential', 'specialty', 'address')
             ORDER BY c.detected_at DESC, c.id DESC LIMIT 100
+            """, new { npi }, cancellationToken: ct));
+
+        var mips = await connection.QueryAsync<MipsRow>(new CommandDefinition(
+            """
+            SELECT program_year AS Year, source AS Source, facility_name AS Organization, final_score AS FinalScore, quality_score AS Quality,
+                   pi_score AS Pi, ia_score AS Ia, cost_score AS Cost
+            FROM cc_mips WHERE npi = @npi ORDER BY program_year DESC, final_score DESC, id LIMIT 5
             """, new { npi }, cancellationToken: ct));
 
         var standardCredential = (await SearchService.StandardCredentialsAsync(connection, [npi], ct)).GetValueOrDefault(npi);
@@ -375,7 +401,16 @@ public sealed class ProviderDetailService(string connectionString)
                 partD.Beneficiaries, partD.BrandClaims, partD.GenericClaims, partD.OpioidClaims, partD.OpioidRate, partD.AntibioticClaims),
             Facilities = facilities.Select(f => new CertifiedFacility(f.Ccn, f.Kind, f.Name, f.Type, f.Ownership, f.City, f.State, f.Phone,
                 f.EmergencyServices is null ? null : f.EmergencyServices != 0, f.CertifiedBeds, (int?)f.OverallRating, (int?)f.InspectionRating, (int?)f.StaffingRating,
-                (int?)f.QualityRating, (int)f.AffiliatedClinicians)).ToList(),
+                (int?)f.QualityRating, (int)f.AffiliatedClinicians)
+            {
+                PatientSurveyRating = (int?)f.SurveyRating,
+                QualityOfCareRating = f.QualityOfCare,
+                Outcomes = f.Kind != "hospital" || (f.MortMeasures is null && f.SafetyMeasures is null && f.ReadmMeasures is null) ? null : new HospitalOutcomes(
+                    new OutcomeCounts((int?)f.MortMeasures, (int?)f.MortBetter, (int?)f.MortWorse),
+                    new OutcomeCounts((int?)f.SafetyMeasures, (int?)f.SafetyBetter, (int?)f.SafetyWorse),
+                    new OutcomeCounts((int?)f.ReadmMeasures, (int?)f.ReadmBetter, (int?)f.ReadmWorse)),
+            }).ToList(),
+            MipsScores = mips.Select(m => new MipsScore(m.Year, m.Source, m.Organization, m.FinalScore, m.Quality, m.Pi, m.Ia, m.Cost)).ToList(),
         };
     }
 

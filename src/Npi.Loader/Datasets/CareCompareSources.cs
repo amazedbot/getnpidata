@@ -101,6 +101,15 @@ public sealed class HospitalSource : DatasetSource
         new("Facility ID", "ccn"), new("Facility Name", "name"), new("Address", "address"), new("City/Town", "city"), new("State", "state"),
         new("ZIP Code", "zip"), new("Telephone Number", "phone"), new("Hospital Type", "hospital_type"), new("Hospital Ownership", "ownership"),
         new("Emergency Services", "emergency_services", CsvValue.YesNo), new("Hospital overall rating", "overall_rating", CsvValue.OptionalWholeNumber),
+        // Outcome measure counts (item 14): how many of the hospital's measures CMS rates better / worse than the national rate.
+        new("Count of Facility MORT Measures", "mort_measures", CsvValue.OptionalWholeNumber),
+        new("Count of MORT Measures Better", "mort_better", CsvValue.OptionalWholeNumber), new("Count of MORT Measures Worse", "mort_worse", CsvValue.OptionalWholeNumber),
+        new("Count of Facility Safety Measures", "safety_measures", CsvValue.OptionalWholeNumber),
+        new("Count of Safety Measures Better", "safety_better", CsvValue.OptionalWholeNumber),
+        new("Count of Safety Measures Worse", "safety_worse", CsvValue.OptionalWholeNumber),
+        new("Count of Facility READM Measures", "readm_measures", CsvValue.OptionalWholeNumber),
+        new("Count of READM Measures Better", "readm_better", CsvValue.OptionalWholeNumber),
+        new("Count of READM Measures Worse", "readm_worse", CsvValue.OptionalWholeNumber),
     ];
 
     public override Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct) => context.ProviderDataAsync(DatasetId, ct);
@@ -132,13 +141,19 @@ public sealed class NursingHomeSource : DatasetSource
 }
 
 /// <summary>
-/// CMS Hospital Enrollments + Skilled Nursing Facility Enrollments: which organization NPI holds which CCN
-/// (Stage 5.5 item 4b). Both files are Windows-1252, and both feed cms_facility_npi, so they are one source.
+/// CMS Hospital, Skilled Nursing Facility, Home Health Agency and Hospice Enrollments: which organization NPI holds
+/// which CCN (Stage 5.5 items 4b and 14). The files are Windows-1252, and all feed cms_facility_npi, so they are one source.
 /// </summary>
 public sealed class FacilityEnrollmentSource : DatasetSource
 {
     public const string HospitalTitle = "Hospital Enrollments";
     public const string SnfTitle = "Skilled Nursing Facility Enrollments";
+    public const string HomeHealthTitle = "Home Health Agency Enrollments";
+    public const string HospiceTitle = "Hospice Enrollments";
+
+    // Catalog title → cms_facility_npi.kind.
+    private static readonly (string Title, string Kind)[] Files =
+        [(HospitalTitle, "hospital"), (SnfTitle, "nursing_home"), (HomeHealthTitle, "home_health"), (HospiceTitle, "hospice")];
 
     public override string Name => "cms_facility_enrollments";
 
@@ -146,38 +161,44 @@ public sealed class FacilityEnrollmentSource : DatasetSource
 
     public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
     {
-        var (hospitals, snfs) = await FindBothAsync(context, ct);
-        return new DatasetRelease($"{hospitals.Version} | {snfs.Version}", hospitals.Url);
+        var releases = await FindAllAsync(context, ct);
+        return new DatasetRelease(string.Join(" | ", releases.Select(r => r.Release.Version)), releases[0].Release.Url);
     }
 
     public override async Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct)
     {
-        var (hospitals, snfs) = await FindBothAsync(context, ct);
-        var hospitalFile = await context.DownloadAsync(hospitals, "cms_hospital_enrollments.csv", ct);
-        var snfFile = await context.DownloadAsync(snfs, "cms_snf_enrollments.csv", ct);
+        var files = new List<(string Path, string Kind)>();
         try
         {
+            foreach (var (found, kind) in await FindAllAsync(context, ct))
+            {
+                files.Add((await context.DownloadAsync(found, $"cms_{kind}_enrollments.csv", ct), kind));
+            }
+
             await using var connection = await context.Database.OpenAsync(ct);
             var counts = await TableSwap.ReplaceAsync(connection, ["cms_facility_npi"], context.Options.MinRowRatio, async () =>
             {
-                await CsvTableLoader.LoadAsync(connection, hospitalFile, "cms_facility_npi_staging", Columns, ct, "latin1",
-                    new Dictionary<string, string> { ["kind"] = "hospital" });
-                await CsvTableLoader.LoadAsync(connection, snfFile, "cms_facility_npi_staging", Columns, ct, "latin1",
-                    new Dictionary<string, string> { ["kind"] = "nursing_home" });
+                foreach (var (path, kind) in files)
+                {
+                    await CsvTableLoader.LoadAsync(connection, path, "cms_facility_npi_staging", Columns, ct, "latin1",
+                        new Dictionary<string, string> { ["kind"] = kind });
+                }
             }, ct);
             return counts["cms_facility_npi"];
         }
         finally
         {
-            File.Delete(hospitalFile);
-            File.Delete(snfFile);
+            foreach (var (path, _) in files)
+            {
+                File.Delete(path);
+            }
         }
     }
 
-    private static async Task<(DatasetRelease Hospitals, DatasetRelease Snfs)> FindBothAsync(DatasetContext context, CancellationToken ct)
+    private static async Task<IReadOnlyList<(DatasetRelease Release, string Kind)>> FindAllAsync(DatasetContext context, CancellationToken ct)
     {
         var catalog = await context.CmsCatalogAsync(ct);
-        return (catalog.FindLatest(HospitalTitle) ?? throw new InvalidDataException($"data.cms.gov lists no \"{HospitalTitle}\" CSV."),
-            catalog.FindLatest(SnfTitle) ?? throw new InvalidDataException($"data.cms.gov lists no \"{SnfTitle}\" CSV."));
+        return Files.Select(f => (catalog.FindLatest(f.Title) ?? throw new InvalidDataException($"data.cms.gov lists no \"{f.Title}\" CSV."), f.Kind))
+            .ToList();
     }
 }

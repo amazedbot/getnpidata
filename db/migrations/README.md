@@ -55,6 +55,9 @@ Rules:
 | `057_provider_org_name.sql` | `provider_org_name`: organization legal + other names with a FULLTEXT index, for word-anywhere search (item 9); filled once from the current projection. |
 | `058_open_payments_year.sql` | Open Payments per NPI and program year: general, research, research as principal investigator, ownership (item 13). |
 | `059_open_payments_company.sql` | The top 5 companies per NPI over all program years, by payment type (item 13). |
+| `060_cc_mips.sql` | Clinician MIPS scores (individual, group, APM entity), item 14. |
+| `061_cms_hospital_quality.sql` | Hospital outcome measure counts (better/worse than national) and the HCAHPS summary star rating, item 14. |
+| `062_cms_home_health_hospice.sql` | Home health agencies and hospices with their star ratings, item 14. |
 
 ## 001_baseline.sql
 

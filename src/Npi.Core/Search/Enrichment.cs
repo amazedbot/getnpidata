@@ -69,7 +69,31 @@ public sealed record ProviderCareCompare(string? MedicalSchool, int? GraduationY
 
 /// <summary>A Medicare-certified facility (hospital or nursing home) held by this organization NPI, with its Care Compare ratings (Stage 5.5 item 4).</summary>
 public sealed record CertifiedFacility(string Ccn, string Kind, string Name, string? Type, string? Ownership, string? City, string? State, string? Phone,
-    bool? EmergencyServices, int? CertifiedBeds, int? OverallRating, int? InspectionRating, int? StaffingRating, int? QualityRating, int AffiliatedClinicians);
+    bool? EmergencyServices, int? CertifiedBeds, int? OverallRating, int? InspectionRating, int? StaffingRating, int? QualityRating, int AffiliatedClinicians)
+{
+    /// <summary>Patient experience star rating 1-5 (Stage 5.5 item 14): HCAHPS for a hospital, the family caregiver survey for a hospice.</summary>
+    public int? PatientSurveyRating { get; init; }
+
+    /// <summary>A home health agency's quality of patient care star rating, 1-5 in half stars (item 14).</summary>
+    public double? QualityOfCareRating { get; init; }
+
+    /// <summary>A hospital's outcome measures compared with the national rate (item 14); null for other kinds.</summary>
+    public HospitalOutcomes? Outcomes { get; init; }
+}
+
+/// <summary>A count of a hospital's measures in one group and how many CMS rates better / worse than the national rate.</summary>
+public sealed record OutcomeCounts(int? Measures, int? Better, int? Worse);
+
+/// <summary>Hospital outcomes from Care Compare (Stage 5.5 item 14): mortality, safety (infections, complications), readmissions.</summary>
+public sealed record HospitalOutcomes(OutcomeCounts Mortality, OutcomeCounts Safety, OutcomeCounts Readmissions);
+
+/// <summary>
+/// One MIPS score (Stage 5.5 item 14), from Care Compare's Overall MIPS Performance: the final score and the category
+/// scores (quality, promoting interoperability, improvement activities, cost), 0-100, null when not scored.
+/// <see cref="Source"/> says whose score it is: individual, group, apm (an APM entity), subgroup or virtual group.
+/// </summary>
+public sealed record MipsScore(int Year, string? Source, string? Organization, double? FinalScore, double? Quality, double? PromotingInteroperability,
+    double? ImprovementActivities, double? Cost);
 
 /// <summary>Compliance facts for the detail page and API.</summary>
 public sealed record ProviderCompliance(IReadOnlyList<OigExclusion> Exclusions, MedicareOptOut? OptOut, MedicareOrderReferring? OrderReferring);

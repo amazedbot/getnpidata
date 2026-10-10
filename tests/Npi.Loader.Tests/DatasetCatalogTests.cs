@@ -56,6 +56,16 @@ public class DatasetCatalogTests
     }
 
     [Fact]
+    public void Mips_uses_the_newest_program_year_of_the_overall_performance_dataset()
+    {
+        using var stream = File.OpenRead(Fixtures.Path("datasets/pdc_list_sample.json"));
+        var release = MipsSource.ParseList(stream);
+
+        Assert.Equal("PY 2024 2026-08-18 ec_score_file.csv", release.Version);
+        Assert.Equal(2024, release.DataYear);
+    }
+
+    [Fact]
     public void Open_payments_summaries_are_found_by_their_exact_title()
     {
         using var stream = File.OpenRead(Fixtures.Path("datasets/open_payments_catalog_sample.json"));

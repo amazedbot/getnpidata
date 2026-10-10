@@ -71,13 +71,22 @@
     @foreach (var fac in p.Facilities)
     {
         <dl class="facts">
-            <dt>@(fac.Kind == "hospital" ? "Hospital" : "Nursing home")</dt>
+            <dt>@(fac.Kind switch { "hospital" => "Hospital", "nursing_home" => "Nursing home", "home_health" => "Home health agency", "hospice" => "Hospice", _ => fac.Kind })</dt>
             <dd><strong>@fac.Name</strong> <span class="muted">CCN @fac.Ccn · @fac.City, @fac.State</span></dd>
             @if (fac.Type is not null){<dt>Type</dt><dd>@fac.Type</dd>}
             @if (fac.Ownership is not null){<dt>Ownership</dt><dd>@fac.Ownership</dd>}
             @if (fac.EmergencyServices is { } er){<dt>Emergency services</dt><dd>@(er ? "Yes" : "No")</dd>}
             @if (fac.CertifiedBeds is not null){<dt>Certified beds</dt><dd>@fac.CertifiedBeds</dd>}
-            <dt>Overall rating</dt><dd>@Stars(fac.OverallRating)</dd>
+            @if (fac.Kind is "hospital" or "nursing_home"){<dt>Overall rating</dt><dd>@Stars(fac.OverallRating)</dd>}
+            @if (fac.Kind == "home_health"){<dt>Quality of patient care</dt><dd>@HalfStars(fac.QualityOfCareRating)</dd>}
+            @if (fac.Kind == "hospital"){<dt>Patient survey (HCAHPS)</dt><dd>@Stars(fac.PatientSurveyRating)</dd>}
+            @if (fac.Kind == "hospice"){<dt>Family caregiver survey</dt><dd>@Stars(fac.PatientSurveyRating)</dd>}
+            @if (fac.Outcomes is { } o)
+            {
+                <dt>Deaths</dt><dd>@Outcome(o.Mortality)</dd>
+                <dt>Safety (infections, complications)</dt><dd>@Outcome(o.Safety)</dd>
+                <dt>Readmissions</dt><dd>@Outcome(o.Readmissions)</dd>
+            }
             @if (fac.Kind == "nursing_home")
             {
                 <dt>Health inspections</dt><dd>@Stars(fac.InspectionRating)</dd>
@@ -87,7 +96,29 @@
             @if (fac.AffiliatedClinicians > 0){<dt>Affiliated clinicians</dt><dd>@fac.AffiliatedClinicians.ToString("N0", CultureInfo.InvariantCulture)</dd>}
         </dl>
     }
-    <p class="muted">Ratings from Medicare Care Compare.</p>
+    <p class="muted">Ratings from Medicare Care Compare. Deaths, safety and readmissions count the hospital's measures that CMS rates better or worse than the national rate; the rest are no different.</p>
+}
+
+@* Stage 5.5 item 14: MIPS, Medicare's clinician quality program (Care Compare). *@
+@if (p.MipsScores.Count > 0)
+{
+    <h2>Medicare quality score (MIPS @p.MipsScores[0].Year)</h2>
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">MIPS scores</caption>
+            <thead><tr><th scope="col">Scored as</th><th scope="col">Final score</th><th scope="col">Quality</th><th scope="col">Promoting interoperability</th><th scope="col">Improvement activities</th><th scope="col">Cost</th></tr></thead>
+            <tbody>
+                @foreach (var m in p.MipsScores)
+                {
+                    <tr>
+                        <td>@(m.Source switch { "individual" => "Individual", "group" => "Group", "apm" => "APM entity", "subgroup" => "Subgroup", "virtual group" => "Virtual group", _ => m.Source })@if (m.Organization is not null){<br /><span class="muted">@m.Organization</span>}</td>
+                        <td><strong>@Score(m.FinalScore)</strong></td><td>@Score(m.Quality)</td><td>@Score(m.PromotingInteroperability)</td><td>@Score(m.ImprovementActivities)</td><td>@Score(m.Cost)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">Merit-based Incentive Payment System scores, 0–100, from Medicare Care Compare; a clinician may be scored individually, with a group or with an alternative payment model (APM) entity. “—” means the category wasn't scored.</p>
 }
 
 @if (p.CareCompare is { } cc)
@@ -435,6 +466,18 @@
     // An Open Payments amount: "—" for none, else the dollars and, when given, how many payments.
     private static string Amount(double value, int? records) => value <= 0 ? "—"
         : records is > 0 ? $"{Money(value)} ({records.Value.ToString("N0", CultureInfo.InvariantCulture)})" : Money(value);
+
+    private static string Score(double? value) => value is null ? "—" : value.Value.ToString("0.#", CultureInfo.InvariantCulture);
+
+    // Half stars, e.g. 3.5 → ★★★½☆ (3.5/5).
+    private static string HalfStars(double? rating) => rating is >= 1 and <= 5
+        ? new string('★', (int)rating.Value) + (rating.Value % 1 >= 0.5 ? "½" : "") + new string('☆', 5 - (int)Math.Ceiling(rating.Value))
+          + $" ({rating.Value.ToString("0.#", CultureInfo.InvariantCulture)}/5)"
+        : "Not rated";
+
+    // "2 better, 1 worse of 11" (the rest are no different from the national rate).
+    private static string Outcome(OutcomeCounts c) => c.Measures is not > 0 ? "Not available"
+        : $"{c.Better ?? 0} better, {c.Worse ?? 0} worse than national, of {c.Measures}";
 
     private static string Stars(int? rating) => rating is >= 1 and <= 5 ? new string('★', rating.Value) + new string('☆', 5 - rating.Value) + $" ({rating}/5)" : "Not rated";
 }
