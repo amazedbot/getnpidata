@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Dapper;
 using MySqlConnector;
 
@@ -23,11 +24,13 @@ public sealed record CompanyRecipient(string Npi, string Name, string? Credentia
 /// <summary>
 /// A company that reports to Open Payments (CLAUDE.md §7 Stage 5.5 item 17), keyed by its CMS ID: who it is, what it paid each
 /// year, what for and with which products, and whom. <see cref="Providers"/> counts every NPI it paid, active or not.
+/// <see cref="SimilarNames"/>: other companies sharing the name's distinctive word (a manufacturer often reports under
+/// several entities, e.g. ELI LILLY AND COMPANY and LILLY USA, LLC); a name match only, not a verified relation.
 /// </summary>
 public sealed record CompanyDetail(string Id, string Name, IReadOnlyList<string> OtherNames, string? State, string? Country, double General,
     double Research, double OwnershipInvested, double OwnershipValue, int? FirstYear, int? LastYear, int? Providers, IReadOnlyList<CompanyYear> Years,
     int? DetailYear, IReadOnlyList<CompanyNature> ByNature, IReadOnlyList<CompanyProduct> TopProducts, IReadOnlyList<CompanySpecialty> TopSpecialties,
-    IReadOnlyList<CompanyRecipient> TopProviders)
+    IReadOnlyList<CompanyRecipient> TopProviders, IReadOnlyList<CompanySummary> SimilarNames)
 {
     /// <summary>The company's page on CMS's Open Payments site.</summary>
     public string OpenPaymentsUrl => $"https://openpaymentsdata.cms.gov/company/{Uri.EscapeDataString(Id)}";
@@ -41,9 +44,27 @@ public sealed record CompanySummary(string Id, string Name, string? State, strin
 public sealed record CompanyPage(IReadOnlyList<CompanySummary> Items, int Page, int PageSize, int TotalCount);
 
 /// <summary>Company lists and pages (Stage 5.5 item 17), read from the op_company* tables.</summary>
-public sealed class CompanyService(string connectionString)
+public sealed partial class CompanyService(string connectionString)
 {
     public const int MaxPageSize = 100;
+
+    public const int MaxSimilarNames = 10;
+
+    // Words that don't identify a company.
+    private static readonly HashSet<string> CommonWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "THE", "AND", "COMPANY", "CORPORATION", "CORP", "INC", "LLC", "LTD", "LIMITED", "GROUP", "HOLDINGS", "INTERNATIONAL", "GLOBAL", "AMERICA",
+        "AMERICAN", "AMERICAS", "NATIONAL", "UNITED", "MEDICAL", "HEALTH", "HEALTHCARE", "PHARMA", "PHARMACEUTICAL", "PHARMACEUTICALS", "LABORATORIES",
+        "LABS", "SCIENCES", "SCIENTIFIC", "TECHNOLOGIES", "TECHNOLOGY", "SYSTEMS", "SOLUTIONS", "PRODUCTS", "SERVICES", "DEVICES", "SURGICAL",
+        "THERAPEUTICS", "BIOSCIENCES", "BIOLOGICS", "NORTH", "SOUTH", "EAST", "WEST", "NEW", "FIRST",
+    };
+
+    [GeneratedRegex("[A-Za-z]+")]
+    private static partial Regex Words();
+
+    /// <summary>The first word of a company name that identifies it (4+ letters, not a common word), or null.</summary>
+    public static string? DistinctiveWord(string name) =>
+        Words().Matches(name).Select(m => m.Value).FirstOrDefault(w => w.Length >= 4 && !CommonWords.Contains(w))?.ToUpperInvariant();
 
     public const int MaxNameLength = 100;
 
@@ -153,6 +174,23 @@ public sealed class CompanyService(string connectionString)
                 new { npis = recipients.Select(r => r.Npi).ToArray() }, cancellationToken: ct)))
             .GroupBy(c => c.Npi).ToDictionary(g => g.Key, g => string.Join(", ", g.Select(c => c.Credential)));
 
+        IReadOnlyList<CompanySummary> similar = [];
+        if (DistinctiveWord(company.Name) is { } word)
+        {
+            similar = (await connection.QueryAsync<CompanyRow>(new CommandDefinition(
+                $"""
+                SELECT c.company_id AS Id, c.name AS Name, c.other_names AS OtherNames, c.state AS State, c.country AS Country,
+                       c.general_amount AS General, c.research_amount AS Research, c.invested_amount AS Invested, c.interest_value AS Interest,
+                       c.first_year AS FirstYear, c.last_year AS LastYear, r.providers AS Providers
+                FROM op_company c LEFT JOIN op_company_reach r ON r.company_id = c.company_id
+                WHERE c.company_id <> @id AND c.name REGEXP @pattern
+                ORDER BY c.general_amount + c.research_amount DESC, c.name
+                LIMIT {MaxSimilarNames}
+                """, new { id, pattern = $"\\b{word}\\b" }, cancellationToken: ct)))
+                .Select(r => new CompanySummary(r.Id, r.Name, r.State, r.Country, Math.Round(r.General + r.Research, 2), r.Interest, r.Providers,
+                    r.FirstYear, r.LastYear)).ToList();
+        }
+
         return new CompanyDetail(company.Id, company.Name,
             (company.OtherNames ?? "").Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(n => !string.Equals(n, company.Name, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
@@ -164,6 +202,7 @@ public sealed class CompanyService(string connectionString)
             products.Select(p => new CompanyProduct(p.Product, p.Kind, p.Category, p.Amount, p.Records)).ToList(),
             specialties.Select(s => new CompanySpecialty(s.Specialty, s.Providers, s.Amount)).ToList(),
             recipients.Select(r => new CompanyRecipient(r.Npi, r.SortName ?? r.Npi, credentials.GetValueOrDefault(r.Npi), r.Specialty, r.City, r.State,
-                r.Total, r.General, r.Research, r.Associated, r.Ownership, r.Records)).ToList());
+                r.Total, r.General, r.Research, r.Associated, r.Ownership, r.Records)).ToList(),
+            similar);
     }
 }

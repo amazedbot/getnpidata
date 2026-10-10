@@ -387,6 +387,9 @@ public sealed class CompanyDetail
 
     public IReadOnlyList<CompanyRecipient> TopProviders { get; set; } = [];
 
+    /// <summary>Other companies sharing the name's distinctive word (may be related; a name match only).</summary>
+    public IReadOnlyList<CompanySummary> SimilarNames { get; set; } = [];
+
     /// <summary>The company's page on CMS's Open Payments site.</summary>
     public string OpenPaymentsUrl { get; set; } = "";
 }

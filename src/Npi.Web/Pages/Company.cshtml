@@ -167,6 +167,18 @@
     </div>
 }
 
+@if (c.SimilarNames.Count > 0)
+{
+    <h2>Similar company names</h2>
+    <p class="muted">Companies often report under several entities (a U.S. sales arm, a research unit, a subsidiary). These share a word of this name and may be related; this is a name match only.</p>
+    <ul>
+        @foreach (var s in c.SimilarNames)
+        {
+            <li><a href="/company/@Uri.EscapeDataString(s.Id)">@s.Name</a> <span class="muted">· @Format.Amount(s.Payments)@(s.Providers is { } n ? $" · {Format.Number(n)} providers" : "")</span></li>
+        }
+    </ul>
+}
+
 <p class="muted">
     Source: CMS Open Payments, every published program year (the products and kinds of payment: @(c.DetailYear?.ToString(CultureInfo.InvariantCulture) ?? "the newest year")).
     Ownership is the value of an ownership or investment interest (as reported), not a payment.

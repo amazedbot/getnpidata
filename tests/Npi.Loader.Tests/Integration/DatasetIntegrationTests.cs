@@ -323,6 +323,7 @@ public sealed class DatasetIntegrationTests : IDisposable
             baker.Specialty, baker.City, baker.Total, baker.Research));
         Assert.Equal([("Internal Medicine", 1, 1040.0)], pfizer.TopSpecialties.Select(s => (s.Specialty, s.Providers, s.Amount)));
         Assert.Equal("https://openpaymentsdata.cms.gov/company/100000000001", pfizer.OpenPaymentsUrl);
+        Assert.Empty(pfizer.SimilarNames); // no other company has "PFIZER" in its name
 
         var smith = (await companies.GetAsync("100000000009", _ct))!;
         Assert.Equal(("Smith & Nephew, Inc.", "TN", 2025), (smith.Name, smith.State, smith.FirstYear));
