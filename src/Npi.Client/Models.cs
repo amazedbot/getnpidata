@@ -243,6 +243,9 @@ public sealed class IndustryPayer
     public double Amount { get; set; }
 
     public int Records { get; set; }
+
+    /// <summary>The company's Open Payments ID, for <see cref="NpiClient.GetCompanyAsync"/>.</summary>
+    public string? CompanyId { get; set; }
 }
 
 /// <summary>Open Payments over every published program year.</summary>
@@ -286,6 +289,180 @@ public sealed class IndustryPaymentYear
 public sealed class IndustryPaymentCompany
 {
     public string Name { get; set; } = "";
+
+    public double Total { get; set; }
+
+    public double General { get; set; }
+
+    public double Research { get; set; }
+
+    public double AssociatedResearch { get; set; }
+
+    public double Ownership { get; set; }
+
+    public int Records { get; set; }
+
+    /// <summary>The company's Open Payments ID, for <see cref="NpiClient.GetCompanyAsync"/>.</summary>
+    public string? CompanyId { get; set; }
+}
+
+/// <summary>A page of companies that report to Open Payments, largest payments first.</summary>
+public sealed class CompanyPage
+{
+    public IReadOnlyList<CompanySummary> Items { get; set; } = [];
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+}
+
+/// <summary>One company in a list.</summary>
+public sealed class CompanySummary
+{
+    /// <summary>Open Payments ID.</summary>
+    public string Id { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? State { get; set; }
+
+    public string? Country { get; set; }
+
+    /// <summary>General + research payments over every published program year.</summary>
+    public double Payments { get; set; }
+
+    /// <summary>Value of physicians' ownership or investment interests (not a payment).</summary>
+    public double OwnershipValue { get; set; }
+
+    /// <summary>NPIs it paid, all years.</summary>
+    public int? Providers { get; set; }
+
+    public int? FirstYear { get; set; }
+
+    public int? LastYear { get; set; }
+}
+
+/// <summary>A company that reports to Open Payments: who it is, what it paid each year, what for, for which products and to whom.</summary>
+public sealed class CompanyDetail
+{
+    /// <summary>Open Payments ID.</summary>
+    public string Id { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public IReadOnlyList<string> OtherNames { get; set; } = [];
+
+    public string? State { get; set; }
+
+    public string? Country { get; set; }
+
+    public double General { get; set; }
+
+    public double Research { get; set; }
+
+    public double OwnershipInvested { get; set; }
+
+    public double OwnershipValue { get; set; }
+
+    public int? FirstYear { get; set; }
+
+    public int? LastYear { get; set; }
+
+    /// <summary>NPIs it paid, all years (active or not).</summary>
+    public int? Providers { get; set; }
+
+    /// <summary>Newest year first.</summary>
+    public IReadOnlyList<CompanyYear> Years { get; set; } = [];
+
+    /// <summary>The program year of <see cref="ByNature"/> and <see cref="TopProducts"/>.</summary>
+    public int? DetailYear { get; set; }
+
+    public IReadOnlyList<CompanyNature> ByNature { get; set; } = [];
+
+    public IReadOnlyList<CompanyProduct> TopProducts { get; set; } = [];
+
+    public IReadOnlyList<CompanySpecialty> TopSpecialties { get; set; } = [];
+
+    public IReadOnlyList<CompanyRecipient> TopProviders { get; set; } = [];
+
+    /// <summary>Other companies sharing the name's distinctive word (may be related; a name match only).</summary>
+    public IReadOnlyList<CompanySummary> SimilarNames { get; set; } = [];
+
+    /// <summary>The company's page on CMS's Open Payments site.</summary>
+    public string OpenPaymentsUrl { get; set; } = "";
+}
+
+/// <summary>A company's payments in one program year.</summary>
+public sealed class CompanyYear
+{
+    public int Year { get; set; }
+
+    public double General { get; set; }
+
+    public int GeneralRecords { get; set; }
+
+    public double Research { get; set; }
+
+    public int ResearchRecords { get; set; }
+
+    public double OwnershipInvested { get; set; }
+
+    public double OwnershipValue { get; set; }
+
+    public int OwnershipRecords { get; set; }
+}
+
+/// <summary>General payments of one kind.</summary>
+public sealed class CompanyNature
+{
+    public string Nature { get; set; } = "";
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>A product named first on the company's general payments.</summary>
+public sealed class CompanyProduct
+{
+    public string Name { get; set; } = "";
+
+    /// <summary>Drug, Device, Biological or Medical Supply.</summary>
+    public string? Kind { get; set; }
+
+    public string? Category { get; set; }
+
+    public double Amount { get; set; }
+
+    public int Records { get; set; }
+}
+
+/// <summary>A specialty the company paid (primary classification of active providers), all years.</summary>
+public sealed class CompanySpecialty
+{
+    public string Specialty { get; set; } = "";
+
+    public int Providers { get; set; }
+
+    public double Amount { get; set; }
+}
+
+/// <summary>An active provider the company paid, all years, by payment type.</summary>
+public sealed class CompanyRecipient
+{
+    public string Npi { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? Credential { get; set; }
+
+    public string? Specialty { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
 
     public double Total { get; set; }
 

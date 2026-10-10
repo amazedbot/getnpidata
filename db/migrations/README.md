@@ -60,6 +60,7 @@ Rules:
 | `062_cms_home_health_hospice.sql` | Home health agencies and hospices with their star ratings, item 14. |
 | `063_state_license.sql` | State license records and board actions (NY, TX, WA, IL, CO open data) matched to NPIs, item 15. |
 | `064_state_license_raw_keys.sql` | A last-digits license key, full names and an id on the state license template (more states, item 15). |
+| `065_open_payments_companies.sql` | Company pages (item 17): companies, their payments per year, natures, products, specialties and top providers; company IDs on the per-NPI payer tables. |
 
 ## 001_baseline.sql
 

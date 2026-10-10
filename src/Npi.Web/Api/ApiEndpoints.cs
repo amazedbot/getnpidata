@@ -63,6 +63,16 @@ public static class ApiEndpoints
             .WithSummary("One provider")
             .WithDescription("All taxonomies with licenses, all practice locations and other names. 404 for unknown or deactivated NPIs.");
 
+        api.MapGet("/companies", SearchCompaniesAsync)
+            .WithName("SearchCompanies").WithTags("Companies")
+            .WithSummary("Companies that report to Open Payments")
+            .WithDescription($"Drug and device makers and group purchasing organizations, largest payments (general + research, every published year) first. name matches any part of the company's name or other names, or its Open Payments ID; empty lists every company. pageSize 1–{CompanyService.MaxPageSize} (default 50).");
+
+        api.MapGet("/companies/{id}", GetCompanyAsync)
+            .WithName("GetCompany").WithTags("Companies")
+            .WithSummary("One company")
+            .WithDescription("Payments per program year, what the newest year's general payments were for and which products they named, the specialties and the active providers it paid the most. 404 for an unknown ID.");
+
         api.MapGet("/taxonomy/classifications", async (TaxonomyCatalog taxonomy, CancellationToken ct) =>
                 TypedResults.Ok(await taxonomy.GetClassificationsAsync(ct)))
             .WithName("ListClassifications").WithTags("Lookups").WithSummary("NUCC classifications").CacheOutput(CachePolicy);
@@ -167,6 +177,33 @@ public static class ApiEndpoints
         await geography.GetDataVersionAsync(ct) is { } version
             ? TypedResults.Ok(ApiMeta.From(version))
             : TypedResults.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "No data loaded yet");
+
+    private static async Task<Results<Ok<CompanyPage>, ValidationProblem>> SearchCompaniesAsync(
+        string? name, int? page, int? pageSize, CompanyService companies, CancellationToken ct)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (name?.Trim().Length > CompanyService.MaxNameLength)
+        {
+            errors["name"] = [$"At most {CompanyService.MaxNameLength} characters."];
+        }
+
+        if (page is < 1)
+        {
+            errors["page"] = ["Must be 1 or more."];
+        }
+
+        if (pageSize is < 1 or > CompanyService.MaxPageSize)
+        {
+            errors["pageSize"] = [$"Must be 1–{CompanyService.MaxPageSize}."];
+        }
+
+        return errors.Count > 0
+            ? TypedResults.ValidationProblem(errors)
+            : TypedResults.Ok(await companies.SearchAsync(name, page ?? 1, pageSize ?? 50, ct));
+    }
+
+    private static async Task<Results<Ok<CompanyDetail>, ProblemHttpResult>> GetCompanyAsync(string id, CompanyService companies, CancellationToken ct) =>
+        await companies.GetAsync(id, ct) is { } company ? TypedResults.Ok(company) : NotFound($"No company with Open Payments ID '{id}'.");
 
     private static ProblemHttpResult NotFound(string detail) =>
         TypedResults.Problem(statusCode: StatusCodes.Status404NotFound, title: "Not found", detail: detail);

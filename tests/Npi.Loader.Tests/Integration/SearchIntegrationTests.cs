@@ -441,12 +441,12 @@ public sealed class SearchIntegrationTests : IDisposable
             """
             INSERT INTO open_payments_year VALUES (@B, 2024, 100.5, 3, 0, 0, 0, 0, 0, 0, 0), (@B, 2025, 2563.35, 5, 1000, 1, 50000, 3, 7000, 7500, 1),
                                                   (@A, 2021, 12, 1, 0, 0, 0, 0, 0, 0, 0);
-            INSERT INTO open_payments_company VALUES (@B, 1, 'Medtronic USA Inc.', 52500, 2500, 0, 50000, 0, 4), (@B, 2, 'Acme Devices LLC', 7000, 0, 0, 0, 7000, 1);
+            INSERT INTO open_payments_company VALUES (@B, 1, 'Medtronic USA Inc.', 52500, 2500, 0, 50000, 0, 4, '100000000002'), (@B, 2, 'Acme Devices LLC', 7000, 0, 0, 0, 7000, 1, NULL);
             """, new { A, B });
         var history = (await details.GetAsync(B, _ct))!.PaymentHistory!;
         Assert.Equal([new IndustryPaymentYear(2025, 2563.35, 5, 1000, 1, 50000, 3, 7000, 7500, 1), new IndustryPaymentYear(2024, 100.5, 3, 0, 0, 0, 0, 0, 0, 0)],
             history.Years);
-        Assert.Equal([new IndustryPaymentCompany("Medtronic USA Inc.", 52500, 2500, 0, 50000, 0, 4), new IndustryPaymentCompany("Acme Devices LLC", 7000, 0, 0, 0, 7000, 1)],
+        Assert.Equal([new IndustryPaymentCompany("Medtronic USA Inc.", 52500, 2500, 0, 50000, 0, 4, "100000000002"), new IndustryPaymentCompany("Acme Devices LLC", 7000, 0, 0, 0, 7000, 1)],
             history.TopCompanies);
         var a = (await details.GetAsync(A, _ct))!;
         Assert.Null(a.IndustryPayments);

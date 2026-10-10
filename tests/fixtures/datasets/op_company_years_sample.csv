@@ -1,0 +1,6 @@
+AMGPO_Making_Payment_ID,AMGPO_Making_Payment_Name,AMGPO_Making_Payment_State,AMGPO_Making_Payment_Country,Total_Amount_General,Total_Amount_Research,Total_Amount_Investment,Total_Amount_Interest,Trans_General,Trans_General_Physician,Trans_General_Non_Physician_Practitioner,Trans_General_Teachinghospital,Trans_Research,Trans_Research_Physician,Trans_Research_Non_Physician_Practitioner,Trans_Research_Teachinghospital,Trans_Invested,Total_Disputed_Transactions,Total_Undisputed_Transactions,Program_Year
+100000000001,"Pfizer, Inc.",NY,United States,1000.50,20000.00,0.00,0.00,10,10,0,0,2,1,0,1,0,0,12,2024
+100000000001,"Pfizer, Inc.",NY,United States,10040.00,91000.00,0.00,0.00,3,2,0,1,6,1,0,5,0,0,9,2025
+100000000003,Acme Devices LLC,TX,United States,0.00,0.00,5000.00,7000.00,0,0,0,0,0,0,0,0,1,0,1,2025
+100000000009,"Smith & Nephew, Inc.",TN,United States,35.50,0.00,0.00,0.00,1,0,1,0,0,0,0,0,0,0,1,2025
+100000000009,"Smith & Nephew, Inc.",TN,United States,35.50,0.00,0.00,0.00,1,0,1,0,0,0,0,0,0,0,1,ALL

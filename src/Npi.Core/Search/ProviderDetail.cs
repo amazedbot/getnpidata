@@ -147,13 +147,13 @@ public sealed class ProviderDetailService(string connectionString)
 
     private sealed record PaymentKindRow(string Nature, double Amount, int Records);
 
-    private sealed record PayerRow(string Payer, double Amount, int Records);
+    private sealed record PayerRow(string Payer, double Amount, int Records, string? CompanyId);
 
     private sealed record PaymentYearRow(short Year, double General, int GeneralRecords, double Research, int ResearchRecords,
         double AssociatedResearch, int AssociatedResearchRecords, double OwnershipInvested, double OwnershipValue, int OwnershipRecords);
 
     private sealed record PaymentCompanyRow(string Company, double Total, double General, double Research, double AssociatedResearch,
-        double Ownership, int Records);
+        double Ownership, int Records, string? CompanyId);
 
     private sealed record ChangeRow(DateTime DetectedAt, string ChangeType, string? OldValue, string? NewValue);
 
@@ -301,11 +301,11 @@ public sealed class ProviderDetailService(string connectionString)
                 "SELECT nature AS Nature, amount AS Amount, records AS Records FROM open_payments_nature WHERE npi = @npi ORDER BY amount DESC, nature",
                 new { npi }, cancellationToken: ct));
             var payers = await connection.QueryAsync<PayerRow>(new CommandDefinition(
-                "SELECT payer AS Payer, amount AS Amount, records AS Records FROM open_payments_payer WHERE npi = @npi ORDER BY payer_rank",
+                "SELECT payer AS Payer, amount AS Amount, records AS Records, company_id AS CompanyId FROM open_payments_payer WHERE npi = @npi ORDER BY payer_rank",
                 new { npi }, cancellationToken: ct));
             industry = new IndustryPayments(payments.ProgramYear, payments.TotalAmount, payments.Records, payments.Payers,
                 kinds.Select(k => new IndustryPaymentKind(k.Nature, k.Amount, k.Records)).ToList(),
-                payers.Select(p => new IndustryPayer(p.Payer, p.Amount, p.Records)).ToList());
+                payers.Select(p => new IndustryPayer(p.Payer, p.Amount, p.Records, p.CompanyId)).ToList());
         }
 
         var paymentYears = (await connection.QueryAsync<PaymentYearRow>(new CommandDefinition(
@@ -319,7 +319,7 @@ public sealed class ProviderDetailService(string connectionString)
         var paymentCompanies = (await connection.QueryAsync<PaymentCompanyRow>(new CommandDefinition(
             """
             SELECT company AS Company, total_amount AS Total, general_amount AS General, research_amount AS Research,
-                   associated_research_amount AS AssociatedResearch, ownership_amount AS Ownership, records AS Records
+                   associated_research_amount AS AssociatedResearch, ownership_amount AS Ownership, records AS Records, company_id AS CompanyId
             FROM open_payments_company WHERE npi = @npi ORDER BY company_rank
             """, new { npi }, cancellationToken: ct))).ToList();
 
@@ -419,7 +419,7 @@ public sealed class ProviderDetailService(string connectionString)
                 paymentYears.Select(y => new IndustryPaymentYear(y.Year, y.General, y.GeneralRecords, y.Research, y.ResearchRecords, y.AssociatedResearch,
                     y.AssociatedResearchRecords, y.OwnershipInvested, y.OwnershipValue, y.OwnershipRecords)).ToList(),
                 paymentCompanies.Select(c => new IndustryPaymentCompany(c.Company, c.Total, c.General, c.Research, c.AssociatedResearch, c.Ownership,
-                    c.Records)).ToList()),
+                    c.Records, c.CompanyId)).ToList()),
             Changes = changes.Select(c => new ProviderChange(DateOnly.FromDateTime(c.DetectedAt), c.ChangeType, c.OldValue, c.NewValue)).ToList(),
             MedicareServices = utilization is null ? null : new MedicareServices(utilization.DataYear, utilization.ProviderType,
                 utilization.Participating is null ? null : utilization.Participating != 0, utilization.DistinctServices, utilization.Beneficiaries,

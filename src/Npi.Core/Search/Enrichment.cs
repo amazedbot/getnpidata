@@ -21,8 +21,8 @@ public sealed record MedicareServices(int Year, string? ProviderType, bool? Part
 /// <summary>Industry payments of one kind (nature of payment) in the Open Payments program year.</summary>
 public sealed record IndustryPaymentKind(string Nature, double Amount, int Records);
 
-/// <summary>A company among the recipient's top payers in the Open Payments program year.</summary>
-public sealed record IndustryPayer(string Name, double Amount, int Records);
+/// <summary>A company among the recipient's top payers in the Open Payments program year; <see cref="CompanyId"/> is its CMS ID (company page).</summary>
+public sealed record IndustryPayer(string Name, double Amount, int Records, string? CompanyId = null);
 
 /// <summary>Open Payments (Sunshine Act) general payments from drug and device makers to this NPI (Stage 5.5 item 6).</summary>
 public sealed record IndustryPayments(int Year, double TotalAmount, int Records, int Payers, IReadOnlyList<IndustryPaymentKind> ByNature,
@@ -38,7 +38,7 @@ public sealed record IndustryPaymentYear(int Year, double General, int GeneralRe
 
 /// <summary>A company among the recipient's top payers over every published program year, by payment type.</summary>
 public sealed record IndustryPaymentCompany(string Name, double Total, double General, double Research, double AssociatedResearch,
-    double Ownership, int Records);
+    double Ownership, int Records, string? CompanyId = null);
 
 /// <summary>Open Payments over every published program year (2019 on): totals per year and the top companies.</summary>
 public sealed record IndustryPaymentHistory(IReadOnlyList<IndustryPaymentYear> Years, IReadOnlyList<IndustryPaymentCompany> TopCompanies);

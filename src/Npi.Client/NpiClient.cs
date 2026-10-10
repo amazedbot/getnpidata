@@ -135,6 +135,35 @@ public sealed class NpiClient : IDisposable
     public Task<IReadOnlyList<CredentialInfo>> GetCredentialsAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<CredentialInfo>>("api/v1/credentials", cancellationToken);
 
+    /// <summary>
+    /// Companies that report to Open Payments, largest payments first; <paramref name="name"/> matches any part of a name
+    /// or an Open Payments ID (null or empty lists every company).
+    /// </summary>
+    public Task<CompanyPage> SearchCompaniesAsync(string? name = null, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+    {
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            query.Add("name=" + Uri.EscapeDataString(name!.Trim()));
+        }
+
+        query.Add("page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        query.Add("pageSize=" + pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return GetJsonAsync<CompanyPage>("api/v1/companies?" + string.Join("&", query), cancellationToken);
+    }
+
+    /// <summary>One company by its Open Payments ID, or null when it is unknown.</summary>
+    public async Task<CompanyDetail?> GetCompanyAsync(string id, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync("api/v1/companies/" + Segment(id, nameof(id)), cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<CompanyDetail>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>States and territories.</summary>
     public Task<IReadOnlyList<StateInfo>> GetStatesAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<StateInfo>>("api/v1/states", cancellationToken);

@@ -1,0 +1,70 @@
+@page "/companies"
+@model CompaniesModel
+@{
+    ViewData["Title"] = "Companies";
+    var r = Model.Result;
+}
+
+<h1>Companies that pay providers</h1>
+<p>
+    Drug and device makers and group purchasing organizations report what they pay doctors, other prescribers and teaching hospitals to
+    CMS Open Payments. Find a company to see what it paid, what for, for which products, and to whom.
+</p>
+
+<form method="get" action="/companies" class="inline-form" role="search">
+    <label for="name">Company name</label>
+    <input id="name" name="name" type="search" value="@Model.Name" maxlength="@Npi.Core.Search.CompanyService.MaxNameLength" placeholder="e.g. Pfizer" />
+    <button type="submit">Find</button>
+</form>
+@if (Model.Error is not null)
+{
+    <p class="error" role="alert">@Model.Error</p>
+}
+
+<p>
+    @if (string.IsNullOrWhiteSpace(Model.Name))
+    {
+        <text>@Format.Number(r.TotalCount) companies, largest payments first.</text>
+    }
+    else
+    {
+        <text>@Format.Number(r.TotalCount) @(r.TotalCount == 1 ? "company matches" : "companies match") “@Model.Name.Trim()”, largest payments first.</text>
+    }
+</p>
+
+@if (r.Items.Count > 0)
+{
+    <div class="table-wrap">
+        <table>
+            <caption class="visually-hidden">Companies</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Company</th><th scope="col">Located in</th><th scope="col">Years</th>
+                    <th scope="col">General + research payments</th><th scope="col">Providers paid</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in r.Items)
+                {
+                    <tr>
+                        <td><a href="/company/@Uri.EscapeDataString(c.Id)">@c.Name</a></td>
+                        <td>@string.Join(", ", new[] { c.State, c.Country }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
+                        <td>@(c.FirstYear is null ? "" : c.FirstYear == c.LastYear ? $"{c.FirstYear}" : $"{c.FirstYear}–{c.LastYear}")</td>
+                        <td>@Format.Amount(c.Payments)</td>
+                        <td>@(c.Providers is { } n ? Format.Number(n) : "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.PageCount > 1)
+    {
+        <nav class="pager" aria-label="Pages">
+            @if (r.Page > 1) { <a href="@Model.PageUrl(r.Page - 1)" rel="prev">‹ Previous</a> }
+            <span>Page @r.Page of @Model.PageCount</span>
+            @if (r.Page < Model.PageCount) { <a href="@Model.PageUrl(r.Page + 1)" rel="next">Next ›</a> }
+        </nav>
+    }
+}
+
+<p class="muted">Source: CMS Open Payments, every published program year. Ownership interests are not counted as payments. Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.</p>

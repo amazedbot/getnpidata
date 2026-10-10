@@ -55,6 +55,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
+             ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
              ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
@@ -247,8 +248,8 @@ public sealed class DatasetIntegrationTests : IDisposable
             await db.QueryAsync<(string, short, double, int, int)>("SELECT npi, program_year, total_amount, records, payers FROM open_payments_summary ORDER BY npi"));
         Assert.Equal([("Consulting Fee", 2500.0, 1), ("Food and Beverage", 63.35, 4)], await db.QueryAsync<(string, double, int)>(
             "SELECT nature, amount, records FROM open_payments_nature WHERE npi = '1000000012' ORDER BY nature"));
-        Assert.Equal([("Medtronic USA Inc.", 2500.0), ("Pfizer, Inc.", 40.0), ("AbbVie Inc.", 12.25)], await db.QueryAsync<(string, double)>(
-            "SELECT payer, amount FROM open_payments_payer WHERE npi = '1000000012' ORDER BY payer_rank"));
+        Assert.Equal([("Medtronic USA Inc.", 2500.0, "100000000002"), ("Pfizer, Inc.", 40.0, "100000000001"), ("AbbVie Inc.", 12.25, "100000000004")],
+            await db.QueryAsync<(string, double, string)>("SELECT payer, amount, company_id FROM open_payments_payer WHERE npi = '1000000012' ORDER BY payer_rank"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'open_payments_raw_staging'"));
     }
@@ -286,6 +287,61 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM open_payments_company WHERE npi = '1000000046'"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('open_payments_year_raw_staging', 'open_payments_company_raw_staging')"));
+    }
+
+    [Fact]
+    public async Task Company_pages_summarize_each_company()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO taxonomy_codes (Taxonomy_Code, `Grouping`, Classification, Specialization, Display_Name, Section, Nucc_Version) VALUES
+              ('207RC0000X', 'Allopathic & Osteopathic Physicians', 'Internal Medicine', 'Cardiovascular Disease', 'Cardiologist', 'Individual', '261'),
+              ('363L00000X', 'Physician Assistants & Advanced Practice Nursing Providers', 'Nurse Practitioner', NULL, 'Nurse Practitioner', 'Individual', '261');
+            INSERT INTO provider (npi, entity_type, last_name, first_name, sort_name, primary_taxonomy_code) VALUES
+              ('1000000012', 1, 'BAKER', 'AL', 'BAKER, AL', '207RC0000X'), ('1000000046', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA', '363L00000X');
+            INSERT INTO provider_location (npi, is_primary, address1, city, state, zip5) VALUES ('1000000012', 1, '1 MAIN ST', 'ALBANY', 'NY', '12207');
+            INSERT INTO provider_credential (npi, ord, credential) VALUES ('1000000012', 1, 'MD'), ('1000000012', 2, 'PhD');
+            """);
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+
+        var companies = new CompanyService(db.ConnectionString);
+        // Every company in either file: the profile's name, else the newest year's (Smith & Nephew has no profile); the "ALL" row is left out.
+        var pfizer = (await companies.GetAsync("100000000001", _ct))!;
+        Assert.Equal(("Pfizer, Inc.", "NY", 11040.5, 111000.0, 2024, 2025, 1), (pfizer.Name, pfizer.State, pfizer.General, pfizer.Research,
+            pfizer.FirstYear, pfizer.LastYear, pfizer.Providers));
+        Assert.Equal(["PFIZER INC"], pfizer.OtherNames); // its own name isn't repeated
+        Assert.Equal([2025, 2024], pfizer.Years.Select(y => y.Year));
+        // 2025 natures and products over every recipient, the teaching hospital included; "ELIQUIS" and " Eliquis " are one product.
+        Assert.Equal(2025, pfizer.DetailYear);
+        Assert.Equal([("Royalty or License", 10000.0), ("Food and Beverage", 40.0)], pfizer.ByNature.Select(n => (n.Nature, n.Amount)));
+        Assert.Equal([("IBRANCE", 10000.0, 1), ("ELIQUIS", 40.0, 2)], pfizer.TopProducts.Select(p => (p.Name, p.Amount, p.Records)));
+        Assert.Equal(("Drug", "Cardiology"), (pfizer.TopProducts[1].Kind, pfizer.TopProducts[1].Category));
+        // Over all years: the active providers it paid, by specialty, with their credentials and city.
+        var baker = Assert.Single(pfizer.TopProviders);
+        Assert.Equal(("1000000012", "BAKER, AL", "MD, PhD", "Internal Medicine", "ALBANY", 1040.0, 1000.0), (baker.Npi, baker.Name, baker.Credential,
+            baker.Specialty, baker.City, baker.Total, baker.Research));
+        Assert.Equal([("Internal Medicine", 1, 1040.0)], pfizer.TopSpecialties.Select(s => (s.Specialty, s.Providers, s.Amount)));
+        Assert.Equal("https://openpaymentsdata.cms.gov/company/100000000001", pfizer.OpenPaymentsUrl);
+        Assert.Empty(pfizer.SimilarNames); // no other company has "PFIZER" in its name
+
+        var smith = (await companies.GetAsync("100000000009", _ct))!;
+        Assert.Equal(("Smith & Nephew, Inc.", "TN", 2025), (smith.Name, smith.State, smith.FirstYear));
+        Assert.Null(await companies.GetAsync("999", _ct));
+
+        // The list: largest payments (general + research) first; a name matches any part of a name or another name.
+        var all = await companies.SearchAsync(null, 1, 50, _ct);
+        Assert.Equal(["100000000001", "100000000009"], all.Items.Take(2).Select(c => c.Id));
+        Assert.Equal(4, all.TotalCount); // Pfizer, Medtronic, Acme, Smith & Nephew
+        Assert.Equal(["100000000001"], (await companies.SearchAsync("fizer inc", 1, 50, _ct)).Items.Select(c => c.Id));
+        Assert.Equal(["100000000009"], (await companies.SearchAsync("nephew", 1, 50, _ct)).Items.Select(c => c.Id));
+        Assert.Equal(7000.0, (await companies.SearchAsync("acme", 1, 50, _ct)).Items.Single().OwnershipValue);
+        Assert.Empty((await companies.SearchAsync("100%", 1, 50, _ct)).Items); // wildcards are literal
+
+        // The provider page links its payers and top companies to the company pages.
+        var detail = (await new ProviderDetailService(db.ConnectionString).GetAsync("1000000012", _ct))!;
+        Assert.Equal("100000000002", detail.IndustryPayments!.TopPayers[0].CompanyId);
+        Assert.Equal("100000000002", detail.PaymentHistory!.TopCompanies[0].CompanyId);
     }
 
     [Fact]
@@ -431,6 +487,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://op.test/PGYR2025_P06302026/OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv" => "datasets/open_payments_sample.csv",
                 "https://op.test/SMRY_P06302026/PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv" => "datasets/open_payments_years_sample.csv",
                 "https://op.test/SMRY_P06302026/PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv" => "datasets/open_payments_companies_sample.csv",
+                "https://op.test/SMRY_P06302026/PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv" => "datasets/op_company_profile_sample.csv",
+                "https://op.test/SMRY_P06302026/PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv" => "datasets/op_company_years_sample.csv",
                 "https://census.test/popest/2020-2025/counties/totals/co-est2025-alldata.csv" => "datasets/census_population_sample.csv",
                 _ => null,
             };
