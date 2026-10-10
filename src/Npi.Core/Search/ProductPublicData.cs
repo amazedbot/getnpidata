@@ -93,15 +93,34 @@ internal static class ProductPublicData
         return words.Length == 0 ? null : $"\"{words}\"";
     }
 
-    public static async Task<IReadOnlyList<ProductSpending>> SpendingAsync(MySqlConnection connection, IReadOnlyCollection<string> brands, CancellationToken ct) =>
-        brands.Count == 0 ? [] : (await connection.QueryAsync<SpendingRow>(new CommandDefinition(
-            """
+    /// <summary>
+    /// CMS spending rows of the brand names, and of brand names that are one of them plus more words (CMS lists some drugs by
+    /// form: "Dupixent Pen", "Dupixent Syringe").
+    /// </summary>
+    public static async Task<IReadOnlyList<ProductSpending>> SpendingAsync(MySqlConnection connection, IReadOnlyCollection<string> brands, CancellationToken ct)
+    {
+        if (brands.Count == 0)
+        {
+            return [];
+        }
+
+        var parameters = new DynamicParameters();
+        var conditions = brands.Select((b, i) =>
+        {
+            parameters.Add($"b{i}", b);
+            parameters.Add($"p{i}", SearchQuery.Prefix(b + " "));
+            return $"(brand_name = @b{i} OR brand_name LIKE @p{i})";
+        });
+        return (await connection.QueryAsync<SpendingRow>(new CommandDefinition(
+            $"""
             SELECT program AS Program, brand_name AS BrandName, generic_name AS GenericName, year AS Year, spending AS Spending, units AS Units,
                    claims AS Claims, beneficiaries AS Beneficiaries
-            FROM drug_spending WHERE brand_name IN @brands
+            FROM drug_spending WHERE {string.Join(" OR ", conditions)}
             ORDER BY FIELD(program, 'Part D', 'Part B', 'Medicaid'), year DESC, spending DESC
-            """, new { brands = brands.ToArray() }, cancellationToken: ct)))
+            LIMIT 60
+            """, parameters, cancellationToken: ct)))
             .Select(r => new ProductSpending(r.Program, r.BrandName, r.GenericName, r.Year, r.Spending, r.Units, r.Claims, r.Beneficiaries)).ToList();
+    }
 
     public static async Task<IReadOnlyList<ProductPrice>> PricesAsync(MySqlConnection connection, IReadOnlyCollection<string> ndcKeys, CancellationToken ct) =>
         ndcKeys.Count == 0 ? [] : (await connection.QueryAsync<PriceRow>(new CommandDefinition(

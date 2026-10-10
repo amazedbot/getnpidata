@@ -1,5 +1,6 @@
 Brnd_Name,Gnrc_Name,Tot_Mftr,Mftr_Name,Tot_Spndng_2020,Tot_Dsg_Unts_2020,Tot_Clms_2020,Tot_Benes_2020,Avg_Spnd_Per_Dsg_Unt_Wghtd_2020,Outlier_Flag_2020,Tot_Spndng_2021,Tot_Dsg_Unts_2021,Tot_Clms_2021,Tot_Benes_2021,Avg_Spnd_Per_Dsg_Unt_Wghtd_2021,Outlier_Flag_2021,Tot_Spndng_2022,Tot_Dsg_Unts_2022,Tot_Clms_2022,Tot_Benes_2022,Avg_Spnd_Per_Dsg_Unt_Wghtd_2022,Outlier_Flag_2022,Tot_Spndng_2023,Tot_Dsg_Unts_2023,Tot_Clms_2023,Tot_Benes_2023,Avg_Spnd_Per_Dsg_Unt_Wghtd_2023,Outlier_Flag_2023,Tot_Spndng_2024,Tot_Dsg_Unts_2024,Tot_Clms_2024,Tot_Benes_2024,Avg_Spnd_Per_Dsg_Unt_Wghtd_2024,Outlier_Flag_2024,Chg_Avg_Spnd_Per_Dsg_Unt_23_24
 Eliquis,Apixaban,1,Overall,,,,,,,,,,,,,,,,,,,1000000.50,50000,900,300,,,1200000,60000,1000,320,,,0.1
 Eliquis,Apixaban,1,Bristol-Myers Squib,,,,,,,,,,,,,,,,,,,1000000.50,50000,900,300,,,1200000,60000,1000,320,,,0.1
+Eliquis Starter Pack,Apixaban,1,Overall,,,,,,0,,,,,,0,,,,,,0,,,,,,0,5000,500,10,9,,0,
 Ozempic,Semaglutide,1,Overall,,,,,,,,,,,,,,,,,,,,,,,,,600000,30000,500,160,,,
 Unrelated,Something,1,Overall,,,,,,,,,,,,,,,,,,,,,,,,,777,7,1,,,,

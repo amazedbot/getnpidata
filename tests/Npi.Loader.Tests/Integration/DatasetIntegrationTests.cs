@@ -419,7 +419,8 @@ public sealed class DatasetIntegrationTests : IDisposable
 
         // Part 3, public data. Spending by brand name: Part D's "Overall" rows (not the manufacturer's), Medicaid; Part B summed over
         // HCPCS codes, with CMS's "*" dropped.
-        Assert.Equal([("Part D", 2024, 1200000.0, (double?)320), ("Part D", 2023, 1000000.5, 300), ("Medicaid", 2024, 250000.0, null)],
+        // A brand listed by form ("Eliquis Starter Pack") counts too.
+        Assert.Equal([("Part D", 2024, 1200000.0, (double?)320), ("Part D", 2024, 5000.0, 9), ("Part D", 2023, 1000000.5, 300), ("Medicaid", 2024, 250000.0, null)],
             eliquis.Spending.Select(x => (x.Program, x.Year, x.Spending, x.Beneficiaries)));
         Assert.Equal(20.0, eliquis.Spending[0].PerUnit);
         var ibranceSpend = Assert.Single((await products.GetAsync("ibrance", _ct))!.Spending);
