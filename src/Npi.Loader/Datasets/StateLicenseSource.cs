@@ -27,6 +27,9 @@ public sealed class StateLicenseSource : DatasetSource
         /// <summary>The first field of the header line when the file starts with other lines; null when the header is first.</summary>
         public virtual string? HeaderStartsWith => null;
 
+        /// <summary>The file's MySQL character set (MD's lists are Windows-1252, which MySQL calls latin1).</summary>
+        public virtual string CharacterSet => "utf8mb4";
+
         /// <summary>The current version, or null when the dataset isn't available (a dropped file that isn't there).</summary>
         public abstract Task<string?> VersionAsync(DatasetContext context, CancellationToken ct);
 
@@ -54,10 +57,12 @@ public sealed class StateLicenseSource : DatasetSource
     }
 
     /// <summary>A CSV file a board posts at a fixed URL; its version is the server's Last-Modified, ETag or length.</summary>
-    public sealed record CsvUrlDataset(string State, string Source, Uri Url, string Kind, IReadOnlyList<CsvColumn> Columns, string? Header = null)
-        : StateDataset(State, Source, Kind, Columns)
+    public sealed record CsvUrlDataset(string State, string Source, Uri Url, string Kind, IReadOnlyList<CsvColumn> Columns, string? Header = null,
+        string Charset = "utf8mb4") : StateDataset(State, Source, Kind, Columns)
     {
         public override string? HeaderStartsWith => Header;
+
+        public override string CharacterSet => Charset;
 
         public override async Task<string?> VersionAsync(DatasetContext context, CancellationToken ct)
         {
@@ -198,12 +203,12 @@ public sealed class StateLicenseSource : DatasetSource
         [
             new("License #", "license_number"), new("Last Name", "last_name"), new("First Name", "first_name"), new("License Status", "status"),
             new("Expiration Date", "expiration_date", CsvValue.FlexibleDate), new("Discipline", "discipline"),
-        ], Header: "License #"),
+        ], Header: "License #", Charset: "latin1"),
         new CsvUrlDataset("MD", "md_bop", new Uri("https://www.mbp.state.md.us/forms/allied_health_list.csv"), "license",
         [
             new("Profession", "license_type"), new("License #", "license_number"), new("Last Name", "last_name"), new("First Name", "first_name"),
             new("Status", "status"), new("Expire Date", "expiration_date", CsvValue.FlexibleDate), new("Discipline", "discipline"),
-        ], Header: "Profession"),
+        ], Header: "Profession", Charset: "latin1"),
         // Florida Department of Health (MQA data download, sign-in required, so the owner drops the files): every license and
         // the recent administrative complaints. Public records (Florida Statutes ch. 119).
         new DroppedFileDataset("FL", "fl_doh", "PROF_ALL.zip", "license",
@@ -287,7 +292,7 @@ public sealed class StateLicenseSource : DatasetSource
                 var (path, delete) = await dataset.FetchAsync(context, ct);
                 try
                 {
-                    var rows = await CsvTableLoader.LoadAsync(connection, path, raw, dataset.Columns, ct, constants: new Dictionary<string, string>
+                    var rows = await CsvTableLoader.LoadAsync(connection, path, raw, dataset.Columns, ct, dataset.CharacterSet, constants: new Dictionary<string, string>
                     {
                         ["state"] = dataset.State, ["kind"] = dataset.Kind, ["source"] = dataset.Source,
                     }, delimiter: dataset.Delimiter, headerStartsWith: dataset.HeaderStartsWith);
