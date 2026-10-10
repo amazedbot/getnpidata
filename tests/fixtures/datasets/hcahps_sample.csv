@@ -1,0 +1,4 @@
+"Facility ID","Facility Name","HCAHPS Measure ID","HCAHPS Question","Patient Survey Star Rating","HCAHPS Answer Percent","Number of Completed Surveys","Survey Response Rate Percent"
+330045,"GOOD SAMARITAN HOSPITAL, WEST ISLIP",H_COMP_1_A_P,"Nurses ""always"" communicated well",Not Applicable,76,1392,17
+330045,"GOOD SAMARITAN HOSPITAL, WEST ISLIP",H_STAR_RATING,Summary star rating,3,Not Applicable,1392,17
+330999,NOT RATED HOSPITAL,H_STAR_RATING,Summary star rating,Not Available,Not Applicable,Not Available,Not Available

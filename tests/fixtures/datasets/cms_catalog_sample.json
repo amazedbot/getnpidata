@@ -189,6 +189,38 @@
      "mediaType": "text/csv"
     }
    ]
+  },
+  {
+   "title": "Home Health Agency Enrollments : 2026-07-01",
+   "modified": "2026-07-20",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-07-17"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/HHA_Enrollments_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Hospice Enrollments : 2026-07-01",
+   "modified": "2026-07-20",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-07-17"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospice_Enrollments_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
   }
  ]
 }

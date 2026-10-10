@@ -28,6 +28,9 @@ public enum CsvValue
 
     /// <summary>A whole number when the value is all digits; anything else ("Not Available", blank) → NULL.</summary>
     OptionalWholeNumber,
+
+    /// <summary>A decimal number ("3.5", "-2"); anything else ("-", "Not Available", blank) → NULL.</summary>
+    OptionalNumber,
 }
 
 /// <summary>One CSV column to load: its header (matched case-insensitively) and the table column it goes to.</summary>
@@ -123,6 +126,7 @@ public static class CsvTableLoader
         CsvValue.Npi => $"IF(TRIM({variable}) REGEXP '^[0-9]{{10}}$' AND TRIM({variable}) <> '0000000000', TRIM({variable}), NULL)",
         CsvValue.Number => $"NULLIF(TRIM({variable}), '')",
         CsvValue.OptionalWholeNumber => $"IF(TRIM({variable}) REGEXP '^[0-9]+$', TRIM({variable}), NULL)",
+        CsvValue.OptionalNumber => $"IF(TRIM({variable}) REGEXP '^-?[0-9]+([.][0-9]+)?$', TRIM({variable}), NULL)",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 }

@@ -1,0 +1,32 @@
+[
+ {
+  "identifier": "old1-mips",
+  "title": "PY 2023 Clinician Public Reporting: Overall MIPS Performance",
+  "modified": "2025-08-01",
+  "distribution": [
+   {
+    "downloadURL": "https://pdc.test/files/ec_score_file_2023.csv"
+   }
+  ]
+ },
+ {
+  "identifier": "a174-a962",
+  "title": "PY 2024 Clinician Public Reporting: Overall MIPS Performance",
+  "modified": "2026-08-18",
+  "distribution": [
+   {
+    "downloadURL": "https://pdc.test/files/ec_score_file.csv"
+   }
+  ]
+ },
+ {
+  "identifier": "7d6a-e7a6",
+  "title": "PY 2024 Clinician Public Reporting: MIPS Measures and Attestations",
+  "modified": "2026-08-18",
+  "distribution": [
+   {
+    "downloadURL": "https://pdc.test/files/measures.csv"
+   }
+  ]
+ }
+]

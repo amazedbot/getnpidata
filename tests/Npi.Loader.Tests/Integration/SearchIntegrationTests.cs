@@ -312,7 +312,13 @@ public sealed class SearchIntegrationTests : IDisposable
             INSERT INTO cc_facility_affiliation (npi, facility_type, ccn) VALUES (@A, 'Hospital', '330045'), (@A, 'Home health agency', '337002'), (@B, 'Hospital', '330045');
             INSERT INTO cms_hospital (ccn, name, city, state, hospital_type, ownership, emergency_services, overall_rating) VALUES
               ('330045', 'GOOD SAMARITAN HOSPITAL', 'WEST ISLIP', 'NY', 'Acute Care Hospitals', 'Voluntary non-profit - Church', 1, 3);
-            INSERT INTO cms_facility_npi (ccn, npi, kind) VALUES ('330045', @D, 'hospital');
+            INSERT INTO cms_facility_npi (ccn, npi, kind) VALUES ('330045', @D, 'hospital'), ('337002', @D, 'home_health');
+            UPDATE cms_hospital SET mort_measures = 8, mort_better = 1, mort_worse = 0, safety_measures = 7, safety_better = 3, safety_worse = 1,
+              readm_measures = 11, readm_better = 1, readm_worse = 2 WHERE ccn = '330045';
+            INSERT INTO cms_hospital_survey (ccn, star_rating, surveys, response_rate) VALUES ('330045', 3, 1392, 17);
+            INSERT INTO cms_home_health (ccn, name, city, state, quality_rating) VALUES ('337002', 'ISLAND HOME CARE', 'BAY SHORE', 'NY', 3.5);
+            INSERT INTO cc_mips (npi, program_year, source, facility_name, quality_score, pi_score, ia_score, cost_score, final_score) VALUES
+              (@A, 2024, 'individual', NULL, 85.87, NULL, 40, 76.41, 87.27), (@A, 2024, 'group', 'ISLAND SPINE PLLC', 100, 100, 40, NULL, 100);
             """, new { A, B, D, E, old = year - 25, recent = year - 3 });
         var search = Search(db);
 
@@ -331,15 +337,25 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(("NEW YORK CHIROPRACTIC COLLEGE", year - 25, true, true), (a.MedicalSchool, a.GraduationYear, a.AcceptsMedicareAssignment, a.OffersTelehealth));
         Assert.Equal([new GroupPractice("1234567890", "ISLAND SPINE, PLLC", 12, true, null, null)], a.GroupPractices);
         Assert.Equal(
-            [new FacilityAffiliation("Home health agency", "337002", null, null, null, null, null),
+            [new FacilityAffiliation("Home health agency", "337002", "ISLAND HOME CARE", "BAY SHORE", "NY", null, D),
              new FacilityAffiliation("Hospital", "330045", "GOOD SAMARITAN HOSPITAL", "WEST ISLIP", "NY", 3, D)],
             a.Facilities);
         Assert.Null((await details.GetAsync(D, _ct))!.CareCompare);
 
-        // The hospital's own NPI shows its Care Compare facility, with the clinicians affiliated with it.
-        var hospital = Assert.Single((await details.GetAsync(D, _ct))!.Facilities);
-        Assert.Equal(("330045", "hospital", "GOOD SAMARITAN HOSPITAL", true, 3, 2), (hospital.Ccn, hospital.Kind, hospital.Name, hospital.EmergencyServices,
-            hospital.OverallRating, hospital.AffiliatedClinicians));
+        // The hospital's own NPI shows its Care Compare facilities, with the clinicians affiliated with them, outcomes and survey stars (item 14).
+        var facilities = (await details.GetAsync(D, _ct))!.Facilities;
+        var hospital = facilities.Single(f => f.Kind == "hospital");
+        Assert.Equal(("330045", "GOOD SAMARITAN HOSPITAL", true, 3, 2, 3), (hospital.Ccn, hospital.Name, hospital.EmergencyServices,
+            hospital.OverallRating, hospital.AffiliatedClinicians, hospital.PatientSurveyRating));
+        Assert.Equal(new HospitalOutcomes(new OutcomeCounts(8, 1, 0), new OutcomeCounts(7, 3, 1), new OutcomeCounts(11, 1, 2)), hospital.Outcomes);
+        var homeHealth = facilities.Single(f => f.Kind == "home_health");
+        Assert.Equal(("ISLAND HOME CARE", 3.5, (HospitalOutcomes?)null), (homeHealth.Name, homeHealth.QualityOfCareRating, homeHealth.Outcomes));
+
+        // MIPS: best score first.
+        Assert.Equal(
+            [new MipsScore(2024, "group", "ISLAND SPINE PLLC", 100, 100, 100, 40, null), new MipsScore(2024, "individual", null, 87.27, 85.87, null, 40, 76.41)],
+            (await details.GetAsync(A, _ct))!.MipsScores);
+        Assert.Empty((await details.GetAsync(B, _ct))!.MipsScores);
     }
 
     [Fact]

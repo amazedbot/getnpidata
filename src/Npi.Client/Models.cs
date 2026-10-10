@@ -180,6 +180,9 @@ public sealed class ProviderDetail
     /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
     public IndustryPayments? IndustryPayments { get; set; }
 
+    /// <summary>MIPS scores in the newest program year, best first.</summary>
+    public IReadOnlyList<MipsScore> MipsScores { get; set; } = [];
+
     /// <summary>Open Payments per program year (2019 on) and the top companies over all years; null when none.</summary>
     public IndustryPaymentHistory? PaymentHistory { get; set; }
 
@@ -430,7 +433,7 @@ public sealed class CertifiedFacility
 {
     public string Ccn { get; set; } = "";
 
-    /// <summary>"hospital" or "nursing_home".</summary>
+    /// <summary>"hospital", "nursing_home", "home_health" or "hospice".</summary>
     public string Kind { get; set; } = "";
 
     public string Name { get; set; } = "";
@@ -459,6 +462,56 @@ public sealed class CertifiedFacility
 
     /// <summary>Clinicians Care Compare lists as affiliated with this facility.</summary>
     public int AffiliatedClinicians { get; set; }
+
+    /// <summary>Patient experience stars 1-5: HCAHPS for a hospital, the family caregiver survey for a hospice.</summary>
+    public int? PatientSurveyRating { get; set; }
+
+    /// <summary>A home health agency's quality of patient care stars, 1-5 in half stars.</summary>
+    public double? QualityOfCareRating { get; set; }
+
+    /// <summary>A hospital's outcome measures compared with the national rate; null for other kinds.</summary>
+    public HospitalOutcomes? Outcomes { get; set; }
+}
+
+/// <summary>How many of a hospital's measures in one group CMS rates better / worse than the national rate.</summary>
+public sealed class OutcomeCounts
+{
+    public int? Measures { get; set; }
+
+    public int? Better { get; set; }
+
+    public int? Worse { get; set; }
+}
+
+/// <summary>Hospital mortality, safety (infections, complications) and readmission measures.</summary>
+public sealed class HospitalOutcomes
+{
+    public OutcomeCounts Mortality { get; set; } = new();
+
+    public OutcomeCounts Safety { get; set; } = new();
+
+    public OutcomeCounts Readmissions { get; set; } = new();
+}
+
+/// <summary>One MIPS score (0-100; null when a category wasn't scored).</summary>
+public sealed class MipsScore
+{
+    public int Year { get; set; }
+
+    /// <summary>individual, group, apm, subgroup or virtual group.</summary>
+    public string? Source { get; set; }
+
+    public string? Organization { get; set; }
+
+    public double? FinalScore { get; set; }
+
+    public double? Quality { get; set; }
+
+    public double? PromotingInteroperability { get; set; }
+
+    public double? ImprovementActivities { get; set; }
+
+    public double? Cost { get; set; }
 }
 
 /// <summary>Compliance facts about a provider.</summary>

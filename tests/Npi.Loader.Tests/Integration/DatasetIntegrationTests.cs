@@ -41,9 +41,13 @@ public sealed class DatasetIntegrationTests : IDisposable
 
         Assert.Equal(
             [("cc_clinicians", "2026-08-18 DAC_NationalDownloadableFile.csv"), ("cc_facility_affiliations", "2026-08-18 Facility_Affiliation.csv"),
-             ("cc_hospitals", "2026-07-22 Hospital_General_Information.csv"), ("cc_nursing_homes", "2026-09-30 NH_ProviderInfo_Sep2026.csv"),
+             ("cc_hcahps", "2026-07-22 HCAHPS-Hospital.csv"), ("cc_home_health", "2026-05-27 HH_Provider_Jul2026.csv"),
+             ("cc_hospices", "2026-08-19 Hospice_General-Information_Aug2026_2.csv | 2026-08-07 Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv"),
+             ("cc_hospitals", "2026-07-22 Hospital_General_Information.csv"), ("cc_mips", "PY 2024 2026-08-18 ec_score_file.csv"),
+             ("cc_nursing_homes", "2026-09-30 NH_ProviderInfo_Sep2026.csv"),
              ("census_county_population", "vintage 2025"),
-             ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"),
+             ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"
+                 + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
              ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("hrsa_hpsa", "HPSA 2026-10-08"),
@@ -80,8 +84,40 @@ public sealed class DatasetIntegrationTests : IDisposable
             "SELECT certified_beds, overall_rating, staffing_rating, quality_rating FROM cms_nursing_home WHERE ccn = '335001'")).Single());
 
         // Windows-1252 enrollment files load (their names contain bytes that aren't valid UTF-8).
-        Assert.Equal([("330045", "1000000038", "hospital"), ("335001", "1000000046", "nursing_home")],
+        Assert.Equal([("330045", "1000000038", "hospital"), ("331501", "1000000038", "hospice"), ("335001", "1000000046", "nursing_home"),
+                ("337001", "1000000038", "home_health")],
             await db.QueryAsync<(string, string, string)>("SELECT ccn, npi, kind FROM cms_facility_npi ORDER BY ccn"));
+    }
+
+    [Fact]
+    public async Task Quality_and_outcome_datasets_load()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+
+        // Hospital outcome counts; "Not Available" → NULL.
+        Assert.Equal([("330045", (short?)8, (short?)1, (short?)0, (short?)7, (short?)3, (short?)1, (short?)11, (short?)1, (short?)2),
+                ("330999", null, null, null, null, null, null, null, null, null)],
+            await db.QueryAsync<(string, short?, short?, short?, short?, short?, short?, short?, short?, short?)>(
+                """
+                SELECT ccn, mort_measures, mort_better, mort_worse, safety_measures, safety_better, safety_worse, readm_measures, readm_better, readm_worse
+                FROM cms_hospital ORDER BY ccn
+                """));
+        // HCAHPS: only the summary star row per hospital.
+        Assert.Equal([("330045", (sbyte?)3, (int?)1392, (double?)17), ("330999", null, null, null)],
+            await db.QueryAsync<(string, sbyte?, int?, double?)>("SELECT ccn, star_rating, surveys, response_rate FROM cms_hospital_survey ORDER BY ccn"));
+        // Home health half stars; "-" → NULL. Hospice family survey stars.
+        Assert.Equal([("337001", (double?)3.5), ("337002", null)],
+            await db.QueryAsync<(string, double?)>("SELECT ccn, quality_rating FROM cms_home_health ORDER BY ccn"));
+        Assert.Equal(("GOOD SHEPHERD HOSPICE", "Non-Profit", (sbyte?)4), (await db.QueryAsync<(string, string, sbyte?)>(
+            "SELECT name, ownership, family_rating FROM cms_hospice WHERE ccn = '331501'")).Single());
+        // MIPS: the newest program year (2024), every score kept; a score without an NPI has a NULL npi.
+        Assert.Equal([((short)2024, "group", 100.0, (double?)100), ((short)2024, "individual", 87.2722, (double?)null)],
+            await db.QueryAsync<(short, string, double, double?)>(
+                "SELECT program_year, source, final_score, pi_score FROM cc_mips WHERE npi = '1000000004' ORDER BY source"));
+        Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM cc_mips WHERE npi IS NULL"));
+        Assert.Equal(0L, await db.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('cms_hcahps_raw_staging', 'cms_hospice_cahps_raw_staging')"));
     }
 
     [Fact]
@@ -199,7 +235,8 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.True(await Loader(db, server, clock).RefreshAsync(force: false, only: null, _ct));
         Assert.Equal(
             ["HEAD https://oig.test/UPDATED.csv", "https://cms.test/data.json", "https://pdc.test/items/mj5m-pzi6", "https://pdc.test/items/27ea-46a8",
-             "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py"],
+             "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py", "https://pdc.test/items/dgck-syfz", "https://pdc.test/items/6jpm-sxkc",
+             "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8"],
             server.Requests); // HRSA, Census and Open Payments are checked weekly
 
         // The datasets command forces a reload of one source.
@@ -261,6 +298,10 @@ public sealed class DatasetIntegrationTests : IDisposable
             ["https://pdc.test/items/27ea-46a8"] = ("2026-08-18", "Facility_Affiliation.csv"),
             ["https://pdc.test/items/xubh-q36u"] = ("2026-07-22", "Hospital_General_Information.csv"),
             ["https://pdc.test/items/4pq5-n9py"] = ("2026-09-30", "NH_ProviderInfo_Sep2026.csv"),
+            ["https://pdc.test/items/dgck-syfz"] = ("2026-07-22", "HCAHPS-Hospital.csv"),
+            ["https://pdc.test/items/6jpm-sxkc"] = ("2026-05-27", "HH_Provider_Jul2026.csv"),
+            ["https://pdc.test/items/yc9t-dgbk"] = ("2026-08-19", "Hospice_General-Information_Aug2026_2.csv"),
+            ["https://pdc.test/items/gxki-hrr8"] = ("2026-08-07", "Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv"),
         };
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -285,6 +326,14 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://pdc.test/files/Facility_Affiliation.csv" => "datasets/facaff_sample.csv",
                 "https://pdc.test/files/Hospital_General_Information.csv" => "datasets/hospitals_sample.csv",
                 "https://pdc.test/files/NH_ProviderInfo_Sep2026.csv" => "datasets/nursing_homes_sample.csv",
+                "https://pdc.test/items/" => "datasets/pdc_list_sample.json",
+                "https://pdc.test/files/ec_score_file.csv" => "datasets/mips_sample.csv",
+                "https://pdc.test/files/HCAHPS-Hospital.csv" => "datasets/hcahps_sample.csv",
+                "https://pdc.test/files/HH_Provider_Jul2026.csv" => "datasets/home_health_sample.csv",
+                "https://pdc.test/files/Hospice_General-Information_Aug2026_2.csv" => "datasets/hospice_general_sample.csv",
+                "https://pdc.test/files/Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv" => "datasets/hospice_cahps_sample.csv",
+                "https://cms.test/files/HHA_Enrollments_2026.07.17.csv" => "datasets/hha_enrollments_sample.csv",
+                "https://cms.test/files/Hospice_Enrollments_2026.07.17.csv" => "datasets/hospice_enrollments_sample.csv",
                 "https://cms.test/files/MUP_PHY_D24_Prov.csv" => "datasets/physician_by_provider_sample.csv",
                 "https://cms.test/files/MUP_PHY_D24_Prov_Svc.csv" => "datasets/physician_by_service_sample.csv",
                 "https://cms.test/files/mup_dpr_dy24_npi.csv" => "datasets/part_d_by_provider_sample.csv",

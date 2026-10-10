@@ -1,0 +1,4 @@
+NPI, Org_PAC_ID, Provider Last Name, Provider First Name, source, Facility-based scoring Certification number, Facility Name, Quality_category_score, PI_category_score, IA_category_score, Cost_category_score, final_MIPS_score_without_CPB, final_MIPS_score
+1000000004,,O'BRIEN,JOSE,individual,,,85.8708,,40,76.4128,87.2722,87.2722
+1000000004,1234567890,O'BRIEN,JOSE,group,,ISLAND SPINE PLLC,100,100,40,,100,100
+,,NONE,NO NPI,individual,,,10,,,,10,10
