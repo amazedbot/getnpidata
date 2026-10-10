@@ -221,6 +221,54 @@
      "mediaType": "text/csv"
     }
    ]
+  },
+  {
+   "title": "Medicare Part D Spending by Drug : 2024-01-01",
+   "modified": "2026-06-01",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/DSD_PTD_DY24.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Part B Spending by Drug : 2024-01-01",
+   "modified": "2026-06-01",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/DSD_PTB_DY24.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicaid Spending by Drug : 2024-01-01",
+   "modified": "2026-06-01",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/DSD_MCD_DY24.csv",
+     "mediaType": "text/csv"
+    }
+   ]
   }
  ]
 }

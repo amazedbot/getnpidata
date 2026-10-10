@@ -95,6 +95,24 @@ public sealed record ProductDetail(string Slug, string Name, string? Kind, strin
 
     /// <summary>FDA's GUDID facts when the product's device identifier is in GUDID (part 2); null otherwise.</summary>
     public ProductDeviceInfo? Device { get; init; }
+
+    /// <summary>Medicare Part D / Part B and Medicaid spending on the drug by year (part 3), by brand name.</summary>
+    public IReadOnlyList<ProductSpending> Spending { get; init; } = [];
+
+    /// <summary>NADAC prices of the drug's package NDCs (part 3).</summary>
+    public IReadOnlyList<ProductPrice> Prices { get; init; } = [];
+
+    /// <summary>FDA drug shortage listings (part 3).</summary>
+    public IReadOnlyList<ProductShortage> Shortages { get; init; } = [];
+
+    /// <summary>FDA recalls naming the product (part 3); null when none.</summary>
+    public ProductRecalls? Recalls { get; init; }
+
+    /// <summary>Adverse event report counts (part 3); null until asked.</summary>
+    public ProductAdverseEvents? AdverseEvents { get; init; }
+
+    /// <summary>ClinicalTrials.gov study counts (part 3); null until asked.</summary>
+    public ProductTrials? Trials { get; init; }
 }
 
 /// <summary>One product in a list.</summary>
@@ -241,14 +259,25 @@ public sealed class ProductService(string connectionString)
             research = new ProductResearch(r.Year, r.Amount, r.Records, r.Studies, studies.ToList());
         }
 
+        var drug = await GetDrugAsync(connection, slug, ct);
+        var isDrug = drug is not null || p.Kind is "Drug" or "Biological";
+        var ndcKeys = new[] { ProductPublicData.NdcKey(p.Ndc), ProductPublicData.NdcKey(drug?.ProductNdc) }.OfType<string>().Distinct().ToList();
+        var brands = isDrug ? new[] { p.Name, drug?.BrandName }.OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList() : [];
         return new ProductDetail(p.Slug, p.Name, p.Kind, p.Category, p.Ndc, p.DeviceId, p.Year, p.Amount, p.Records, p.Companies, p.Providers,
             companies.ToList(), natures.ToList(), specialties.ToList(),
             recipients.Select(x => new ProductRecipient(x.Npi, x.SortName ?? x.Npi, credentials.GetValueOrDefault(x.Npi), x.Specialty, x.City, x.State,
                 x.Amount, x.Records)).ToList(),
             research)
         {
-            Drug = await GetDrugAsync(connection, slug, ct),
+            Drug = drug,
             Device = await GetDeviceAsync(connection, slug, ct),
+            Spending = await ProductPublicData.SpendingAsync(connection, brands, ct),
+            Prices = await ProductPublicData.PricesAsync(connection, ndcKeys, ct),
+            Shortages = isDrug ? await ProductPublicData.ShortagesAsync(connection, ndcKeys, drug?.GenericName, ct) : [],
+            Recalls = await ProductPublicData.RecallsAsync(connection, slug, isDrug,
+                isDrug ? [p.Name, drug?.BrandName, drug?.ProductNdc, p.Ndc] : [p.Name], ct),
+            AdverseEvents = await ProductPublicData.AdverseEventsAsync(connection, slug, ct),
+            Trials = await ProductPublicData.TrialsAsync(connection, slug, ct),
         };
     }
 

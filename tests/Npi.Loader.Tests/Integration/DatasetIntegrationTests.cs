@@ -41,6 +41,7 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal([((sbyte)1, (sbyte)1, (sbyte)0), ((sbyte)0, (sbyte)0, (sbyte)0)], await db.QueryAsync<(sbyte, sbyte, sbyte)>(
             "SELECT part_b, dme, hha FROM medicare_order_referring WHERE npi IN ('1000000004', '1000000012') ORDER BY npi"));
 
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture); // the API caches' version is the day
         Assert.Equal(
             [("cc_clinicians", "2026-08-18 DAC_NationalDownloadableFile.csv"), ("cc_facility_affiliations", "2026-08-18 Facility_Affiliation.csv"),
              ("cc_hcahps", "2026-07-22 HCAHPS-Hospital.csv"), ("cc_home_health", "2026-05-27 HH_Provider_Jul2026.csv"),
@@ -52,13 +53,17 @@ public sealed class DatasetIntegrationTests : IDisposable
                  + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
-             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"),
-             ("fda_products", "ndc 2026-10-06 | drugsfda 2026-10-06 | label 2026-10-06 | udi 2026-10-06 | 510k 2026-10-06 | pma 2026-10-06"), ("hrsa_hpsa", "HPSA 2026-10-08"),
+             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"),
+             ("drug_spending", "Part D 2024-12-31 | Part B 2024-12-31 | Medicaid 2024-12-31"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"),
+             ("fda_products", "ndc 2026-10-06 | drugsfda 2026-10-06 | label 2026-10-06 | udi 2026-10-06 | 510k 2026-10-06 | pma 2026-10-06"),
+             ("fda_shortages", "shortages 2026-10-09"), ("hrsa_hpsa", "HPSA 2026-10-08"),
+             ("nadac", "2026 nadac-national-average-drug-acquisition-cost-10-07-2026.csv"),
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
              ("open_payments_research", "2025 OP_DTL_RSRCH_PGYR2025_P06302026_06032026.csv"),
-             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("sec_companies", $"2026-10-09T06:00:00Z parents {SecCompanySource.ParentsHash()}"),
+             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("product_adverse_events", today), ("product_trials", today),
+             ("sec_companies", $"2026-10-09T06:00:00Z parents {SecCompanySource.ParentsHash()}"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null)]))],
@@ -349,7 +354,7 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(["Pfizer Inc."], recalls.Firms);
         Assert.Equal([("D-0001-2026", "Devices"), ("D-0001-2026", "Drugs")], recalls.Latest.Select(r => (r.RecallNumber, r.ProductType)).Order());
         Assert.Equal(new DateOnly(2026, 8, 20), recalls.Latest[0].Initiated);
-        Assert.Null((await companies.GetAsync("100000000002", _ct))!.Recalls);
+        Assert.Equal(1, (await companies.GetAsync("100000000002", _ct))!.Recalls!.Total / 2); // the MiniMed recall, in both fixture files
         Assert.Equal([(78003, "PFE", "NYSE")], pfizer.SecListings.Select(l => (l.Cik, l.Ticker, l.Exchange)));
         Assert.Equal("https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000078003", pfizer.SecListings[0].EdgarUrl);
         Assert.False(pfizer.SecListings[0].IsParent);
@@ -411,6 +416,35 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM fda_drug_label WHERE set_id = 'unrelated-label'"));
         Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM fda_device"));
         Assert.Equal(4L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM fda_ndc_product"));
+
+        // Part 3, public data. Spending by brand name: Part D's "Overall" rows (not the manufacturer's), Medicaid; Part B summed over
+        // HCPCS codes, with CMS's "*" dropped.
+        // A brand listed by form ("Eliquis Starter Pack") counts too.
+        Assert.Equal([("Part D", 2024, 1200000.0, (double?)320), ("Part D", 2024, 5000.0, 9), ("Part D", 2023, 1000000.5, 300), ("Medicaid", 2024, 250000.0, null)],
+            eliquis.Spending.Select(x => (x.Program, x.Year, x.Spending, x.Beneficiaries)));
+        Assert.Equal(20.0, eliquis.Spending[0].PerUnit);
+        var ibranceSpend = Assert.Single((await products.GetAsync("ibrance", _ct))!.Spending);
+        Assert.Equal(("Part B", "Ibrance", "Palbociclib", 8000.0, (double?)6), (ibranceSpend.Program, ibranceSpend.BrandName, ibranceSpend.GenericName,
+            ibranceSpend.Spending, ibranceSpend.Beneficiaries));
+        Assert.Empty((await products.GetAsync("minimed-780g", _ct))!.Spending);
+        // NADAC: the newest price of each package of the listing (0003-0893); 0003-0894 is another listing.
+        Assert.Equal([("00003089321", 9.32611, "Brand")], eliquis.Prices.Select(x => (x.Ndc, x.PerUnit, x.Kind)));
+        // Shortages: Ozempic by its listing's NDC; Eliquis has none.
+        var ozempicPage = (await products.GetAsync("ozempic", _ct))!;
+        Assert.Equal([("Current", "Limited Availability")], ozempicPage.Shortages.Select(x => (x.Status, x.Availability)));
+        Assert.Empty(eliquis.Shortages);
+        // Recalls: a drug by name in any firm's recall; a device only in recalls by a company paying for it.
+        Assert.Equal(["D-0100-2025"], eliquis.Recalls!.Latest.Select(x => x.RecallNumber).Distinct());
+        var pumpRecalls = (await products.GetAsync("minimed-780g", _ct))!.Recalls!;
+        Assert.Equal(["Z-0200-2024"], pumpRecalls.Latest.Select(x => x.RecallNumber).Distinct());
+        // Adverse events (FAERS by the FDA brand name; MAUDE by the GUDID brand) and trials (by the generic name), asked once and cached.
+        Assert.Equal(("drug", "ELIQUIS", 140, 100), (eliquis.AdverseEvents!.Kind, eliquis.AdverseEvents.QueryName, eliquis.AdverseEvents.Reports, eliquis.AdverseEvents.Serious));
+        var pumpEvents = (await products.GetAsync("minimed-780g", _ct))!.AdverseEvents!;
+        Assert.Equal(("device", 10, 1, 2, 7), (pumpEvents.Kind, pumpEvents.Reports, pumpEvents.Deaths, pumpEvents.Injuries, pumpEvents.Malfunctions));
+        Assert.Equal(0, ozempicPage.AdverseEvents!.Reports); // asked, nothing found
+        Assert.Null((await products.GetAsync("guardian-4-sensor", _ct))!.AdverseEvents); // no device record, so not asked
+        Assert.Equal(("apixaban", 482, 71), (eliquis.Trials!.QueryName, eliquis.Trials.Studies, eliquis.Trials.Recruiting));
+        Assert.Equal("https://clinicaltrials.gov/search?intr=apixaban", eliquis.Trials.SearchUrl);
         var list = await products.SearchAsync(null, null, 1, 50, _ct);
         Assert.Equal(["ibrance", "guardian-4-sensor", "minimed-780g", "eliquis", "pico", "ozempic"], list.Items.Select(p => p.Slug));
         Assert.Equal(["guardian-4-sensor", "minimed-780g", "pico"], (await products.SearchAsync(null, "Device", 1, 50, _ct)).Items.Select(p => p.Slug));
@@ -445,8 +479,8 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(
             ["HEAD https://oig.test/UPDATED.csv", "https://cms.test/data.json", "https://pdc.test/items/mj5m-pzi6", "https://pdc.test/items/27ea-46a8",
              "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py", "https://pdc.test/items/dgck-syfz", "https://pdc.test/items/6jpm-sxkc",
-             "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8"],
-            server.Requests); // HRSA, Census and Open Payments are checked weekly
+             "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8", "https://fda.test/download.json"],
+            server.Requests); // HRSA, Census, Open Payments and most FDA files are checked weekly; FDA's shortage list daily
 
         // The datasets command forces a reload of one source.
         server.Requests.Clear();
@@ -488,6 +522,10 @@ public sealed class DatasetIntegrationTests : IDisposable
                 SecCompanyTickersUrl = "https://sec.test/company_tickers_exchange.json",
                 SecUserAgent = "getnpidata-tests ci@example.test",
                 OigCiaUrl = "https://oig.test/browse-cias/",
+                MedicaidCatalogUrl = "https://medicaid.test/items",
+                OpenFdaApiUrl = "https://openfda.test/",
+                ClinicalTrialsApiUrl = "https://ct.test/api/v2/studies",
+                ApiRequestDelay = TimeSpan.Zero,
             },
             db.Database, new HttpClient(server), Logger.None, clock: clock);
 
@@ -535,12 +573,30 @@ public sealed class DatasetIntegrationTests : IDisposable
                 using (var zip = new System.IO.Compression.ZipArchive(zipped, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
                 {
                     // The part 2 files (ndc, drugsfda, label, udi, 510k, pma) have their own fixtures.
-                    var endpoint = new[] { "ndc", "drugsfda", "label", "udi", "510k", "pma" }.FirstOrDefault(e => url.Contains($"-{e}-", StringComparison.Ordinal));
+                    var endpoint = new[] { "ndc", "drugsfda", "label", "udi", "510k", "pma", "shortages" }.FirstOrDefault(e => url.Contains($"-{e}-", StringComparison.Ordinal));
                     zip.CreateEntryFromFile(Fixtures.Path(endpoint is null ? "datasets/fda_enforcement_sample.json" : $"datasets/fda_{endpoint}_sample.json"),
                         "records-0001-of-0001.json");
                 }
 
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(zipped.ToArray()) });
+            }
+
+            // openFDA counts and ClinicalTrials.gov totals (part 3): a few known answers, nothing for everything else.
+            if (url.StartsWith("https://openfda.test/", StringComparison.Ordinal) || url.StartsWith("https://ct.test/", StringComparison.Ordinal))
+            {
+                var answer = url switch
+                {
+                    _ when url.Contains("medicinalproduct:%22ELIQUIS%22", StringComparison.Ordinal) => """{"results":[{"term":1,"count":100},{"term":2,"count":40}]}""",
+                    _ when url.Contains("brand_name:%22MiniMed%20780G%22", StringComparison.Ordinal) =>
+                        """{"results":[{"term":"Malfunction","count":7},{"term":"Injury","count":2},{"term":"Death","count":1}]}""",
+                    _ when url.Contains("query.intr=apixaban", StringComparison.Ordinal) && url.Contains("RECRUITING", StringComparison.Ordinal) => """{"totalCount":71,"studies":[]}""",
+                    _ when url.Contains("query.intr=apixaban", StringComparison.Ordinal) => """{"totalCount":482,"studies":[]}""",
+                    _ when url.StartsWith("https://ct.test/", StringComparison.Ordinal) => """{"totalCount":0,"studies":[]}""",
+                    _ => null,
+                };
+                return Task.FromResult(answer is null
+                    ? new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("""{"error":{"code":"NOT_FOUND"}}""") }
+                    : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer) });
             }
 
             if (url.StartsWith("https://oig.test/browse-cias/?page=", StringComparison.Ordinal))
@@ -564,6 +620,11 @@ public sealed class DatasetIntegrationTests : IDisposable
             {
                 "https://oig.test/UPDATED.csv" when LeieAvailable => "datasets/leie_sample.csv",
                 "https://cms.test/data.json" => "datasets/cms_catalog_sample.json",
+                "https://cms.test/files/DSD_PTD_DY24.csv" => "datasets/cms_part_d_spending_sample.csv",
+                "https://cms.test/files/DSD_PTB_DY24.csv" => "datasets/cms_part_b_spending_sample.csv",
+                "https://cms.test/files/DSD_MCD_DY24.csv" => "datasets/cms_medicaid_spending_sample.csv",
+                "https://medicaid.test/items" => "datasets/medicaid_catalog_sample.json",
+                "https://medicaid.test/nadac-national-average-drug-acquisition-cost-10-07-2026.csv" => "datasets/nadac_sample.csv",
                 "https://cms.test/files/OptOut_August2026.csv" => "datasets/optout_sample.csv",
                 "https://cms.test/files/OrderReferring_20261008.csv" => "datasets/orderref_sample.csv",
                 "https://cms.test/files/Hospital_Enrollments_2026.07.31.csv" => "datasets/hospital_enrollments_sample.csv",

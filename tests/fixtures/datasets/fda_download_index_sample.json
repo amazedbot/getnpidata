@@ -32,6 +32,14 @@
       "file": "https://fda.test/drug-label-0001-of-0001.json.zip"
      }
     ]
+   },
+   "shortages": {
+    "export_date": "2026-10-09",
+    "partitions": [
+     {
+      "file": "https://fda.test/drug-shortages-0001-of-0001.json.zip"
+     }
+    ]
    }
   },
   "device": {

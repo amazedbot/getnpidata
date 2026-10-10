@@ -1,0 +1,5 @@
+NDC Description,NDC,NADAC Per Unit,Effective Date,Pricing Unit,Pharmacy Type Indicator,OTC,Explanation Code,Classification for Rate Setting,Corresponding Generic Drug NADAC Per Unit,Corresponding Generic Drug Effective Date,As of Date
+ELIQUIS 5 MG TABLET,00003089421,9.10000,09/17/2026,EA,C/I,N,4,B,,,09/24/2026
+ELIQUIS 5 MG TABLET,00003089421,9.32518,09/24/2026,EA,C/I,N,4,B,,,10/01/2026
+ELIQUIS 2.5 MG TABLET,00003089321,9.32611,09/24/2026,EA,C/I,N,4,B,,,10/01/2026
+UNRELATED 1 MG,99999000101,0.10000,09/24/2026,EA,C/I,Y,1,G,,,10/01/2026

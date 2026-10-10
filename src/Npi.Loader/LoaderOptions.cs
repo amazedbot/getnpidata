@@ -73,6 +73,30 @@ public sealed class LoaderOptions
     /// <summary>HHS-OIG's list of Corporate Integrity Agreements (pages ?page=2, …).</summary>
     public string OigCiaUrl { get; set; } = "https://oig.hhs.gov/compliance/corporate-integrity-agreements/browse-cias/";
 
+    /// <summary>data.medicaid.gov metastore; the newest "NADAC (National Average Drug Acquisition Cost) &lt;year&gt;" file is loaded (item 19, part 3).</summary>
+    public string MedicaidCatalogUrl { get; set; } = "https://data.medicaid.gov/api/1/metastore/schemas/dataset/items?show-reference-ids=false";
+
+    /// <summary>openFDA's API (adverse event counts).</summary>
+    public string OpenFdaApiUrl { get; set; } = "https://api.fda.gov/";
+
+    /// <summary>An optional openFDA API key (free; private: user-secrets). Without it openFDA allows 1,000 requests a day.</summary>
+    public string OpenFdaApiKey { get; set; } = "";
+
+    /// <summary>openFDA requests per run without a key (one per product).</summary>
+    public int OpenFdaRequestsPerRun { get; set; } = 900;
+
+    /// <summary>openFDA requests per run with a key.</summary>
+    public int OpenFdaRequestsPerRunWithKey { get; set; } = 20_000;
+
+    /// <summary>ClinicalTrials.gov's study API.</summary>
+    public string ClinicalTrialsApiUrl { get; set; } = "https://clinicaltrials.gov/api/v2/studies";
+
+    /// <summary>Products asked about per run (two requests each).</summary>
+    public int ClinicalTrialsPerRun { get; set; } = 600;
+
+    /// <summary>Pause between requests to the public APIs (openFDA allows 240 a minute).</summary>
+    public TimeSpan ApiRequestDelay { get; set; } = TimeSpan.FromMilliseconds(300);
+
     /// <summary>US Census Bureau batch geocoder (Stage 5.5 item 10, map search).</summary>
     public string CensusGeocoderUrl { get; set; } = "https://geocoding.geo.census.gov/geocoder/locations/addressbatch";
 

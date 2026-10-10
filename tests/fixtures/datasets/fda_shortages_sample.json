@@ -1,0 +1,38 @@
+{
+ "meta": {
+  "results": {
+   "total": 2
+  }
+ },
+ "results": [
+  {
+   "package_ndc": "0169-4130-13",
+   "generic_name": "Semaglutide Injection",
+   "company_name": "Novo Nordisk",
+   "status": "Current",
+   "availability": "Limited Availability",
+   "shortage_reason": "Demand increase for the drug",
+   "presentation": "Ozempic (semaglutide) injection, 2 mg/1.5 mL (NDC 0169-4130-13)",
+   "initial_posting_date": "03/31/2022",
+   "update_date": "09/30/2026",
+   "openfda": {
+    "substance_name": [
+     "SEMAGLUTIDE"
+    ],
+    "product_ndc": [
+     "0169-4130"
+    ]
+   }
+  },
+  {
+   "package_ndc": "0641-6047-10",
+   "generic_name": "Lorazepam Injection",
+   "status": "Current",
+   "openfda": {
+    "substance_name": [
+     "LORAZEPAM"
+    ]
+   }
+  }
+ ]
+}
