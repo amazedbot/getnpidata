@@ -8,6 +8,30 @@
       "file": "https://fda.test/drug-enforcement-0001-of-0001.json.zip"
      }
     ]
+   },
+   "ndc": {
+    "export_date": "2026-10-06",
+    "partitions": [
+     {
+      "file": "https://fda.test/drug-ndc-0001-of-0001.json.zip"
+     }
+    ]
+   },
+   "drugsfda": {
+    "export_date": "2026-10-06",
+    "partitions": [
+     {
+      "file": "https://fda.test/drug-drugsfda-0001-of-0001.json.zip"
+     }
+    ]
+   },
+   "label": {
+    "export_date": "2026-10-06",
+    "partitions": [
+     {
+      "file": "https://fda.test/drug-label-0001-of-0001.json.zip"
+     }
+    ]
    }
   },
   "device": {
@@ -16,6 +40,30 @@
     "partitions": [
      {
       "file": "https://fda.test/device-enforcement-0001-of-0001.json.zip"
+     }
+    ]
+   },
+   "udi": {
+    "export_date": "2026-10-06",
+    "partitions": [
+     {
+      "file": "https://fda.test/device-udi-0001-of-0001.json.zip"
+     }
+    ]
+   },
+   "510k": {
+    "export_date": "2026-10-06",
+    "partitions": [
+     {
+      "file": "https://fda.test/device-510k-0001-of-0001.json.zip"
+     }
+    ]
+   },
+   "pma": {
+    "export_date": "2026-10-06",
+    "partitions": [
+     {
+      "file": "https://fda.test/device-pma-0001-of-0001.json.zip"
      }
     ]
    }

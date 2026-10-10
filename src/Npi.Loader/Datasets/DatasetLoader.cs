@@ -96,6 +96,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new OpenPaymentsCompanySource(),
         new OpenPaymentsEntitySource(),
         new OpenPaymentsResearchSource(),
+        new FdaProductSource(),
         new FdaEnforcementSource(),
         new SecCompanySource(),
         new OigCiaSource(),

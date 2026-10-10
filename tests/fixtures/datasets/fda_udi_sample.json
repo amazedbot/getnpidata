@@ -1,0 +1,67 @@
+{
+ "meta": {
+  "disclaimer": "test",
+  "results": {
+   "skip": 0,
+   "limit": 2,
+   "total": 2
+  }
+ },
+ "results": [
+  {
+   "identifiers": [
+    {
+     "id": "00763000636251",
+     "type": "Primary"
+    }
+   ],
+   "brand_name": "MiniMed 780G",
+   "company_name": "Medtronic MiniMed, Inc.",
+   "device_description": "Insulin pump system",
+   "version_or_model_number": "MMT-1886",
+   "is_rx": "true",
+   "is_otc": "false",
+   "commercial_distribution_status": "In Commercial Distribution",
+   "gmdn_terms": [
+    {
+     "name": "Ambulatory insulin infusion pump",
+     "definition": "A portable pump that delivers insulin.",
+     "implantable": "false"
+    }
+   ],
+   "product_codes": [
+    {
+     "code": "QFG",
+     "name": "Alternate controller enabled insulin pump",
+     "openfda": {
+      "device_class": "3",
+      "medical_specialty_description": "Clinical Chemistry"
+     }
+    }
+   ],
+   "premarket_submissions": [
+    {
+     "submission_number": "P160017",
+     "supplement_number": "S076"
+    },
+    {
+     "submission_number": "K000001"
+    }
+   ]
+  },
+  {
+   "identifiers": [
+    {
+     "id": "00000000000000",
+     "type": "Primary"
+    }
+   ],
+   "brand_name": "Unrelated",
+   "premarket_submissions": [
+    {
+     "submission_number": "K999999"
+    }
+   ]
+  }
+ ]
+}

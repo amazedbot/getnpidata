@@ -1,0 +1,55 @@
+{
+ "meta": {
+  "disclaimer": "test",
+  "results": {
+   "skip": 0,
+   "limit": 3,
+   "total": 3
+  }
+ },
+ "results": [
+  {
+   "set_id": "e9481622-7cc6-418a-acb6-c5450daae9b0",
+   "effective_time": "20250203",
+   "openfda": {
+    "brand_name": [
+     "ELIQUIS"
+    ]
+   },
+   "indications_and_usage": [
+    "1 INDICATIONS AND USAGE ELIQUIS is a factor Xa inhibitor indicated to reduce the risk of stroke."
+   ],
+   "boxed_warning": [
+    "WARNING: (A) PREMATURE DISCONTINUATION OF ELIQUIS INCREASES THE RISK OF THROMBOTIC EVENTS"
+   ]
+  },
+  {
+   "set_id": "adec4fd2-6858-4c99-91d4-531f5f2a2d79",
+   "effective_time": "20250101",
+   "openfda": {
+    "brand_name": [
+     "Ozempic"
+    ],
+    "product_ndc": [
+     "0169-4130",
+     "0169-4132"
+    ]
+   },
+   "indications_and_usage": [
+    "OZEMPIC is indicated as an adjunct to diet and exercise to improve glycemic control in adults with type 2 diabetes mellitus."
+   ]
+  },
+  {
+   "set_id": "unrelated-label",
+   "effective_time": "20240101",
+   "openfda": {
+    "product_ndc": [
+     "99999-0001"
+    ]
+   },
+   "indications_and_usage": [
+    "Not wanted."
+   ]
+  }
+ ]
+}

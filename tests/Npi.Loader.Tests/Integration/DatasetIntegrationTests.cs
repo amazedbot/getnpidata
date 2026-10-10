@@ -52,7 +52,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                  + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
-             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"), ("hrsa_hpsa", "HPSA 2026-10-08"),
+             ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"),
+             ("fda_products", "ndc 2026-10-06 | drugsfda 2026-10-06 | label 2026-10-06 | udi 2026-10-06 | 510k 2026-10-06 | pma 2026-10-06"), ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
@@ -382,6 +383,30 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal("0169-4130-13", (await products.GetAsync("ozempic", _ct))!.Ndc);
         Assert.Equal("00763000636251", (await products.GetAsync("minimed-780g", _ct))!.DeviceId);
         Assert.Null(await products.GetAsync("no-such-product", _ct));
+
+        // Part 2, what it is: Eliquis by its NDC 0003-0893-21 (directory 0003-0893), its application and label. The repackager
+        // under the same application isn't another maker; the ANDA generic is.
+        var drug = eliquis.Drug!;
+        Assert.Equal(("0003-0893", "ELIQUIS", "apixaban", "APIXABAN 5 mg/1", "Factor Xa Inhibitor", "BRISTOL MYERS SQUIBB", (DateOnly?)new DateOnly(2012, 12, 28), 1, 1),
+            (drug.ProductNdc, drug.BrandName, drug.GenericName, drug.ActiveIngredients, drug.PharmClasses, drug.Sponsor, drug.ApprovalDate, drug.OtherMakers, drug.GenericMakers));
+        Assert.StartsWith("WARNING: (A) PREMATURE DISCONTINUATION", drug.BoxedWarning, StringComparison.Ordinal);
+        Assert.Equal("https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=e9481622-7cc6-418a-acb6-c5450daae9b0", drug.DailyMedUrl);
+        Assert.EndsWith("ApplNo=202155", drug.DrugsAtFdaUrl, StringComparison.Ordinal);
+        Assert.Null(eliquis.Device);
+        // Ozempic's label is found by the label's own product NDCs (no set ID in the directory); it has no boxed warning.
+        var ozempic = (await products.GetAsync("ozempic", _ct))!.Drug!;
+        Assert.Equal(("adec4fd2-6858-4c99-91d4-531f5f2a2d79", (string?)null, 0), (ozempic.LabelSetId, ozempic.BoxedWarning, ozempic.OtherMakers));
+        Assert.StartsWith("OZEMPIC is indicated", ozempic.Indications, StringComparison.Ordinal);
+        // MiniMed by its device identifier: GUDID facts and its decisions (the PMA original, not the supplement; the 510(k)).
+        var pump = (await products.GetAsync("minimed-780g", _ct))!.Device!;
+        Assert.Equal(("MiniMed 780G", "Medtronic MiniMed, Inc.", "QFG", "3", true, false), (pump.BrandName, pump.Company, pump.ProductCode, pump.DeviceClass, pump.IsRx, pump.Implantable));
+        Assert.Equal([("P160017", "PMA", (DateOnly?)new DateOnly(2016, 9, 28)), ("K000001", "510(k)", new DateOnly(2000, 2, 1))],
+            pump.Premarket.Select(m => (m.Number, m.Kind, m.DecisionDate)));
+        Assert.Equal("https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpma/pma.cfm?id=P160017", pump.Premarket[0].Url);
+        Assert.Null((await products.GetAsync("guardian-4-sensor", _ct))!.Device);
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM fda_drug_label WHERE set_id = 'unrelated-label'"));
+        Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM fda_device"));
+        Assert.Equal(4L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM fda_ndc_product"));
         var list = await products.SearchAsync(null, null, 1, 50, _ct);
         Assert.Equal(["ibrance", "guardian-4-sensor", "minimed-780g", "eliquis", "pico", "ozempic"], list.Items.Select(p => p.Slug));
         Assert.Equal(["guardian-4-sensor", "minimed-780g", "pico"], (await products.SearchAsync(null, "Device", 1, 50, _ct)).Items.Select(p => p.Slug));
@@ -505,7 +530,10 @@ public sealed class DatasetIntegrationTests : IDisposable
                 using var zipped = new MemoryStream();
                 using (var zip = new System.IO.Compression.ZipArchive(zipped, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
                 {
-                    zip.CreateEntryFromFile(Fixtures.Path("datasets/fda_enforcement_sample.json"), "enforcement-0001-of-0001.json");
+                    // The part 2 files (ndc, drugsfda, label, udi, 510k, pma) have their own fixtures.
+                    var endpoint = new[] { "ndc", "drugsfda", "label", "udi", "510k", "pma" }.FirstOrDefault(e => url.Contains($"-{e}-", StringComparison.Ordinal));
+                    zip.CreateEntryFromFile(Fixtures.Path(endpoint is null ? "datasets/fda_enforcement_sample.json" : $"datasets/fda_{endpoint}_sample.json"),
+                        "records-0001-of-0001.json");
                 }
 
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(zipped.ToArray()) });

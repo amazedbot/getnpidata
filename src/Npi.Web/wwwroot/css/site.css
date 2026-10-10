@@ -202,3 +202,7 @@ button.secondary, .button.secondary { background: var(--bg); color: var(--accent
 
 /* Long free text in a table cell (FDA recall products and reasons). */
 td.long { min-width: 14rem; max-width: 32rem; overflow-wrap: anywhere; }
+
+/* Long FDA texts (label sections) keep their line breaks. */
+.prewrap { white-space: pre-line; overflow-wrap: anywhere; }
+details > summary { cursor: pointer; }
