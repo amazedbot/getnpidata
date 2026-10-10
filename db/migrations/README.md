@@ -64,6 +64,8 @@ Rules:
 | `066_company_records.sql` | FDA recalls, SEC registrants and OIG integrity agreements for the company pages, matched by name key (item 17 extras). |
 | `067_company_parent.sql` | The hand-made list of subsidiaries and their public parent companies (SEC CIK), item 17. |
 | `068_open_payments_products.sql` | Product pages (item 19, part 1): every product named in the newest year's general and research payments, its companies, kinds of payment, specialties, top providers and studies; each provider's top products. |
+| `069_fda_products.sql` | What a product is (item 19, part 2): FDA's NDC directory, Drugs@FDA approvals, the labels and GUDID device records of the products named in Open Payments, 510(k)/PMA decisions; `op_product.ndc_key`. |
+| `070_fda_ndc_lookups.sql` | Brand-name and application indexes on the NDC directory (product pages, item 19 part 2). |
 
 ## 001_baseline.sql
 

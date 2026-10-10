@@ -1,0 +1,39 @@
+{
+ "meta": {
+  "disclaimer": "test",
+  "results": {
+   "skip": 0,
+   "limit": 2,
+   "total": 2
+  }
+ },
+ "results": [
+  {
+   "application_number": "NDA202155",
+   "sponsor_name": "BRISTOL MYERS SQUIBB",
+   "submissions": [
+    {
+     "submission_type": "SUPPL",
+     "submission_status": "AP",
+     "submission_status_date": "20180628"
+    },
+    {
+     "submission_type": "ORIG",
+     "submission_status": "AP",
+     "submission_status_date": "20121228"
+    }
+   ]
+  },
+  {
+   "application_number": "NDA209637",
+   "sponsor_name": "NOVO NORDISK INC",
+   "submissions": [
+    {
+     "submission_type": "ORIG",
+     "submission_status": "AP",
+     "submission_status_date": "20171205"
+    }
+   ]
+  }
+ ]
+}

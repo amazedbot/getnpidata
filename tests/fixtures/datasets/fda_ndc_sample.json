@@ -1,0 +1,68 @@
+{
+ "meta": {
+  "disclaimer": "test",
+  "results": {
+   "skip": 0,
+   "limit": 4,
+   "total": 4
+  }
+ },
+ "results": [
+  {
+   "product_ndc": "0003-0893",
+   "generic_name": "apixaban",
+   "brand_name": "ELIQUIS",
+   "labeler_name": "E.R. Squibb & Sons, L.L.C.",
+   "active_ingredients": [
+    {
+     "name": "APIXABAN",
+     "strength": "5 mg/1"
+    }
+   ],
+   "dosage_form": "TABLET, FILM COATED",
+   "route": [
+    "ORAL"
+   ],
+   "marketing_category": "NDA",
+   "application_number": "NDA202155",
+   "marketing_start_date": "20121228",
+   "product_type": "HUMAN PRESCRIPTION DRUG",
+   "openfda": {}
+  },
+  {
+   "product_ndc": "50090-1436",
+   "generic_name": "apixaban",
+   "brand_name": "ELIQUIS",
+   "labeler_name": "A-S Medication Solutions",
+   "marketing_category": "NDA",
+   "application_number": "NDA202155",
+   "openfda": {
+    "spl_set_id": [
+     "e9481622-7cc6-418a-acb6-c5450daae9b0"
+    ],
+    "pharm_class_epc": [
+     "Factor Xa Inhibitor [EPC]"
+    ]
+   }
+  },
+  {
+   "product_ndc": "42571-312",
+   "generic_name": "apixaban",
+   "brand_name": "Apixaban",
+   "labeler_name": "Micro Labs Limited",
+   "marketing_category": "ANDA",
+   "application_number": "ANDA210115",
+   "openfda": {}
+  },
+  {
+   "product_ndc": "0169-4130",
+   "generic_name": "semaglutide",
+   "brand_name": "Ozempic",
+   "labeler_name": "Novo Nordisk",
+   "marketing_category": "NDA",
+   "application_number": "NDA209637",
+   "product_type": "HUMAN PRESCRIPTION DRUG",
+   "openfda": {}
+  }
+ ]
+}

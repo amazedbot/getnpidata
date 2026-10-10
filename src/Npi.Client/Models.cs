@@ -314,6 +314,123 @@ public sealed class ProductDetail
     public IReadOnlyList<ProductRecipient> TopProviders { get; set; } = [];
 
     public ProductResearch? Research { get; set; }
+
+    /// <summary>FDA's facts when the product's NDC is in the NDC directory.</summary>
+    public ProductDrugInfo? Drug { get; set; }
+
+    /// <summary>FDA's GUDID facts for the device identifier named most.</summary>
+    public ProductDeviceInfo? Device { get; set; }
+}
+
+/// <summary>What a drug or biological is, from FDA's NDC directory, Drugs@FDA and its label.</summary>
+public sealed class ProductDrugInfo
+{
+    public string ProductNdc { get; set; } = "";
+
+    public string? BrandName { get; set; }
+
+    public string? GenericName { get; set; }
+
+    public string? ActiveIngredients { get; set; }
+
+    public string? DosageForm { get; set; }
+
+    public string? Route { get; set; }
+
+    public string? Labeler { get; set; }
+
+    public string? MarketingCategory { get; set; }
+
+    public string? ApplicationNumber { get; set; }
+
+    public string? ProductType { get; set; }
+
+    /// <summary>FDA established pharmacologic classes.</summary>
+    public string? PharmClasses { get; set; }
+
+    public string? Sponsor { get; set; }
+
+    public DateTime? ApprovalDate { get; set; }
+
+    public DateTime? MarketingStart { get; set; }
+
+    /// <summary>Other labelers listing the same generic name.</summary>
+    public int OtherMakers { get; set; }
+
+    /// <summary>Of those, labelers with an approved generic (ANDA).</summary>
+    public int GenericMakers { get; set; }
+
+    public string? Indications { get; set; }
+
+    public string? BoxedWarning { get; set; }
+
+    public DateTime? LabelDate { get; set; }
+
+    public string? LabelSetId { get; set; }
+
+    public string? DailyMedUrl { get; set; }
+
+    public string? DrugsAtFdaUrl { get; set; }
+
+    /// <summary>"ndc" (the reported NDC is listed) or "name" (matched by brand name).</summary>
+    public string MatchedBy { get; set; } = "ndc";
+}
+
+/// <summary>What a device is, from FDA's GUDID.</summary>
+public sealed class ProductDeviceInfo
+{
+    public string DeviceId { get; set; } = "";
+
+    public string? BrandName { get; set; }
+
+    public string? Company { get; set; }
+
+    public string? Description { get; set; }
+
+    public string? Model { get; set; }
+
+    public string? GmdnTerm { get; set; }
+
+    public string? GmdnDefinition { get; set; }
+
+    public string? ProductCode { get; set; }
+
+    public string? ProductCodeName { get; set; }
+
+    /// <summary>FDA class 1, 2 or 3 (highest risk).</summary>
+    public string? DeviceClass { get; set; }
+
+    public string? MedicalSpecialty { get; set; }
+
+    public bool? IsRx { get; set; }
+
+    public bool? IsOtc { get; set; }
+
+    public bool? Implantable { get; set; }
+
+    public string? DistributionStatus { get; set; }
+
+    public IReadOnlyList<ProductPremarket> Premarket { get; set; } = [];
+
+    public string GudidUrl { get; set; } = "";
+}
+
+/// <summary>A 510(k), PMA or De Novo decision a device cites.</summary>
+public sealed class ProductPremarket
+{
+    public string Number { get; set; } = "";
+
+    public string Kind { get; set; } = "";
+
+    public string? Applicant { get; set; }
+
+    public string? DeviceName { get; set; }
+
+    public DateTime? DecisionDate { get; set; }
+
+    public string? Decision { get; set; }
+
+    public string Url { get; set; } = "";
 }
 
 /// <summary>A company whose payments named the product.</summary>

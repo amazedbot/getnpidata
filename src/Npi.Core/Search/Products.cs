@@ -28,6 +28,59 @@ public sealed record ProductStudy(string? Study, string? NctId, string? CompanyI
 public sealed record ProductResearch(int Year, double Amount, int Records, int Studies, IReadOnlyList<ProductStudy> TopStudies);
 
 /// <summary>
+/// What a drug or biological is, from FDA (item 19, part 2): its NDC directory listing (the product's NDC labeler and product
+/// parts), the Drugs@FDA application, and its label's indications and boxed warning. <see cref="OtherMakers"/> counts the
+/// other labelers listing the same generic name (generics, repackagers, authorized generics); <see cref="GenericMakers"/>
+/// those of them with an ANDA (approved generics).
+/// </summary>
+/// <remarks>
+/// <see cref="MatchedBy"/> is "ndc" (the NDC reported in the payments is listed) or "name" (it isn't, and the brand name matched:
+/// the listing chosen is the one under the application most listings of that name use). A listing without a drug class or
+/// label borrows them from a listing of the same generic name / the same application.
+/// </remarks>
+public sealed record ProductDrugInfo(string ProductNdc, string? BrandName, string? GenericName, string? ActiveIngredients, string? DosageForm,
+    string? Route, string? Labeler, string? MarketingCategory, string? ApplicationNumber, string? ProductType, string? PharmClasses, string? Sponsor,
+    DateOnly? ApprovalDate, DateOnly? MarketingStart, int OtherMakers, int GenericMakers, string? Indications, string? BoxedWarning,
+    DateOnly? LabelDate, string? LabelSetId, string MatchedBy = "ndc")
+{
+    /// <summary>The label on DailyMed (NLM), when FDA's files had one.</summary>
+    public string? DailyMedUrl => LabelSetId is null ? null : $"https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={Uri.EscapeDataString(LabelSetId)}";
+
+    /// <summary>The application on Drugs@FDA (NDA and ANDA; BLAs are listed by CBER/Purple Book instead).</summary>
+    public string? DrugsAtFdaUrl => ApplicationNumber is { } a && (a.StartsWith("NDA", StringComparison.OrdinalIgnoreCase) || a.StartsWith("ANDA", StringComparison.OrdinalIgnoreCase))
+        ? $"https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo={new string(a.Where(char.IsAsciiDigit).ToArray())}"
+        : null;
+}
+
+/// <summary>A 510(k) clearance, PMA approval or De Novo grant a device cites; the details are from FDA's files when found.</summary>
+public sealed record ProductPremarket(string Number, string Kind, string? Applicant, string? DeviceName, DateOnly? DecisionDate, string? Decision)
+{
+    public string Url => Kind switch
+    {
+        "PMA" => $"https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpma/pma.cfm?id={Uri.EscapeDataString(Number)}",
+        "De Novo" => $"https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpmn/denovo.cfm?id={Uri.EscapeDataString(Number)}",
+        _ => $"https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpmn/pmn.cfm?ID={Uri.EscapeDataString(Number)}",
+    };
+
+    /// <summary>The kind of an FDA premarket number: K… 510(k), P… PMA, DEN… De Novo.</summary>
+    public static string KindOf(string number) =>
+        number.StartsWith("DEN", StringComparison.OrdinalIgnoreCase) ? "De Novo"
+        : number.StartsWith('P') || number.StartsWith('p') ? "PMA"
+        : number.StartsWith('K') || number.StartsWith('k') ? "510(k)" : "Other";
+}
+
+/// <summary>
+/// What a device is, from FDA's GUDID record of the device identifier used most in the payments (item 19, part 2): one
+/// model of the product line, with its GMDN term, FDA product code and class, and its premarket decisions.
+/// </summary>
+public sealed record ProductDeviceInfo(string DeviceId, string? BrandName, string? Company, string? Description, string? Model, string? GmdnTerm,
+    string? GmdnDefinition, string? ProductCode, string? ProductCodeName, string? DeviceClass, string? MedicalSpecialty, bool? IsRx, bool? IsOtc,
+    bool? Implantable, string? DistributionStatus, IReadOnlyList<ProductPremarket> Premarket)
+{
+    public string GudidUrl => $"https://accessgudid.nlm.nih.gov/devices/{Uri.EscapeDataString(DeviceId)}";
+}
+
+/// <summary>
 /// A drug, biological, device or medical supply named in Open Payments (CLAUDE.md §7 Stage 5.5 item 19), keyed by
 /// <see cref="Slug"/>. Every product a payment names counts with the payment's full amount, so a payment naming two
 /// products counts for both. <see cref="Name"/>, <see cref="Kind"/>, <see cref="Category"/>, <see cref="Ndc"/> and
@@ -35,7 +88,14 @@ public sealed record ProductResearch(int Year, double Amount, int Records, int S
 /// </summary>
 public sealed record ProductDetail(string Slug, string Name, string? Kind, string? Category, string? Ndc, string? DeviceId, int Year, double Amount,
     int Records, int CompanyCount, int Providers, IReadOnlyList<ProductCompany> Companies, IReadOnlyList<ProductNature> ByNature,
-    IReadOnlyList<ProductSpecialty> TopSpecialties, IReadOnlyList<ProductRecipient> TopProviders, ProductResearch? Research);
+    IReadOnlyList<ProductSpecialty> TopSpecialties, IReadOnlyList<ProductRecipient> TopProviders, ProductResearch? Research)
+{
+    /// <summary>FDA's facts when the product's NDC is in the NDC directory (part 2); null otherwise.</summary>
+    public ProductDrugInfo? Drug { get; init; }
+
+    /// <summary>FDA's GUDID facts when the product's device identifier is in GUDID (part 2); null otherwise.</summary>
+    public ProductDeviceInfo? Device { get; init; }
+}
 
 /// <summary>One product in a list.</summary>
 public sealed record ProductSummary(string Slug, string Name, string? Kind, string? Category, int Year, double Amount, int Records, int Companies,
@@ -56,6 +116,20 @@ public sealed class ProductService(string connectionString)
 
     private sealed record ProductRow(string Slug, string Name, string? Kind, string? Category, string? Ndc, string? DeviceId, short Year, double Amount,
         int Records, int Companies, int Providers);
+
+    private sealed record DrugRow(string ProductNdc, string? NdcKey, string? BrandName, string? GenericName, string? ActiveIngredients, string? DosageForm, string? Route,
+        string? Labeler, string? MarketingCategory, string? ApplicationNumber, string? ProductType, string? PharmClasses, string? Sponsor, DateTime? ApprovalDate,
+        DateTime? MarketingStart, long OtherMakers, long GenericMakers);
+
+    private sealed record LabelRow(string SetId, DateTime? EffectiveDate, string? Indications, string? BoxedWarning);
+
+    private sealed record DeviceRow(string DeviceId, string? BrandName, string? Company, string? Description, string? Model, string? GmdnTerm,
+        string? GmdnDefinition, string? ProductCode, string? ProductCodeName, string? DeviceClass, string? MedicalSpecialty, sbyte? IsRx, sbyte? IsOtc,
+        sbyte? Implantable, string? DistributionStatus, string? Submissions);
+
+    private sealed record PremarketRow(string Number, string Kind, string? Applicant, string? DeviceName, DateTime? DecisionDate, string? Decision);
+
+    private static DateOnly? ToDate(DateTime? d) => d is { } v ? DateOnly.FromDateTime(v) : null;
 
     private sealed record ResearchRow(short Year, double Amount, int Records, int Studies);
 
@@ -171,6 +245,112 @@ public sealed class ProductService(string connectionString)
             companies.ToList(), natures.ToList(), specialties.ToList(),
             recipients.Select(x => new ProductRecipient(x.Npi, x.SortName ?? x.Npi, credentials.GetValueOrDefault(x.Npi), x.Specialty, x.City, x.State,
                 x.Amount, x.Records)).ToList(),
-            research);
+            research)
+        {
+            Drug = await GetDrugAsync(connection, slug, ct),
+            Device = await GetDeviceAsync(connection, slug, ct),
+        };
+    }
+
+    private static async Task<ProductDrugInfo?> GetDrugAsync(MySqlConnection connection, string slug, CancellationToken ct)
+    {
+        const string columns = """
+            SELECT n.product_ndc AS ProductNdc, n.ndc_key AS NdcKey, n.brand_name AS BrandName, n.generic_name AS GenericName, n.active_ingredients AS ActiveIngredients,
+                   n.dosage_form AS DosageForm, n.route AS Route, n.labeler AS Labeler, n.marketing_category AS MarketingCategory,
+                   n.application_number AS ApplicationNumber, n.product_type AS ProductType, n.pharm_classes AS PharmClasses, a.sponsor AS Sponsor,
+                   a.approval_date AS ApprovalDate, n.marketing_start AS MarketingStart,
+                   (SELECT COUNT(DISTINCT o.labeler) FROM fda_ndc_product o
+                     WHERE o.generic_name = n.generic_name AND o.labeler <> n.labeler AND NOT (o.application_number <=> n.application_number)) AS OtherMakers,
+                   (SELECT COUNT(DISTINCT o.labeler) FROM fda_ndc_product o
+                     WHERE o.generic_name = n.generic_name AND o.labeler <> n.labeler AND o.marketing_category = 'ANDA') AS GenericMakers
+            FROM op_product p
+            """;
+        var matchedBy = "ndc";
+        var d = await connection.QueryFirstOrDefaultAsync<DrugRow>(new CommandDefinition(
+            columns + """
+
+            JOIN fda_ndc_product n ON n.ndc_key = p.ndc_key
+            LEFT JOIN fda_application a ON a.application_number = n.application_number
+            WHERE p.slug = @slug
+            ORDER BY n.product_ndc
+            LIMIT 1
+            """, new { slug }, cancellationToken: ct));
+        if (d is null)
+        {
+            // The reported NDC isn't listed (or there is none): a drug or biological of the same brand name, under the
+            // application most of its listings use, the maker's own listing (labeler named like the sponsor) before a repackager's.
+            matchedBy = "name";
+            d = await connection.QueryFirstOrDefaultAsync<DrugRow>(new CommandDefinition(
+                columns + """
+
+                JOIN fda_ndc_product n ON n.brand_name = p.name
+                LEFT JOIN fda_application a ON a.application_number = n.application_number
+                WHERE p.slug = @slug AND p.kind IN ('Drug', 'Biological')
+                ORDER BY (SELECT COUNT(*) FROM fda_ndc_product n2 WHERE n2.brand_name = n.brand_name AND n2.application_number <=> n.application_number) DESC,
+                         a.sponsor IS NULL, n.labeler NOT LIKE CONCAT(SUBSTRING_INDEX(a.sponsor, ' ', 1), '%'), n.pharm_classes IS NULL, n.product_ndc
+                LIMIT 1
+                """, new { slug }, cancellationToken: ct));
+        }
+
+        if (d is null)
+        {
+            return null;
+        }
+
+        // The listing's own label, else the newest label of a listing under the same application.
+        var label = await connection.QueryFirstOrDefaultAsync<LabelRow>(new CommandDefinition(
+            """
+            SELECT l.set_id AS SetId, l.effective_date AS EffectiveDate, l.indications AS Indications, l.boxed_warning AS BoxedWarning
+            FROM fda_drug_label_ndc ln JOIN fda_drug_label l ON l.set_id = ln.set_id
+            WHERE ln.ndc_key = @key
+            ORDER BY l.effective_date DESC, l.set_id
+            LIMIT 1
+            """, new { key = d.NdcKey }, cancellationToken: ct))
+            ?? (d.ApplicationNumber is null ? null : await connection.QueryFirstOrDefaultAsync<LabelRow>(new CommandDefinition(
+                """
+                SELECT l.set_id AS SetId, l.effective_date AS EffectiveDate, l.indications AS Indications, l.boxed_warning AS BoxedWarning
+                FROM fda_ndc_product n2 JOIN fda_drug_label_ndc ln ON ln.ndc_key = n2.ndc_key JOIN fda_drug_label l ON l.set_id = ln.set_id
+                WHERE n2.application_number = @app
+                ORDER BY l.effective_date DESC, l.set_id
+                LIMIT 1
+                """, new { app = d.ApplicationNumber }, cancellationToken: ct)));
+        var classes = d.PharmClasses ?? (d.GenericName is null ? null : await connection.QueryFirstOrDefaultAsync<string>(new CommandDefinition(
+            "SELECT pharm_classes FROM fda_ndc_product WHERE generic_name = @generic AND pharm_classes IS NOT NULL AND pharm_classes <> '' ORDER BY product_ndc LIMIT 1",
+            new { generic = d.GenericName }, cancellationToken: ct)));
+        return new ProductDrugInfo(d.ProductNdc, d.BrandName, d.GenericName, d.ActiveIngredients, d.DosageForm, d.Route, d.Labeler, d.MarketingCategory,
+            d.ApplicationNumber, d.ProductType, classes, d.Sponsor, ToDate(d.ApprovalDate), ToDate(d.MarketingStart), (int)d.OtherMakers,
+            (int)d.GenericMakers, label?.Indications, label?.BoxedWarning, ToDate(label?.EffectiveDate), label?.SetId, matchedBy);
+    }
+
+    private static async Task<ProductDeviceInfo?> GetDeviceAsync(MySqlConnection connection, string slug, CancellationToken ct)
+    {
+        var d = await connection.QueryFirstOrDefaultAsync<DeviceRow>(new CommandDefinition(
+            """
+            SELECT f.device_id AS DeviceId, f.brand_name AS BrandName, f.company_name AS Company, f.description AS Description, f.model AS Model,
+                   f.gmdn_term AS GmdnTerm, f.gmdn_definition AS GmdnDefinition, f.product_code AS ProductCode, f.product_code_name AS ProductCodeName,
+                   f.device_class AS DeviceClass, f.medical_specialty AS MedicalSpecialty, f.is_rx AS IsRx, f.is_otc AS IsOtc, f.implantable AS Implantable,
+                   f.distribution_status AS DistributionStatus, f.submissions AS Submissions
+            FROM op_product p JOIN fda_device f ON f.device_id = TRIM(p.device_id)
+            WHERE p.slug = @slug
+            """, new { slug }, cancellationToken: ct));
+        if (d is null)
+        {
+            return null;
+        }
+
+        var numbers = (d.Submissions ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var found = numbers.Length == 0 ? [] : (await connection.QueryAsync<PremarketRow>(new CommandDefinition(
+                """
+                SELECT number AS Number, kind AS Kind, applicant AS Applicant, device_name AS DeviceName, decision_date AS DecisionDate, decision AS Decision
+                FROM fda_premarket WHERE number IN @numbers
+                """, new { numbers }, cancellationToken: ct)))
+            .ToDictionary(r => r.Number, StringComparer.OrdinalIgnoreCase);
+        var premarket = numbers.Select(n => found.TryGetValue(n, out var r)
+                ? new ProductPremarket(r.Number, r.Kind, r.Applicant, r.DeviceName, ToDate(r.DecisionDate), r.Decision)
+                : new ProductPremarket(n, ProductPremarket.KindOf(n), null, null, null, null))
+            .OrderByDescending(x => x.DecisionDate).ThenBy(x => x.Number, StringComparer.Ordinal).ToList();
+        return new ProductDeviceInfo(d.DeviceId, d.BrandName, d.Company, d.Description, d.Model, d.GmdnTerm, d.GmdnDefinition, d.ProductCode,
+            d.ProductCodeName, d.DeviceClass, d.MedicalSpecialty, d.IsRx is null ? null : d.IsRx != 0, d.IsOtc is null ? null : d.IsOtc != 0,
+            d.Implantable is null ? null : d.Implantable != 0, d.DistributionStatus, premarket);
     }
 }
