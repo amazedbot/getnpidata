@@ -120,6 +120,14 @@ public sealed class ProviderTaxonomy
 /// <summary>A practice location (primary or secondary).</summary>
 public sealed class ProviderLocation
 {
+    /// <summary>Where the address is on the map; null when it couldn't be placed.</summary>
+    public double? Latitude { get; set; }
+
+    public double? Longitude { get; set; }
+
+    /// <summary>True when the point is only the ZIP's centre, not the street address.</summary>
+    public bool Approximate { get; set; }
+
     public bool IsPrimary { get; set; }
 
     public string? Address1 { get; set; }

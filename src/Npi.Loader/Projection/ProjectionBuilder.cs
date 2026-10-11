@@ -20,7 +20,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
     public static readonly string[] Tables =
     [
         "provider", "provider_taxonomy", "provider_location", "provider_other_name", "provider_search",
-        "provider_profile", "provider_identifier", "provider_endpoint", "provider_org_name",
+        "provider_profile", "provider_identifier", "provider_endpoint", "provider_org_name", "provider_deactivated",
     ];
 
     private const int TaxonomySlots = 15;
@@ -71,6 +71,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             await StepAsync(connection, "provider_identifier", IdentifierSql(), ct);
             await StepAsync(connection, "provider_endpoint", EndpointSql, ct);
             await StepAsync(connection, "row_hash", RowHashSql, ct);
+            await StepAsync(connection, "provider_deactivated", DeactivatedSql, ct);
 
             var providers = await Database.CountAsync(connection, "provider_staging", ct);
             var current = await Database.CountAsync(connection, "provider", ct);
@@ -222,6 +223,14 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
 
     private static string Zip4(string postal, string country) =>
         $"IF({IsUsZip(postal, country)} AND CHAR_LENGTH(REGEXP_REPLACE({postal}, '[^0-9]', '')) = 9, RIGHT(REGEXP_REPLACE({postal}, '[^0-9]', ''), 4), NULL)";
+
+    // Deactivated NPIs and their dates, for the site's "Deactivated on [date]" status (migration 077).
+    private static readonly string DeactivatedSql = $"""
+        INSERT INTO `provider_deactivated_staging` (`npi`, `deactivation_date`)
+        SELECT n.`NPI`, {Date("n.`NPI_Deactivation_Date`")}
+        FROM `npidata` n
+        WHERE n.`Is_Deactivated` = 1
+        """;
 
     private static readonly string ProviderSql = BuildProviderSql();
 

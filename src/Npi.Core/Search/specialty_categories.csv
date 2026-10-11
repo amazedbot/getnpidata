@@ -1,225 +1,225 @@
-category,subcategory,title,singular,synonyms
-"Doctors (MD, DO)",,Doctors,Doctor,doctor;physician;medical doctor
-"Doctors (MD, DO)",Addiction medicine,Addiction medicine doctors,Addiction medicine doctor,addiction doctor;addiction medicine
-"Doctors (MD, DO)",Allergy & immunology,Allergists,Allergist,allergist;immunologist;allergy doctor
-"Doctors (MD, DO)",Anesthesiology,Anesthesiologists,Anesthesiologist,anesthesiologist
-"Doctors (MD, DO)",Arthritis & autoimmune (rheumatology),Rheumatologists,Rheumatologist,rheumatologist
-"Doctors (MD, DO)",Bones & joints (orthopedics),Orthopedic doctors,Orthopedic doctor,orthopedist;orthopedic surgeon;orthopaedic surgeon;orthopedic doctor;bone doctor;hand surgeon
-"Doctors (MD, DO)",Brain & nerves (neurology),Neurologists,Neurologist,neurologist
-"Doctors (MD, DO)",Brain & spine surgery (neurosurgery),Neurosurgeons,Neurosurgeon,neurosurgeon;brain surgeon
-"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)",Cancer and blood specialists,Cancer or blood specialist,oncologist;cancer doctor;hematologist;oncology;radiation oncologist
-"Doctors (MD, DO)",Children & teens (pediatrics),Pediatricians,Pediatrician,pediatrician;childrens doctor;kids doctor;neonatologist
-"Doctors (MD, DO)",Digestive system & liver (gastroenterology),Gastroenterologists,Gastroenterologist,gastroenterologist;gi doctor;hepatologist;liver doctor
-"Doctors (MD, DO)","Ear, nose & throat (ENT)",ENT doctors,ENT doctor,ent doctor;otolaryngologist;ear nose and throat
-"Doctors (MD, DO)",Emergency medicine,Emergency doctors,Emergency doctor,emergency doctor;er doctor
-"Doctors (MD, DO)",Eyes (ophthalmology),Ophthalmologists,Ophthalmologist,ophthalmologist;eye surgeon
-"Doctors (MD, DO)",Family medicine & general practice,Family doctors,Family doctor,family doctor;family physician;primary care doctor;primary care physician;general practitioner;gp
-"Doctors (MD, DO)",General surgery,General surgeons,General surgeon,general surgeon;surgeon;colorectal surgeon;trauma surgeon;transplant surgeon
-"Doctors (MD, DO)",Genetics,Medical geneticists,Medical geneticist,medical geneticist
-"Doctors (MD, DO)",Heart & chest surgery,Heart and chest surgeons,Heart and chest surgeon,heart surgeon;cardiothoracic surgeon;thoracic surgeon
-"Doctors (MD, DO)",Heart (cardiology),Cardiologists,Cardiologist,cardiologist;heart doctor
-"Doctors (MD, DO)",Hormones & diabetes (endocrinology),Endocrinologists,Endocrinologist,endocrinologist;diabetes doctor
-"Doctors (MD, DO)",Hospice & palliative care,Palliative care doctors,Palliative care doctor,palliative care doctor
-"Doctors (MD, DO)",Hospital medicine (hospitalists),Hospitalists,Hospitalist,hospitalist
-"Doctors (MD, DO)",Imaging (radiology),Radiologists,Radiologist,radiologist
-"Doctors (MD, DO)",Infectious disease,Infectious disease doctors,Infectious disease doctor,infectious disease doctor
-"Doctors (MD, DO)",Intensive care (critical care),Critical care doctors,Critical care doctor,intensivist;icu doctor
-"Doctors (MD, DO)",Internal medicine,Internists,Internist,internist
-"Doctors (MD, DO)",Kidneys (nephrology),Nephrologists,Nephrologist,nephrologist;kidney doctor
-"Doctors (MD, DO)",Lab medicine (pathology),Pathologists,Pathologist,pathologist
-"Doctors (MD, DO)",Lungs (pulmonology),Pulmonologists,Pulmonologist,pulmonologist;lung doctor
-"Doctors (MD, DO)",Mental health (psychiatry),Psychiatrists,Psychiatrist,psychiatrist;child psychiatrist
-"Doctors (MD, DO)",Mouth & jaw surgery (oral & maxillofacial),"Oral and maxillofacial surgeons (MD, DO)",Oral and maxillofacial surgeon,
-"Doctors (MD, DO)",Pain medicine,Pain medicine doctors,Pain medicine doctor,pain doctor;pain management;pain specialist
-"Doctors (MD, DO)",Plastic & reconstructive surgery,Plastic surgeons,Plastic surgeon,plastic surgeon;cosmetic surgeon
-"Doctors (MD, DO)",Preventive & occupational medicine,Preventive medicine doctors,Preventive medicine doctor,occupational medicine doctor
-"Doctors (MD, DO)",Rehabilitation medicine (PM&R),Rehabilitation doctors,Rehabilitation doctor,physiatrist
-"Doctors (MD, DO)",Seniors (geriatric medicine),Geriatricians,Geriatrician,geriatrician
-"Doctors (MD, DO)",Skin (dermatology),Dermatologists,Dermatologist,dermatologist;skin doctor
-"Doctors (MD, DO)",Sleep medicine,Sleep medicine doctors,Sleep medicine doctor,sleep doctor;sleep specialist
-"Doctors (MD, DO)",Sports medicine,Sports medicine doctors,Sports medicine doctor,sports medicine doctor
-"Doctors (MD, DO)",Urinary tract (urology),Urologists,Urologist,urologist
-"Doctors (MD, DO)",Veins & arteries (vascular),Vascular specialists,Vascular specialist,vascular surgeon;vein doctor;vein specialist
-"Doctors (MD, DO)",Weight & nutrition (obesity medicine),Obesity medicine doctors,Obesity medicine doctor,weight loss doctor;obesity medicine
-"Doctors (MD, DO)",Women's health (OB/GYN),OB/GYNs,OB/GYN,gynecologist;obgyn;ob gyn;obstetrician;fertility doctor
-"Doctors (MD, DO)",Other doctors,Other doctors,Doctor,
-Nurse practitioners,,Nurse practitioners,Nurse practitioner,nurse practitioner;np
-Nurse practitioners,Acute & critical care,Acute care nurse practitioners,Acute care nurse practitioner,acute care nurse practitioner
-Nurse practitioners,Adults & seniors,Adult and geriatric nurse practitioners,Adult-gerontology nurse practitioner,
-Nurse practitioners,Children & newborns,Pediatric nurse practitioners,Pediatric nurse practitioner,pediatric nurse practitioner
-Nurse practitioners,Family & primary care,Family nurse practitioners,Family nurse practitioner,family nurse practitioner;fnp
-Nurse practitioners,Mental health (psychiatric),Psychiatric nurse practitioners,Psychiatric nurse practitioner,psychiatric nurse practitioner;pmhnp;psych np
-Nurse practitioners,Women's health,Women's health nurse practitioners,Women's health nurse practitioner,
-Nurse practitioners,Other or not specified,Nurse practitioners,Nurse practitioner,
-Physician assistants,,Physician assistants,Physician assistant,physician assistant;physician associate
-Physician assistants,Anesthesiologist assistants,Anesthesiologist assistants,Anesthesiologist assistant,anesthesiologist assistant
-Physician assistants,Medical,Medical physician assistants,Medical physician assistant,
-Physician assistants,Surgical,Surgical physician assistants,Surgical physician assistant,
-Physician assistants,Other or not specified,Physician assistants,Physician assistant,
-Nurses,,Nurses,Nurse,nurse
-Nurses,Clinical nurse specialists,Clinical nurse specialists,Clinical nurse specialist,clinical nurse specialist
-Nurses,Nurse anesthetists (CRNA),Nurse anesthetists,Nurse anesthetist,nurse anesthetist;crna
-Nurses,Nursing assistants & psychiatric technicians,Nursing assistants and psychiatric technicians,Nursing assistant,nurses aide;cna
-Nurses,"Practical & vocational nurses (LPN, LVN)",Licensed practical and vocational nurses,Licensed practical nurse,lpn;lvn;licensed practical nurse
-Nurses,Registered nurses (RN),Registered nurses,Registered nurse,registered nurse;rn
-Midwives & doulas,,Midwives and doulas,Midwife or doula,
-Midwives & doulas,Birth centers,Birth centers,Birth center,birth center;birthing center
-Midwives & doulas,Certified nurse midwives,Certified nurse midwives,Certified nurse midwife,nurse midwife;cnm
-Midwives & doulas,Doulas,Doulas,Doula,doula
-Midwives & doulas,Lactation consultants,Lactation consultants,Lactation consultant,lactation consultant
-Midwives & doulas,Midwives,Midwives,Midwife,midwife
-Dentists,,Dentists,Dentist,dentist;dentistry
-Dentists,Children's dentists,Children's dentists,Children's dentist,pediatric dentist;kids dentist;childrens dentist
-Dentists,"Dentures, crowns & implants (prosthodontists)",Prosthodontists,Prosthodontist,prosthodontist;dental implants
-Dentists,General dentists,General dentists,General dentist,general dentist;family dentist
-Dentists,Gum specialists (periodontists),Periodontists,Periodontist,periodontist;gum specialist
-Dentists,Oral surgeons,Oral surgeons,Oral surgeon,oral surgeon;oral and maxillofacial surgeon
-Dentists,Orthodontists (braces),Orthodontists,Orthodontist,orthodontist;braces
-Dentists,Root canal specialists (endodontists),Endodontists,Endodontist,endodontist;root canal
-Dentists,Other dental specialists,Dental specialists,Dental specialist,
-Dental hygiene & support,,Dental hygienists and support,Dental hygiene and support,
-Dental hygiene & support,Dental assistants & therapists,Dental assistants and therapists,Dental assistant or therapist,dental assistant;dental therapist
-Dental hygiene & support,Dental hygienists,Dental hygienists,Dental hygienist,dental hygienist;hygienist
-Dental hygiene & support,Dental labs,Dental labs,Dental lab,dental lab
-Dental hygiene & support,Denturists,Denturists,Denturist,denturist
-Mental & behavioral health,,Mental health providers,Mental health provider,mental health;mental health provider;behavioral health
-Mental & behavioral health,Addiction counselors,Addiction counselors,Addiction counselor,addiction counselor;substance abuse counselor
-Mental & behavioral health,Addiction treatment centers,Addiction treatment centers,Addiction treatment center,rehab center;addiction treatment;methadone clinic;substance abuse treatment
-Mental & behavioral health,Behavior analysis (ABA),Behavior analysts,Behavior analyst,behavior analyst;aba;aba therapy
-Mental & behavioral health,Counselors,Counselors,Counselor,counselor;mental health counselor;licensed professional counselor;lpc
-Mental & behavioral health,Creative arts therapists,Creative arts therapists,Creative arts therapist,art therapist;music therapist;dance therapist
-Mental & behavioral health,Marriage & family therapists,Marriage and family therapists,Marriage and family therapist,marriage counselor;family therapist;couples therapist;marriage and family therapist
-Mental & behavioral health,Mental health clinics & agencies,Mental health clinics and agencies,Mental health clinic,mental health clinic;mental health center
-Mental & behavioral health,Peer specialists,Peer specialists,Peer specialist,peer specialist
-Mental & behavioral health,Psychiatric nurse practitioners,Psychiatric nurse practitioners,Psychiatric nurse practitioner,
-Mental & behavioral health,Psychiatrists,Psychiatrists,Psychiatrist,
-Mental & behavioral health,Psychologists,Psychologists,Psychologist,psychologist;neuropsychologist
-Mental & behavioral health,Residential treatment,Residential treatment facilities,Residential treatment facility,residential treatment
-Mental & behavioral health,Social workers,Social workers,Social worker,social worker;lcsw
-Mental & behavioral health,Other mental health providers,Other mental health providers,Mental health provider,
-Therapy & rehabilitation,,Therapy and rehabilitation providers,Therapy and rehabilitation provider,rehab;rehabilitation
-Therapy & rehabilitation,Athletic trainers,Athletic trainers,Athletic trainer,athletic trainer
-Therapy & rehabilitation,Exercise physiologists,Exercise physiologists and kinesiotherapists,Exercise physiologist,exercise physiologist
-Therapy & rehabilitation,Occupational therapists,Occupational therapists,Occupational therapist,occupational therapist;occupational therapy
-Therapy & rehabilitation,Occupational therapy assistants,Occupational therapy assistants,Occupational therapy assistant,
-Therapy & rehabilitation,Physical therapists,Physical therapists,Physical therapist,physical therapist;physical therapy;physiotherapist
-Therapy & rehabilitation,Physical therapy assistants,Physical therapy assistants,Physical therapy assistant,
-Therapy & rehabilitation,Prosthetics & orthotics,Prosthetists and orthotists,Prosthetist or orthotist,prosthetist;orthotist;prosthetics;orthotics
-Therapy & rehabilitation,Recreation & developmental therapists,Recreation and developmental therapists,Recreation or developmental therapist,recreation therapist;developmental therapist
-Therapy & rehabilitation,Rehabilitation & physical therapy clinics,Rehabilitation and physical therapy clinics,Rehabilitation clinic,physical therapy clinic;rehab clinic
-Therapy & rehabilitation,Rehabilitation counselors & practitioners,Rehabilitation counselors and practitioners,Rehabilitation counselor,rehabilitation counselor
-Therapy & rehabilitation,Respiratory therapists,Respiratory therapists,Respiratory therapist,respiratory therapist
-Hearing & speech,,Hearing and speech providers,Hearing and speech provider,
-Hearing & speech,Audiologists,Audiologists,Audiologist,audiologist
-Hearing & speech,Hearing & speech centers,Hearing and speech centers,Hearing and speech center,
-Hearing & speech,Hearing aid specialists,Hearing aid specialists,Hearing aid specialist,hearing aid;hearing aids;hearing aid specialist
-Hearing & speech,Speech & audiology assistants,Speech and audiology assistants,Speech or audiology assistant,
-Hearing & speech,Speech-language pathologists,Speech-language pathologists,Speech-language pathologist,speech therapist;speech pathologist;speech therapy
-Eye care,,Eye care providers,Eye care provider,eye care
-Eye care,Eye banks,Eye banks,Eye bank,
-Eye care,Eye surgery centers,Eye surgery centers,Eye surgery center,
-Eye care,Eye technicians,Eye technicians,Eye technician,
-Eye care,Ophthalmologists,Ophthalmologists,Ophthalmologist,
-Eye care,Opticians & eyewear,Opticians and eyewear,Optician or eyewear supplier,optician;glasses;eyeglasses;contact lenses
-Eye care,Optometrists,Optometrists,Optometrist,optometrist;optometry;eye doctor
-Foot care (podiatry),,Podiatrists,Podiatrist,podiatrist;podiatry;foot doctor
-Foot care (podiatry),Foot & ankle surgery,Foot and ankle surgeons,Foot and ankle surgeon,foot surgeon;foot and ankle surgeon
-Foot care (podiatry),Podiatric assistants,Podiatric assistants,Podiatric assistant,
-Foot care (podiatry),Podiatrists,Podiatrists,Podiatrist,
-Foot care (podiatry),Podiatry clinics,Podiatry clinics,Podiatry clinic,
-Chiropractic & complementary care,,Chiropractic and complementary care providers,Complementary care provider,complementary care;alternative medicine
-Chiropractic & complementary care,Acupuncturists,Acupuncturists,Acupuncturist,acupuncturist;acupuncture
-Chiropractic & complementary care,Chiropractors,Chiropractors,Chiropractor,chiropractor;chiropractic
-Chiropractic & complementary care,Homeopaths,Homeopaths,Homeopath,homeopath
-Chiropractic & complementary care,Massage therapists,Massage therapists,Massage therapist,massage therapist;massage
-Chiropractic & complementary care,Naturopaths,Naturopaths,Naturopath,naturopath
-Chiropractic & complementary care,Other complementary care,Other complementary care providers,Complementary care provider,reflexologist;health coach;wellness coach
-Pharmacies,,Pharmacies,Pharmacy,pharmacy;drugstore;drug store
-Pharmacies,Compounding pharmacies,Compounding pharmacies,Compounding pharmacy,compounding pharmacy
-Pharmacies,"Government pharmacies (VA, IHS, military)",Government pharmacies,Government pharmacy,
-Pharmacies,Home infusion pharmacies,Home infusion pharmacies,Home infusion pharmacy,infusion pharmacy
-Pharmacies,Long-term care pharmacies,Long-term care pharmacies,Long-term care pharmacy,long term care pharmacy
-Pharmacies,Mail order pharmacies,Mail order pharmacies,Mail order pharmacy,mail order pharmacy
-Pharmacies,Retail pharmacies,Retail pharmacies,Retail pharmacy,retail pharmacy
-Pharmacies,Specialty pharmacies,Specialty pharmacies,Specialty pharmacy,specialty pharmacy
-Pharmacies,Other or type not given,Pharmacies,Pharmacy,
-Pharmacists,,Pharmacists,Pharmacist,
-Pharmacists,Pharmacists,Pharmacists,Pharmacist,pharmacist
-Pharmacists,Pharmacy technicians,Pharmacy technicians,Pharmacy technician,pharmacy technician
-Nutrition,,Dietitians and nutritionists,Dietitian or nutritionist,nutrition
-Nutrition,Dietetic technicians & managers,Dietetic technicians and dietary managers,Dietetic technician,
-Nutrition,Dietitians,Dietitians,Dietitian,dietitian;dietician;registered dietitian
-Nutrition,Nutritionists,Nutritionists,Nutritionist,nutritionist
-Hospitals,,Hospitals,Hospital,hospital
-Hospitals,Children's hospitals,Children's hospitals,Children's hospital,childrens hospital
-Hospitals,Critical access hospitals,Critical access hospitals,Critical access hospital,critical access hospital
-Hospitals,General hospitals,General hospitals,General hospital,general hospital
-Hospitals,Hospital units,Hospital units,Hospital unit,
-Hospitals,Long-term & specialty hospitals,Long-term and specialty hospitals,Long-term or specialty hospital,long term care hospital
-Hospitals,Military hospitals,Military hospitals,Military hospital,military hospital
-Hospitals,Psychiatric hospitals,Psychiatric hospitals,Psychiatric hospital,psychiatric hospital
-Hospitals,Rehabilitation hospitals,Rehabilitation hospitals,Rehabilitation hospital,rehabilitation hospital;rehab hospital
-Hospitals,Religious nonmedical institutions,Religious nonmedical institutions,Religious nonmedical institution,
-Clinics & centers,,Clinics and centers,Clinic,clinic;health center
-Clinics & centers,Cancer centers,Cancer centers,Cancer center,cancer center
-Clinics & centers,Dental clinics,Dental clinics,Dental clinic,dental clinic
-Clinics & centers,Dialysis centers,Dialysis centers,Dialysis center,dialysis;dialysis center
-Clinics & centers,Family planning & fertility,Family planning and fertility clinics,Family planning clinic,family planning;fertility clinic
-Clinics & centers,Imaging centers,Imaging centers,Imaging center,imaging center;mri;mammogram;mammography;x ray
-Clinics & centers,Military & VA clinics,Military and VA clinics,Military or VA clinic,va clinic
-Clinics & centers,Multi-specialty & specialty clinics,Multi-specialty and specialty clinics,Clinic,multispecialty clinic;specialty clinic
-Clinics & centers,Occupational & employee health,Occupational health clinics,Occupational health clinic,occupational health
-Clinics & centers,Primary care & community health centers,Primary care and community health centers,Community health center,community health center;fqhc;federally qualified health center;rural health clinic;primary care clinic
-Clinics & centers,Rehabilitation & physical therapy clinics,Rehabilitation and physical therapy clinics,Rehabilitation clinic,
-Clinics & centers,Sleep centers,Sleep centers,Sleep center,sleep center;sleep lab
-Clinics & centers,Surgery centers,Surgery centers,Surgery center,surgery center;surgical center;ambulatory surgery center
-Clinics & centers,Urgent care & emergency centers,Urgent care and emergency centers,Urgent care center,urgent care;urgent care center;walk in clinic
-Nursing homes & senior living,,Nursing homes and senior living,Nursing home or senior living,senior living
-Nursing homes & senior living,Adult care homes,Adult care homes,Adult care home,adult care home;group home
-Nursing homes & senior living,Adult day care,Adult day care centers,Adult day care center,adult day care
-Nursing homes & senior living,Assisted living,Assisted living facilities,Assisted living facility,assisted living
-Nursing homes & senior living,Memory care,Memory care centers,Memory care center,memory care;dementia care;alzheimers care
-Nursing homes & senior living,Nursing homes,Nursing homes,Nursing home,nursing home;skilled nursing;skilled nursing facility;snf
-Nursing homes & senior living,PACE programs,PACE programs,PACE program,pace program
-Home care & hospice,,Home care and hospice providers,Home care provider,
-Home care & hospice,Home health agencies,Home health agencies,Home health agency,home health;home health agency;home care
-Home care & hospice,Home infusion,Home infusion agencies,Home infusion agency,home infusion
-Home care & hospice,Home modifications,Home and vehicle modification contractors,Modification contractor,
-Home care & hospice,Hospice,Hospices,Hospice,hospice
-Home care & hospice,Meals at home,Home-delivered meal providers,Meal provider,meals on wheels;home delivered meals
-Home care & hospice,Nursing care agencies,Nursing care agencies,Nursing care agency,
-Home care & hospice,Personal care & in-home support,Personal care and in-home support providers,Personal care provider,personal care;home health aide;caregiver;personal care attendant
-Community & support services,,Community and support services,Community service,social services
-Community & support services,Case management & care coordination,Case managers and care coordinators,Case manager,case manager;care coordinator;case management
-Community & support services,Community health workers & educators,Community health workers and educators,Community health worker,community health worker;health educator;interpreter
-Community & support services,Developmental disability services,Developmental disability services,Developmental disability service,developmental disability services
-Community & support services,Early intervention,Early intervention providers,Early intervention provider,early intervention
-Community & support services,Public health & social service agencies,Public health and social service agencies,Public or social service agency,public health
-Community & support services,Residential care & respite,Residential care and respite providers,Residential or respite care,respite care
-Labs & technicians,,Labs and technicians,Lab or technician,
-Labs & technicians,Blood & organ banks,Blood and organ banks,Blood or organ bank,blood bank;organ procurement
-Labs & technicians,Clinical laboratories,Clinical laboratories,Clinical laboratory,lab;laboratory;clinical lab;blood test
-Labs & technicians,Imaging technologists,Imaging technologists,Imaging technologist,radiologic technologist;sonographer;x ray technician
-Labs & technicians,Lab technicians & phlebotomists,Lab technicians and phlebotomists,Lab technician,phlebotomist;medical technologist
-Labs & technicians,Surgical technologists & assistants,Surgical technologists and assistants,Surgical technologist,surgical technologist;surgical assistant
-Labs & technicians,Other technicians,Other technicians and technologists,Technician,
-Medical equipment & supplies,,Medical equipment and supply companies,Medical equipment supplier,medical equipment;medical supplies;dme
-Medical equipment & supplies,Durable medical equipment,Durable medical equipment suppliers,Medical equipment supplier,durable medical equipment;wheelchair
-Medical equipment & supplies,Emergency response systems,Emergency response system companies,Emergency response company,medical alert
-Medical equipment & supplies,Nutrition & medical foods,Nutrition supply companies,Nutrition supplier,
-Medical equipment & supplies,Oxygen equipment,Oxygen suppliers,Oxygen supplier,oxygen;oxygen supplier
-Medical equipment & supplies,Prosthetic & orthotic suppliers,Prosthetic and orthotic suppliers,Prosthetic or orthotic supplier,
-Ambulance & transportation,,Ambulance and transportation services,Transportation service,
-Ambulance & transportation,Ambulance,Ambulance services,Ambulance service,ambulance;air ambulance
-Ambulance & transportation,EMTs & paramedics,EMTs and paramedics,EMT or paramedic,emt;paramedic
-Ambulance & transportation,Non-emergency medical transportation,Non-emergency medical transportation,Medical transportation,medical transportation;nemt;medical transport
-Ambulance & transportation,Transportation brokers,Transportation brokers,Transportation broker,
-Health plans,,Health plans,Health plan,health plan;hmo;ppo
-Health plans,Health plans,Health plans,Health plan,
-Other,,Other providers,Health care provider,
-Other,Genetic counselors & geneticists,Genetic counselors and geneticists,Genetic counselor,genetic counselor
-Other,Medical groups,Medical groups,Medical group,
-Other,Military health care providers,Military health care providers,Military health care provider,
-Other,Students in training,Students in training,Student in training,student
-Other,Veterinarians,Veterinarians,Veterinarian,veterinarian
-Other,Other,Other providers,Health care provider,
+category,subcategory,title,singular,synonyms,description
+"Doctors (MD, DO)",,Doctors,Doctor,doctor;physician;medical doctor,"Medical doctors (MD) and doctors of osteopathic medicine (DO) diagnose and treat illness and injury, prescribe medicine and perform procedures, as generalists or in a specialty."
+"Doctors (MD, DO)",Addiction medicine,Addiction medicine doctors,Addiction medicine doctor,addiction doctor;addiction medicine,"Doctors who treat addiction to alcohol, opioids and other drugs, including with medicines that help recovery."
+"Doctors (MD, DO)",Allergy & immunology,Allergists,Allergist,allergist;immunologist;allergy doctor,"Allergists diagnose and treat allergies, asthma and problems of the immune system."
+"Doctors (MD, DO)",Anesthesiology,Anesthesiologists,Anesthesiologist,anesthesiologist,"Anesthesiologists keep patients safe and pain-free during surgery and procedures, and some treat chronic pain."
+"Doctors (MD, DO)",Arthritis & autoimmune (rheumatology),Rheumatologists,Rheumatologist,rheumatologist,"Rheumatologists treat arthritis and autoimmune diseases such as lupus that affect the joints, muscles and other organs."
+"Doctors (MD, DO)",Bones & joints (orthopedics),Orthopedic doctors,Orthopedic doctor,orthopedist;orthopedic surgeon;orthopaedic surgeon;orthopedic doctor;bone doctor;hand surgeon,"Orthopedic doctors and surgeons treat injuries and diseases of the bones, joints, muscles and spine, including joint replacement."
+"Doctors (MD, DO)",Brain & nerves (neurology),Neurologists,Neurologist,neurologist,"Neurologists diagnose and treat diseases of the brain, spinal cord and nerves, such as stroke, epilepsy, migraine and Parkinson's."
+"Doctors (MD, DO)",Brain & spine surgery (neurosurgery),Neurosurgeons,Neurosurgeon,neurosurgeon;brain surgeon,"Neurosurgeons operate on the brain, spine and nerves, for example for tumors, injuries and back problems."
+"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)",Cancer and blood specialists,Cancer or blood specialist,oncologist;cancer doctor;hematologist;oncology;radiation oncologist,"Oncologists and hematologists treat cancer and blood diseases with chemotherapy, radiation, surgery and other therapies."
+"Doctors (MD, DO)",Children & teens (pediatrics),Pediatricians,Pediatrician,pediatrician;childrens doctor;kids doctor;neonatologist,"Pediatricians care for babies, children and teenagers: checkups, vaccines and illness, or a pediatric specialty."
+"Doctors (MD, DO)",Digestive system & liver (gastroenterology),Gastroenterologists,Gastroenterologist,gastroenterologist;gi doctor;hepatologist;liver doctor,"Gastroenterologists treat the stomach, intestines, liver and pancreas, and perform colonoscopies and endoscopies."
+"Doctors (MD, DO)","Ear, nose & throat (ENT)",ENT doctors,ENT doctor,ent doctor;otolaryngologist;ear nose and throat,"ENT doctors (otolaryngologists) treat the ears, nose, sinuses, throat and neck, medically and with surgery."
+"Doctors (MD, DO)",Emergency medicine,Emergency doctors,Emergency doctor,emergency doctor;er doctor,"Emergency doctors treat urgent illness and injury, mostly in hospital emergency departments."
+"Doctors (MD, DO)",Eyes (ophthalmology),Ophthalmologists,Ophthalmologist,ophthalmologist;eye surgeon,"Ophthalmologists are medical doctors who diagnose and treat eye diseases and perform eye surgery, such as for cataracts."
+"Doctors (MD, DO)",Family medicine & general practice,Family doctors,Family doctor,family doctor;family physician;primary care doctor;primary care physician;general practitioner;gp,"Family doctors provide everyday care for people of all ages: checkups, common illnesses, long-term conditions and referrals."
+"Doctors (MD, DO)",General surgery,General surgeons,General surgeon,general surgeon;surgeon;colorectal surgeon;trauma surgeon;transplant surgeon,"General surgeons operate on the abdomen, skin, breast and soft tissue, and treat injuries; some focus on trauma, transplants or the colon."
+"Doctors (MD, DO)",Genetics,Medical geneticists,Medical geneticist,medical geneticist,Medical geneticists diagnose and manage inherited conditions and explain genetic test results.
+"Doctors (MD, DO)",Heart & chest surgery,Heart and chest surgeons,Heart and chest surgeon,heart surgeon;cardiothoracic surgeon;thoracic surgeon,"Cardiothoracic surgeons operate on the heart, lungs and chest, for example bypass and valve surgery."
+"Doctors (MD, DO)",Heart (cardiology),Cardiologists,Cardiologist,cardiologist;heart doctor,"Cardiologists diagnose and treat heart and blood vessel problems such as heart disease, heart failure and irregular heartbeats."
+"Doctors (MD, DO)",Hormones & diabetes (endocrinology),Endocrinologists,Endocrinologist,endocrinologist;diabetes doctor,"Endocrinologists treat diabetes, thyroid problems and other hormone disorders."
+"Doctors (MD, DO)",Hospice & palliative care,Palliative care doctors,Palliative care doctor,palliative care doctor,Palliative care doctors relieve pain and other symptoms of serious illness and care for people near the end of life.
+"Doctors (MD, DO)",Hospital medicine (hospitalists),Hospitalists,Hospitalist,hospitalist,"Hospitalists care for patients while they are in the hospital, instead of their regular doctor."
+"Doctors (MD, DO)",Imaging (radiology),Radiologists,Radiologist,radiologist,"Radiologists read X-rays, CT, MRI and ultrasound scans, and some treat conditions with image-guided procedures."
+"Doctors (MD, DO)",Infectious disease,Infectious disease doctors,Infectious disease doctor,infectious disease doctor,"Infectious disease doctors treat complex or unusual infections, including HIV, and advise on preventing infection."
+"Doctors (MD, DO)",Intensive care (critical care),Critical care doctors,Critical care doctor,intensivist;icu doctor,Critical care doctors look after the sickest patients in intensive care units.
+"Doctors (MD, DO)",Internal medicine,Internists,Internist,internist,"Internists are doctors for adults: they prevent, diagnose and treat a wide range of illnesses, often as primary care doctors."
+"Doctors (MD, DO)",Kidneys (nephrology),Nephrologists,Nephrologist,nephrologist;kidney doctor,"Nephrologists treat kidney disease and high blood pressure, and manage dialysis and kidney transplants."
+"Doctors (MD, DO)",Lab medicine (pathology),Pathologists,Pathologist,pathologist,"Pathologists diagnose disease by examining tissue, blood and other samples in the laboratory."
+"Doctors (MD, DO)",Lungs (pulmonology),Pulmonologists,Pulmonologist,pulmonologist;lung doctor,"Pulmonologists treat lung and breathing problems such as asthma, COPD and sleep apnea."
+"Doctors (MD, DO)",Mental health (psychiatry),Psychiatrists,Psychiatrist,psychiatrist;child psychiatrist,"Psychiatrists are medical doctors who diagnose and treat mental illness, with medicine and therapy."
+"Doctors (MD, DO)",Mouth & jaw surgery (oral & maxillofacial),"Oral and maxillofacial surgeons (MD, DO)",Oral and maxillofacial surgeon,,"Oral and maxillofacial surgeons operate on the mouth, jaws and face, from wisdom teeth to jaw reconstruction."
+"Doctors (MD, DO)",Pain medicine,Pain medicine doctors,Pain medicine doctor,pain doctor;pain management;pain specialist,"Pain medicine doctors diagnose and treat long-lasting pain, often with injections, nerve procedures and medicines."
+"Doctors (MD, DO)",Plastic & reconstructive surgery,Plastic surgeons,Plastic surgeon,plastic surgeon;cosmetic surgeon,"Plastic surgeons reconstruct the body after injury, illness or birth defects, and perform cosmetic surgery."
+"Doctors (MD, DO)",Preventive & occupational medicine,Preventive medicine doctors,Preventive medicine doctor,occupational medicine doctor,"Preventive medicine doctors focus on keeping people healthy, including workplace health, public health and travel medicine."
+"Doctors (MD, DO)",Rehabilitation medicine (PM&R),Rehabilitation doctors,Rehabilitation doctor,physiatrist,"Rehabilitation doctors (physiatrists) help people recover function after injury, stroke or surgery, without operating."
+"Doctors (MD, DO)",Seniors (geriatric medicine),Geriatricians,Geriatrician,geriatrician,"Geriatricians care for older adults, especially those with several health problems or many medicines."
+"Doctors (MD, DO)",Skin (dermatology),Dermatologists,Dermatologist,dermatologist;skin doctor,"Dermatologists treat conditions of the skin, hair and nails, including skin cancer, acne and eczema."
+"Doctors (MD, DO)",Sleep medicine,Sleep medicine doctors,Sleep medicine doctor,sleep doctor;sleep specialist,Sleep medicine doctors diagnose and treat sleep disorders such as sleep apnea and insomnia.
+"Doctors (MD, DO)",Sports medicine,Sports medicine doctors,Sports medicine doctor,sports medicine doctor,Sports medicine doctors treat sports and exercise injuries and help active people stay healthy.
+"Doctors (MD, DO)",Urinary tract (urology),Urologists,Urologist,urologist,"Urologists treat the kidneys, bladder and urinary tract, and the male reproductive organs, medically and with surgery."
+"Doctors (MD, DO)",Veins & arteries (vascular),Vascular specialists,Vascular specialist,vascular surgeon;vein doctor;vein specialist,"Vascular specialists treat problems of the arteries and veins, such as blocked arteries, aneurysms and varicose veins."
+"Doctors (MD, DO)",Weight & nutrition (obesity medicine),Obesity medicine doctors,Obesity medicine doctor,weight loss doctor;obesity medicine,"Obesity medicine doctors help people lose weight and treat weight-related conditions, with diet, medicines and referral for surgery."
+"Doctors (MD, DO)",Women's health (OB/GYN),OB/GYNs,OB/GYN,gynecologist;obgyn;ob gyn;obstetrician;fertility doctor,"OB/GYNs care for women's reproductive health, pregnancy and childbirth, and treat conditions of the female reproductive organs."
+"Doctors (MD, DO)",Other doctors,Other doctors,Doctor,,"Doctors in other specialties, such as osteopathic manipulation, hyperbaric medicine and independent medical exams."
+Nurse practitioners,,Nurse practitioners,Nurse practitioner,nurse practitioner;np,"Nurse practitioners are registered nurses with graduate training who examine patients, diagnose, prescribe and manage care, often in primary care."
+Nurse practitioners,Acute & critical care,Acute care nurse practitioners,Acute care nurse practitioner,acute care nurse practitioner,"Acute care nurse practitioners treat seriously ill patients, mostly in hospitals and intensive care units."
+Nurse practitioners,Adults & seniors,Adult and geriatric nurse practitioners,Adult-gerontology nurse practitioner,,Adult-gerontology nurse practitioners provide primary or specialty care for adults and older adults.
+Nurse practitioners,Children & newborns,Pediatric nurse practitioners,Pediatric nurse practitioner,pediatric nurse practitioner,"Pediatric and neonatal nurse practitioners care for children and newborns, from checkups to intensive care."
+Nurse practitioners,Family & primary care,Family nurse practitioners,Family nurse practitioner,family nurse practitioner;fnp,"Family nurse practitioners provide everyday care for people of all ages: checkups, common illnesses and long-term conditions."
+Nurse practitioners,Mental health (psychiatric),Psychiatric nurse practitioners,Psychiatric nurse practitioner,psychiatric nurse practitioner;pmhnp;psych np,"Psychiatric nurse practitioners diagnose and treat mental illness, including prescribing medicine."
+Nurse practitioners,Women's health,Women's health nurse practitioners,Women's health nurse practitioner,,"Women's health nurse practitioners care for women's reproductive health, pregnancy and gynecologic conditions."
+Nurse practitioners,Other or not specified,Nurse practitioners,Nurse practitioner,,"Nurse practitioners who didn't list a focus, or work in occupational, school or community health."
+Physician assistants,,Physician assistants,Physician assistant,physician assistant;physician associate,"Physician assistants are licensed clinicians who examine, diagnose, treat and prescribe as part of a team with doctors."
+Physician assistants,Anesthesiologist assistants,Anesthesiologist assistants,Anesthesiologist assistant,anesthesiologist assistant,"Anesthesiologist assistants help give anesthesia, working under an anesthesiologist."
+Physician assistants,Medical,Medical physician assistants,Medical physician assistant,,Medical physician assistants work in primary care and medical specialties.
+Physician assistants,Surgical,Surgical physician assistants,Surgical physician assistant,,Surgical physician assistants assist in surgery and care for patients before and after operations.
+Physician assistants,Other or not specified,Physician assistants,Physician assistant,,Physician assistants who didn't list a medical or surgical focus.
+Nurses,,Nurses,Nurse,nurse,"Nurses care for patients, give medicines and treatments, watch for changes in their condition and teach patients and families."
+Nurses,Clinical nurse specialists,Clinical nurse specialists,Clinical nurse specialist,clinical nurse specialist,Clinical nurse specialists are nurses with graduate training in a specialty who care for patients and guide nursing practice.
+Nurses,Nurse anesthetists (CRNA),Nurse anesthetists,Nurse anesthetist,nurse anesthetist;crna,"Certified registered nurse anesthetists give anesthesia for surgery, procedures and childbirth."
+Nurses,Nursing assistants & psychiatric technicians,Nursing assistants and psychiatric technicians,Nursing assistant,nurses aide;cna,Nursing assistants and psychiatric technicians help patients with daily care under the direction of nurses.
+Nurses,"Practical & vocational nurses (LPN, LVN)",Licensed practical and vocational nurses,Licensed practical nurse,lpn;lvn;licensed practical nurse,Licensed practical and vocational nurses give basic nursing care under registered nurses or doctors.
+Nurses,Registered nurses (RN),Registered nurses,Registered nurse,registered nurse;rn,"Registered nurses care for patients, give treatments and medicines and coordinate care, in many settings and specialties."
+Midwives & doulas,,Midwives and doulas,Midwife or doula,,"Midwives care for women through pregnancy, birth and afterwards; doulas give non-medical support during pregnancy and birth."
+Midwives & doulas,Birth centers,Birth centers,Birth center,birth center;birthing center,"Birth centers are places for low-risk births, usually run by midwives, outside a hospital."
+Midwives & doulas,Certified nurse midwives,Certified nurse midwives,Certified nurse midwife,nurse midwife;cnm,"Certified nurse midwives are advanced practice nurses who care for women in pregnancy, birth and gynecologic care."
+Midwives & doulas,Doulas,Doulas,Doula,doula,"Doulas give emotional and practical support before, during and after birth; they don't give medical care."
+Midwives & doulas,Lactation consultants,Lactation consultants,Lactation consultant,lactation consultant,Lactation consultants help mothers and babies with breastfeeding.
+Midwives & doulas,Midwives,Midwives,Midwife,midwife,"Midwives care for women during pregnancy and birth, often at home or in birth centers."
+Dentists,,Dentists,Dentist,dentist;dentistry,"Dentists diagnose and treat problems of the teeth, gums and mouth, as general dentists or in a dental specialty."
+Dentists,Children's dentists,Children's dentists,Children's dentist,pediatric dentist;kids dentist;childrens dentist,"Pediatric dentists care for the teeth of babies, children and teenagers."
+Dentists,"Dentures, crowns & implants (prosthodontists)",Prosthodontists,Prosthodontist,prosthodontist;dental implants,"Prosthodontists restore and replace teeth with crowns, bridges, dentures and implants."
+Dentists,General dentists,General dentists,General dentist,general dentist;family dentist,"General dentists provide checkups, cleanings, fillings, crowns and other everyday dental care."
+Dentists,Gum specialists (periodontists),Periodontists,Periodontist,periodontist;gum specialist,Periodontists treat gum disease and place dental implants.
+Dentists,Oral surgeons,Oral surgeons,Oral surgeon,oral surgeon;oral and maxillofacial surgeon,"Oral surgeons remove teeth, including wisdom teeth, place implants and operate on the jaw and face."
+Dentists,Orthodontists (braces),Orthodontists,Orthodontist,orthodontist;braces,Orthodontists straighten teeth and correct the bite with braces and aligners.
+Dentists,Root canal specialists (endodontists),Endodontists,Endodontist,endodontist;root canal,"Endodontists treat the inside of the tooth, mostly with root canal treatment."
+Dentists,Other dental specialists,Dental specialists,Dental specialist,,"Dentists in other specialties, such as dental anesthesia, oral pathology, oral radiology and facial pain."
+Dental hygiene & support,,Dental hygienists and support,Dental hygiene and support,,"Dental hygienists, assistants, therapists, denturists and dental labs support dental care: cleanings, X-rays, dentures and dental appliances."
+Dental hygiene & support,Dental assistants & therapists,Dental assistants and therapists,Dental assistant or therapist,dental assistant;dental therapist,Dental assistants help dentists during treatment; dental therapists provide some basic care themselves where states allow it.
+Dental hygiene & support,Dental hygienists,Dental hygienists,Dental hygienist,dental hygienist;hygienist,"Dental hygienists clean teeth, take X-rays and teach patients how to care for their teeth and gums."
+Dental hygiene & support,Dental labs,Dental labs,Dental lab,dental lab,"Dental labs make crowns, bridges, dentures and other dental appliances."
+Dental hygiene & support,Denturists,Denturists,Denturist,denturist,"Denturists make and fit dentures directly for patients, where states allow it."
+Mental & behavioral health,,Mental health providers,Mental health provider,mental health;mental health provider;behavioral health,"Mental and behavioral health providers assess and treat emotional, behavioral and substance use problems with therapy, counseling and, for some, medicine."
+Mental & behavioral health,Addiction counselors,Addiction counselors,Addiction counselor,addiction counselor;substance abuse counselor,Addiction counselors help people recover from alcohol and drug problems through counseling and support.
+Mental & behavioral health,Addiction treatment centers,Addiction treatment centers,Addiction treatment center,rehab center;addiction treatment;methadone clinic;substance abuse treatment,"Addiction treatment centers offer outpatient or residential programs for substance use, including methadone clinics."
+Mental & behavioral health,Behavior analysis (ABA),Behavior analysts,Behavior analyst,behavior analyst;aba;aba therapy,"Behavior analysts and technicians use applied behavior analysis (ABA), often with children with autism."
+Mental & behavioral health,Counselors,Counselors,Counselor,counselor;mental health counselor;licensed professional counselor;lpc,"Licensed counselors provide talk therapy for emotional, mental health and life problems."
+Mental & behavioral health,Creative arts therapists,Creative arts therapists,Creative arts therapist,art therapist;music therapist;dance therapist,"Art, music, dance and drama therapists use creative activities to help people express themselves and heal."
+Mental & behavioral health,Marriage & family therapists,Marriage and family therapists,Marriage and family therapist,marriage counselor;family therapist;couples therapist;marriage and family therapist,"Marriage and family therapists treat relationship and family problems, with couples, families or individuals."
+Mental & behavioral health,Mental health clinics & agencies,Mental health clinics and agencies,Mental health clinic,mental health clinic;mental health center,"Mental health clinics and agencies provide therapy, psychiatric care and support services in the community."
+Mental & behavioral health,Peer specialists,Peer specialists,Peer specialist,peer specialist,Peer specialists use their own recovery from mental illness or addiction to support others.
+Mental & behavioral health,Psychiatric nurse practitioners,Psychiatric nurse practitioners,Psychiatric nurse practitioner,,"Psychiatric nurse practitioners diagnose and treat mental illness, including prescribing medicine."
+Mental & behavioral health,Psychiatrists,Psychiatrists,Psychiatrist,,"Psychiatrists are medical doctors who diagnose and treat mental illness, with medicine and therapy."
+Mental & behavioral health,Psychologists,Psychologists,Psychologist,psychologist;neuropsychologist,Psychologists assess and treat mental health problems with testing and talk therapy; most don't prescribe medicine.
+Mental & behavioral health,Residential treatment,Residential treatment facilities,Residential treatment facility,residential treatment,Residential treatment facilities give round-the-clock mental health care in a live-in setting.
+Mental & behavioral health,Social workers,Social workers,Social worker,social worker;lcsw,"Clinical social workers provide therapy and help people with practical problems such as housing, benefits and family needs."
+Mental & behavioral health,Other mental health providers,Other mental health providers,Mental health provider,,"Other mental health providers, such as psychoanalysts and prevention specialists."
+Therapy & rehabilitation,,Therapy and rehabilitation providers,Therapy and rehabilitation provider,rehab;rehabilitation,"Therapists help people recover movement, strength, breathing and everyday skills after illness or injury, or with a lasting condition."
+Therapy & rehabilitation,Athletic trainers,Athletic trainers,Athletic trainer,athletic trainer,"Athletic trainers prevent and treat sports injuries, often for schools and teams."
+Therapy & rehabilitation,Exercise physiologists,Exercise physiologists and kinesiotherapists,Exercise physiologist,exercise physiologist,Exercise physiologists and kinesiotherapists design exercise programs for health conditions and recovery.
+Therapy & rehabilitation,Occupational therapists,Occupational therapists,Occupational therapist,occupational therapist;occupational therapy,"Occupational therapists help people do everyday activities, such as dressing, working and writing, after illness or injury."
+Therapy & rehabilitation,Occupational therapy assistants,Occupational therapy assistants,Occupational therapy assistant,,Occupational therapy assistants carry out treatment plans under an occupational therapist.
+Therapy & rehabilitation,Physical therapists,Physical therapists,Physical therapist,physical therapist;physical therapy;physiotherapist,"Physical therapists help people move better and reduce pain with exercise, hands-on care and education."
+Therapy & rehabilitation,Physical therapy assistants,Physical therapy assistants,Physical therapy assistant,,Physical therapy assistants carry out treatment plans under a physical therapist.
+Therapy & rehabilitation,Prosthetics & orthotics,Prosthetists and orthotists,Prosthetist or orthotist,prosthetist;orthotist;prosthetics;orthotics,Prosthetists and orthotists design and fit artificial limbs and braces.
+Therapy & rehabilitation,Recreation & developmental therapists,Recreation and developmental therapists,Recreation or developmental therapist,recreation therapist;developmental therapist,Recreation and developmental therapists use activities and play to build skills and independence.
+Therapy & rehabilitation,Rehabilitation & physical therapy clinics,Rehabilitation and physical therapy clinics,Rehabilitation clinic,physical therapy clinic;rehab clinic,"Clinics that provide physical, occupational and other rehabilitation therapy."
+Therapy & rehabilitation,Rehabilitation counselors & practitioners,Rehabilitation counselors and practitioners,Rehabilitation counselor,rehabilitation counselor,Rehabilitation counselors and practitioners help people with disabilities live and work independently.
+Therapy & rehabilitation,Respiratory therapists,Respiratory therapists,Respiratory therapist,respiratory therapist,"Respiratory therapists treat breathing problems, manage ventilators and give breathing treatments."
+Hearing & speech,,Hearing and speech providers,Hearing and speech provider,,"Hearing and speech providers test and treat hearing loss and problems with speech, language and swallowing."
+Hearing & speech,Audiologists,Audiologists,Audiologist,audiologist,Audiologists test hearing and balance and fit hearing aids.
+Hearing & speech,Hearing & speech centers,Hearing and speech centers,Hearing and speech center,,"Centers that test and treat hearing, speech and communication problems."
+Hearing & speech,Hearing aid specialists,Hearing aid specialists,Hearing aid specialist,hearing aid;hearing aids;hearing aid specialist,Hearing aid specialists test hearing and fit and sell hearing aids.
+Hearing & speech,Speech & audiology assistants,Speech and audiology assistants,Speech or audiology assistant,,Assistants who support speech-language pathologists and audiologists.
+Hearing & speech,Speech-language pathologists,Speech-language pathologists,Speech-language pathologist,speech therapist;speech pathologist;speech therapy,"Speech-language pathologists treat problems with speech, language, voice and swallowing."
+Eye care,,Eye care providers,Eye care provider,eye care,"Eye care providers check vision, prescribe glasses and contact lenses and diagnose and treat eye diseases."
+Eye care,Eye banks,Eye banks,Eye bank,,Eye banks collect and supply donated corneas for transplant.
+Eye care,Eye surgery centers,Eye surgery centers,Eye surgery center,,"Outpatient centers for eye surgery, such as cataract surgery."
+Eye care,Eye technicians,Eye technicians,Eye technician,,Ophthalmic and optometric technicians help eye doctors with tests and patient care.
+Eye care,Ophthalmologists,Ophthalmologists,Ophthalmologist,,Ophthalmologists are medical doctors who diagnose and treat eye diseases and perform eye surgery.
+Eye care,Opticians & eyewear,Opticians and eyewear,Optician or eyewear supplier,optician;glasses;eyeglasses;contact lenses,Opticians fit and sell glasses and contact lenses made to an eye doctor's prescription.
+Eye care,Optometrists,Optometrists,Optometrist,optometrist;optometry;eye doctor,"Optometrists (OD) examine eyes, prescribe glasses and contact lenses and treat many eye conditions."
+Foot care (podiatry),,Podiatrists,Podiatrist,podiatrist;podiatry;foot doctor,"Podiatrists (DPM) diagnose and treat problems of the foot and ankle, including surgery."
+Foot care (podiatry),Foot & ankle surgery,Foot and ankle surgeons,Foot and ankle surgeon,foot surgeon;foot and ankle surgeon,Podiatric and orthopedic surgeons who operate on the foot and ankle.
+Foot care (podiatry),Podiatric assistants,Podiatric assistants,Podiatric assistant,,Assistants who help podiatrists with patient care.
+Foot care (podiatry),Podiatrists,Podiatrists,Podiatrist,,"Podiatrists treat foot and ankle problems such as heel pain, bunions, diabetic foot care and injuries."
+Foot care (podiatry),Podiatry clinics,Podiatry clinics,Podiatry clinic,,Clinics that provide foot and ankle care.
+Chiropractic & complementary care,,Chiropractic and complementary care providers,Complementary care provider,complementary care;alternative medicine,"Chiropractors and complementary care providers treat with hands-on methods, acupuncture, massage and natural therapies."
+Chiropractic & complementary care,Acupuncturists,Acupuncturists,Acupuncturist,acupuncturist;acupuncture,Acupuncturists treat pain and other conditions by placing thin needles at points on the body.
+Chiropractic & complementary care,Chiropractors,Chiropractors,Chiropractor,chiropractor;chiropractic,"Chiropractors diagnose and treat problems of the muscles, bones and joints, especially the back and neck, mostly with hands-on adjustments and exercise."
+Chiropractic & complementary care,Homeopaths,Homeopaths,Homeopath,homeopath,Homeopaths treat with highly diluted natural remedies.
+Chiropractic & complementary care,Massage therapists,Massage therapists,Massage therapist,massage therapist;massage,Massage therapists use touch and pressure on muscles to relieve pain and tension.
+Chiropractic & complementary care,Naturopaths,Naturopaths,Naturopath,naturopath,"Naturopaths treat with nutrition, herbs and lifestyle changes; what they may do depends on the state."
+Chiropractic & complementary care,Other complementary care,Other complementary care providers,Complementary care provider,reflexologist;health coach;wellness coach,"Reflexologists, naprapaths, health coaches and other complementary care providers."
+Pharmacies,,Pharmacies,Pharmacy,pharmacy;drugstore;drug store,"Pharmacies dispense prescription medicines and supplies, from retail stores to mail order, specialty and long-term care pharmacies."
+Pharmacies,Compounding pharmacies,Compounding pharmacies,Compounding pharmacy,compounding pharmacy,"Compounding pharmacies prepare medicines made to order for a patient, such as a different strength or form."
+Pharmacies,"Government pharmacies (VA, IHS, military)",Government pharmacies,Government pharmacy,,"Pharmacies of the VA, the Indian Health Service and the military."
+Pharmacies,Home infusion pharmacies,Home infusion pharmacies,Home infusion pharmacy,infusion pharmacy,Home infusion pharmacies prepare IV and injectable medicines given at home.
+Pharmacies,Long-term care pharmacies,Long-term care pharmacies,Long-term care pharmacy,long term care pharmacy,Long-term care pharmacies supply medicines to nursing homes and assisted living facilities.
+Pharmacies,Mail order pharmacies,Mail order pharmacies,Mail order pharmacy,mail order pharmacy,Mail order pharmacies send prescriptions by mail.
+Pharmacies,Retail pharmacies,Retail pharmacies,Retail pharmacy,retail pharmacy,Retail pharmacies are drugstores and other community pharmacies where people fill prescriptions.
+Pharmacies,Specialty pharmacies,Specialty pharmacies,Specialty pharmacy,specialty pharmacy,"Specialty pharmacies supply expensive or complex medicines, such as for cancer or multiple sclerosis, with extra support."
+Pharmacies,Other or type not given,Pharmacies,Pharmacy,,"Pharmacies that didn't list a type, and clinic, hospital and other pharmacies."
+Pharmacists,,Pharmacists,Pharmacist,,"Pharmacists check and dispense prescriptions, advise on medicines and their side effects, and in some settings manage drug therapy."
+Pharmacists,Pharmacists,Pharmacists,Pharmacist,pharmacist,"Pharmacists check and dispense prescriptions, advise on medicines and, in some settings, manage drug therapy."
+Pharmacists,Pharmacy technicians,Pharmacy technicians,Pharmacy technician,pharmacy technician,Pharmacy technicians prepare prescriptions under a pharmacist.
+Nutrition,,Dietitians and nutritionists,Dietitian or nutritionist,nutrition,Dietitians and nutritionists assess diets and plan nutrition to manage health conditions or improve health.
+Nutrition,Dietetic technicians & managers,Dietetic technicians and dietary managers,Dietetic technician,,Dietetic technicians and dietary managers help plan and run food services and nutrition care.
+Nutrition,Dietitians,Dietitians,Dietitian,dietitian;dietician;registered dietitian,"Registered dietitians assess nutrition and plan diets to manage conditions such as diabetes, kidney disease and weight."
+Nutrition,Nutritionists,Nutritionists,Nutritionist,nutritionist,Nutritionists give advice on food and healthy eating; training and licensing vary by state.
+Hospitals,,Hospitals,Hospital,hospital,"Hospitals provide inpatient care, surgery and emergency services; some specialize, such as children's, psychiatric and rehabilitation hospitals."
+Hospitals,Children's hospitals,Children's hospitals,Children's hospital,childrens hospital,Hospitals for children and teenagers.
+Hospitals,Critical access hospitals,Critical access hospitals,Critical access hospital,critical access hospital,"Small rural hospitals, with 25 beds or fewer, that Medicare designates to keep care available in remote areas."
+Hospitals,General hospitals,General hospitals,General hospital,general hospital,"General hospitals provide emergency care, surgery and inpatient care for many conditions."
+Hospitals,Hospital units,Hospital units,Hospital unit,,"Separately registered units inside hospitals, such as psychiatric and rehabilitation units."
+Hospitals,Long-term & specialty hospitals,Long-term and specialty hospitals,Long-term or specialty hospital,long term care hospital,"Hospitals for patients who need hospital care for a long time, and other special hospitals."
+Hospitals,Military hospitals,Military hospitals,Military hospital,military hospital,Hospitals of the armed forces.
+Hospitals,Psychiatric hospitals,Psychiatric hospitals,Psychiatric hospital,psychiatric hospital,Hospitals that treat serious mental illness.
+Hospitals,Rehabilitation hospitals,Rehabilitation hospitals,Rehabilitation hospital,rehabilitation hospital;rehab hospital,"Hospitals for intensive rehabilitation after a stroke, injury or surgery."
+Hospitals,Religious nonmedical institutions,Religious nonmedical institutions,Religious nonmedical institution,,Institutions that provide nonmedical nursing care to people who rely on religious healing.
+Clinics & centers,,Clinics and centers,Clinic,clinic;health center,"Clinics and centers provide outpatient care: primary care, urgent care, surgery, imaging, dialysis and more."
+Clinics & centers,Cancer centers,Cancer centers,Cancer center,cancer center,"Outpatient centers for cancer treatment, including chemotherapy and radiation."
+Clinics & centers,Dental clinics,Dental clinics,Dental clinic,dental clinic,Clinics that provide dental care.
+Clinics & centers,Dialysis centers,Dialysis centers,Dialysis center,dialysis;dialysis center,Dialysis centers clean the blood of people whose kidneys have failed.
+Clinics & centers,Family planning & fertility,Family planning and fertility clinics,Family planning clinic,family planning;fertility clinic,"Clinics for birth control, family planning and fertility treatment."
+Clinics & centers,Imaging centers,Imaging centers,Imaging center,imaging center;mri;mammogram;mammography;x ray,"Outpatient centers for X-rays, MRI, CT, ultrasound and mammograms."
+Clinics & centers,Military & VA clinics,Military and VA clinics,Military or VA clinic,va clinic,Outpatient clinics of the VA and the armed forces.
+Clinics & centers,Multi-specialty & specialty clinics,Multi-specialty and specialty clinics,Clinic,multispecialty clinic;specialty clinic,Clinics with doctors of one or several specialties.
+Clinics & centers,Occupational & employee health,Occupational health clinics,Occupational health clinic,occupational health,"Clinics for workplace injuries, job physicals and employee health."
+Clinics & centers,Primary care & community health centers,Primary care and community health centers,Community health center,community health center;fqhc;federally qualified health center;rural health clinic;primary care clinic,"Primary care clinics, including community health centers that serve patients regardless of ability to pay."
+Clinics & centers,Rehabilitation & physical therapy clinics,Rehabilitation and physical therapy clinics,Rehabilitation clinic,,"Clinics that provide physical, occupational and other rehabilitation therapy."
+Clinics & centers,Sleep centers,Sleep centers,Sleep center,sleep center;sleep lab,Centers that test for and treat sleep disorders.
+Clinics & centers,Surgery centers,Surgery centers,Surgery center,surgery center;surgical center;ambulatory surgery center,"Outpatient surgery centers, where patients go home the same day."
+Clinics & centers,Urgent care & emergency centers,Urgent care and emergency centers,Urgent care center,urgent care;urgent care center;walk in clinic,"Walk-in centers for illness and injury that need care the same day, and freestanding emergency rooms."
+Nursing homes & senior living,,Nursing homes and senior living,Nursing home or senior living,senior living,"Nursing homes and senior living facilities provide housing, personal care and nursing for people who can't live on their own."
+Nursing homes & senior living,Adult care homes,Adult care homes,Adult care home,adult care home;group home,"Adult care homes provide housing and help with daily activities, without skilled nursing."
+Nursing homes & senior living,Adult day care,Adult day care centers,Adult day care center,adult day care,Adult day care centers offer daytime care and activities for adults who need supervision.
+Nursing homes & senior living,Assisted living,Assisted living facilities,Assisted living facility,assisted living,"Assisted living facilities provide housing, meals and help with daily activities."
+Nursing homes & senior living,Memory care,Memory care centers,Memory care center,memory care;dementia care;alzheimers care,Memory care centers care for people with Alzheimer's and other dementias.
+Nursing homes & senior living,Nursing homes,Nursing homes,Nursing home,nursing home;skilled nursing;skilled nursing facility;snf,Nursing homes (skilled nursing facilities) provide round-the-clock nursing care and rehabilitation.
+Nursing homes & senior living,PACE programs,PACE programs,PACE program,pace program,PACE programs provide all medical and long-term care for older adults so they can keep living at home.
+Home care & hospice,,Home care and hospice providers,Home care provider,,"Home care providers bring nursing, therapy and personal help to people at home; hospices care for people near the end of life."
+Home care & hospice,Home health agencies,Home health agencies,Home health agency,home health;home health agency;home care,Home health agencies send nurses and therapists to care for people at home.
+Home care & hospice,Home infusion,Home infusion agencies,Home infusion agency,home infusion,Home infusion agencies give IV medicines and nutrition at home.
+Home care & hospice,Home modifications,Home and vehicle modification contractors,Modification contractor,,Contractors who adapt homes and vehicles for people with disabilities.
+Home care & hospice,Hospice,Hospices,Hospice,hospice,"Hospices care for people near the end of life, at home or in a facility, with comfort care and family support."
+Home care & hospice,Meals at home,Home-delivered meal providers,Meal provider,meals on wheels;home delivered meals,Providers that deliver meals to people at home.
+Home care & hospice,Nursing care agencies,Nursing care agencies,Nursing care agency,,Agencies that provide nursing care at home or in facilities.
+Home care & hospice,Personal care & in-home support,Personal care and in-home support providers,Personal care provider,personal care;home health aide;caregiver;personal care attendant,"Aides and agencies that help people at home with bathing, dressing, meals and household tasks."
+Community & support services,,Community and support services,Community service,social services,"Community services coordinate care and support people with disabilities, children and families, and public health."
+Community & support services,Case management & care coordination,Case managers and care coordinators,Case manager,case manager;care coordinator;case management,Case managers and care coordinators help people get the health and social services they need.
+Community & support services,Community health workers & educators,Community health workers and educators,Community health worker,community health worker;health educator;interpreter,"Community health workers, health educators and interpreters help people understand and reach care."
+Community & support services,Developmental disability services,Developmental disability services,Developmental disability service,developmental disability services,Day programs and services for people with intellectual and developmental disabilities.
+Community & support services,Early intervention,Early intervention providers,Early intervention provider,early intervention,Services for babies and young children with developmental delays or disabilities.
+Community & support services,Public health & social service agencies,Public health and social service agencies,Public or social service agency,public health,"Public health departments, charities, foster care agencies and school districts that provide health services."
+Community & support services,Residential care & respite,Residential care and respite providers,Residential or respite care,respite care,"Group homes and residential facilities for people with disabilities, and short-term respite care for caregivers."
+Labs & technicians,,Labs and technicians,Lab or technician,,"Labs run medical tests on samples; technicians and technologists perform imaging, lab work and procedures."
+Labs & technicians,Blood & organ banks,Blood and organ banks,Blood or organ bank,blood bank;organ procurement,Blood banks and organ procurement organizations collect and supply blood and donated organs.
+Labs & technicians,Clinical laboratories,Clinical laboratories,Clinical laboratory,lab;laboratory;clinical lab;blood test,"Laboratories that run tests on blood, urine and tissue samples."
+Labs & technicians,Imaging technologists,Imaging technologists,Imaging technologist,radiologic technologist;sonographer;x ray technician,"Radiologic technologists and sonographers perform X-rays, CT, MRI and ultrasound scans."
+Labs & technicians,Lab technicians & phlebotomists,Lab technicians and phlebotomists,Lab technician,phlebotomist;medical technologist,Lab technicians run medical tests; phlebotomists draw blood.
+Labs & technicians,Surgical technologists & assistants,Surgical technologists and assistants,Surgical technologist,surgical technologist;surgical assistant,"Surgical technologists, surgical assistants and perfusionists support surgeons in the operating room."
+Labs & technicians,Other technicians,Other technicians and technologists,Technician,,"Other technicians and technologists, such as EEG and health information technicians."
+Medical equipment & supplies,,Medical equipment and supply companies,Medical equipment supplier,medical equipment;medical supplies;dme,"Suppliers provide medical equipment and supplies for use at home, such as wheelchairs, oxygen, braces and nutrition products."
+Medical equipment & supplies,Durable medical equipment,Durable medical equipment suppliers,Medical equipment supplier,durable medical equipment;wheelchair,"Suppliers of medical equipment for the home, such as wheelchairs, hospital beds and walkers."
+Medical equipment & supplies,Emergency response systems,Emergency response system companies,Emergency response company,medical alert,Companies that provide medical alert devices for people living alone.
+Medical equipment & supplies,Nutrition & medical foods,Nutrition supply companies,Nutrition supplier,,"Suppliers of tube feeding, IV nutrition and medical foods."
+Medical equipment & supplies,Oxygen equipment,Oxygen suppliers,Oxygen supplier,oxygen;oxygen supplier,Suppliers of home oxygen and breathing equipment.
+Medical equipment & supplies,Prosthetic & orthotic suppliers,Prosthetic and orthotic suppliers,Prosthetic or orthotic supplier,,"Suppliers of artificial limbs, braces and supports."
+Ambulance & transportation,,Ambulance and transportation services,Transportation service,,"Ambulance services and transport companies take patients to and from care, in emergencies or for scheduled visits."
+Ambulance & transportation,Ambulance,Ambulance services,Ambulance service,ambulance;air ambulance,"Ambulance services transport patients by ground, air or water, in emergencies or between facilities."
+Ambulance & transportation,EMTs & paramedics,EMTs and paramedics,EMT or paramedic,emt;paramedic,Emergency medical technicians and paramedics give emergency care at the scene and on the way to the hospital.
+Ambulance & transportation,Non-emergency medical transportation,Non-emergency medical transportation,Medical transportation,medical transportation;nemt;medical transport,"Vans, cars and other rides to medical appointments for people who can't drive."
+Ambulance & transportation,Transportation brokers,Transportation brokers,Transportation broker,,Companies that arrange medical rides for health plans and Medicaid.
+Health plans,,Health plans,Health plan,health plan;hmo;ppo,"Health plans (HMOs, PPOs and similar organizations) arrange and pay for their members' care through a network of providers."
+Health plans,Health plans,Health plans,Health plan,,"Health plans (HMOs, PPOs and similar organizations) arrange and pay for their members' care."
+Other,,Other providers,Health care provider,,"Other providers registered in NPPES, such as students in training, military providers and specialists in other fields."
+Other,Genetic counselors & geneticists,Genetic counselors and geneticists,Genetic counselor,genetic counselor,Genetic counselors explain inherited conditions and genetic test results to patients and families.
+Other,Medical groups,Medical groups,Medical group,,Group practices registered as a group.
+Other,Military health care providers,Military health care providers,Military health care provider,,Independent duty corpsmen and medical technicians of the armed forces.
+Other,Students in training,Students in training,Student in training,student,Students in a health care education or training program.
+Other,Veterinarians,Veterinarians,Veterinarian,veterinarian,"Veterinarians registered in NPPES, mostly for medical research."
+Other,Other,Other providers,Health care provider,,Providers registered in NPPES under other specialties.

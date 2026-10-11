@@ -89,6 +89,34 @@ app.MapGet("/export.csv", CsvExport.HandleAsync);
 app.MapGet("/export", CsvExport.HandleExportAsync);
 app.MapGet("/export.xlsx", CsvExport.HandleXlsxAsync);
 
+// A profile's "Download raw data" (docs/PRODUCT_PLAN.md step 1.4): the whole record as JSON (the API's shape), or its
+// summary row as CSV. Not rate-limited like /api/v1: one record at a time, from a page.
+app.MapGet("/provider/{npi}/raw.json", async (string npi, HttpContext http, ProviderDetailService details, CancellationToken ct) =>
+{
+    if (await details.GetAsync(npi, ct) is not { } provider)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"npi_{provider.Npi}.json\"";
+    return Results.Json(provider);
+});
+
+app.MapGet("/provider/{npi}/raw.csv", async (string npi, HttpContext http, SearchService search, CancellationToken ct) =>
+{
+    if (!Npi.Core.InputFormats.IsNpi(npi) || (await search.LookupAsync([npi], ct)) is not [{ Provider: not null } row])
+    {
+        return Results.NotFound();
+    }
+
+    var provider = row.Provider!;
+
+    http.Response.ContentType = "text/csv; charset=utf-8";
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"npi_{provider.Npi}.csv\"";
+    await ProviderCsv.WriteAsync(new[] { provider }.ToAsyncEnumerable(), http.Response.Body, ct);
+    return Results.Empty;
+});
+
 // Type-ahead for the search box (step 1.3).
 app.MapGet("/suggest", async ([FromQuery] string? q, SuggestService suggestions, CancellationToken ct) =>
     Results.Ok(await suggestions.SuggestAsync(q is { Length: > 100 } ? q[..100] : q, ct)));
