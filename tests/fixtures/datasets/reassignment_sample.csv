@@ -1,0 +1,3 @@
+"Group PAC ID","Group Enrollment ID","Group Legal Business Name","Group State Code","Group Due Date","Group Reassignments and Physician Assistants","Record Type","Individual Enrollment ID","Individual NPI","Individual First Name","Individual Last Name","Individual State Code","Individual Specialty Description","Individual Due Date","Individual Total Employer Associations"
+9000000001,O20200101000001,"Smith, Jones & Co, Llc",NY,TBD,2,Reassignment,I20200101000002,1000000004,José,O'Brien,NY,Chiropractic,TBD,1
+9000000001,O20200101000001,"Smith, Jones & Co, Llc",NY,TBD,2,Physician Assistant,I20200101000004,1000000012,Al,Baker,NY,Physician Assistant,TBD,1

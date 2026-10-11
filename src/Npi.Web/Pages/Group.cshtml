@@ -1,0 +1,56 @@
+@page "/group/{pacId}"
+@using System.Globalization
+@model GroupModel
+@{
+    var g = Model.Group;
+    ViewData["Title"] = Model.Name;
+}
+
+@section Scripts {
+    <script src="~/js/profile.js" asp-append-version="true" defer></script>
+}
+
+<div class="profile">
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="Group practice" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="52" class="bg" />
+                <circle cx="38" cy="44" r="10" class="org-fg" /><circle cx="66" cy="44" r="10" class="org-fg" />
+                <path d="M20 80c3-13 10-20 18-20s15 7 18 20M48 80c3-13 10-20 18-20s15 7 18 20" class="org-fg" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@Model.Name</h1>
+                <p class="summary">@Model.Summary</p>
+                <ul class="pills" aria-label="Status">
+                    @if (g.AcceptsMedicare == true){<li class="pill plain">Accepts Medicare</li>}
+                    <li class="pill plain">Medicare group ID <span class="mono">&nbsp;@g.PacId</span></li>
+                </ul>
+            </div>
+            <div class="head-actions">
+                <button type="button" class="secondary" data-copy="@g.PacId">Copy group ID</button>
+                <a class="button" href="/group/@g.PacId/raw.json" download>Download raw data</a>
+            </div>
+        </div>
+    </section>
+
+    <partial name="_ClinicianList" model="Model.Clinicians" />
+
+    <section class="card" aria-labelledby="orgs-h">
+        <h2 id="orgs-h">Organization NPIs (@g.Organizations.Count)</h2>
+        @if (g.Organizations.Count == 0)
+        {
+            <p>No active NPI is enrolled under this group ID.</p>
+        }
+        else
+        {
+            <p class="lede">The NPIs this group is enrolled in Medicare under; each has its own locations and registration.</p>
+            <ul class="link-list">
+                @foreach (var o in g.Organizations)
+                {
+                    <li><a href="/provider/@o.Npi">@o.Name</a> <span class="muted">@(o.Specialty)@(o.City is null ? "" : $" · {Npi.Core.Search.CityCatalog.TitleCase(o.City)}, {o.State}") · <span class="mono">@o.Npi</span></span></li>
+                }
+            </ul>
+        }
+        <p class="src">Medicare Fee-For-Service Public Provider Enrollment (NPI to Medicare group ID).</p>
+    </section>
+</div>
