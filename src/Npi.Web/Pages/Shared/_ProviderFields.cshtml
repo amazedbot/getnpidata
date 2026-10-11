@@ -121,6 +121,18 @@
         <span class="field-error">@Model.Error(nameof(SearchFilter.Shortage))</span>
     </div>
     <div class="field">
+        <label for="addressType">Practice building</label>
+        <select id="addressType" name="addressType" aria-describedby="addressType-help">
+            <option value="">Any</option>
+            @foreach (var (value, label) in AddressTypes.All)
+            {
+                <option value="@value" selected="@(Model.Filter.AddressType == value)">@label</option>
+            }
+        </select>
+        <span id="addressType-help" class="muted small">From FEMA building data; residential can mean a home office.</span>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.AddressType))</span>
+    </div>
+    <div class="field">
         <label for="medicareActive">Billed Medicare</label>
         <select id="medicareActive" name="medicareActive">
             <option value="">Any</option>

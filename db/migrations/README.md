@@ -70,6 +70,7 @@ Rules:
 | `072_nadac_classification.sql` | NADAC classification widened for B-ANDA / B-BIO (item 19, part 3). |
 | `073_product_prescribing.sql` | Product pages, part 4 (item 19): every (drug product, NPI) payment pair, and Medicare Part D prescribing per brand and NPI. |
 | `074_product_prescribing_cache.sql` | The prescribing overlap precomputed per product (item 19, part 4). |
+| `075_address_building.sql` | Practice address type (item 18): the FEMA USA Structures building under each practice address, and the label per address (commercial, residential, care, unknown). |
 
 ## 001_baseline.sql
 

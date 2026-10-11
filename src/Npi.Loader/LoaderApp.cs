@@ -104,6 +104,21 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             }
         }
 
+        // Stage 5.5 item 18: practice address types, relabelled after each projection (new addresses, providers at an address).
+        var addressTypes = new AddressTypeBuilder(database, log, options.MinRowRatio);
+        if (projectionOk && await addressTypes.IsStaleAsync(ct))
+        {
+            try
+            {
+                await addressTypes.BuildAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Labelling the practice address types failed");
+                projectionOk = false;
+            }
+        }
+
         // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
 
@@ -208,6 +223,12 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         await EnsureMigratedAsync(ct);
         await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        var addressTypes = new AddressTypeBuilder(database, log, options.MinRowRatio);
+        if (await addressTypes.IsStaleAsync(ct))
+        {
+            await addressTypes.BuildAsync(ct);
+        }
+
         return 0;
     }
 

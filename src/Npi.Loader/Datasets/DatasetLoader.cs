@@ -106,6 +106,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new FdaEnforcementSource(),
         new SecCompanySource(),
         new OigCiaSource(),
+        new FemaStructureSource(),
     ];
 
     private readonly IReadOnlyList<DatasetSource> _sources = sources ?? AllSources;

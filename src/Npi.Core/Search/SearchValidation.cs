@@ -56,6 +56,7 @@ public static partial class SearchValidation
             Gender = Clean(filter.Gender, nameof(SearchFilter.Gender), upper: true),
             Credential = Clean(filter.Credential, nameof(SearchFilter.Credential)),
             Shortage = Clean(filter.Shortage, nameof(SearchFilter.Shortage)),
+            AddressType = Clean(filter.AddressType, nameof(SearchFilter.AddressType))?.ToLowerInvariant(),
             Sort = Clean(filter.Sort, nameof(SearchFilter.Sort)),
             NameMatch = Clean(filter.NameMatch, nameof(SearchFilter.NameMatch))?.ToLowerInvariant() is { } match && match != NameSearch.Prefix ? match : null,
         };
@@ -65,7 +66,14 @@ public static partial class SearchValidation
                 Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null,
                 MedicareActive: null, Shortage: null, NewWithinDays: null, UpdatedWithinDays: null })
         {
-            Error("filter", "Enter at least one search filter.");
+            if (f.AddressType is not null)
+            {
+                Error(nameof(SearchFilter.AddressType), "Practice building needs another filter, such as a state, a county or a specialty.");
+            }
+            else
+            {
+                Error("filter", "Enter at least one search filter.");
+            }
         }
 
         if (f.Specialization is not null && f.Classification is null)
@@ -124,6 +132,11 @@ public static partial class SearchValidation
         if (f.Shortage is not null && !AreaService.Disciplines.ContainsKey(f.Shortage))
         {
             Error(nameof(SearchFilter.Shortage), "Shortage must be primaryCare, dental or mentalHealth.");
+        }
+
+        if (f.AddressType is not null && !AddressTypes.IsValid(f.AddressType))
+        {
+            Error(nameof(SearchFilter.AddressType), "Practice building must be commercial, residential, care or unknown.");
         }
 
         if (f.MinYears is < 1 or > 70)

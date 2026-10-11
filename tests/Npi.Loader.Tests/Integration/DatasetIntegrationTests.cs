@@ -67,8 +67,11 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null)]))],
-            await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source <> 'oig_cia' ORDER BY source"));
+            await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source NOT IN ('oig_cia', 'fema_structures', 'address_type') ORDER BY source"));
         Assert.StartsWith("3 agreements ", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'oig_cia'"));
+        // FEMA structures (item 18): the listing's newest date and a hash of its files, and the geocoded addresses in steps of 50,000.
+        Assert.Matches("^USA Structures 2024-12-06 [0-9a-f]{12}; 0\\+ addresses$", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'fema_structures'"));
+        Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM reference_data WHERE source = 'address_type'")); // labelled after the load
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
             "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name LIKE 'county\\_%\\_old' OR table_name LIKE 'open\\_payments\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
@@ -547,6 +550,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 MedicaidCatalogUrl = "https://medicaid.test/items",
                 OpenFdaApiUrl = "https://openfda.test/",
                 ClinicalTrialsApiUrl = "https://ct.test/api/v2/studies",
+                FemaStructuresListingUrl = "https://fema.test/list",
+                FemaStructuresBaseUrl = "https://fema.test/files/",
                 ApiRequestDelay = TimeSpan.Zero,
             },
             db.Database, new HttpClient(server), Logger.None, clock: clock);
@@ -689,6 +694,9 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://op.test/SMRY_P06302026/PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv" => "datasets/op_company_profile_sample.csv",
                 "https://op.test/SMRY_P06302026/PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv" => "datasets/op_company_years_sample.csv",
                 "https://census.test/popest/2020-2025/counties/totals/co-est2025-alldata.csv" => "datasets/census_population_sample.csv",
+                "https://fema.test/list" => "datasets/fema_listing_sample.xml",
+                "https://fema.test/files/usa-structures/geoparquet/fema_part1.parquet" => "datasets/fema_part1.parquet",
+                "https://fema.test/files/usa-structures/geoparquet/fema_part2.parquet" => "datasets/fema_part2.parquet",
                 _ => null,
             };
             if (fixture is null)

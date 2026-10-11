@@ -382,7 +382,7 @@
 <h2>Practice locations</h2>
 <div class="table-wrap">
     <table>
-        <thead><tr><th scope="col">Location</th><th scope="col">Address</th><th scope="col">City</th><th scope="col">State</th><th scope="col">ZIP</th><th scope="col">Phone</th></tr></thead>
+        <thead><tr><th scope="col">Location</th><th scope="col">Address</th><th scope="col">City</th><th scope="col">State</th><th scope="col">ZIP</th><th scope="col">Phone</th><th scope="col">Building</th></tr></thead>
         <tbody>
             @foreach (var l in p.Locations)
             {
@@ -393,11 +393,16 @@
                     <td>@l.State</td>
                     <td>@l.Zip@if (l.CountryCode is not null && l.CountryCode != "US"){<span class="muted"> (@l.CountryCode)</span>}</td>
                     <td>@Format.Phone(l.Phone)</td>
+                    <td>@if (Npi.Core.Search.AddressTypes.Label(l.BuildingType) is { } building){<span>@building</span>@if (l.BuildingBasis is not null){<br /><span class="muted small">@l.BuildingBasis</span>}}</td>
                 </tr>
             }
         </tbody>
     </table>
 </div>
+@if (p.Locations.Any(l => l.BuildingType is not null))
+{
+    <p class="muted">Building: from FEMA's <a href="https://gis-fema.hub.arcgis.com/pages/usa-structures">USA Structures</a> (Oak Ridge National Laboratory; building uses as of 2021) and signs of a business at the address. Many providers legitimately practise from a home office or visit patients at home; a residential building says nothing about the quality of care.</p>
+}
 
 @if (p.Profile is { } profile && (profile.AuthorizedOfficial is not null || profile.ParentOrganization is not null || profile.MailingAddress is not null
                                    || profile.IsSoleProprietor == true || profile.PracticeFax is not null))

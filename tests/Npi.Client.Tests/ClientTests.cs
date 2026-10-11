@@ -36,7 +36,7 @@ public class ClientTests
         Classification = "Chiropractor", Specialization = "Sports Physician", Taxonomy = "111NS0005X", State = "NY", County = "36103",
         City = "Babylon", Zip = "11702", Radius = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
         EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true, Telehealth = false,
-        MinYears = 10, MedicareActive = true, Shortage = "dental", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
+        MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
     };
 
     [Fact]
@@ -58,7 +58,7 @@ public class ClientTests
             Classification = "Chiropractor", Specialization = "Sports Physician", TaxonomyCode = "111NS0005X", State = "NY", CountyFips = "36103",
             City = "Babylon", Zip5 = "11702", RadiusMiles = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
             EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true,
-            Telehealth = false, MinYears = 10, MedicareActive = true, Shortage = "dental", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
+            Telehealth = false, MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
         }, filter);
 
         // And the client covers every parameter the server documents.

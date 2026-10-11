@@ -22,6 +22,9 @@ public sealed record ProviderSummary(
 
     /// <summary>Badges from the Stage 5.5 datasets (exclusion, Medicare opt-out, order/refer eligibility).</summary>
     public ProviderFlags Flags { get; init; } = ProviderFlags.None;
+
+    /// <summary>The kind of building at the shown location (<see cref="AddressTypes"/>, Stage 5.5 item 18); null when not labelled.</summary>
+    public string? AddressType { get; init; }
 }
 
 /// <summary>The status of one NPI in a bulk lookup.</summary>

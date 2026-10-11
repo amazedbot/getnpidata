@@ -121,6 +121,12 @@ public sealed class LoaderOptions
     /// <summary>Overture release folders, read in place with DuckDB (public bucket, no credentials).</summary>
     public string OvertureBaseUrl { get; set; } = "s3://overturemaps-us-west-2/release/";
 
+    /// <summary>S3 listing of the FEMA USA Structures GeoParquet files on Source Cooperative (Stage 5.5 item 18).</summary>
+    public string FemaStructuresListingUrl { get; set; } = "https://data.source.coop/wherobots?list-type=2&prefix=usa-structures/geoparquet/";
+
+    /// <summary>Prefix of the listed keys' download URLs.</summary>
+    public string FemaStructuresBaseUrl { get; set; } = "https://data.source.coop/wherobots/";
+
     /// <summary>Overture places below this confidence (0–1) are ignored.</summary>
     public double OverturePlaceMinConfidence { get; set; } = 0.6;
 

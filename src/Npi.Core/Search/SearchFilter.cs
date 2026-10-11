@@ -78,6 +78,12 @@ public sealed record SearchFilter
     /// <summary>primaryCare, dental or mentalHealth: practice locations in a county with an HRSA shortage area of that kind.</summary>
     public string? Shortage { get; init; }
 
+    /// <summary>
+    /// commercial, residential, care or unknown (<see cref="AddressTypes"/>, Stage 5.5 item 18): a practice location in that kind of
+    /// building. Needs another filter: on its own it would match most providers.
+    /// </summary>
+    public string? AddressType { get; init; }
+
     /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
     public bool? MedicareActive { get; init; }
 
