@@ -79,7 +79,7 @@ public sealed record SearchFilter
     public string? Shortage { get; init; }
 
     /// <summary>
-    /// commercial, residential, care or unknown (<see cref="AddressTypes"/>, Stage 5.5 item 18): a practice location in that kind of
+    /// commercial, residential or unknown (<see cref="AddressTypes"/>, Stage 5.5 item 18): a practice location in that kind of
     /// building. Needs another filter: on its own it would match most providers.
     /// </summary>
     public string? AddressType { get; init; }

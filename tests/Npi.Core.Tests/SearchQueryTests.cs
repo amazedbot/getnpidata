@@ -124,6 +124,8 @@ public class SearchQueryTests
         Assert.Equal([nameof(SearchFilter.AddressType)], alone.Errors.Keys);
 
         var unknown = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { State = "NY", AddressType = "castle" }));
+        Assert.Contains(nameof(SearchFilter.AddressType), Assert.Throws<SearchValidationException>(() =>
+            SearchValidation.Normalize(new SearchFilter { State = "NY", AddressType = "care" })).Errors.Keys); // dropped 2026-10-11: nursing homes count as commercial
         Assert.Contains(nameof(SearchFilter.AddressType), unknown.Errors.Keys);
 
         Assert.Equal("residential", SearchValidation.Normalize(new SearchFilter { State = "NY", AddressType = " Residential " }).AddressType);

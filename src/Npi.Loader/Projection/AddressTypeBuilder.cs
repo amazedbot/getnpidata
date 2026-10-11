@@ -7,11 +7,13 @@ using Serilog;
 namespace Npi.Loader.Projection;
 
 /// <summary>
-/// Labels every US practice address (CLAUDE.md §7 Stage 5.5 item 18) as commercial, residential, care (nursing home,
-/// dormitory) or unknown, from the FEMA building under it (<c>address_building</c>) and signs of a business at the
+/// Labels every US practice address (CLAUDE.md §7 Stage 5.5 item 18) as commercial (or institutional), residential or
+/// unknown, from the FEMA building under it (<c>address_building</c>) and signs of a business at the
 /// address: a suite or floor in it, an Overture place whose address it is, five or more providers, or three or more
 /// with an organization among them. A business sign turns a residential (or unknown) building into commercial: FEMA
-/// labels some strip malls and offices in former houses as dwellings. Rebuilt after each FEMA load and projection.
+/// labels some strip malls and offices in former houses as dwellings. FEMA's Nursing Home and Institutional Dormitory
+/// types count as commercial (institutional): as a category of their own they were often not care facilities at all
+/// (owner, 2026-10-11). Rebuilt after each FEMA load and projection.
 /// </summary>
 public sealed class AddressTypeBuilder(Database database, ILogger log, double minRowRatio)
 {
@@ -45,7 +47,7 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
                 INSERT INTO `address_type_staging` (`addr_key`, `building_type`, `basis`)
                 SELECT x.`addr_key`,
                   CASE
-                    WHEN x.`occ_cls` = 'Residential' AND x.`prim_occ` IN ('Nursing Home', 'Institutional Dormitory') THEN 'care'
+                    WHEN x.`occ_cls` = 'Residential' AND x.`prim_occ` IN ('Nursing Home', 'Institutional Dormitory') THEN 'commercial'
                     WHEN x.`business` THEN 'commercial'
                     WHEN x.`occ_cls` = 'Residential' THEN 'residential'
                     WHEN x.`occ_cls` IS NULL OR x.`occ_cls` = 'Unclassified' THEN 'unknown'
