@@ -8,7 +8,6 @@ public static class AddressTypes
 {
     public const string Commercial = "commercial";
     public const string Residential = "residential";
-    public const string Care = "care";
     public const string Unknown = "unknown";
 
     /// <summary>The filter values with their labels, in the order the form lists them.</summary>
@@ -16,7 +15,6 @@ public static class AddressTypes
     [
         (Commercial, "Commercial or institutional building"),
         (Residential, "Residential building"),
-        (Care, "Residential care facility (nursing home, dormitory)"),
         (Unknown, "Unknown"),
     ];
 
@@ -27,7 +25,6 @@ public static class AddressTypes
     {
         Commercial => "Commercial",
         Residential => "Residential",
-        Care => "Care facility",
         Unknown => "Unknown",
         _ => null,
     };

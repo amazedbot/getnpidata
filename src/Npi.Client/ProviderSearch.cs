@@ -74,7 +74,7 @@ public sealed class ProviderSearch
     /// <summary>primaryCare, dental or mentalHealth: a practice location in a county with an HRSA shortage area of that kind.</summary>
     public string? Shortage { get; set; }
 
-    /// <summary>commercial, residential, care or unknown: a practice location in that kind of building. Needs another filter.</summary>
+    /// <summary>commercial, residential or unknown: a practice location in that kind of building. Needs another filter.</summary>
     public string? AddressType { get; set; }
 
     /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>

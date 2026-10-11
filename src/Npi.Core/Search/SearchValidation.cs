@@ -136,7 +136,7 @@ public static partial class SearchValidation
 
         if (f.AddressType is not null && !AddressTypes.IsValid(f.AddressType))
         {
-            Error(nameof(SearchFilter.AddressType), "Practice building must be commercial, residential, care or unknown.");
+            Error(nameof(SearchFilter.AddressType), "Practice building must be commercial, residential or unknown.");
         }
 
         if (f.MinYears is < 1 or > 70)
