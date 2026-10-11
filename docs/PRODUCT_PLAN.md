@@ -1,8 +1,8 @@
 # getnpidata product plan
 
-Status: **draft for the owner's approval** (2026-10-11). Nothing in this plan has been built. Once approved, CLAUDE.md
-gets the new direction, and the work goes one phase (and one step) at a time. Each step is committed, summarized, and
-waits for the owner's "go".
+Status: **approved by the owner on 2026-10-11**, with the decisions recorded in §6. CLAUDE.md carries the new direction.
+The work goes one phase (and one step) at a time; each step is committed, summarized, and waits for the owner's "go".
+Current step: **1.1, the combined design drawings** (ready for review).
 
 **Vision.** getnpidata is the affordable answer layer on top of free government data. It goes deeper than free lookup
 tools and costs a small fraction of what enterprise vendors charge. It answers questions instead of dumping data.
@@ -70,10 +70,20 @@ journalists, public health planners and practice owners are served by the same p
 **Goal:** a professional can do each of the five tasks in under a minute without help, and the first screen explains
 the site. Patients get a separate, simple path.
 
-**Visual direction:** three options are drafted on the design canvas
-[getnpidata redesign options](https://claude.ai/artifact/4wa9icARu23jZwAChzwoN4). Each shows the home page and a
-clinician profile in one direction. The owner picks one (or a mix); the other page types are then drawn in that
-direction before any code is written.
+**Visual direction (owner, 2026-10-11): all three options combined.**
+- From A: the calm, summary-first layout.
+- From B: the deep green header and serif headings.
+- From C: the sidebar navigation and dense tables for professional work.
+
+The 12 page drawings are on the design canvas [getnpidata redesign options](https://claude.ai/artifact/4wa9icARu23jZwAChzwoN4), page "Combined direction": home, results and list builder, clinician, organization, hospital, area, verify, find care, company, product, developers, and the clinician profile on a phone. The first three options stay on the page "Options A–C".
+
+**Clinician profiles feel personal, not like a record (owner):**
+- An avatar: a silhouette tinted by gender (blue for male, plum for female, neutral gray when gender isn't listed), or the initials.
+- A map preview of the practice locations on OpenStreetMap; a paid map only if the owner approves one.
+- A one-sentence plain-English summary at the top ("Chiropractor in Babylon, NY since 2007, part of a 6-clinician group").
+- The specialty explained in plain words, with practice details and affiliations as clear cards.
+
+Every profile keeps a "Download raw data" button.
 
 ### 2.1 Information architecture
 
@@ -81,15 +91,14 @@ Navigation by task, the same on every page:
 
 | Menu | Goes to | Task |
 |---|---|---|
-| **Search** (the box in the header, on every page) | Results, or straight to a profile for an exact NPI | T1, T2 |
-| **Lists** | List builder: specialty + area + key filters → table → export | T2 |
+| **Search & lists** (plus the search box on every page) | Results and the list builder: specialty + area + key filters → table → export; an exact NPI goes straight to its profile | T1, T2 |
 | **Verify NPIs** | Bulk check with an on-screen summary (today's `/lookup`) | T3 |
 | **Areas** | State → county pages | T4 |
 | **Organizations** | Search limited to organizations, hospitals and groups | T5 |
 | **API** | A developer page with examples, then Swagger | Developers |
 | **Find care** (a separate, plainer entry, also linked from the home page) | The patient path | Patients |
 
-Companies and products move under a "More data" menu until their redesign (Phase 9). Their URLs stay.
+The menu is a sidebar on desktop (a menu button on phones). Companies and products keep a sidebar entry ("Companies & products"); they get the new layout in Phase 1 and their deeper redesign in Phase 9. Their URLs stay.
 
 **URLs:** every current URL and API endpoint keeps working (CLAUDE.md constraint).
 
@@ -157,21 +166,21 @@ Companies and products move under a "More data" menu until their redesign (Phase
 
 | Step | What | Done when |
 |---|---|---|
-| 1.1 | Pick the visual direction on the canvas; draw the remaining page types in it (results, organization, facility, area, verify, find care, phone views) | The owner approves the drawings |
+| 1.1 | Combined direction drawn for 12 pages (home, results/list builder, clinician, organization/group, hospital, area, verify, find care, company, product, developers, clinician on a phone) | The owner approves the drawings |
 | 1.2 | Site shell: header with the search box, task navigation, footer, design tokens, page-speed budget | Every existing page renders in the new shell; no URL changes |
 | 1.3 | Search: intent detection, typeahead, the results page with three key filters and the drawer, the export panel | The T1 and T2 test scripts pass (below) |
-| 1.4 | Clinician profile: summary card, sections in question order, raw-data download | T1 under 10 s on desktop and phone |
+| 1.4 | Clinician profile: avatar, one-sentence summary, map preview, specialty in plain words, cards, sections in question order, raw-data download; the minimal "Deactivated on [date]" status page | T1 under 10 s on desktop and phone |
 | 1.5 | Organization, facility and group profiles | T5 test script passes |
 | 1.6 | Area pages (state, county) | T4 test script passes |
-| 1.7 | Verify NPIs: on-screen summary, filterable results, download | T3 test script passes |
+| 1.7 | Verify NPIs: on-screen summary, filterable results ("Deactivated on [date]" included), download | T3 test script passes |
 | 1.8 | Find care (patients) | A first-time user finds a nearby specialist in under 60 s |
-| 1.9 | API developer page; accessibility and mobile pass; README and CLAUDE.md | Lighthouse ≥ 90 for accessibility and performance on the main pages; all old URLs resolve |
+| 1.9 | API developer page; Azure Application Insights across the site and API, with a privacy notice; accessibility and mobile pass; README and CLAUDE.md | Lighthouse ≥ 90 for accessibility and performance on the main pages; all old URLs resolve |
 
 ### 2.6 Data for Phase 1
 
 | Task | Already have | Missing (would be a new source; proposed, not added without the owner's OK) |
 |---|---|---|
-| T1 provider | NPPES (names, taxonomies, locations, phones, dates); standardized credentials; Care Compare (accepts Medicare, telehealth, school, graduation year, groups, hospital affiliations); OIG LEIE; opt-out; order/refer; state licenses (9 states); MIPS; Medicare and Part D activity; Open Payments; change log (since 2026-10-09); FEMA building type | **Deactivation status for display** (we have it locally but drop it from the projection; this is an owner decision, §6). Languages spoken, board certification and "accepting new patients" have no free, reliable source |
+| T1 provider | NPPES (names, taxonomies, locations, phones, dates); standardized credentials; Care Compare (accepts Medicare, telehealth, school, graduation year, groups, hospital affiliations); OIG LEIE; opt-out; order/refer; state licenses (9 states); MIPS; Medicare and Part D activity; Open Payments; change log (since 2026-10-09); FEMA building type | **Deactivation status:** we have it locally; the projection needs a small status table so it can be shown (approved, §6). Plain-language specialty descriptions are written for this site (no new data). Languages spoken, board certification and "accepting new patients" have no free, reliable source |
 | T2 list | Search with every filter, streamed CSV, map | Excel export (no new data). Ready-made column sets for CRM imports |
 | T3 verify | Bulk lookup, Luhn check, flags (exclusion, opt-out, order/refer, Medicare billing), last update date | The same deactivation-status decision. "Changed since" per NPI needs Phase 3's history (we only have changes since 2026-10-09) |
 | T4 area | County population (Census), HPSA shortage areas, provider counts from search, enumeration dates (new providers), change log | Per-capita benchmarks are computed from what we have (no new data). Population by ZIP or city (Census ACS by ZCTA) would be new. Trends before October 2026 would need historical NPPES files (Phase 3) |
@@ -181,27 +190,29 @@ Companies and products move under a "More data" menu until their redesign (Phase
 
 - **Task tests.** A written script per task is run by the owner, or by a test user who hasn't seen the site. The time to answer is recorded before and after the redesign. Targets: T1 ≤ 10 s, T2 ≤ 60 s to a downloaded CSV, T3 ≤ 60 s to a summary, T4 ≤ 30 s, T5 ≤ 30 s.
 - **Speed:** profile and results pages answer in under 1 s (p95, warm) and pass Lighthouse ≥ 90 on a phone.
-- **After launch (needs Phase 2 hosting):**
+- **Once there are users (after the public launch, which follows every phase):**
   - searches that end in a profile view or an export;
   - the share of searches typed in the single box rather than the drawer;
   - bounce rate on the home page.
 
-  All are measured from server logs. A privacy-friendly analytics tool would be a new service and needs the owner's OK.
+  All are measured with Azure Application Insights (owner, 2026-10-11), covered by the privacy notice.
 
 ---
 
 ## 3. Later phases (recommended order)
 
-Ordering rule: first what makes the product credible and launchable, then what people will pay for, then breadth.
+Ordering rule: first what makes the product credible, then what professionals use most, then breadth. Everything is free
+(owner, 2026-10-11): no paywalls, payment accounts or Stripe, but the code is structured so limits or tiers could be added
+later. There is **no public launch until every phase is complete**; branding, marketing and a business plan come after.
 Each phase lists its goals, scope, data, and how we'll know it worked.
 
-### Phase 2: Go live (the planned Stage 6)
+### Phase 2: Private test hosting (only when a feature needs it)
 
-- **Goal:** the redesigned site and the API run publicly on Azure, refreshed daily.
-- **Scope:** CLAUDE.md §7 Stage 6 as planned (publisher, deploy workflow, Task Scheduler). Before anything is created, the database size is measured and a cost estimate is given.
-- **Why now:** every later phase needs real users, and the paid features need hosting, accounts and email.
+- **Goal:** a private, password-protected test copy on Azure for features that can't be tested locally (alerts, email, accounts). No public launch until every phase is complete (owner, 2026-10-11).
+- **Scope:** the parts of CLAUDE.md §7 Stage 6 that the test copy needs (publisher, deploy workflow, Task Scheduler), behind a password.
+- **When:** only when a feature needs it; the owner is asked first, with a cost estimate.
 - **Data:** nothing new.
-- **Worked when:** the public URL serves every page within the Phase 1 speed targets, the nightly publish succeeds 7 days in a row, and the monthly cost matches the estimate.
+- **Worked when:** the test copy serves every page within the Phase 1 speed targets, the nightly publish succeeds 7 days in a row, and the monthly cost matches the estimate.
 
 ### Phase 3: Data quality signals and change history
 
@@ -229,7 +240,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
   - county pages show monthly change counts;
   - spot checks of 50 "Stale" records find real problems (wrong address, closed practice) in most of them.
 
-### Phase 4: Bulk verification and compliance checks (first paid feature)
+### Phase 4: Bulk verification and compliance checks
 
 - **Goal:** credentialing, billing and staffing teams can verify a roster in one step and get a report they can file.
 - **Scope:**
@@ -253,14 +264,13 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
   - **Not available free:** the DEA registration list, the NPDB, the CMS Preclusion List, and ABMS board certification.
 - **Worked when:**
   - a 1,000-NPI roster is verified in under a minute with a downloadable report;
-  - three real credentialing users say the report replaces a manual step;
-  - the first paying customers sign up.
+  - three real credentialing users say the report replaces a manual step.
 
 ### Phase 5: Accounts, saved lists and alerts
 
 - **Goal:** professionals come back weekly because the site tells them what changed in their lists, territories and rosters.
 - **Scope:**
-  - **Accounts:** sign-in with email, Microsoft or Google; the "Pro/Team" features (§4) unlock here.
+  - **Accounts:** sign-in with email, Microsoft or Google, free; they hold saved items and alerts.
   - **Saved items:** searches, lists and rosters.
   - **Weekly alerts:** new providers in a territory, moves, deactivations, new exclusions, license actions. Sent by email and shown in an in-app feed. Built from the weekly NPPES files we already process.
   - **Team sharing.**
@@ -268,25 +278,25 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
   - **New infrastructure (the owner chooses and approves):**
     - an identity provider (ASP.NET Core Identity, or Microsoft Entra External ID);
     - an email service (Azure Communication Services or SendGrid);
-    - a payments provider (Stripe);
-    - a small user database.
+    - a small user database;
+    - the private test copy (Phase 2) to test sign-in and email.
   - **Privacy:** a privacy policy and terms of service are needed before launch.
 - **Worked when:** 30% of signed-up users open an alert within a week, and saved lists are re-exported.
 
-### Phase 6: API and export plans
+### Phase 6: API and export tooling
 
-- **Goal:** developers and data teams pay for volume and reliability.
+- **Goal:** developers and data teams can build on the data reliably, for free.
 - **Scope:**
-  - **API keys:** a self-serve key page, per-key quotas and a usage dashboard. Key checking is already built (`Api:RequireKey`, off).
+  - **API keys:** a self-serve key page and a usage dashboard, with per-key quotas available but off (exports and the API stay unlimited, owner 2026-10-11). Key checking is already built (`Api:RequireKey`, off).
   - **Weekly change feed:** an endpoint plus a downloadable file.
   - **Bulk downloads:** the full summary dataset as CSV/Parquet.
   - **Webhooks** for alerts.
   - **Client libraries:** the .NET client published on NuGet; a Python client.
-- **Data:** nothing new. **Check licenses before selling bulk data:**
-  - Illinois license data is under the Open Database License (share-alike), so it's excluded from paid bulk files or kept open.
+- **Data:** nothing new. **Check licenses before publishing bulk files:**
+  - Illinois license data is under the Open Database License (share-alike): bulk files that include it must stay under the same license.
   - Overture's licenses are reviewed for map data.
   - CMS, FDA, HRSA, Census and OIG data are public domain.
-- **Worked when:** keys are issued and used weekly, paid API plans are sold, and the API is never down for longer than the agreed limits.
+- **Worked when:** keys are issued and used weekly, and the change feed and bulk files are downloaded.
 
 ### Phase 7: Area intelligence
 
@@ -315,7 +325,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
     - hospital ratings in plain language;
     - "what this specialty treats" explanations;
     - large-text and screen-reader checks.
-  - **Insurance network pilot in one state** (the open Stage 5.5 item 16): "listed in [plan]'s directory" with its source and date, never "accepting new patients".
+  - **Insurance network pilot in one state** (the open Stage 5.5 item 16, folded into this phase): "listed in [plan]'s directory" with its source and date, never "accepting new patients".
 - **Data:**
   - **Have:** Care Compare, hospital ratings, HCAHPS, the map.
   - **Missing:**
@@ -346,42 +356,17 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
 
 ---
 
-## 4. Business model and pricing ideas
+## 4. Business model
 
-**Positioning.**
-- Free tools (the NPPES registry and the ad-supported NPI lookup sites) show one record at a time, with no context and no bulk tools.
-- Enterprise healthcare-data vendors sell annual contracts that are commonly reported in the tens of thousands of dollars or more.
-- getnpidata sells the useful middle: answers, lists, verification, change alerts and an API, at self-serve prices.
+Not part of this plan (owner, 2026-10-11). Every feature is built free: no paywalls, no accounts-for-payment, no
+Stripe. Pricing is planned separately, after the product is complete.
 
-**What stays free** (it drives search-engine traffic, trust and the patient mission):
-- every profile page and area page, the map, and search;
-- the patient path, always free and without an account;
-- exports of reasonable size (see the decision in §6);
-- the public API at today's rate limit;
-- a small bulk verification (e.g., up to 500 NPIs at a time).
+**Design rule for the code:** limits or tiers must be addable later without rework. Usage-sensitive features (exports,
+bulk verification, API calls, saved lists, alerts) go through one place that can apply a limit per feature and per
+account or key, configured, and off by default.
 
-**Paid tiers.** The prices are placeholders to validate with real users before launch.
-
-| Tier | For | Includes | Price idea |
-|---|---|---|---|
-| Free | Everyone | As above | $0 |
-| Pro | One professional (rep, recruiter, credentialing specialist) | Unlimited exports with every column; bulk verification up to 25,000 NPIs a month with reports; 10 saved lists or territories with weekly alerts; API key with 10,000 requests a day | [PRICE] a month (e.g., $29–49) |
-| Team | 5–20 seats | Everything in Pro, shared lists and territories, roster monitoring (weekly re-checks of up to 25,000 NPIs), CRM exports, invoice billing | [PRICE] a month (e.g., $149–299 for 5 seats) |
-| Data / API | Developers and data teams | High API quotas, the weekly change feed, full bulk downloads (CSV/Parquet), webhooks, an uptime commitment | [PRICE] a month (e.g., from $499) |
-| Pay as you go | Occasional verifiers | Bulk verification reports per 1,000 NPIs | [PRICE] (e.g., $5 per 1,000) |
-
-**Other revenue ideas (each needs the owner's decision):**
-- **Sponsored "featured" listings for practices.** Not recommended: it would undercut the trust that is the product.
-- **Data licensing** of the cleaned, joined dataset, with the license review in Phase 6.
-- **Area reports for planners and journalists:** free to read, paid for custom or white-label versions.
-
-**Costs to cover:**
-- Azure hosting: about $30 a month at the start (CLAUDE.md Stage 6), more as usage grows.
-- Email and payment fees: Stripe charges about 2.9% plus 30 cents per card payment.
-- Optional analytics.
-- The owner's time for support.
-
----
+**Parked for the separate pricing plan** (ideas from the draft, not commitments): free core with Pro, Team and Data/API
+tiers; pay-as-you-go verification; data licensing; custom area reports. Sponsored listings are not recommended.
 
 ## 5. Working rules for this plan (owner, 2026-10-11)
 
@@ -390,23 +375,12 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
 - **Constraints:** existing URLs and API endpoints keep working, and pages stay fast and mobile-friendly.
 - **CLAUDE.md:** it's updated with the new direction once this plan is approved, in the same commit as the first step.
 
-## 6. Decisions the owner needs to make
+## 6. Decisions (owner, 2026-10-11)
 
-1. **Visual direction:** one of the canvas options, or a mix.
-2. **Deactivated NPIs.**
-   - **Today:** they're never shown (CLAUDE.md §2).
-   - **Proposal:** show a minimal status page and a bulk-check status ("NPI 1234567893 was deactivated on 2025-03-01"), with no other details. Credentialing (T3) and "active or not" (T1) need it.
-3. **Exports and the API.**
-   - **Today:** CSV has no row cap and the API is public (CLAUDE.md §2).
-   - **Choice:** keep both unlimited for everyone, or cap the free tier (e.g., 5,000 rows per export) so that unlimited exports are a paid feature.
-4. **New free data sources** to approve one by one:
-   - CMS Medicare public enrollment (PPEF): links organization NPIs to groups;
-   - AHRQ health-system compendium and CMS hospital ownership;
-   - CMS Provider of Services;
-   - NBER historical NPPES files;
-   - SAM.gov exclusions;
-   - state Medicaid exclusion lists;
-   - Census ACS by ZCTA;
-   - CDC PLACES.
-5. **Order of the later phases** (§3), and whether Phase 2 (Azure) starts right after Phase 1.
-6. **Analytics:** server logs only, or a privacy-friendly analytics service.
+1. **Visual direction:** all three combined (A's summary-first layout, B's deep green and serif headings, C's sidebar and dense tables). Clinician profiles get an avatar, an OpenStreetMap preview, a one-sentence summary and the specialty in plain words (§2).
+2. **Deactivated NPIs:** shown as "Deactivated on [date]" on a minimal status page and in bulk verification, for credentialing users. Never listed as active or returned by search.
+3. **Exports and the API:** both stay unlimited for now.
+4. **No paid features in this plan** (§4). Code is structured so limits or tiers could be added later.
+5. **Data sources:** Claude may propose any free source that helps; each is added only after the owner says yes. The candidates named in this plan are proposals until then.
+6. **Going live:** no public launch until every phase is complete; then branding, marketing and a business plan. A private, password-protected test copy on Azure may be set up when a feature needs real hosting (alerts, email, accounts); ask first, with a cost estimate.
+7. **Analytics:** Azure Application Insights across the site and the API, with a privacy notice.

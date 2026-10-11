@@ -22,7 +22,8 @@ or private hosts.
 | 4 Website | Done |
 | 5 REST API + `Npi.Client` | Done |
 | 5.5 More data and features (owner's addition, before Azure) | **In progress.** Items 1–15 merged and loaded on `workplace` (11 trimmed; item 1 backfilled 2026-10-09; item 15 covers CO, CT, DE, FL, IL, MD, NY, TX, WA; item 17 added by the owner 2026-10-10; item 19 done, all 4 parts; item 18 done); item 16 left (§7 Stage 5.5) |
-| 6 Publish to Azure, deploy, Task Scheduler | **Not started. Wait for the owner to say "start Stage 6"** (§11 item 2) |
+| 6 Publish to Azure, deploy, Task Scheduler | **Not started.** No public launch until every phase of the product plan is done (owner, 2026-10-11). A private, password-protected test copy only when a feature needs hosting, with the owner's OK and a cost estimate first (§11 item 2) |
+| Product redesign ([docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md)) | **In progress.** Plan approved 2026-10-11. Phase 1 step 1.1 (combined design drawings) ready for the owner's review. Stage 5.5 item 16 moves to the plan's Phase 8 |
 
 On the loader PC, `workplace` holds the full data (current through 2026-10-04, 9,482,099 active providers). The site
 runs locally against it for LAN use while Azure is pending.
@@ -65,12 +66,17 @@ CMS NPPES files ──► Npi.Loader (Windows PC, scheduled) ──► local MyS
 | Specialty search | Match **all 15** taxonomy slots. UI dropdown by NUCC **Classification**, optional dependent Specialization |
 | Addresses searched | Primary practice location + secondary practice locations (`pl_pfile`). Not the mailing address |
 | Filters | Specialty, state, county, city, ZIP, **ZIP + radius (miles)**, name (last/first or org), NPI, entity type, gender, credential |
-| Deactivated NPIs | **Flagged** in the DB (not deleted) and **never** returned by the site or API |
+| Deactivated NPIs | **Flagged** in the DB (not deleted), never listed as active or returned by search. A minimal status page and bulk verification show "Deactivated on [date]" (owner, 2026-10-11, for credentialing) |
 | Grid/CSV columns | Summary columns (§7.3). CSV is **streamed**, with **no row cap** |
 | NUCC taxonomy | Loader refreshes `taxonomy_codes` automatically |
 | Load cycle | Full monthly replace + weekly incremental updates. The site must stay up during reloads |
 | Schema changes | Allowed: widen columns for V2, utf8mb4, new tables and indexes |
 | Logging | Log file only (no email/alerts). Non-zero exit code on failure |
+| Product direction (2026-10-11) | [docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md): the affordable answer layer on public data; professionals first, a separate simple path for patients; one phase and one step at a time, each committed, summarized, and waiting for the owner's "go" |
+| Paid features | **None in this plan:** everything free, no paywalls, payment accounts or Stripe. Code structured so limits or tiers can be added later (one configurable limit point per feature, off). Pricing is planned separately. Exports and the API stay unlimited |
+| Analytics | Azure Application Insights across the site and the API, with a privacy notice |
+| New data sources | Claude may propose any free source; each is added only after the owner says yes |
+| Maps | OpenStreetMap unless the owner approves a paid map |
 | Stage 5.5 | Added by the owner (2026-10-08) between Stages 5 and 6: **all** the datasets and features in §7 Stage 5.5. Named 5.5 so that "Stage 6" references stay valid. Planned as one PR; the owner then had items 1–8 merged first. Work **one item at a time** and wait for the owner's "next" |
 | Git | Claude Code may create branches, commit, open PRs and merge when CI is green (§10) |
 
@@ -508,7 +514,7 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 ## 11. Open items
 
 1. ~~Test DB backup~~ Done 2026-10-07 (restored as `npi_test`, schema in `001_baseline.sql`).
-2. **Stage 6 (waits for the owner's go-ahead).** The owner has no Azure subscription yet and will create one, then the resources in the portal (East US, no custom domain).
+2. **Stage 6 (waits for the owner).** No public launch until every phase of [docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md) is done (owner, 2026-10-11). A private, password-protected test copy may be set up when a feature needs real hosting (alerts, email, accounts): ask first, with a cost estimate. The owner has no Azure subscription yet and will create one, then the resources in the portal (East US, no custom domain).
    - When the owner says to start: measure the projection size and give the cost estimate first.
    - Then build the publisher, the deploy workflow and `deploy/register-task.ps1` (§7 Stage 6).
 3. **HUD API token:** issued. It must be present as the `HudApiToken` user-secret on the loader PC (never in the repo).
@@ -560,3 +566,4 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 | 2026-10-11 | — | **City dropdown** (owner's request). The list: USPS names of the state's or county's ZIPs with practice locations (NY 1,437, Suffolk 109, Kings 5, CA 1,085, FL 459; a first listing from the names providers wrote also showed BROOKYLN, BKLYN, ALTAMONTE SPG). The City filter now also matches a location by a ZIP USPS gives that name: NY + Brooklyn 84,705 → 84,979, Los Angeles 89,368 → 94,654. **Warm:** lists 0.01–0.4 s (NY 3 s cold, then cached); NY + Brooklyn 1.5 s, NY + Saint James 0.03 s (4 s before passing the ZIPs as a list and dropping the separate state condition), CA + Los Angeles 1.7 s, Chiropractor + Brooklyn 0.04 s, Dentist + Los Angeles 0.16 s, MD + Houston 0.24 s; a city without a state (API only) 10 s. Tests: Core 157, Web 41, Client 84, Loader 183 (with MySQL). |
 | 2026-10-11 | 5.5 | **Item 18: "care facility" label dropped** (owner: the addresses FEMA types as Nursing Home or Institutional Dormitory were often not care facilities, e.g. a pharmacy and apartment buildings among real nursing homes). Those addresses now count as commercial (institutional), with FEMA's type still in the basis; `addressType=care` is refused. Relabelled on `workplace` in 10 min: commercial 1,845,664, residential 1,140,574, unknown 320,968. Tests: Core 153, Web 41, Client 84, Loader 182 (with MySQL). |
 | 2026-10-10 | 5.5 | **Item 19 part 4: prescribing overlap** (migrations 073–074). **Live on `workplace`** (site up): Part D by provider and drug 2024, 28,023,892 rows → 8,771,977 brand-name (brand, NPI) rows for 2,382 brands (14 min); the overlap build 81 s: 793 drug products with Part D brands, 464,167 paid prescribers. Eliquis: 264,286 prescribers, 23.0M claims; of 44,396 providers paid in 2025 payments naming it, 32,537 (73%) prescribed it, 23.0% of its claims; Ozempic 48,032 of 77,780 (39.3% of claims), Dupixent 9,925 of 50,395 (66.5%), Jardiance 39,148 of 60,225 (28.5%). Warm: product pages 0.02–0.26 s, prescriber lists 0.02–0.27 s (were 1.4–10.7 s with read-time joins), CSV of Eliquis 32,537 rows 12 s. Tests: Loader 181 (with MySQL), 457 without. |
+| 2026-10-11 | — | **Product plan approved** ([docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md)): site audit, Phase 1 redesign around five professional tasks, later phases. Owner's decisions: all three design options combined; deactivated NPIs shown as "Deactivated on [date]" on a status page and in bulk verification; exports and the API stay unlimited; no paid features in this plan; new free data sources only after a yes; no public launch until every phase is done (a private test copy on Azure only with OK and a cost estimate); Azure Application Insights with a privacy notice. Step 1.1: 12 page drawings in the combined direction on the design canvas. |
