@@ -31,6 +31,8 @@ public sealed class SearchQuery
     private readonly List<string> _remainingNpiOnly = []; // dataset flags: need only the NPI, so the count can skip the provider join
     private readonly bool _hasLocationFilter;
     private readonly List<string> _locationTemplates = []; // "{0}" = table alias
+    private readonly string? _addressTemplate;             // the building at a provider_location row ("{0}" = its alias); not in the search tables
+    private readonly string? _areaAddress;                 // map search: the building at the pin (provider_map m)
     private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
     private string? _driverKind;
     private readonly List<string> _relevance = [];          // "similar" names: best matches first (default sort only)
@@ -173,7 +175,23 @@ public sealed class SearchQuery
         }
 
         AddLocationFilters(filter, radiusCenter);
-        _hasLocationFilter = _locationTemplates.Count > 0;
+        if (filter.AddressType is not null)
+        {
+            // Practice building (Stage 5.5 item 18): a location condition, but only provider_location has the address key. A map
+            // search checks it per pin instead, so it doesn't make every location in the country a candidate.
+            Parameters.Add("addressType", filter.AddressType);
+            const string building = "EXISTS (SELECT 1 FROM address_type bt WHERE bt.addr_key = {0}.addr_key AND bt.building_type = @addressType)";
+            if (areaSearch)
+            {
+                _areaAddress = Format(building, "m");
+            }
+            else
+            {
+                _addressTemplate = building;
+            }
+        }
+
+        _hasLocationFilter = _locationTemplates.Count > 0 || _addressTemplate is not null;
 
         // For a possibly huge search (no specialty, name, NPI or credential), the sort-index plan needs
         // every condition on p itself.
@@ -238,9 +256,9 @@ public sealed class SearchQuery
         }
         else if (taxonomyCodes is not null && _hasLocationFilter)
         {
-            _driver = $"SELECT DISTINCT s.npi FROM provider_search s WHERE s.taxonomy_code IN @taxonomyCodes AND {Location("s")}";
+            _driver = $"SELECT DISTINCT s.npi FROM provider_search s WHERE s.taxonomy_code IN @taxonomyCodes AND {Location("s", withAddress: false)}";
             drivenBy.Add("taxonomy");
-            drivenBy.Add("location");
+            drivenBy.Add(_addressTemplate is null ? "location" : "search-location");
             _driverKind = "search";
         }
         else if (taxonomyCodes is not null)
@@ -259,9 +277,9 @@ public sealed class SearchQuery
         else if (credential is not null && _hasLocationFilter && !areaSearch)
         {
             // Like specialty + location: one index range on (credential, state, city, zip5).
-            _driver = $"SELECT DISTINCT s.npi FROM credential_search s WHERE s.credential = @credentialExact AND {Location("s")}";
+            _driver = $"SELECT DISTINCT s.npi FROM credential_search s WHERE s.credential = @credentialExact AND {Location("s", withAddress: false)}";
             drivenBy.Add("credential");
-            drivenBy.Add("location");
+            drivenBy.Add(_addressTemplate is null ? "location" : "search-location");
             _driverKind = "search";
         }
         else if (selectiveDate)
@@ -286,6 +304,16 @@ public sealed class SearchQuery
             _driver = "SELECT DISTINCT d.npi FROM provider d WHERE " + string.Join(" AND ", providerTemplates.Where(t => t.Kind == "name").Select(t => Format(t.Template, "d")));
             drivenBy.Add("name");
             _driverKind = "name";
+        }
+        else if (_addressTemplate is not null)
+        {
+            // Practice building + location (Stage 5.5 item 18): one index range on (building_type, state, city, zip5), like a specialty.
+            var building = $"building_search b WHERE b.building_type = @addressType AND {Location("b", withAddress: false)}";
+            _driver = careCompare.Count == 0
+                ? $"SELECT DISTINCT b.npi FROM {building}"
+                : $"SELECT DISTINCT b.npi FROM building_search b JOIN cc_clinician cc ON cc.npi = b.npi WHERE b.building_type = @addressType AND {Location("b", withAddress: false)} AND {string.Join(" AND ", careCompare)}";
+            _driverKind = "building";
+            drivenBy.Add("location");
         }
         else if (_hasLocationFilter)
         {
@@ -378,7 +406,7 @@ public sealed class SearchQuery
         const string select = "m.npi AS Npi, m.addr_key AS AddrKey, m.lat AS Lat, m.lon AS Lon, m.approximate AS Approximate, m.source AS Source";
         var joinProvider = _remaining.Count > 0 ? " JOIN provider p ON p.npi = m.npi" : "";
         var remaining = _remaining.Count > 0 ? " AND " + string.Join(" AND ", _remaining) : "";
-        var inArea = $"MBRContains(ST_GeomFromText({boxParameter}, 0), m.pt)";
+        var inArea = $"MBRContains(ST_GeomFromText({boxParameter}, 0), m.pt)" + (_areaAddress is null ? "" : " AND " + _areaAddress);
         return HasSelectiveDriver
             ? $"SELECT /*+ JOIN_ORDER(c, m{(joinProvider.Length > 0 ? ", p" : "")}) */ {select} FROM ({_driver}) c JOIN provider_map m ON m.npi = c.npi{joinProvider} WHERE {inArea}{remaining}"
             : $"SELECT {select} FROM provider_map m{joinProvider} WHERE {inArea}{(_driver is null ? "" : $" AND m.npi IN ({_driver})")}{remaining}";
@@ -420,7 +448,7 @@ public sealed class SearchQuery
             // Only NPI-level checks left (dataset flags): count the candidates without joining provider,
             // which costs a random lookup per candidate (950k for a whole state). Only for drivers drawn from
             // projection tables; the NPI, flag and Care Compare drivers can list NPIs that aren't projected.
-            if (_driverKind is "location" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
+            if (_driverKind is "location" or "building" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
             {
                 var flags = _remainingNpiOnly.Count > 0 ? " WHERE " + string.Join(" AND ", _remainingNpiOnly.Select(t => Format(t, "c"))) : "";
                 return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";
@@ -435,7 +463,7 @@ public sealed class SearchQuery
     /// gender/entity filters (§11 item 6). Count first; above <see cref="SearchFilter.BroadSearchThreshold"/>
     /// use <see cref="IndexOrderPageSql"/>.
     /// </summary>
-    public bool MayBeBroad => _driverKind is null or "location" || (_driverKind == "date" && !_hasLocationFilter);
+    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "date" && !_hasLocationFilter);
 
     /// <summary>
     /// The page read in sort-index order (name or NPI sorts only, else null). Fast when matches are
@@ -472,7 +500,8 @@ public sealed class SearchQuery
     /// <summary>The matching locations of the given NPIs (parameter @npis), best first per NPI.</summary>
     public string LocationsSql =>
         $"SELECT l.npi AS Npi, l.address1 AS Address1, l.address2 AS Address2, l.city AS City, l.state AS State, l.zip5 AS Zip5, l.zip4 AS Zip4, " +
-        $"l.postal_code AS PostalCode, l.country_code AS CountryCode, l.phone AS Phone FROM provider_location l " +
+        $"l.postal_code AS PostalCode, l.country_code AS CountryCode, l.phone AS Phone, " +
+        $"(SELECT at.building_type FROM address_type at WHERE at.addr_key = l.addr_key) AS AddressType FROM provider_location l " +
         $"WHERE l.npi IN @npis AND {LocationWhere} ORDER BY l.npi, l.is_primary DESC, l.id";
 
     public string OrderBy
@@ -501,8 +530,13 @@ public sealed class SearchQuery
     private string MatchingLocation(string column) =>
         $"(SELECT ml.{column} FROM provider_location ml WHERE ml.npi = p.npi AND {Location("ml")} ORDER BY ml.is_primary DESC, ml.id LIMIT 1)";
 
-    private string Location(string alias) =>
-        _locationTemplates.Count > 0 ? string.Join(" AND ", _locationTemplates.Select(t => Format(t, alias))) : "1 = 1";
+    // withAddress: false for the search tables (provider_search, credential_search), which have no address key; the
+    // building is then checked on provider_location afterwards (drivenBy "search-location").
+    private string Location(string alias, bool withAddress = true)
+    {
+        var templates = withAddress && _addressTemplate is not null ? _locationTemplates.Append(_addressTemplate) : _locationTemplates;
+        return templates.Any() ? string.Join(" AND ", templates.Select(t => Format(t, alias))) : "1 = 1";
+    }
 
     private void AddLocationFilters(SearchFilter filter, GeoPoint? radiusCenter)
     {

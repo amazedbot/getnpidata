@@ -118,6 +118,44 @@ public class SearchQueryTests
     }
 
     [Fact]
+    public void Practice_building_needs_another_filter_and_a_known_type()
+    {
+        var alone = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { AddressType = "residential" }));
+        Assert.Equal([nameof(SearchFilter.AddressType)], alone.Errors.Keys);
+
+        var unknown = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { State = "NY", AddressType = "castle" }));
+        Assert.Contains(nameof(SearchFilter.AddressType), unknown.Errors.Keys);
+
+        Assert.Equal("residential", SearchValidation.Normalize(new SearchFilter { State = "NY", AddressType = " Residential " }).AddressType);
+    }
+
+    [Fact]
+    public void Practice_building_is_checked_on_the_same_location_as_the_other_location_filters()
+    {
+        var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Psychologist", State = "NY", AddressType = "residential" });
+
+        var query = new SearchQuery(filter, ["103T00000X"], null);
+
+        // The search table has no address key: it narrows by specialty and state, then a NY location of each candidate must be residential.
+        Assert.Equal("FROM (SELECT DISTINCT s.npi FROM provider_search s WHERE s.taxonomy_code IN @taxonomyCodes AND s.state = @state) c JOIN provider p ON p.npi = c.npi " +
+            "WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state AND " +
+            "EXISTS (SELECT 1 FROM address_type bt WHERE bt.addr_key = l.addr_key AND bt.building_type = @addressType))", query.From);
+        Assert.Equal("residential", query.Parameters.Get<string>("addressType"));
+
+        // A location-only search is one index range of building_search, which has the same location columns.
+        var located = new SearchQuery(SearchValidation.Normalize(new SearchFilter { CountyFips = "36103", AddressType = "commercial" }), null, null);
+        Assert.Equal("SELECT COUNT(*) FROM (SELECT DISTINCT b.npi FROM building_search b WHERE b.building_type = @addressType AND " +
+            "b.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips)) c", located.CountSql);
+        Assert.True(located.MayBeBroad);
+
+        // A map search checks the building at each pin instead.
+        var area = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Psychologist", AddressType = "residential" }), ["103T00000X"], null, areaSearch: true);
+        Assert.Contains("MBRContains(ST_GeomFromText(@box, 0), m.pt) AND EXISTS (SELECT 1 FROM address_type bt WHERE bt.addr_key = m.addr_key", area.AreaSql("@box"),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("provider_location", area.AreaSql("@box"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_classification_with_no_codes_matches_nothing_but_stays_valid_sql()
     {
         var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Nothing" }), [], null);

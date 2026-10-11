@@ -16,7 +16,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
     private sealed record LocationRow(
         string Npi, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4,
-        string? PostalCode, string? CountryCode, string? Phone);
+        string? PostalCode, string? CountryCode, string? Phone, string? AddressType);
 
     private sealed record ZipCountyRow(string Zip5, string CountyName);
 
@@ -28,7 +28,8 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
     private sealed record AreaRow(string Npi, string AddrKey, double Lat, double Lon, sbyte Approximate, string Source);
 
     private sealed record AreaLocationRow(
-        string Npi, string AddrKey, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4, string? PostalCode, string? Phone);
+        string Npi, string AddrKey, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4, string? PostalCode, string? Phone,
+        string? AddressType);
 
     /// <summary>The most providers <see cref="SearchAreaAsync"/> returns; a busier area asks the visitor to zoom in.</summary>
     public const int MaxAreaResults = 1000;
@@ -115,7 +116,8 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             foreach (var l in await connection.QueryAsync<AreaLocationRow>(new CommandDefinition(
                          """
                          SELECT npi AS Npi, addr_key AS AddrKey, address1 AS Address1, address2 AS Address2, city AS City, state AS State,
-                                zip5 AS Zip5, zip4 AS Zip4, postal_code AS PostalCode, phone AS Phone
+                                zip5 AS Zip5, zip4 AS Zip4, postal_code AS PostalCode, phone AS Phone,
+                                (SELECT at.building_type FROM address_type at WHERE at.addr_key = provider_location.addr_key) AS AddressType
                          FROM provider_location WHERE npi IN @npis AND addr_key IN @keys ORDER BY npi, is_primary DESC, id
                          """, new { npis, keys }, cancellationToken: ct)))
             {
@@ -137,7 +139,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 s = s with
                 {
                     Address1 = l.Address1, Address2 = l.Address2, City = l.City, State = l.State, Zip = ProviderNames.Zip(l.Zip5, l.Zip4, l.PostalCode),
-                    Phone = l.Phone ?? s.Phone, County = sameZip ? s.County : null,
+                    Phone = l.Phone ?? s.Phone, County = sameZip ? s.County : null, AddressType = l.AddressType,
                 };
             }
 
@@ -367,6 +369,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value))
             {
                 Flags = flags.GetValueOrDefault(npi, ProviderFlags.None),
+                AddressType = l?.AddressType,
             });
         }
 

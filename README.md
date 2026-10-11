@@ -39,6 +39,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | Search by specialty, location (state, county, city, ZIP, radius), name, NPI, credential, gender and entity type | Website `/`, API `/api/v1/providers` |
 | Find names despite typos or a different spelling, and organizations by any words of their legal or DBA name | "Name match: Similar" on the search and map pages, `nameMatch=similar` |
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
+| Filter by the **kind of building** at a practice address: commercial or institutional, residential (often a home office), residential care facility (nursing home, dormitory), or unknown; each provider page shows the building and what the label rests on | "Practice building" on the search and map pages, `addressType`, CSV column "Practice Building" |
 | Find **new providers** (NPI issued in the last 30/90/365 days) and **recently updated** records in any area; sort newest first for a feed | Same (`newWithinDays`, `updatedWithinDays`) |
 | See compliance and Medicare badges on every result | Website grid, CSV and API flags |
 | Paged, sortable results with the total match count | Website grid, API JSON |
@@ -86,6 +87,7 @@ At least one filter is required. Filters combine with AND.
 | `minYears` | At least this many years since graduation (Care Compare), 1–70 | `20` |
 | `medicareActive` | `true`: only providers who billed Medicare Part B or Part D in the latest data year | `true` |
 | `shortage` | `primaryCare`, `dental` or `mentalHealth`: a practice location in a county with that kind of shortage area | `dental` |
+| `addressType` | `commercial`, `residential`, `care` or `unknown`: a practice location in that kind of building (FEMA USA Structures, and signs of a business at the address). Needs another filter | `residential` |
 | `newWithinDays` | New providers: NPI issued (enumerated) within the last this many days, 1–3650. With `sort=-enumeration`, a newest-first feed | `30` |
 | `updatedWithinDays` | NPPES record updated within the last this many days, 1–3650 | `7` |
 | `sort` | `name` (default), `npi`, `credential`, `city`, `state`, `zip`, `lastUpdate`, `enumeration`; prefix `-` for descending | `-lastUpdate` |
@@ -225,6 +227,7 @@ by parameter and `RetryAfter`. Build the NuGet package with `dotnet pack src/Npi
 | [Census Gazetteer files](https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html) | County names, ZIP centroids for radius search | Yearly |
 | [Overture Maps](https://overturemaps.org/) addresses (US DOT National Address Database) and places | Map pins at the building: address points, the addresses of places (hospitals, campuses), building names | `Npi.Loader overture` (every state), when a new release is out |
 | [Census Geocoder](https://geocoding.geo.census.gov/) (batch) | Map pins where Overture has no match: estimated along the street | New addresses with each load; each address once |
+| FEMA [USA Structures](https://gis-fema.hub.arcgis.com/pages/usa-structures) (Oak Ridge National Laboratory; the [GeoParquet copy on Source Cooperative](https://source.coop/wherobots/usa-structures)) | The kind of building at each practice address (residential, commercial, care facility …) | When the files change, or after 50,000 newly mapped addresses (checked weekly) |
 | [HHS-OIG LEIE](https://oig.hhs.gov/exclusions/) | Exclusions from federal health programs | Monthly |
 | [CMS Opt Out Affidavits, Order and Referring](https://data.cms.gov/) | Medicare opt-out, order/refer eligibility | Monthly / weekly |
 | [Medicare Care Compare (Provider Data Catalog)](https://data.cms.gov/provider-data/) | Clinicians, group practices, hospital affiliations, hospitals and nursing homes | Monthly |
@@ -323,6 +326,7 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `datasets [name]` | Force-reload the enrichment datasets (OIG, CMS, HRSA, Census, Open Payments), or just one. `run` reloads each when its publisher releases a new version |
 | `project` | Rebuild the search tables now (and the standardized credentials) |
 | `credentials` | Rebuild the standardized credential tables (from the 173k ways providers wrote 1,753 credentials) |
+| `address-types` | Relabel the practice addresses (commercial, residential, care facility, unknown) from the loaded FEMA buildings; `run` does it after each projection, `datasets fema_structures` after each FEMA load |
 | `overture [area]` | Place practice addresses at their building with Overture Maps data (read in place from its public files, one state's area at a time), then rebuild the map tables: every state, one state (`NY`) or one county (`36103`) |
 | `geocode [county]` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. With a 5-digit county FIPS (e.g. `36103`), only that county's addresses. `run` geocodes up to 200,000 new addresses per run |
 | `publish` | Sync the search tables to Azure *(planned)* |

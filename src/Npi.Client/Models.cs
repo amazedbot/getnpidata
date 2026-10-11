@@ -45,6 +45,9 @@ public sealed class ProviderSummary
 
     /// <summary>Badges from the joined datasets (exclusion, Medicare opt-out, order/refer eligibility).</summary>
     public ProviderFlags Flags { get; set; } = new();
+
+    /// <summary>The kind of building at the shown location: commercial, residential, care or unknown; null when not labelled.</summary>
+    public string? AddressType { get; set; }
 }
 
 /// <summary>Yes/no facts from the joined datasets.</summary>
@@ -124,6 +127,12 @@ public sealed class ProviderLocation
     public string? CountryCode { get; set; }
 
     public string? Phone { get; set; }
+
+    /// <summary>The kind of building at the address: commercial, residential, care or unknown; null outside the US.</summary>
+    public string? BuildingType { get; set; }
+
+    /// <summary>What that rests on (FEMA building type and size, signs of a business at the address).</summary>
+    public string? BuildingBasis { get; set; }
 }
 
 /// <summary>Everything published for one provider.</summary>

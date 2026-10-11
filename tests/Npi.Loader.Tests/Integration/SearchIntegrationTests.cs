@@ -560,6 +560,84 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Null(await maps.GetStartAreaAsync(new SearchFilter { Classification = "Chiropractor" }, _ct));
     }
 
+    [Fact]
+    public async Task Practice_addresses_are_labelled_from_FEMA_buildings_and_signs_of_a_business()
+    {
+        await using var db = await SeededAsync();
+        var census = new CensusGeocoder(new HttpClient(new FakeCensus()), "https://census.test/batch", "Public_AR_Current");
+        await new AddressGeocoder(db.Database, census, Logger.None, batchSize: 10, parallelism: 1) { Delays = [] }.GeocodePendingAsync(maxBatches: 0, _ct);
+        await db.ExecuteAsync($"INSERT INTO address_point (addr_key, source, lat, lon, matched, `release`, matched_at) " +
+            $"SELECT addr_key, 'place', 40.6905, -73.9950, '5 ATLANTIC AVE', '2026-09-23.1', NOW() FROM provider_location WHERE npi = '{D}'");
+        await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+
+        // Nothing to label before FEMA structures are loaded.
+        var labels = new AddressTypeBuilder(db.Database, Logger.None, 0.95);
+        Assert.False(await labels.IsStaleAsync(_ct));
+
+        var options = new LoaderOptions
+        {
+            WorkFolder = _folder, LogFolder = _folder, DownloadAttempts = 1,
+            FemaStructuresListingUrl = "https://fema.test/list", FemaStructuresBaseUrl = "https://fema.test/files/",
+        };
+        var context = new Npi.Loader.Datasets.DatasetContext(options, db.Database, new HttpClient(new FakeFema()), Logger.None);
+        var source = new Npi.Loader.Datasets.FemaStructureSource();
+        var release = await source.FindLatestAsync(context, _ct);
+        Assert.StartsWith("USA Structures 2024-12-06 ", release.Version, StringComparison.Ordinal);
+        Assert.EndsWith("; 0+ addresses", release.Version, StringComparison.Ordinal); // 5 geocoded addresses, in steps of 50,000
+
+        // A, D and E have points (B's two addresses are only at their ZIP centroids, so they aren't looked up).
+        Assert.Equal(3L, await source.LoadAsync(context, release, _ct));
+        Assert.Equal([("census", "inside", "Single Family Dwelling"), ("place", "inside", "Multi - Family Dwelling"), ("census", "near", "Medical Office/Clinic")],
+            await db.QueryAsync<(string, string, string)>(
+                "SELECT m.source, b.matched, b.prim_occ FROM address_building b JOIN provider_map m ON m.addr_key = b.addr_key ORDER BY m.npi"));
+        Assert.Equal(17, await db.ScalarAsync<int>("SELECT b.distance_m FROM address_building b WHERE b.matched = 'near'"));
+        Assert.False(File.Exists(Path.Combine(_folder, "datasets", "fema", "fema_part1.parquet"))); // deleted after use
+
+        // A: a house. D: an apartment building, but an Overture place has its address → commercial. E: the clinic next to its
+        // street point. B: not placed on a building → unknown.
+        Assert.Equal([(A, "residential"), (B, "unknown"), (B, "unknown"), (D, "commercial"), (E, "commercial")],
+            await db.QueryAsync<(string, string)>(
+                "SELECT l.npi, t.building_type FROM provider_location l JOIN address_type t ON t.addr_key = l.addr_key ORDER BY l.npi, t.building_type"));
+        Assert.False(await labels.IsStaleAsync(_ct));
+
+        var search = Search(db);
+        Assert.Equal([A], await Npis(search, new SearchFilter { State = "NY", AddressType = "residential" }));
+        Assert.Equal([D, E], await Npis(search, new SearchFilter { State = "NY", AddressType = "commercial" }));
+        Assert.Equal([B], await Npis(search, new SearchFilter { State = "NY", AddressType = "unknown" }));
+        Assert.Equal([A], await Npis(search, new SearchFilter { Classification = "Chiropractor", State = "NY", AddressType = "residential" }));
+        Assert.Empty(await Npis(search, new SearchFilter { Classification = "Chiropractor", CountyFips = "36047", AddressType = "residential" }));
+
+        var page = await search.SearchAsync(new SearchFilter { State = "NY", AddressType = "commercial" }, _ct);
+        Assert.All(page.Items, i => Assert.Equal("commercial", i.AddressType));
+
+        var details = new ProviderDetailService(db.ConnectionString);
+        var location = Assert.Single((await details.GetAsync(D, _ct))!.Locations);
+        Assert.Equal("commercial", location.BuildingType);
+        Assert.Equal("FEMA USA Structures: Multi - Family Dwelling, 40,000 sq ft; a business is listed at this address (Overture Maps)", location.BuildingBasis);
+        Assert.Equal("FEMA USA Structures: Medical Office/Clinic, 5,200 sq ft, the nearest building (about 17 m)",
+            (await details.GetAsync(E, _ct))!.Locations[0].BuildingBasis);
+
+        // The map checks the building at each pin.
+        var area = await search.SearchAreaAsync(new SearchFilter { AddressType = "residential" }, MapBounds.Parse("-74.1,40.5,-73.3,40.9")!, _ct);
+        Assert.Equal([A], area.Items.Select(i => i.Provider.Npi));
+        Assert.Equal("residential", area.Items[0].Provider.AddressType);
+    }
+
+    /// <summary>The Source Cooperative listing of the FEMA USA Structures files and the two fixture files.</summary>
+    private sealed class FakeFema : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.ToString();
+            HttpContent content = url == "https://fema.test/list"
+                ? new ByteArrayContent(File.ReadAllBytes(Fixtures.Path("datasets/fema_listing_sample.xml")))
+                : url.StartsWith("https://fema.test/files/usa-structures/geoparquet/", StringComparison.Ordinal)
+                    ? new ByteArrayContent(File.ReadAllBytes(Fixtures.Path("datasets/" + url[(url.LastIndexOf('/') + 1)..])))
+                    : throw new InvalidOperationException($"Unexpected request {url}");
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = content });
+        }
+    }
+
     /// <summary>The Census batch geocoder: 1 Broadway and 200 Main St match, 300 Conklin St is a tie, the rest don't match.</summary>
     private sealed class FakeCensus : HttpMessageHandler
     {

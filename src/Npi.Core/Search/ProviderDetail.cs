@@ -5,7 +5,14 @@ namespace Npi.Core.Search;
 
 public sealed record ProviderTaxonomy(int Slot, string Code, string? Classification, string? Specialization, bool IsPrimary, string? LicenseNumber, string? LicenseState);
 
-public sealed record ProviderLocation(bool IsPrimary, string? Address1, string? Address2, string? City, string? State, string? Zip, string? CountryCode, string? Phone);
+public sealed record ProviderLocation(bool IsPrimary, string? Address1, string? Address2, string? City, string? State, string? Zip, string? CountryCode, string? Phone)
+{
+    /// <summary>The kind of building at the address (<see cref="AddressTypes"/>, Stage 5.5 item 18); null when not labelled (outside the US).</summary>
+    public string? BuildingType { get; init; }
+
+    /// <summary>What the label rests on: the FEMA building type and size, and any signs of a business at the address.</summary>
+    public string? BuildingBasis { get; init; }
+}
 
 /// <summary>The person an organization registered as its authorized official.</summary>
 public sealed record AuthorizedOfficial(string Name, string? Credential, string? Title, string? Phone);
@@ -100,7 +107,7 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record TaxRow(sbyte Slot, string Code, string? Classification, string? Specialization, sbyte IsPrimary, string? LicenseNo, string? LicenseState);
 
     private sealed record LocRow(sbyte IsPrimary, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4,
-        string? PostalCode, string? CountryCode, string? Phone);
+        string? PostalCode, string? CountryCode, string? Phone, string? BuildingType, string? BuildingBasis);
 
     private sealed record ProfileRow(sbyte? IsSoleProprietor, sbyte? IsSubpart, string? ParentOrgName,
         string? OfficialPrefix, string? OfficialFirstName, string? OfficialMiddleName, string? OfficialLastName, string? OfficialSuffix,
@@ -190,9 +197,11 @@ public sealed class ProviderDetailService(string connectionString)
             """, new { npi }, cancellationToken: ct));
         var locations = await connection.QueryAsync<LocRow>(new CommandDefinition(
             """
-            SELECT is_primary AS IsPrimary, address1 AS Address1, address2 AS Address2, city AS City, state AS State, zip5 AS Zip5, zip4 AS Zip4,
-                   postal_code AS PostalCode, country_code AS CountryCode, phone AS Phone
-            FROM provider_location WHERE npi = @npi ORDER BY is_primary DESC, id
+            SELECT l.is_primary AS IsPrimary, l.address1 AS Address1, l.address2 AS Address2, l.city AS City, l.state AS State, l.zip5 AS Zip5,
+                   l.zip4 AS Zip4, l.postal_code AS PostalCode, l.country_code AS CountryCode, l.phone AS Phone,
+                   at.building_type AS BuildingType, at.basis AS BuildingBasis
+            FROM provider_location l LEFT JOIN address_type at ON at.addr_key = l.addr_key
+            WHERE l.npi = @npi ORDER BY l.is_primary DESC, l.id
             """, new { npi }, cancellationToken: ct));
         var otherNames = await connection.QueryAsync<string>(new CommandDefinition(
             "SELECT name FROM provider_other_name WHERE npi = @npi ORDER BY id", new { npi }, cancellationToken: ct));
@@ -411,7 +420,7 @@ public sealed class ProviderDetailService(string connectionString)
             p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value),
             taxonomies.Select(t => new ProviderTaxonomy(t.Slot, t.Code, t.Classification, t.Specialization, t.IsPrimary != 0, t.LicenseNo, t.LicenseState)).ToList(),
             locations.Select(l => new ProviderLocation(l.IsPrimary != 0, l.Address1, l.Address2, l.City, l.State,
-                ProviderNames.Zip(l.Zip5, l.Zip4, l.PostalCode), l.CountryCode, l.Phone)).ToList(),
+                ProviderNames.Zip(l.Zip5, l.Zip4, l.PostalCode), l.CountryCode, l.Phone) { BuildingType = l.BuildingType, BuildingBasis = l.BuildingBasis }).ToList(),
             otherNames.ToList())
         {
             Profile = profile is null ? null : ToProfile(profile),
