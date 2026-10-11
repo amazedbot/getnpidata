@@ -119,6 +119,21 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             }
         }
 
+        // Area pages (docs/PRODUCT_PLAN.md step 1.6): provider counts per area and specialty, recounted after each projection.
+        var areas = new AreaCountBuilder(database, log, options.MinRowRatio);
+        if (projectionOk && await areas.IsStaleAsync(ct))
+        {
+            try
+            {
+                await areas.BuildAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Counting the providers per area failed");
+                projectionOk = false;
+            }
+        }
+
         // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
 
@@ -229,6 +244,15 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             await addressTypes.BuildAsync(ct);
         }
 
+        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
+    }
+
+    /// <summary>The <c>areas</c> command: recount the providers per area and specialty now.</summary>
+    public async Task<int> AreasAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         return 0;
     }
 

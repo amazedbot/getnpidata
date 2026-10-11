@@ -211,6 +211,57 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Area_counts_and_pages()
+    {
+        await using var db = await SeededAsync();
+        // Suffolk (36103): A in Amityville 11701 (also in Nassau), B's second office and E in Farmingdale 11735. B and D are in Brooklyn (Kings).
+        await db.ExecuteAsync(
+            """
+            INSERT INTO county_population (county_fips, state_fips, county_code, population, year) VALUES
+              ('36103', '36', '103', 1500000, 2025), ('36059', '36', '059', 1400000, 2025), ('36047', '36', '047', 2600000, 2025);
+            INSERT INTO county_shortage (county_fips, discipline, whole_county, hpsa_count, max_score) VALUES ('36103', 'MH', 0, 2, 14);
+            INSERT INTO cms_hospital (ccn, name, address, city, state, zip, hospital_type, emergency_services, overall_rating) VALUES
+              ('330045', 'GOOD SAMARITAN HOSPITAL', '1000 MONTAUK HWY', 'WEST ISLIP', 'NY', '11701', 'Acute Care Hospitals', 1, 3);
+            """);
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        const string chiro = "Chiropractic & complementary care", doctors = "Doctors (MD, DO)";
+        Assert.Equal(
+            [("county", "36047", "", "", 2), ("county", "36059", "", "", 1), ("county", "36103", "", "", 3), ("state", "NY", "", "", 4), ("us", "US", "", "", 4)],
+            await db.QueryAsync<(string, string, string, string, int)>(
+                "SELECT area_type, area_id, category, subcategory, providers FROM area_provider_count WHERE category = '' ORDER BY area_type, area_id"));
+        Assert.Equal(2, await db.ScalarAsync<int>(
+            "SELECT providers FROM area_provider_count WHERE area_type = 'county' AND area_id = '36103' AND category = @chiro AND subcategory = 'Chiropractors'",
+            new { chiro }));
+        Assert.Equal(2, await db.ScalarAsync<int>( // A (a pediatrics taxonomy besides chiropractic) and E
+            "SELECT providers FROM area_provider_count WHERE area_type = 'county' AND area_id = '36103' AND category = @doctors AND subcategory = ''",
+            new { doctors }));
+
+        var areas = new AreaProfileService(db.ConnectionString);
+        var suffolk = (await areas.GetAsync("NY", "36103", chiro, "Chiropractors", _ct))!;
+        Assert.Equal(("Suffolk County", "NY", 1_500_000L, 2), (suffolk.Name, suffolk.State, suffolk.Population, suffolk.Selected.Providers));
+        Assert.Equal(2 * 100_000.0 / 1_500_000, suffolk.Selected.Per100k!.Value, 6);
+        Assert.Equal(2 * 100_000.0 / 5_500_000, suffolk.ParentPer100k!.Value, 6);      // NY: the same two chiropractors, for 5.5M people
+        Assert.Equal(["Amityville", "Farmingdale"], suffolk.Cities.Select(c => c.City).Order());
+        Assert.Equal(("Mental health", 2), (suffolk.Shortages.Single().DisciplineName, suffolk.Shortages.Single().ShortageAreas));
+        Assert.Equal(["330045"], suffolk.Hospitals.Select(h => h.Ccn));
+        Assert.Empty(suffolk.Children);
+
+        var ny = (await areas.GetAsync("ny", null, null, null, _ct))!;
+        Assert.Equal(("state", "New York", 4), (ny.Type, ny.Name, ny.Selected.Providers));
+        Assert.Equal(["Kings County", "Nassau County", "Suffolk County"], ny.Children.Select(c => c.Name));
+        Assert.Equal(["Mental health"], ny.Children.Single(c => c.Id == "36103").Shortages);
+        Assert.Contains(ny.Specialties, s => s.Category == chiro && s.Providers == 2);
+
+        var us = (await areas.GetAsync(null, null, null, null, _ct))!;
+        Assert.Equal(("us", 4), (us.Type, us.Selected.Providers));
+        Assert.Contains(us.Children, c => c.Id == "NY" && c.Providers == 4);
+
+        Assert.Null(await areas.GetAsync("ZZ", null, null, null, _ct));
+        Assert.Null(await areas.GetAsync("CA", "36103", null, null, _ct));  // the county isn't in that state
+        Assert.Null(await areas.GetAsync("NY", "123", null, null, _ct));
+    }
+
+    [Fact]
     public async Task A_deactivated_npi_has_only_its_status()
     {
         await using var db = await SeededAsync();

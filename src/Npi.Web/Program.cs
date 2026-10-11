@@ -26,6 +26,7 @@ builder.Services.AddSingleton(_ => new OrganizationService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
+builder.Services.AddSingleton(_ => new AreaProfileService(connectionString));
 builder.Services.AddSingleton(_ => new MapService(connectionString));
 builder.Services.AddSingleton(_ => new CompanyService(connectionString));
 builder.Services.AddSingleton(_ => new ProductService(connectionString));
