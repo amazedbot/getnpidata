@@ -74,7 +74,7 @@
   }
 
   // Don't send empty fields: keeps result URLs short and shareable.
-  document.getElementById("search-form").addEventListener("submit", (e) => {
+  document.getElementById("search-form")?.addEventListener("submit", (e) => {
     if (e.defaultPrevented) return; // the map page searches in place
     for (const el of e.target.elements) {
       if (el.name && !el.value) el.disabled = true;

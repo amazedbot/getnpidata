@@ -41,6 +41,9 @@ public sealed class GeographyCatalog(string connectionString, TimeSpan? maxAge =
 
     public static string StateName(string code) => StateNames.TryGetValue(code, out var name) ? name : code;
 
+    /// <summary>Every state and territory code with its name.</summary>
+    public static IReadOnlyDictionary<string, string> AllStateNames => StateNames;
+
     private async Task<(DateTime LoadedAt, IReadOnlyList<StateInfo> States, ILookup<string, CountyInfo> Counties, DataVersion? Version)> LoadAsync(CancellationToken ct)
     {
         if (_cache is { } fresh && DateTime.UtcNow - fresh.LoadedAt < _maxAge)

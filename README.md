@@ -36,7 +36,8 @@ facilities an organization runs. Counties come with population and shortage-area
 
 | Capability | Where |
 |---|---|
-| Type a name or an NPI in the search box at the top of every page (an NPI opens the provider's page) | Every page |
+| Type what you want in the search box at the top of every page: an NPI (opens the provider's page), a name (people and organizations), or a specialty and a place in plain words ("chiropractors in Suffolk County, NY", "dentists near 11701", "cardiologists in Houston"), with suggestions as you type | Every page, `/search?q=` |
+| Build a list with filters and export it with the columns you need (summary, contact or compliance), as CSV or Excel | `/search`, `/export?columns=&format=csv|xlsx` |
 | Search by specialty, location (state, county, city, ZIP, radius), name, NPI, credential, gender and entity type | Website `/`, API `/api/v1/providers` |
 | Find names despite typos or a different spelling, and organizations by any words of their legal or DBA name | "Name match: Similar" on the search and map pages, `nameMatch=similar` |
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
