@@ -22,7 +22,7 @@
         <legend>Location</legend>
         <div class="field">
             <label for="state">State</label>
-            <select id="state" name="state" data-dependent="county" data-source="/lookup/counties?state=">
+            <select id="state" name="state" data-dependent="county" data-source="/lookup/counties?state=" data-cities="city">
                 <option value="">Any</option>
                 @foreach (var s in Model.States)
                 {
@@ -33,7 +33,7 @@
         </div>
         <div class="field">
             <label for="county">County</label>
-            <select id="county" name="county" disabled="@(Model.Counties.Count == 0)">
+            <select id="county" name="county" disabled="@(Model.Counties.Count == 0)" data-cities="city">
                 <option value="">Any</option>
                 @foreach (var c in Model.Counties)
                 {
@@ -44,7 +44,14 @@
         </div>
         <div class="field">
             <label for="city">City</label>
-            <input id="city" name="city" value="@f.City" maxlength="60" autocomplete="address-level2" />
+            <select id="city" name="city" disabled="@(Model.Cities.Count == 0)" data-source="/lookup/cities">
+                <option value="">@(Model.Cities.Count == 0 && f.State is null ? "Choose a state first" : "Any")</option>
+                @foreach (var c in Model.Cities)
+                {
+                    <option value="@c" selected="@(string.Equals(c, f.City, StringComparison.OrdinalIgnoreCase))">@c</option>
+                }
+            </select>
+            <span class="field-error">@Model.Error(nameof(SearchFilter.City))</span>
         </div>
         <div class="field narrow">
             <label for="zip">ZIP</label>

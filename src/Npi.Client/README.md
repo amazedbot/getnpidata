@@ -29,7 +29,7 @@ await npi.DownloadProvidersCsvAsync(new ProviderSearch { Classification = "Chiro
 | `GetProductAsync(slug)` | `GET /api/v1/products/{slug}` (null if unknown) |
 | `GetProductPrescribersAsync(slug, sort, page, pageSize)` | `GET /api/v1/products/{slug}/prescribers` (null if none) |
 | `GetClassificationsAsync()` / `GetSpecializationsAsync(c)` | `GET /api/v1/taxonomy/classifications[/{c}/specializations]` |
-| `GetStatesAsync()` / `GetCountiesAsync(st)` | `GET /api/v1/states[/{st}/counties]` |
+| `GetStatesAsync()` / `GetCountiesAsync(st)` / `GetCitiesAsync(st, county)` | `GET /api/v1/states[/{st}/counties]`, `GET /api/v1/states/{st}/cities?county=` |
 | `GetMetaAsync()` | `GET /api/v1/meta` |
 
 **Errors.** Every API error becomes an `NpiApiException`, which carries:

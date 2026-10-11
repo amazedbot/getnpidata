@@ -32,7 +32,8 @@ public sealed class SearchQuery
     private readonly bool _hasLocationFilter;
     private readonly List<string> _locationTemplates = []; // "{0}" = table alias
     private readonly string? _addressTemplate;             // the building at a provider_location row ("{0}" = its alias); not in the search tables
-    private readonly string? _areaAddress;                 // map search: the building at the pin (provider_map m)
+    private readonly string? _areaAddress;
+    private bool _stateOnSearchTables;                     // a USPS city carries the state on provider_location; the search tables (s, b) keep it                 // map search: the building at the pin (provider_map m)
     private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
     private string? _driverKind;
     private readonly List<string> _relevance = [];          // "similar" names: best matches first (default sort only)
@@ -47,7 +48,11 @@ public sealed class SearchQuery
     /// The standardized credential the Credential filter resolved to (Stage 5.5 item 12): matched exactly against
     /// provider_credential. Null: a prefix match on the raw credential ("M" → MD, MS …).
     /// </param>
-    public SearchQuery(SearchFilter filter, IReadOnlyCollection<string>? taxonomyCodes, GeoPoint? radiusCenter, bool areaSearch = false, string? credential = null)
+    /// <param name="cityZips">
+    /// The ZIPs USPS gives the City filter's name (in the State filter's state), looked up beforehand; null: looked up in the query.
+    /// </param>
+    public SearchQuery(SearchFilter filter, IReadOnlyCollection<string>? taxonomyCodes, GeoPoint? radiusCenter, bool areaSearch = false, string? credential = null,
+        IReadOnlyCollection<string>? cityZips = null)
     {
         Filter = filter;
         _sort = SearchSortOrder.TryParse(filter.Sort, out var sort)
@@ -174,7 +179,7 @@ public sealed class SearchQuery
             Parameters.Add("taxonomyCodes", taxonomyCodes.Count > 0 ? taxonomyCodes.ToArray() : ["-"]);
         }
 
-        AddLocationFilters(filter, radiusCenter);
+        AddLocationFilters(filter, radiusCenter, cityZips);
         if (filter.AddressType is not null)
         {
             // Practice building (Stage 5.5 item 18): a location condition, but only provider_location has the address key. A map
@@ -534,22 +539,49 @@ public sealed class SearchQuery
     // building is then checked on provider_location afterwards (drivenBy "search-location").
     private string Location(string alias, bool withAddress = true)
     {
-        var templates = withAddress && _addressTemplate is not null ? _locationTemplates.Append(_addressTemplate) : _locationTemplates;
+        IEnumerable<string> templates = _stateOnSearchTables && alias is "s" or "b" ? _locationTemplates.Prepend("{0}.state = @state") : _locationTemplates;
+        templates = withAddress && _addressTemplate is not null ? templates.Append(_addressTemplate) : templates;
         return templates.Any() ? string.Join(" AND ", templates.Select(t => Format(t, alias))) : "1 = 1";
     }
 
-    private void AddLocationFilters(SearchFilter filter, GeoPoint? radiusCenter)
+    private void AddLocationFilters(SearchFilter filter, GeoPoint? radiusCenter, IReadOnlyCollection<string>? cityZips)
     {
         if (filter.State is not null)
         {
             Parameters.Add("state", filter.State);
-            _locationTemplates.Add("{0}.state = @state");
+            // With a USPS city the city condition carries the state (its ZIPs are the state's): a separate state condition
+            // made MySQL scan the whole state's locations instead of merging the city and ZIP index ranges (Saint James 4 s).
+            if (filter.City is null || cityZips is not { Count: > 0 })
+            {
+                _locationTemplates.Add("{0}.state = @state");
+            }
+            else
+            {
+                _stateOnSearchTables = true; // the search tables lead with (…, state, city), so there the state still narrows the range
+            }
         }
 
         if (filter.City is not null)
         {
+            // The city as written, or a ZIP USPS gives that name (HUD crosswalk): providers who wrote "BROOKYLN" or "BKLYN" are in Brooklyn.
             Parameters.Add("city", filter.City);
-            _locationTemplates.Add("{0}.city = @city");
+            if (cityZips is null)
+            {
+                _locationTemplates.Add("({0}.city = @city OR {0}.zip5 IN (SELECT zc.zip5 FROM zip_county zc WHERE zc.usps_city = @city" +
+                                       (filter.State is null ? "" : " AND zc.usps_state = @state") + "))");
+            }
+            else if (cityZips.Count == 0)
+            {
+                _locationTemplates.Add("{0}.city = @city"); // not a USPS name: as written only
+            }
+            else
+            {
+                // Both branches are index ranges ((state, city) and (zip5)), so MySQL can merge them.
+                Parameters.Add("cityZips", cityZips.ToArray());
+                _locationTemplates.Add(filter.State is null
+                    ? "({0}.city = @city OR {0}.zip5 IN @cityZips)"
+                    : "(({0}.state = @state AND {0}.city = @city) OR {0}.zip5 IN @cityZips)");
+            }
         }
 
         if (filter.CountyFips is not null)

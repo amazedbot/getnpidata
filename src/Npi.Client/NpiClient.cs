@@ -225,6 +225,14 @@ public sealed class NpiClient : IDisposable
     public Task<IReadOnlyList<CountyInfo>> GetCountiesAsync(string state, CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<CountyInfo>>($"api/v1/states/{Segment(state, nameof(state))}/counties", cancellationToken);
 
+    /// <summary>
+    /// The practice-location cities of one state, or of one of its counties (5-digit FIPS), as <see cref="ProviderSearch.City"/> takes them.
+    /// </summary>
+    /// <exception cref="NpiApiException">404 when the state is unknown or the county isn't in it.</exception>
+    public Task<IReadOnlyList<string>> GetCitiesAsync(string state, string? county = null, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<IReadOnlyList<string>>($"api/v1/states/{Segment(state, nameof(state))}/cities"
+            + (string.IsNullOrWhiteSpace(county) ? "" : "?county=" + Uri.EscapeDataString(county!.Trim())), cancellationToken);
+
     /// <summary>County population and HRSA shortage areas, or null when the FIPS code is unknown.</summary>
     public async Task<CountyFacts?> GetCountyAsync(string fips, CancellationToken cancellationToken = default)
     {

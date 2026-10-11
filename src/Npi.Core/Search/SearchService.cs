@@ -285,7 +285,18 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 : new GeoPoint(point.Value.Lat, point.Value.Lon);
         }
 
-        return new SearchQuery(f, codes, center, credential: await ResolveCredentialAsync(f, ct));
+        // The ZIPs USPS gives the city's name, as a list: an OR with a subquery kept MySQL from using the city index (NY + Brooklyn 5 s).
+        IReadOnlyCollection<string>? cityZips = null;
+        if (f.City is not null)
+        {
+            cityZips = (await connection.QueryAsync<string>(new CommandDefinition(
+                f.State is null
+                    ? "SELECT DISTINCT zip5 FROM zip_county WHERE usps_city = @city"
+                    : "SELECT DISTINCT zip5 FROM zip_county WHERE usps_city = @city AND usps_state = @state",
+                new { city = f.City, state = f.State }, cancellationToken: ct))).ToList();
+        }
+
+        return new SearchQuery(f, codes, center, credential: await ResolveCredentialAsync(f, ct), cityZips: cityZips);
     }
 
     private async Task<string?> ResolveCredentialAsync(SearchFilter f, CancellationToken ct) =>

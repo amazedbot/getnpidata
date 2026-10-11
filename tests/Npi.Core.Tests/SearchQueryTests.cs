@@ -93,7 +93,8 @@ public class SearchQueryTests
         }
 
         Assert.Contains("p.last_name LIKE @lastName", query.CountSql, StringComparison.Ordinal);
-        Assert.Contains("s.city = @city", query.CountSql, StringComparison.Ordinal);
+        Assert.Contains("(s.city = @city OR s.zip5 IN (SELECT zc.zip5 FROM zip_county zc WHERE zc.usps_city = @city AND zc.usps_state = @state))", query.CountSql,
+            StringComparison.Ordinal); // the city as written, or a ZIP USPS gives that name
         Assert.Equal("MD%", query.Parameters.Get<string>("credential")); // punctuation-insensitive credential prefix
     }
 
@@ -103,6 +104,13 @@ public class SearchQueryTests
     [InlineData("A_B", @"A\_B%")]
     [InlineData(@"C:\x", @"C:\\x%")]
     public void Name_prefixes_escape_like_wildcards(string input, string expected) => Assert.Equal(expected, SearchQuery.Prefix(input));
+
+    [Theory]
+    [InlineData("SAINT JAMES", "Saint James")]
+    [InlineData(" o'fallon ", "O'Fallon")]
+    [InlineData("WINSTON-SALEM", "Winston-Salem")]
+    [InlineData("ST. MARY'S CITY", "St. Mary's City")]
+    public void City_names_are_title_cased_for_the_dropdown(string raw, string shown) => Assert.Equal(shown, CityCatalog.TitleCase(raw));
 
     [Fact]
     public void Specialty_matches_any_slot_and_location_filters_any_location()

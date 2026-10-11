@@ -115,6 +115,11 @@ public static class ApiEndpoints
         api.MapGet("/states/{state}/counties", GetCountiesAsync)
             .WithName("ListCounties").WithTags("Lookups").WithSummary("Counties of one state, with FIPS codes").CacheOutput(CachePolicy);
 
+        api.MapGet("/states/{state}/cities", GetCitiesAsync)
+            .WithName("ListCities").WithTags("Lookups").WithSummary("Practice-location cities of one state, optionally of one county")
+            .WithDescription("The names USPS uses for the state's ZIPs that have practice locations (optionally only the county's, by 5-digit FIPS). The city search parameter matches a location by the name as written or by a ZIP USPS gives that name.")
+            .CacheOutput(CachePolicy);
+
         api.MapGet("/counties/{fips}", GetCountyAsync)
             .WithName("GetCounty").WithTags("Lookups").WithSummary("County population and shortage areas")
             .WithDescription("Census population estimate and HRSA Health Professional Shortage Areas (primary care, dental, mental health) in force.")
@@ -189,6 +194,23 @@ public static class ApiEndpoints
     {
         var counties = await geography.GetCountiesAsync(state, ct);
         return counties.Count > 0 ? TypedResults.Ok(counties) : NotFound($"Unknown state '{state}'.");
+    }
+
+    private static async Task<Results<Ok<IReadOnlyList<string>>, ProblemHttpResult>> GetCitiesAsync(
+        string state, string? county, GeographyCatalog geography, CityCatalog cities, CancellationToken ct)
+    {
+        var counties = await geography.GetCountiesAsync(state, ct);
+        if (counties.Count == 0)
+        {
+            return NotFound($"Unknown state '{state}'.");
+        }
+
+        if (county is not null && !counties.Any(c => c.Fips == county))
+        {
+            return NotFound($"County '{county}' is not in {state.ToUpperInvariant()}.");
+        }
+
+        return TypedResults.Ok(await cities.GetCitiesAsync(state, county, ct));
     }
 
     private static async Task<Results<Ok<CountyFacts>, ProblemHttpResult>> GetCountyAsync(string fips, AreaService areas, CancellationToken ct) =>
