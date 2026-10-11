@@ -479,6 +479,24 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task The_city_dropdown_lists_a_state_or_county_s_cities()
+    {
+        await using var db = await SeededAsync();
+        // A misspelled city isn't listed (only the names USPS uses for ZIPs with practice locations are).
+        await db.ExecuteAsync($"INSERT INTO provider_location (npi, is_primary, address1, city, state, zip5) VALUES ('{B}', 0, '9 Elm St', 'AMITYVILE', 'NY', '11701')");
+        var cities = new CityCatalog(db.ConnectionString);
+
+        Assert.Equal(["Amityville", "Brooklyn", "Farmingdale"], await cities.GetCitiesAsync("ny", null, _ct));
+        Assert.Equal(["Amityville", "Farmingdale"], await cities.GetCitiesAsync("NY", "36103", _ct)); // Suffolk County's ZIPs
+        Assert.Empty(await cities.GetCitiesAsync("ZZ", null, _ct));
+
+        // The dropdown's value matches the city as written (case-insensitive) or a ZIP USPS calls Amityville: B wrote AMITYVILE.
+        Assert.Equal([A, B], await Npis(Search(db), new SearchFilter { State = "NY", City = "Amityville" }));
+        Assert.Equal([A], await Npis(Search(db), new SearchFilter { Classification = "Chiropractor", State = "NY", City = "Amityville" })); // provider_search (B's added row is in it only after the next projection)
+        Assert.Equal([B], await Npis(Search(db), new SearchFilter { City = "AMITYVILE" })); // a typed name still matches as written
+    }
+
+    [Fact]
     public async Task Bulk_lookup_keeps_request_order_and_reports_each_npi()
     {
         await using var db = await SeededAsync();

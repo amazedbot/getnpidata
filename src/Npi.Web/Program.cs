@@ -23,6 +23,7 @@ builder.Services.AddSingleton(_ => new CredentialCatalog(connectionString));
 builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRequiredService<TaxonomyCatalog>(), sp.GetRequiredService<CredentialCatalog>()));
 builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
+builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
 builder.Services.AddSingleton(_ => new MapService(connectionString));
 builder.Services.AddSingleton(_ => new CompanyService(connectionString));
@@ -84,6 +85,11 @@ app.MapGet("/lookup/specializations", async ([FromQuery] string? classification,
 
 app.MapGet("/lookup/counties", async ([FromQuery] string? state, GeographyCatalog geography, CancellationToken ct) =>
     string.IsNullOrWhiteSpace(state) ? Results.Ok(Array.Empty<CountyInfo>()) : Results.Ok(await geography.GetCountiesAsync(state, ct)));
+
+app.MapGet("/lookup/cities", async ([FromQuery] string? state, [FromQuery] string? county, CityCatalog cities, CancellationToken ct) =>
+    string.IsNullOrWhiteSpace(state) || state.Trim().Length != 2
+        ? Results.Ok(Array.Empty<string>())
+        : Results.Ok(await cities.GetCitiesAsync(state.Trim(), county is { Length: 5 } fips && fips.All(char.IsAsciiDigit) ? fips : null, ct)));
 
 // Map search (CLAUDE.md §7 Stage 5.5 item 10): the providers inside bbox=west,south,east,north that match the search
 // filters (location filters are replaced by the area), nearest the centre first, at most SearchService.MaxAreaResults.

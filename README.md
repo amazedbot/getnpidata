@@ -69,7 +69,7 @@ At least one filter is required. Filters combine with AND.
 | `taxonomy` | A NUCC taxonomy code | `111N00000X` |
 | `state` | Two-letter state or territory code of any practice location | `NY` |
 | `county` | Five-digit county FIPS code. A ZIP that spans several counties matches **all** of them | `36103` (Suffolk, NY) |
-| `city` | City of any practice location (whole name, case-insensitive) | `Babylon` |
+| `city` | City of any practice location: the name as written (whole name, case-insensitive), or a ZIP that USPS gives that name, so misspellings in the record ("BROOKYLN") are found too. The search form's City dropdown lists the USPS names of the chosen state or county (`GET /api/v1/states/{state}/cities`) | `Babylon` |
 | `zip` | Five-digit ZIP of any practice location | `11702` |
 | `radius` | Miles around `zip`, 1–100 | `10` |
 | `lastName`, `firstName` | Name prefix (individuals) | `smi` |
@@ -155,6 +155,7 @@ problem documents. CORS is open for GET, so browser apps on any site can call it
 | `GET /api/v1/credentials` | Standardized credentials with provider counts (`credential`, `providers`), most common first |
 | `GET /api/v1/states` | States and territories (`code`, `name`) |
 | `GET /api/v1/states/{state}/counties` | Counties with their FIPS codes (`fips`, `name`) |
+| `GET /api/v1/states/{state}/cities?county=` | City names for the `city` parameter: the names USPS uses for the state's (or the county's) ZIPs with practice locations |
 | `GET /api/v1/counties/{fips}` | County population and the shortage areas in force |
 | `GET /api/v1/meta` | Data as-of date, source files, reference-data versions, provider count |
 
