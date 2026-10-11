@@ -3,200 +3,282 @@
 @using Npi.Core.Search
 @model IndexModel
 @{
-    ViewData["Title"] = "Search providers";
     var f = Model.Filter;
+    ViewData["Title"] = Model.Mode switch
+    {
+        SearchPageMode.Home => "Answers about every US healthcare provider",
+        SearchPageMode.Names => $"“{Model.Query}”",
+        SearchPageMode.Results => Model.ListTitle,
+        _ => "Build a list",
+    };
+    string N(long n) => n.ToString("N0", CultureInfo.InvariantCulture);
 }
 
-<h1>Search US healthcare providers</h1>
-<p class="lede">Search every active provider in the CMS NPPES registry by specialty, location, name or NPI.</p>
+@if (Model.Mode == SearchPageMode.Home)
+{
+    <section class="hero">
+        <h1>Answers about every US healthcare provider.</h1>
+        <p class="lede">Look up, list, verify and compare @(Model.Version is { } v ? N(v.ProviderCount) : "every") active providers. Built on CMS and other public data, refreshed every week, free.</p>
+        <form role="search" action="/go" method="get" class="hero-search">
+            <label class="visually-hidden" for="hero-q">Search providers</label>
+            <input id="hero-q" name="q" type="search" placeholder="Name, NPI, specialty + place, or a hospital" autocomplete="off" maxlength="100" data-suggest />
+            <button type="submit">Search</button>
+        </form>
+        <p class="examples">
+            <span class="muted">Try</span>
+            <a class="chip" href="/search?q=chiropractors+in+Suffolk+County%2C+NY">Chiropractors in Suffolk County, NY</a>
+            <a class="chip" href="/search?q=dentists+near+11701">Dentists near 11701</a>
+            <a class="chip" href="/search?q=cardiologists+in+Houston">Cardiologists in Houston</a>
+            <a class="chip" href="/search?q=Stony+Brook+University+Hospital">Stony Brook University Hospital</a>
+        </p>
+    </section>
 
-<form method="get" action="/" class="search" id="search-form">
-    @if (Model.Errors.TryGetValue("filter", out var general))
+    <section aria-labelledby="tasks">
+        <h2 id="tasks">What do you need to do?</h2>
+        <div class="tasks">
+            <a class="task" href="#hero-q"><strong>Look up a provider</strong><span>Who they are, where they practise, and whether they're active and in good standing.</span></a>
+            <a class="task" href="/search"><strong>Build a list</strong><span>Every specialist in a county, city or radius, exported with the columns you choose.</span></a>
+            <a class="task" href="/lookup"><strong>Verify NPIs</strong><span>Paste or upload NPIs and get each one's status and details back.</span></a>
+            <a class="task" href="/map"><strong>Search on a map</strong><span>Pins at practice addresses, by area.</span></a>
+            <a class="task" href="/companies"><strong>Companies &amp; products</strong><span>Who pays providers, for which drugs and devices, plus FDA and Medicare data.</span></a>
+        </div>
+    </section>
+
+    <section class="card-panel" aria-labelledby="week">
+        <h2 id="week">This week in the data</h2>
+        <dl class="facts">
+            <dt>Data as of</dt><dd>@(Model.Version?.AsOfDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown")</dd>
+            @if (Model.Version is { } version)
+            {
+                <dt>Active providers</dt><dd class="mono">@N(version.ProviderCount)</dd>
+                @if (version.WeeklyFile is not null)
+                {
+                    <dt>Latest NPPES file</dt><dd class="mono">@version.WeeklyFile</dd>
+                }
+            }
+            @if (Model.NewProviders is { } fresh)
+            {
+                <dt>NPIs issued in the last 30 days</dt><dd><a class="mono" href="/search?newWithinDays=30&amp;sort=-enumeration">@N(fresh)</a></dd>
+            }
+        </dl>
+    </section>
+}
+else if (Model.Mode == SearchPageMode.Names)
+{
+    <h1>Results for “@Model.Query”</h1>
+    <p class="lede">People and organizations with a similar name. Add a specialty or a place to make a list, e.g. “dentists named @Model.Query in New York”.</p>
+    @if (Model.Errors.Count > 0)
     {
-        <p class="error" role="alert">@string.Join(" ", general)</p>
+        <p class="error" role="alert">@string.Join(" ", Model.Errors.SelectMany(e => e.Value).Distinct())</p>
     }
 
-    <partial name="_SpecialtyFields" model="Model.Fields" />
-
-    <fieldset>
-        <legend>Location</legend>
-        <div class="field">
-            <label for="state">State</label>
-            <select id="state" name="state" data-dependent="county" data-source="/lookup/counties?state=" data-cities="city">
-                <option value="">Any</option>
-                @foreach (var s in Model.States)
-                {
-                    <option value="@s.Code" selected="@(string.Equals(s.Code, f.State, StringComparison.OrdinalIgnoreCase))">@s.Name</option>
-                }
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.State))</span>
-        </div>
-        <div class="field">
-            <label for="county">County</label>
-            <select id="county" name="county" disabled="@(Model.Counties.Count == 0)" data-cities="city">
-                <option value="">Any</option>
-                @foreach (var c in Model.Counties)
-                {
-                    <option value="@c.Fips" selected="@(c.Fips == f.CountyFips)">@c.Name</option>
-                }
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.CountyFips))</span>
-        </div>
-        <div class="field">
-            <label for="city">City</label>
-            <select id="city" name="city" disabled="@(Model.Cities.Count == 0)" data-source="/lookup/cities">
-                <option value="">@(Model.Cities.Count == 0 && f.State is null ? "Choose a state first" : "Any")</option>
-                @foreach (var c in Model.Cities)
-                {
-                    <option value="@c" selected="@(string.Equals(c, f.City, StringComparison.OrdinalIgnoreCase))">@c</option>
-                }
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.City))</span>
-        </div>
-        <div class="field narrow">
-            <label for="zip">ZIP</label>
-            <input id="zip" name="zip" value="@f.Zip5" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code" />
-            <span class="field-error">@Model.Error(nameof(SearchFilter.Zip5))</span>
-        </div>
-        <div class="field narrow">
-            <label for="radius">Within</label>
-            <select id="radius" name="radius">
-                <option value="">ZIP only</option>
-                @foreach (var r in IndexModel.RadiusChoices)
-                {
-                    <option value="@r" selected="@(r == f.RadiusMiles)">@r miles</option>
-                }
-            </select>
-            <span class="field-error">@Model.Error(nameof(SearchFilter.RadiusMiles))</span>
-        </div>
-    </fieldset>
-
-    <partial name="_ProviderFields" model="Model.Fields" />
-
-    <div class="actions">
-        <button type="submit">Search</button>
-        <a href="/" class="secondary">Clear</a>
-    </div>
-</form>
-
-@if (Model.Result is { } result)
-{
-    <section aria-labelledby="results-heading" class="results">
-        <div class="results-head">
-            <h2 id="results-heading">@result.TotalCount.ToString("N0", CultureInfo.InvariantCulture) provider@(result.TotalCount == 1 ? "" : "s") found</h2>
-            @if (result.TotalCount > 0)
-            {
-                <span class="results-actions">
-                    <a class="button secondary" href="@Model.MapLink">View on map</a>
-                    <a class="button" href="@Model.CsvLink" download>Download CSV</a>
-                </span>
-            }
-        </div>
-
-        @if (Model.County is { } county)
+    @foreach (var (title, result, filter) in new[] { ("People", Model.People, Model.PeopleFilter), ("Organizations", Model.Organizations, Model.OrganizationsFilter) })
+    {
+        if (result is null)
         {
-            <aside class="notice" aria-label="About @county.Name">
-                <strong>@county.Name, @county.State</strong>
-                @if (county.Population is { } population && population > 0)
+            continue;
+        }
+
+        <section class="name-block" aria-label="@title">
+            <div class="results-head">
+                <h2>@title <span class="muted">· @N(result.TotalCount)</span></h2>
+                @if (result.TotalCount > result.Items.Count)
                 {
-                    <span> · population @population.ToString("N0", CultureInfo.InvariantCulture) (@county.PopulationYear)
-                        · @((10000.0 * result.TotalCount / population).ToString("0.0", CultureInfo.InvariantCulture)) matching providers per 10,000 residents</span>
+                    <a href="@IndexModel.ListLink(filter)">See all @N(result.TotalCount) →</a>
                 }
-                @if (county.Shortages.Count > 0)
+            </div>
+            @if (result.Items.Count > 0)
+            {
+                <partial name="_ProviderRows" model="new ProviderRows(result.Items, title)" />
+            }
+            else
+            {
+                <p class="muted">None found.</p>
+            }
+        </section>
+    }
+}
+else
+{
+    <div class="results-title">
+        <h1>@(Model.Mode == SearchPageMode.Builder ? "Build a list" : Model.ListTitle)</h1>
+        @if (Model.Interpretation is { Kind: QueryKind.List } reading)
+        {
+            <p class="reading">
+                We read “@Model.Query” as
+                @foreach (var part in reading.Parts)
                 {
-                    <br /><span>HRSA shortage areas: @string.Join("; ", county.Shortages.Select(s => $"{s.DisciplineName} ({(s.WholeCounty ? "whole county" : $"{s.ShortageAreas} area{(s.ShortageAreas == 1 ? "" : "s")}")})"))</span>
+                    <span class="chip">@part.Label: <strong>@part.Value</strong> <a href="@Model.RemoveLink(part)" aria-label="Remove @part.Label.ToLowerInvariant() @part.Value">×</a></span>
+                }
+                <span class="muted">· change it with the filters</span>
+            </p>
+        }
+        @if (Model.Interpretation is { } i && i.Kind == QueryKind.Empty)
+        {
+            <p class="notice">We couldn't find a name, specialty or place in “@Model.Query”. Try “chiropractors in Suffolk County, NY”, a name, or an NPI, or use the filters.</p>
+        }
+        @foreach (var note in Model.Interpretation?.Notes ?? [])
+        {
+            <p class="notice">@note @if (Model.Interpretation is { NearMe: true }){<a href="@Model.MapLink">Open the map</a><span>, or choose an area on the left.</span>}</p>
+        }
+    </div>
+
+    <div class="builder">
+        <form method="get" action="/search" class="search filters" id="search-form" aria-label="Filters">
+            @if (Model.Errors.TryGetValue("filter", out var general))
+            {
+                <p class="error" role="alert">@string.Join(" ", general)</p>
+            }
+
+            <partial name="_SpecialtyFields" model="Model.Fields" />
+
+            <fieldset>
+                <legend>Location</legend>
+                <div class="field">
+                    <label for="state">State</label>
+                    <select id="state" name="state" data-dependent="county" data-source="/lookup/counties?state=" data-cities="city">
+                        <option value="">Any</option>
+                        @foreach (var s in Model.States)
+                        {
+                            <option value="@s.Code" selected="@(string.Equals(s.Code, f.State, StringComparison.OrdinalIgnoreCase))">@s.Name</option>
+                        }
+                    </select>
+                    <span class="field-error">@Model.Error(nameof(SearchFilter.State))</span>
+                </div>
+                <div class="field">
+                    <label for="county">County</label>
+                    <select id="county" name="county" disabled="@(Model.Counties.Count == 0)" data-cities="city">
+                        <option value="">Any</option>
+                        @foreach (var c in Model.Counties)
+                        {
+                            <option value="@c.Fips" selected="@(c.Fips == f.CountyFips)">@c.Name</option>
+                        }
+                    </select>
+                    <span class="field-error">@Model.Error(nameof(SearchFilter.CountyFips))</span>
+                </div>
+                <div class="field">
+                    <label for="city">City</label>
+                    <select id="city" name="city" disabled="@(Model.Cities.Count == 0)" data-source="/lookup/cities">
+                        <option value="">@(Model.Cities.Count == 0 && f.State is null ? "Choose a state first" : "Any")</option>
+                        @foreach (var c in Model.Cities)
+                        {
+                            <option value="@c" selected="@(string.Equals(c, f.City, StringComparison.OrdinalIgnoreCase))">@c</option>
+                        }
+                    </select>
+                    <span class="field-error">@Model.Error(nameof(SearchFilter.City))</span>
+                </div>
+                <div class="field narrow">
+                    <label for="zip">ZIP</label>
+                    <input id="zip" name="zip" value="@f.Zip5" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code" />
+                    <span class="field-error">@Model.Error(nameof(SearchFilter.Zip5))</span>
+                </div>
+                <div class="field narrow">
+                    <label for="radius">Within</label>
+                    <select id="radius" name="radius">
+                        <option value="">ZIP only</option>
+                        @foreach (var r in IndexModel.RadiusChoices)
+                        {
+                            <option value="@r" selected="@(r == f.RadiusMiles)">@r miles</option>
+                        }
+                    </select>
+                    <span class="field-error">@Model.Error(nameof(SearchFilter.RadiusMiles))</span>
+                </div>
+            </fieldset>
+
+            <details class="more" open="@(Model.MoreFiltersSet || Model.Errors.Count > 0)">
+                <summary>More filters: name, NPI, credential, Medicare, dates…</summary>
+                <partial name="_ProviderFields" model="Model.Fields" />
+            </details>
+
+            <div class="actions">
+                <button type="submit">Show results</button>
+                <a href="/search" class="secondary">Clear</a>
+            </div>
+        </form>
+
+        <div class="results-col">
+            @if (Model.Result is { } result)
+            {
+                @if (Model.County is { } county)
+                {
+                    <aside class="notice" aria-label="About @county.Name">
+                        <strong>@county.Name, @county.State</strong>
+                        @if (county.Population is { } population && population > 0)
+                        {
+                            <span> · population @N(population) (@county.PopulationYear)
+                                · @((10000.0 * result.TotalCount / population).ToString("0.0", CultureInfo.InvariantCulture)) matching providers per 10,000 residents</span>
+                        }
+                        @if (county.Shortages.Count > 0)
+                        {
+                            <br /><span>HRSA shortage areas: @string.Join("; ", county.Shortages.Select(s => $"{s.DisciplineName} ({(s.WholeCounty ? "whole county" : $"{s.ShortageAreas} area{(s.ShortageAreas == 1 ? "" : "s")}")})"))</span>
+                        }
+                        else
+                        {
+                            <br /><span class="muted">No HRSA shortage areas in force.</span>
+                        }
+                    </aside>
+                }
+
+                @if (result.TotalCount > 0)
+                {
+                    <form method="get" action="/export" class="export-panel" aria-label="Export">
+                        @foreach (var (name, value) in Model.FilterPairs)
+                        {
+                            <input type="hidden" name="@name" value="@value" />
+                        }
+                        <label for="columns">Columns</label>
+                        <select id="columns" name="columns">
+                            @foreach (var (value, label) in ProviderColumns.Sets)
+                            {
+                                <option value="@value">@label</option>
+                            }
+                        </select>
+                        <label for="format">Format</label>
+                        <select id="format" name="format">
+                            <option value="csv">CSV</option>
+                            <option value="xlsx">Excel</option>
+                        </select>
+                        <button type="submit">Export all @N(result.TotalCount)</button>
+                        <span class="muted small">CSV has no row limit; Excel holds up to @N(ProviderXlsx.MaxRows).</span>
+                    </form>
+
+                    <div class="results-head">
+                        <h2 id="results-heading">@N(result.TotalCount) provider@(result.TotalCount == 1 ? "" : "s")</h2>
+                        <a class="button secondary" href="@Model.MapLink">View on map</a>
+                    </div>
+                    var caption = "Search results, page " + result.Page.ToString(CultureInfo.InvariantCulture) + " of " + N(Model.PageCount);
+                    <partial name="_ProviderRows" model="new ProviderRows(result.Items, caption, Model)" />
+
+                    <nav class="pager" aria-label="Result pages">
+                        @if (result.Page > 1)
+                        {
+                            <a href="@Model.PageLink(result.Page - 1)" rel="prev">‹ Previous</a>
+                        }
+                        <span>Page @result.Page of @N(Model.PageCount)</span>
+                        @if (result.Page < Model.PageCount && (long)result.Page * result.PageSize < SearchFilter.MaxResultWindow)
+                        {
+                            <a href="@Model.PageLink(result.Page + 1)" rel="next">Next ›</a>
+                        }
+                    </nav>
+                    @if (result.TotalCount > SearchFilter.MaxResultWindow)
+                    {
+                        <p class="muted">Browsing is limited to the first @N(SearchFilter.MaxResultWindow) results. Narrow the search, or export them all.</p>
+                    }
                 }
                 else
                 {
-                    <br /><span class="muted">No HRSA shortage areas in force.</span>
+                    <p class="notice">No active providers match. Try fewer filters.</p>
                 }
-            </aside>
-        }
-
-        @if (result.TotalCount > 0)
-        {
-            <div class="table-wrap">
-                <table>
-                    <caption class="visually-hidden">Search results, page @result.Page of @Model.PageCount</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Npi)"><a href="@Model.SortLink(SearchSort.Npi)">NPI</a></th>
-                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Name)"><a href="@Model.SortLink(SearchSort.Name)">Name</a></th>
-                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Credential)"><a href="@Model.SortLink(SearchSort.Credential)">Credential</a></th>
-                            <th scope="col">Primary specialty</th>
-                            <th scope="col">Address</th>
-                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.City)"><a href="@Model.SortLink(SearchSort.City)">City</a></th>
-                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.State)"><a href="@Model.SortLink(SearchSort.State)">State</a></th>
-                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.Zip)"><a href="@Model.SortLink(SearchSort.Zip)">ZIP</a></th>
-                            <th scope="col">County</th>
-                            <th scope="col">Phone</th>
-                            <th scope="col" aria-sort="@Model.AriaSort(SearchSort.LastUpdate)"><a href="@Model.SortLink(SearchSort.LastUpdate)">Updated</a></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var p in result.Items)
-                        {
-                            <tr>
-                                <td><a href="/provider/@p.Npi">@p.Npi</a></td>
-                                <td>
-                                    @p.Name <span class="muted">(@p.EntityTypeName)</span>
-                                    @if (p.Flags.Excluded)
-                                    {
-                                        <span class="badge alert" title="On the HHS-OIG List of Excluded Individuals/Entities">OIG excluded</span>
-                                    }
-                                    @if (p.Flags.OptedOutOfMedicare)
-                                    {
-                                        <span class="badge" title="Has an active Medicare opt-out affidavit">Medicare opt-out</span>
-                                    }
-                                    @if (p.Flags.AcceptsMedicareAssignment)
-                                    {
-                                        <span class="badge good" title="Accepts Medicare's approved amount as full payment (Care Compare)">Accepts Medicare</span>
-                                    }
-                                    @if (p.Flags.OffersTelehealth)
-                                    {
-                                        <span class="badge good" title="Offers telehealth (Care Compare)">Telehealth</span>
-                                    }
-                                    @if (p.EnumerationDate is { } enumerated && enumerated >= DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-90))
-                                    {
-                                        <span class="badge" title="NPI issued @enumerated.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)">New</span>
-                                    }
-                                </td>
-                                <td>@p.Credential</td>
-                                <td>@p.PrimarySpecialty</td>
-                                <td>@p.Address1@if (p.Address2 is not null){<br />@p.Address2}</td>
-                                <td>@p.City</td>
-                                <td>@p.State</td>
-                                <td>@p.Zip</td>
-                                <td>@p.County</td>
-                                <td>@Npi.Web.Pages.Format.Phone(p.Phone)</td>
-                                <td>@p.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-
-            <nav class="pager" aria-label="Result pages">
-                @if (result.Page > 1)
-                {
-                    <a href="@Model.PageLink(result.Page - 1)" rel="prev">‹ Previous</a>
-                }
-                <span>Page @result.Page of @Model.PageCount.ToString("N0", CultureInfo.InvariantCulture)</span>
-                @if (result.Page < Model.PageCount && (long)result.Page * result.PageSize < SearchFilter.MaxResultWindow)
-                {
-                    <a href="@Model.PageLink(result.Page + 1)" rel="next">Next ›</a>
-                }
-            </nav>
-            @if (result.TotalCount > SearchFilter.MaxResultWindow)
-            {
-                <p class="muted">Browsing is limited to the first @SearchFilter.MaxResultWindow.ToString("N0", CultureInfo.InvariantCulture) results. Narrow the search, or download the CSV for all of them.</p>
             }
-        }
-        else
-        {
-            <p>No active providers match. Try fewer filters.</p>
-        }
-    </section>
+            else if (Model.Mode == SearchPageMode.Builder)
+            {
+                <div class="empty-state">
+                    <h2>Choose a specialty and an area</h2>
+                    <p>Pick filters on the left and choose <strong>Show results</strong>, or type a search such as “pediatricians in Nassau County, NY” in the box at the top.</p>
+                </div>
+            }
+        </div>
+    </div>
 }
 
 @section Scripts {

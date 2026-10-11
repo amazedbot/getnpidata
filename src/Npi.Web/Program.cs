@@ -28,8 +28,11 @@ builder.Services.AddSingleton(_ => new AreaService(connectionString));
 builder.Services.AddSingleton(_ => new MapService(connectionString));
 builder.Services.AddSingleton(_ => new CompanyService(connectionString));
 builder.Services.AddSingleton(_ => new ProductService(connectionString));
+builder.Services.AddSingleton(sp => new SearchVocabularyCatalog(connectionString, sp.GetRequiredService<TaxonomyCatalog>()));
+builder.Services.AddSingleton(sp => new SuggestService(connectionString, sp.GetRequiredService<SearchVocabularyCatalog>()));
 builder.Services.Configure<MapOptions>(builder.Configuration.GetSection(MapOptions.Section));
-builder.Services.AddRazorPages();
+// /search is the search page with the list builder open (docs/PRODUCT_PLAN.md step 1.3); / is the home page.
+builder.Services.AddRazorPages(o => o.Conventions.AddPageRoute("/Index", "search"));
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
@@ -81,6 +84,14 @@ app.MapGet("/product/{slug}/prescribers.csv", (string slug, HttpContext http, Pr
 
 // Streamed CSV of every match, no row cap (CLAUDE.md §7 Stage 4). Same query string as the search page.
 app.MapGet("/export.csv", CsvExport.HandleAsync);
+
+// The search page's export panel (docs/PRODUCT_PLAN.md step 1.3): CSV or Excel, with a column set.
+app.MapGet("/export", CsvExport.HandleExportAsync);
+app.MapGet("/export.xlsx", CsvExport.HandleXlsxAsync);
+
+// Type-ahead for the search box (step 1.3).
+app.MapGet("/suggest", async ([FromQuery] string? q, SuggestService suggestions, CancellationToken ct) =>
+    Results.Ok(await suggestions.SuggestAsync(q is { Length: > 100 } ? q[..100] : q, ct)));
 
 // Dependent dropdowns on the search page.
 app.MapGet("/lookup/specializations", async ([FromQuery] string? classification, TaxonomyCatalog taxonomy, CancellationToken ct) =>

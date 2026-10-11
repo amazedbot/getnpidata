@@ -1,3 +1,11 @@
+/* Brand fonts, self-hosted (SIL Open Font License 1.1; licences in /fonts): no third-party font requests. */
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/ibm-plex-mono-400-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/ibm-plex-mono-500-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Source Sans 3"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("/fonts/source-sans-3-400-700-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Source Sans 3"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("/fonts/source-sans-3-400-700-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 600 700; font-display: swap; src: url("/fonts/source-serif-4-600-700-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 600 700; font-display: swap; src: url("/fonts/source-serif-4-600-700-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 /* Design tokens (docs/PRODUCT_PLAN.md, combined direction): deep green sidebar, serif headings, teal accent. */
 :root {
     --green: #12362F;
@@ -18,8 +26,7 @@
     --warn: #7A4E00;
     --error: #A3361F;
     --radius: 12px;
-    /* System fonts until the brand fonts are self-hosted (no third-party font requests). */
-    --serif: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        --serif: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
     --sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
@@ -261,3 +268,65 @@ details > summary { cursor: pointer; }
 
 /* Numbers and identifiers. */
 .mono { font-family: var(--mono); font-size: 0.92em; }
+
+/* Search (docs/PRODUCT_PLAN.md step 1.3): home hero, task cards, list builder, compact rows, export panel, type-ahead. */
+.hero { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2.5rem 2rem 2rem; margin-bottom: 1.5rem; }
+.hero h1 { font-size: clamp(2rem, 4vw, 3rem); margin: 0 0 0.5rem; max-width: 48rem; }
+.hero .lede { max-width: 44rem; margin: 0 0 1.25rem; }
+.hero-search { display: flex; flex-wrap: wrap; gap: 0.6rem; max-width: 52rem; }
+.hero-search input { flex: 1 1 22rem; min-width: 0; font-size: 1.15rem; padding: 0.85rem 1rem; border-width: 1.5px; border-radius: 10px; }
+.hero-search button { font-size: 1.1rem; padding: 0.85rem 1.6rem; border-radius: 10px; }
+.examples { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 1rem 0 0; }
+.chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.85rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--fg); text-decoration: none; font-size: 0.95rem; }
+a.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip a { text-decoration: none; font-weight: 700; padding: 0 0.15rem; }
+.tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.9rem; }
+.task { display: flex; flex-direction: column; gap: 0.4rem; padding: 1.1rem 1.2rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); text-decoration: none; }
+.task:hover { border-color: var(--accent); color: var(--fg); }
+.task strong { font-size: 1.1rem; }
+.task span { color: var(--muted); line-height: 1.45; }
+.card-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem 1.25rem 1.25rem; margin-top: 1.5rem; max-width: 40rem; }
+
+.results-title h1 { margin-bottom: 0.4rem; }
+.reading { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0 0 1rem; }
+.builder { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-start; }
+.filters { flex: 1 1 16rem; max-width: 22rem; }
+.filters .field, .filters .field.narrow { flex-basis: 100%; }
+.filters .more > summary { font-weight: 600; padding: 0.3rem 0; }
+.filters .more[open] > summary { margin-bottom: 0.75rem; }
+.filters .more fieldset { margin-bottom: 1rem; }
+.results-col { flex: 999 1 34rem; min-width: 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.results-col .notice { margin: 0; }
+.results-head h2 { margin: 0.25rem 0; }
+.export-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.75rem 1rem; border: 1px solid #C6DBD1; border-radius: var(--radius); background: #E8F1ED; }
+.export-panel label { margin: 0; color: var(--fg); }
+.empty-state { background: var(--surface); border: 1px dashed var(--input); border-radius: var(--radius); padding: 1.5rem; }
+.empty-state h2 { margin-top: 0; }
+.name-block { margin-bottom: 1.5rem; }
+@media (prefers-color-scheme: dark) { .export-panel { background: var(--panel); border-color: var(--border); } }
+@media (max-width: 52rem) { .filters { max-width: none; } }
+
+.results-table td { vertical-align: middle; }
+.results-table .who { display: flex; align-items: center; gap: 0.7rem; min-width: 14rem; }
+.results-table .name { font-weight: 600; }
+.results-table .sub { display: block; font-size: 0.82rem; }
+.nowrap { white-space: nowrap; }
+.avatar { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 2.1rem; width: 2.1rem; height: 2.1rem; border-radius: 50%; font-size: 0.8rem; font-weight: 700; background: #E6E9E8; color: #55625D; }
+.avatar.male { background: #DCE8F5; color: #2F5F95; }
+.avatar.female { background: #EEE2F2; color: #6A3E85; }
+.avatar.org { border-radius: 8px; background: #E8F1ED; color: #12362F; }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+/* Phones: each result row is a card. */
+@media (max-width: 40rem) {
+    .results-table thead { display: none; }
+    .results-table, .results-table tbody, .results-table tr, .results-table td { display: block; width: 100%; }
+    .results-table tr { padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--line); }
+    .results-table td { border: 0; padding: 0.15rem 0; }
+    .results-table td[data-label]:not(:empty)::before { content: attr(data-label) ": "; color: var(--muted); font-size: 0.85rem; }
+    .results-table td.empty { display: none; }
+    .results-table .who { min-width: 0; padding-bottom: 0.35rem; }
+}
+
+.suggest-list { min-width: 0; width: min(100%, 34rem); max-width: none; }
+.suggest-list li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-list li .muted { white-space: nowrap; }

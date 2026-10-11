@@ -497,6 +497,28 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Typed_searches_and_suggestions_use_the_loaded_specialties_and_places()
+    {
+        await using var db = await SeededAsync();
+        var vocabularies = new SearchVocabularyCatalog(db.ConnectionString, new TaxonomyCatalog(db.ConnectionString));
+        var vocabulary = await vocabularies.GetAsync(_ct);
+
+        var list = QueryInterpreter.Interpret("chiropractors in suffolk county ny", vocabulary);
+        Assert.Equal((QueryKind.List, "Chiropractor", "36103"), (list.Kind, list.Filter.Classification, list.Filter.CountyFips));
+        Assert.Equal([A, B], await Npis(Search(db), list.Filter));                     // B through its Farmingdale office
+        var city = QueryInterpreter.Interpret("pediatricians in farmingdale", vocabulary);
+        Assert.Equal(("Pediatrics", "Farmingdale", "NY"), (city.Filter.Classification, city.Filter.City, city.Filter.State));
+        Assert.Equal([E], await Npis(Search(db), city.Filter));
+
+        var suggestions = new SuggestService(db.ConnectionString, vocabularies);
+        var names = await suggestions.SuggestAsync("o'brien", _ct);
+        Assert.Equal(("provider", "/provider/" + A), (names[0].Kind, names[0].Url));
+        Assert.Equal("O'BRIEN, JOSÉ Q", names[0].Label);
+        Assert.Contains(await suggestions.SuggestAsync("chiro", _ct), s => s is { Kind: "specialty", Label: "Chiropractor", Text: "Chiropractor in " });
+        Assert.Contains(await suggestions.SuggestAsync("dentists in suff", _ct), s => s is { Kind: "place", Text: "dentists in Suffolk County, NY" });
+    }
+
+    [Fact]
     public async Task Bulk_lookup_keeps_request_order_and_reports_each_npi()
     {
         await using var db = await SeededAsync();

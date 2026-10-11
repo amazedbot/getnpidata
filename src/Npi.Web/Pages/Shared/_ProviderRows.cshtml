@@ -1,0 +1,54 @@
+@using Npi.Core.Search
+@using Npi.Web.Pages
+@model Npi.Web.Pages.ProviderRows
+@*
+    Compact two-line result rows (docs/PRODUCT_PLAN.md step 1.3): avatar, name and NPI, specialty, location, phone, at most three
+    badges, last update. On phones each row becomes a card (site.css, .results-table).
+*@
+<div class="table-wrap">
+    <table class="results-table">
+        <caption class="visually-hidden">@Model.Caption</caption>
+        <thead>
+            <tr>
+                @if (Model.Page is { } sortable)
+                {
+                    <th scope="col" aria-sort="@sortable.AriaSort(SearchSort.Name)"><a href="@sortable.SortLink(SearchSort.Name)">Provider</a></th>
+                    <th scope="col">Specialty</th>
+                    <th scope="col" aria-sort="@sortable.AriaSort(SearchSort.City)"><a href="@sortable.SortLink(SearchSort.City)">Location</a></th>
+                    <th scope="col">Phone</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" aria-sort="@sortable.AriaSort(SearchSort.LastUpdate)"><a href="@sortable.SortLink(SearchSort.LastUpdate)">Updated</a></th>
+                }
+                else
+                {
+                    <th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">Phone</th><th scope="col">Status</th><th scope="col">Updated</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in Model.Items)
+            {
+                var badges = ProviderRows.Badges(p).Take(3).ToList();
+                <tr>
+                    <td class="who">
+                        <span class="@Format.AvatarClass(p.Gender, p.EntityType)" aria-hidden="true">@Format.Initials(p.Name, p.EntityType)</span>
+                        <span>
+                            <a href="/provider/@p.Npi" class="name">@p.Name@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</a>
+                            <span class="mono muted sub">@p.Npi@if (p.EntityType == 2){<span> · organization</span>}</span>
+                        </span>
+                    </td>
+                    <td data-label="Specialty">@p.PrimarySpecialty</td>
+                    <td data-label="Location">@p.City@(p.State is null ? "" : ", " + p.State) @p.Zip?.Split('-')[0]@if (p.County is not null){<br /><span class="muted sub">@p.County</span>}</td>
+                    <td data-label="Phone" class="nowrap @(p.Phone is null ? "empty" : null)">@Format.Phone(p.Phone)</td>
+                    <td data-label="Status" class="@(badges.Count == 0 ? "empty" : null)">
+                        @foreach (var b in badges)
+                        {
+                            <span class="badge @b.Kind" title="@b.Title">@b.Text</span>
+                        }
+                    </td>
+                    <td data-label="Updated" class="nowrap muted" title="@p.LastUpdateDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)">@Format.Ago(p.LastUpdateDate)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
