@@ -116,8 +116,8 @@
       pin.style = pin.approximate
         ? { radius: size, weight: 2, color: "#6e7781", dashArray: "3 3", fillColor: "#afb8c1", fillOpacity: 0.5 }
         : pin.street
-          ? { radius: size, weight: 2, color: "#0b5cad", fillColor: "#ffffff", fillOpacity: 0.85 }
-          : { radius: size, weight: 2, color: "#0b5cad", fillColor: "#0b5cad", fillOpacity: 0.55 };
+          ? { radius: size, weight: 2, color: "#0E6A73", fillColor: "#ffffff", fillOpacity: 0.85 }
+          : { radius: size, weight: 2, color: "#0E6A73", fillColor: "#0E6A73", fillOpacity: 0.55 };
       pin.marker = L.circleMarker([pin.lat, pin.lon], pin.style)
         .bindTooltip(() => pinContent(pin, false), { direction: "top", offset: [0, -size], className: "pin-tooltip" })
         .bindPopup(() => pinContent(pin, true), { maxWidth: 320, autoPanPaddingTopLeft: L.point(48, 12) })

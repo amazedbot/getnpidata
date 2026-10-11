@@ -2,40 +2,79 @@
 @inject Npi.Core.Search.GeographyCatalog Geography
 @{
     var version = await Geography.GetDataVersionAsync(Context.RequestAborted);
+    var path = Context.Request.Path.Value ?? "/";
+    bool Under(string prefix) => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    // Task navigation (docs/PRODUCT_PLAN.md §2.1). Areas, Organizations and Find care join as their pages land in Phase 1.
+    var nav = new (string Label, string Href, bool Current)[]
+    {
+        ("Search & lists", "/", path == "/" || Under("/provider/")),
+        ("Map", "/map", Under("/map")),
+        ("Verify NPIs", "/lookup", Under("/lookup")),
+        ("Companies & products", "/companies", Under("/compan") || Under("/product")),
+        ("Developers & API", "/swagger", false),
+    };
 }
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12362F" />
     <title>@ViewData["Title"] – getnpidata</title>
     @await RenderSectionAsync("Head", required: false)
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
     <a class="skip" href="#main">Skip to content</a>
-    <header>
-        <a class="brand" href="/">getnpidata</a>
-        <nav aria-label="Site"><a href="/">Search</a> · <a href="/map">Map</a> · <a href="/lookup">Bulk lookup</a> · <a href="/companies">Companies</a> · <a href="/products">Products</a> · <a href="/swagger">API</a></nav>
-        <span class="muted">US healthcare provider search</span>
-    </header>
-    <main id="main">
-        @RenderBody()
-    </main>
-    <footer>
-        <p>
-            Data as of <strong>@(version?.AsOfDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown")</strong>
-            @if (version is not null)
-            {
-                <span>· @version.ProviderCount.ToString("N0", CultureInfo.InvariantCulture) active providers</span>
-            }
-        </p>
-        <p>
-            Source: <a href="https://download.cms.gov/nppes/NPI_Files.html">CMS NPPES</a> data dissemination files.
-            This is public NPPES information; deactivated NPIs are not shown. Counties via the HUD USPS ZIP–County crosswalk,
-            specialties via the NUCC Health Care Provider Taxonomy.
-        </p>
-    </footer>
+    <div class="shell">
+        <aside class="side">
+            <div class="side-top">
+                <a class="brand" href="/">getnpidata</a>
+                <button type="button" class="menu-toggle" aria-expanded="false" aria-controls="site-nav" hidden>
+                    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+                    <span class="visually-hidden">Menu</span>
+                </button>
+            </div>
+            <nav id="site-nav" class="side-nav" aria-label="Main">
+                @foreach (var (label, href, current) in nav)
+                {
+                    <a href="@href" class="@(current ? "current" : null)" aria-current="@(current ? "page" : null)">@label</a>
+                }
+            </nav>
+            <p class="side-note">
+                Data as of<br />
+                <strong>@(version?.AsOfDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown")</strong>
+            </p>
+        </aside>
+        <div class="content">
+            <div class="topbar">
+                <form role="search" action="/go" method="get" class="quick-search">
+                    <label class="visually-hidden" for="quick-q">Search providers</label>
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+                    <input id="quick-q" name="q" type="search" placeholder="Search by name or NPI" autocomplete="off" maxlength="60" />
+                    <button type="submit">Search</button>
+                </form>
+            </div>
+            <main id="main">
+                @RenderBody()
+            </main>
+            <footer class="site-footer">
+                <p>
+                    Data as of <strong>@(version?.AsOfDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown")</strong>
+                    @if (version is not null)
+                    {
+                        <span>· @version.ProviderCount.ToString("N0", CultureInfo.InvariantCulture) active providers</span>
+                    }
+                </p>
+                <p>
+                    Sources: <a href="https://download.cms.gov/nppes/NPI_Files.html">CMS NPPES</a>, Medicare Care Compare, HHS-OIG, CMS Open Payments,
+                    Census, HRSA, FDA and state licensing boards. This is public information; deactivated NPIs are never listed as active.
+                    Counties via the HUD USPS ZIP–County crosswalk, specialties via the NUCC Health Care Provider Taxonomy.
+                </p>
+            </footer>
+        </div>
+    </div>
+    <script src="~/js/site.js" asp-append-version="true" defer></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

@@ -36,6 +36,7 @@ facilities an organization runs. Counties come with population and shortage-area
 
 | Capability | Where |
 |---|---|
+| Type a name or an NPI in the search box at the top of every page (an NPI opens the provider's page) | Every page |
 | Search by specialty, location (state, county, city, ZIP, radius), name, NPI, credential, gender and entity type | Website `/`, API `/api/v1/providers` |
 | Find names despite typos or a different spelling, and organizations by any words of their legal or DBA name | "Name match: Similar" on the search and map pages, `nameMatch=similar` |
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |

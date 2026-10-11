@@ -2,7 +2,7 @@
 
 Status: **approved by the owner on 2026-10-11**, with the decisions recorded in §6. CLAUDE.md carries the new direction.
 The work goes one phase (and one step) at a time; each step is committed, summarized, and waits for the owner's "go".
-Current step: **1.1, the combined design drawings** (ready for review).
+Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell). Next: **1.3, search**.
 
 **Vision.** getnpidata is the affordable answer layer on top of free government data. It goes deeper than free lookup
 tools and costs a small fraction of what enterprise vendors charge. It answers questions instead of dumping data.
@@ -167,7 +167,7 @@ The menu is a sidebar on desktop (a menu button on phones). Companies and produc
 | Step | What | Done when |
 |---|---|---|
 | 1.1 | Combined direction drawn for 12 pages (home, results/list builder, clinician, organization/group, hospital, area, verify, find care, company, product, developers, clinician on a phone) | The owner approves the drawings |
-| 1.2 | Site shell: header with the search box, task navigation, footer, design tokens, page-speed budget | Every existing page renders in the new shell; no URL changes |
+| 1.2 | Site shell: header with the search box, task navigation, footer, design tokens, page-speed budget. **Done 2026-10-11:** deep green sidebar (a menu button on phones), header search box (`/go`: an NPI opens its profile, other text searches names until 1.3), tokens in `site.css` (light and dark), system fonts until the brand fonts are self-hosted | Every existing page renders in the new shell; no URL changes |
 | 1.3 | Search: intent detection, typeahead, the results page with three key filters and the drawer, the export panel | The T1 and T2 test scripts pass (below) |
 | 1.4 | Clinician profile: avatar, one-sentence summary, map preview, specialty in plain words, cards, sections in question order, raw-data download; the minimal "Deactivated on [date]" status page | T1 under 10 s on desktop and phone |
 | 1.5 | Organization, facility and group profiles | T5 test script passes |
@@ -175,6 +175,14 @@ The menu is a sidebar on desktop (a menu button on phones). Companies and produc
 | 1.7 | Verify NPIs: on-screen summary, filterable results ("Deactivated on [date]" included), download | T3 test script passes |
 | 1.8 | Find care (patients) | A first-time user finds a nearby specialist in under 60 s |
 | 1.9 | API developer page; Azure Application Insights across the site and API, with a privacy notice; accessibility and mobile pass; README and CLAUDE.md | Lighthouse ≥ 90 for accessibility and performance on the main pages; all old URLs resolve |
+
+### 2.5.1 Page-speed budget (set in step 1.2)
+
+- **CSS:** one stylesheet, at most 40 KB (12 KB now).
+- **Scripts:** only small page scripts, deferred; third-party code only where a page needs it (Leaflet on the map page).
+- **Fonts:** no third-party font requests; brand fonts self-hosted (woff2, at most ~300 KB together) or system fonts.
+- **Server time:** pages answer in under 1 s warm (p95); checked with every step.
+- **Phones:** no sideways scrolling at 375 px.
 
 ### 2.6 Data for Phase 1
 

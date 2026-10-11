@@ -62,6 +62,9 @@ app.MapStaticAssets();
 app.MapRazorPages().WithStaticAssets();
 app.MapHealthChecks("/health");
 
+// The search box in the site header (docs/PRODUCT_PLAN.md step 1.2): an NPI opens its profile, other text searches names.
+app.MapGet("/go", ([FromQuery] string? q) => Results.Redirect(QuickSearch.Target(q))).ExcludeFromDescription();
+
 // REST API (CLAUDE.md §7 Stage 5) and its docs: OpenAPI at /openapi/v1.json, Swagger UI at /swagger.
 app.MapApi();
 app.MapOpenApi();
