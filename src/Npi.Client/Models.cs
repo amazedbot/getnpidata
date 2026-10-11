@@ -48,6 +48,15 @@ public sealed class ProviderSummary
 
     /// <summary>The kind of building at the shown location: commercial, residential or unknown; null when not labelled.</summary>
     public string? AddressType { get; set; }
+
+    /// <summary>The plain category of the primary taxonomy, e.g. "Doctors (MD, DO)".</summary>
+    public string? Category { get; set; }
+
+    /// <summary>The plain subcategory of the primary taxonomy, e.g. "Heart (cardiology)".</summary>
+    public string? Subcategory { get; set; }
+
+    /// <summary>The primary specialty in plain words, e.g. "Cardiologist".</summary>
+    public string? PlainSpecialty { get; set; }
 }
 
 /// <summary>Yes/no facts from the joined datasets.</summary>

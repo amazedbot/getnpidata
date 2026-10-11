@@ -165,7 +165,7 @@
       } else {
         li.append(el("span", name));
       }
-      if (p.primarySpecialty) li.append(el("span", " — " + p.primarySpecialty, "muted"));
+      if (p.plainSpecialty || p.primarySpecialty) li.append(el("span", " — " + (p.plainSpecialty || p.primarySpecialty), "muted"));
       if (!shared) li.append(el("br"), el("span", addressLine(p), "muted"));
       list.append(li);
     }
@@ -177,7 +177,8 @@
   const compare = {
     distance: (a, b) => a.distance - b.distance,
     name: (a, b) => a.item.provider.name.localeCompare(b.item.provider.name),
-    specialty: (a, b) => (a.item.provider.primarySpecialty || "").localeCompare(b.item.provider.primarySpecialty || ""),
+    specialty: (a, b) => (a.item.provider.plainSpecialty || a.item.provider.primarySpecialty || "")
+      .localeCompare(b.item.provider.plainSpecialty || b.item.provider.primarySpecialty || ""),
     city: (a, b) => (a.item.provider.city || "").localeCompare(b.item.provider.city || ""),
     updated: (a, b) => (a.item.provider.lastUpdateDate || "").localeCompare(b.item.provider.lastUpdateDate || ""),
   };
@@ -203,7 +204,7 @@
       link.href = "/provider/" + encodeURIComponent(p.npi);
       who.append(link);
       if (p.credential) who.append(el("span", ", " + p.credential));
-      if (p.primarySpecialty) who.append(el("br"), el("span", p.primarySpecialty, "muted small"));
+      if (p.plainSpecialty || p.primarySpecialty) who.append(el("br"), el("span", p.plainSpecialty || p.primarySpecialty, "muted small"));
       const where = el("td", addressLine(p));
       if (row.pin.approximate) where.append(el("span", " (approximate)", "muted small"));
       tr.append(who, where, el("td", formatPhone(p.phone)), el("td", row.distance.toFixed(1), "num"));

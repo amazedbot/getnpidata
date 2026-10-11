@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net.Http.Headers;
 using Dapper;
 using MySqlConnector;
+using Npi.Core.Search;
 using Npi.Loader.Db;
 using Serilog;
 
@@ -96,6 +97,14 @@ public sealed class ReferenceLoader(LoaderOptions options, Database database, Ht
 
         await SaveVersionAsync(connection, Nucc, latest.Version, latest.Url, codes.Count, ct);
         log.Information("NUCC taxonomy {Version}: {Rows:N0} codes loaded from {Url}", latest.Version, codes.Count, latest.Url);
+
+        // New codes show under Other › Other on the site until src/Npi.Core/Search/specialty_codes.csv places them.
+        var unplaced = codes.Where(c => !SpecialtyCategories.Default.IsMapped(c.Code)).ToList();
+        if (unplaced.Count > 0)
+        {
+            log.Warning("NUCC taxonomy {Version}: {Count} code(s) have no plain specialty category yet; add them to specialty_codes.csv: {Codes}",
+                latest.Version, unplaced.Count, string.Join(", ", unplaced.Select(c => $"{c.Code} ({c.Classification}{(c.Specialization is null ? "" : " – " + c.Specialization)})")));
+        }
     }
 
     public async Task RefreshHudAsync(bool force, CancellationToken ct)

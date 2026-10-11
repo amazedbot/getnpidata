@@ -44,19 +44,27 @@ public sealed class SuggestService(string connectionString, SearchVocabularyCata
         }
 
         var normalized = QueryText.Normalize(typed);
-        // Phrases starting with the text first ("cardio" → Cardiologist), then phrases with a word starting with it; one per specialty.
+        // Phrases starting with the text first ("cardio" → Cardiologists), then phrases with a word starting with it; the plain
+        // categories before NUCC's names; one per specialty. A plain category shows its list title and where it sits.
         var specialties = vocabulary.Specialties
             .Select(kv => (Phrase: kv.Key, Term: kv.Value, Rank: kv.Key.StartsWith(normalized, StringComparison.Ordinal) ? 0
                 : kv.Key.Contains(" " + normalized, StringComparison.Ordinal) ? 1 : 2))
             .Where(x => x.Rank < 2)
-            .OrderBy(x => x.Rank).ThenBy(x => x.Phrase.EndsWith('s') ? 1 : 0).ThenBy(x => x.Term.Specialization is null ? 0 : 1).ThenBy(x => x.Phrase.Length)
+            .OrderBy(x => x.Rank).ThenBy(x => x.Term.Category is null ? 1 : 0).ThenBy(x => x.Phrase.EndsWith('s') ? 1 : 0)
+            .ThenBy(x => x.Term.Specialization is null ? 0 : 1).ThenBy(x => x.Phrase.Length)
             .DistinctBy(x => x.Term)
             .Take(MaxPerKind)
             .Select(x =>
             {
+                if (x.Term.Category is { } category)
+                {
+                    var where = x.Term.Subcategory is { } sub ? $"{category} › {sub}" : "Category";
+                    return new Suggestion("specialty", x.Term.Label, where, null, x.Term.Label + " in ");
+                }
+
                 var shown = x.Rank == 0 && !string.Equals(x.Phrase, QueryText.Normalize(x.Term.Label), StringComparison.Ordinal)
                     ? CultureInfoTitle(x.Phrase) : x.Term.Label;
-                return new Suggestion("specialty", shown, shown == x.Term.Label ? "Specialty" : x.Term.Label, null, shown + " in ");
+                return new Suggestion("specialty", shown, shown == x.Term.Label ? "NUCC specialty" : x.Term.Label, null, shown + " in ");
             });
         result.AddRange(specialties);
         result.AddRange(Places(vocabulary, normalized).Take(3).Select(p => p with { Text = p.Label }));

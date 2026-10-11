@@ -42,6 +42,8 @@ public static partial class SearchValidation
 
         var f = filter with
         {
+            Category = Clean(filter.Category, nameof(SearchFilter.Category)),
+            Subcategory = Clean(filter.Subcategory, nameof(SearchFilter.Subcategory)),
             Classification = Clean(filter.Classification, nameof(SearchFilter.Classification)),
             Specialization = Clean(filter.Specialization, nameof(SearchFilter.Specialization)),
             TaxonomyCode = Clean(filter.TaxonomyCode, nameof(SearchFilter.TaxonomyCode), upper: true),
@@ -61,7 +63,7 @@ public static partial class SearchValidation
             NameMatch = Clean(filter.NameMatch, nameof(SearchFilter.NameMatch))?.ToLowerInvariant() is { } match && match != NameSearch.Prefix ? match : null,
         };
 
-        if (requireFilter && f is { Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
+        if (requireFilter && f is { Category: null, Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
                 LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
                 Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null,
                 MedicareActive: null, Shortage: null, NewWithinDays: null, UpdatedWithinDays: null })
@@ -74,6 +76,11 @@ public static partial class SearchValidation
             {
                 Error("filter", "Enter at least one search filter.");
             }
+        }
+
+        if (f.Subcategory is not null && f.Category is null)
+        {
+            Error(nameof(SearchFilter.Subcategory), "Subcategory requires a category.");
         }
 
         if (f.Specialization is not null && f.Classification is null)

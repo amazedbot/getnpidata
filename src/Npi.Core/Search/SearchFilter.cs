@@ -18,6 +18,15 @@ public sealed record SearchFilter
     /// <summary>A page that can't be found within this many seconds is reported as too broad, not left hanging.</summary>
     public const int SearchTimeoutSeconds = 30;
 
+    /// <summary>
+    /// Plain specialty category, e.g. "Doctors (MD, DO)" (<see cref="SpecialtyCategories"/>). Matches any of the provider's 15
+    /// taxonomy slots. Combined with <see cref="Classification"/>, both must match.
+    /// </summary>
+    public string? Category { get; init; }
+
+    /// <summary>Subcategory within <see cref="Category"/>, e.g. "Heart (cardiology)".</summary>
+    public string? Subcategory { get; init; }
+
     /// <summary>NUCC Classification, e.g. "Chiropractor". Matches any of the provider's 15 taxonomy slots.</summary>
     public string? Classification { get; init; }
 

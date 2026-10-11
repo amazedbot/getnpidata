@@ -6,8 +6,9 @@ namespace Npi.Core.Search;
 public sealed record TaxonomyEntry(string Code, string? Classification, string? Specialization, string? DisplayName);
 
 /// <summary>
-/// The NUCC taxonomy codes, cached in memory (about 900 rows, refreshed after <c>maxAge</c>). Resolves a
-/// Classification/Specialization to its codes and feeds the dropdowns.
+/// The NUCC taxonomy codes, cached in memory (about 900 rows, refreshed after <c>maxAge</c>). Resolves a plain
+/// Category/Subcategory (<see cref="SpecialtyCategories"/>) or a NUCC Classification/Specialization to its codes and feeds the
+/// dropdowns.
 /// </summary>
 public sealed class TaxonomyCatalog(string connectionString, TimeSpan? maxAge = null, TimeProvider? clock = null) : IDisposable
 {
@@ -54,13 +55,20 @@ public sealed class TaxonomyCatalog(string connectionString, TimeSpan? maxAge = 
             .Select(e => e.Specialization).OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
 
+    /// <summary>The plain specialty categories, in display order.</summary>
+    public static IReadOnlyList<string> GetCategories() => SpecialtyCategories.Default.Categories.Select(c => c.Name).ToList();
+
+    /// <summary>The subcategories of a category ("Other …" last), or null when the category is unknown.</summary>
+    public static IReadOnlyList<string>? GetSubcategories(string? category) =>
+        SpecialtyCategories.Default.Find(category)?.Subcategories.Select(s => s.Name).ToList();
+
     /// <summary>
-    /// The taxonomy codes a filter means, or null when it has no specialty filter. Classification alone
-    /// includes every specialization under it. Throws when the classification/specialization is unknown.
+    /// The taxonomy codes a filter means, or null when it has no specialty filter. A category or classification alone
+    /// includes everything under it; filters given together must all match. Throws when one is unknown.
     /// </summary>
     public async Task<IReadOnlyList<string>?> ResolveAsync(SearchFilter filter, CancellationToken ct)
     {
-        if (filter.Classification is null && filter.TaxonomyCode is null)
+        if (filter.Category is null && filter.Classification is null && filter.TaxonomyCode is null)
         {
             return null;
         }
@@ -88,6 +96,18 @@ public sealed class TaxonomyCatalog(string connectionString, TimeSpan? maxAge = 
         if (filter.TaxonomyCode is not null)
         {
             matches = matches.Where(e => string.Equals(e.Code, filter.TaxonomyCode, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Last, so the NUCC filters' "unknown" checks above don't depend on it; together they may match nothing.
+        if (filter.Category is not null)
+        {
+            var categories = SpecialtyCategories.Default;
+            var category = categories.Find(filter.Category)
+                           ?? throw Invalid(nameof(SearchFilter.Category), $"Unknown category '{filter.Category}'.");
+            var subcategory = filter.Subcategory is null ? null
+                : category.Find(filter.Subcategory)
+                  ?? throw Invalid(nameof(SearchFilter.Subcategory), $"Unknown subcategory '{filter.Subcategory}' for '{category.Name}'.");
+            matches = matches.Where(e => categories.Contains(category, subcategory, e.Code));
         }
 
         return matches.Select(e => e.Code).ToList();

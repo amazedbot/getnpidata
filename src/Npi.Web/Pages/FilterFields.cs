@@ -25,5 +25,15 @@ public sealed record FilterFields(SearchFilter Filter, IReadOnlyList<string> Cla
             ? [.. choices.Append((Days: days, Text: string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Last {days:N0} days"))).OrderBy(c => c.Days)]
             : choices;
 
+    /// <summary>The plain specialty categories (<see cref="SpecialtyCategories"/>), in display order.</summary>
+    public IReadOnlyList<string> Categories => TaxonomyCatalog.GetCategories();
+
+    /// <summary>The chosen category's subcategories.</summary>
+    public IReadOnlyList<string> Subcategories => TaxonomyCatalog.GetSubcategories(Filter.Category) ?? [];
+
+    /// <summary>Open the exact NUCC fields when a link uses them.</summary>
+    public bool NuccOpen => Filter.Classification is not null || Filter.TaxonomyCode is not null || Errors.ContainsKey(nameof(SearchFilter.Classification))
+                            || Errors.ContainsKey(nameof(SearchFilter.Specialization));
+
     public string Error(string field) => Errors.TryGetValue(field, out var messages) ? string.Join(" ", messages) : "";
 }

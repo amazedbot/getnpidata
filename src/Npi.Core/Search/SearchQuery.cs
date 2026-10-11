@@ -34,6 +34,7 @@ public sealed class SearchQuery
     private readonly string? _addressTemplate;             // the building at a provider_location row ("{0}" = its alias); not in the search tables
     private readonly string? _areaAddress;
     private bool _stateOnSearchTables;                     // a USPS city carries the state on provider_location; the search tables (s, b) keep it                 // map search: the building at the pin (provider_map m)
+    private bool _zipListLocation;                         // the location is a ZIP or a list of ZIPs (county), so the (code, zip5) index can drive
     private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
     private string? _driverKind;
     private readonly List<string> _relevance = [];          // "similar" names: best matches first (default sort only)
@@ -51,8 +52,9 @@ public sealed class SearchQuery
     /// <param name="cityZips">
     /// The ZIPs USPS gives the City filter's name (in the State filter's state), looked up beforehand; null: looked up in the query.
     /// </param>
+    /// <param name="countyZips">The County filter's ZIPs, looked up beforehand; null: looked up in the query.</param>
     public SearchQuery(SearchFilter filter, IReadOnlyCollection<string>? taxonomyCodes, GeoPoint? radiusCenter, bool areaSearch = false, string? credential = null,
-        IReadOnlyCollection<string>? cityZips = null)
+        IReadOnlyCollection<string>? cityZips = null, IReadOnlyCollection<string>? countyZips = null)
     {
         Filter = filter;
         _sort = SearchSortOrder.TryParse(filter.Sort, out var sort)
@@ -179,7 +181,7 @@ public sealed class SearchQuery
             Parameters.Add("taxonomyCodes", taxonomyCodes.Count > 0 ? taxonomyCodes.ToArray() : ["-"]);
         }
 
-        AddLocationFilters(filter, radiusCenter, cityZips);
+        AddLocationFilters(filter, radiusCenter, cityZips, countyZips);
         if (filter.AddressType is not null)
         {
             // Practice building (Stage 5.5 item 18): a location condition, but only provider_location has the address key. A map
@@ -261,7 +263,10 @@ public sealed class SearchQuery
         }
         else if (taxonomyCodes is not null && _hasLocationFilter)
         {
-            _driver = $"SELECT DISTINCT s.npi FROM provider_search s WHERE s.taxonomy_code IN @taxonomyCodes AND {Location("s", withAddress: false)}";
+            // A broad specialty category ("Doctors": 238 codes) by county or ZIP: past 200 codes MySQL stops estimating each
+            // range and read every doctor nationwide by the primary key (Doctors + Suffolk 4 s); the (code, zip5) index is 0.15 s.
+            var zipIndex = taxonomyCodes.Count > ManyTaxonomyCodes && _zipListLocation && filter.City is null ? " FORCE INDEX (ix_provider_search_zip)" : "";
+            _driver = $"SELECT DISTINCT s.npi FROM provider_search s{zipIndex} WHERE s.taxonomy_code IN @taxonomyCodes AND {Location("s", withAddress: false)}";
             drivenBy.Add("taxonomy");
             drivenBy.Add(_addressTemplate is null ? "location" : "search-location");
             _driverKind = "search";
@@ -389,6 +394,9 @@ public sealed class SearchQuery
     public bool HasSelectiveDriver => _driverKind is "npi" or "flag" or "search" or "taxonomy" or "name" or "org" or "credential" or "date";
 
     /// <summary>With a state (and no narrower location), "new within" windows up to this many days drive (see the constructor).</summary>
+    /// <summary>MySQL estimates at most 200 equality ranges by index dives (eq_range_index_dive_limit); more codes need a hint.</summary>
+    public const int ManyTaxonomyCodes = 200;
+
     public const int StateSelectiveNewDays = 400;
 
     /// <summary>The same for "updated within": updates are far more frequent than enumerations.</summary>
@@ -544,7 +552,7 @@ public sealed class SearchQuery
         return templates.Any() ? string.Join(" AND ", templates.Select(t => Format(t, alias))) : "1 = 1";
     }
 
-    private void AddLocationFilters(SearchFilter filter, GeoPoint? radiusCenter, IReadOnlyCollection<string>? cityZips)
+    private void AddLocationFilters(SearchFilter filter, GeoPoint? radiusCenter, IReadOnlyCollection<string>? cityZips, IReadOnlyCollection<string>? countyZips)
     {
         if (filter.State is not null)
         {
@@ -587,7 +595,17 @@ public sealed class SearchQuery
         if (filter.CountyFips is not null)
         {
             Parameters.Add("countyFips", filter.CountyFips);
-            _locationTemplates.Add("{0}.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips)");
+            if (countyZips is { Count: > 0 })
+            {
+                // A list is an index range per ZIP, which MySQL can combine with a long list of taxonomy codes.
+                Parameters.Add("countyZips", countyZips.ToArray());
+                _locationTemplates.Add("{0}.zip5 IN @countyZips");
+                _zipListLocation = true;
+            }
+            else
+            {
+                _locationTemplates.Add("{0}.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips)");
+            }
         }
 
         if (filter.Shortage is not null)
@@ -598,6 +616,7 @@ public sealed class SearchQuery
 
         if (filter.Zip5 is not null && filter.RadiusMiles is null)
         {
+            _zipListLocation = true;
             Parameters.Add("zip5", filter.Zip5);
             _locationTemplates.Add("{0}.zip5 = @zip5");
         }

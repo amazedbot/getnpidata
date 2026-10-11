@@ -23,6 +23,15 @@ public sealed record ProviderSummary(
     /// <summary>Badges from the Stage 5.5 datasets (exclusion, Medicare opt-out, order/refer eligibility).</summary>
     public ProviderFlags Flags { get; init; } = ProviderFlags.None;
 
+    /// <summary>The plain category of the primary taxonomy (<see cref="SpecialtyCategories"/>), e.g. "Doctors (MD, DO)".</summary>
+    public string? Category { get; init; }
+
+    /// <summary>The plain subcategory of the primary taxonomy, e.g. "Heart (cardiology)".</summary>
+    public string? Subcategory { get; init; }
+
+    /// <summary>The primary specialty in plain words, e.g. "Cardiologist" (<see cref="PrimarySpecialty"/> keeps NUCC's wording).</summary>
+    public string? PlainSpecialty { get; init; }
+
     /// <summary>The kind of building at the shown location (<see cref="AddressTypes"/>, Stage 5.5 item 18); null when not labelled.</summary>
     public string? AddressType { get; init; }
 }

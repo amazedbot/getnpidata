@@ -254,7 +254,9 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
         get
         {
             var f = Filter;
-            var who = (f.Specialization ?? f.Classification) is { } specialty ? Plural(specialty) : f.EntityType == 2 ? "Organizations" : "Providers";
+            var category = SpecialtyCategories.Default.Find(f.Category);
+            var who = category?.Find(f.Subcategory)?.Title ?? category?.Title
+                      ?? ((f.Specialization ?? f.Classification) is { } specialty ? Plural(specialty) : f.EntityType == 2 ? "Organizations" : "Providers");
             var state = f.State is null ? null : GeographyCatalog.StateName(f.State);
             var place = f.Zip5 is not null
                 ? f.RadiusMiles is { } r ? $"within {r} miles of {f.Zip5}" : $"in ZIP {f.Zip5}"
@@ -301,6 +303,7 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
         {
             f = p switch
             {
+                "category" or "subcategory" => f with { Category = null, Subcategory = null },
                 "classification" or "specialization" => f with { Classification = null, Specialization = null },
                 "state" => f with { State = null, CountyFips = null, City = null },
                 "county" => f with { CountyFips = null },

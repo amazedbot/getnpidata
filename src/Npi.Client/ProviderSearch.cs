@@ -9,6 +9,12 @@ namespace Npi.Client;
 /// </summary>
 public sealed class ProviderSearch
 {
+    /// <summary>Plain specialty category, e.g. "Doctors (MD, DO)" (<see cref="NpiClient.GetCategoriesAsync"/>).</summary>
+    public string? Category { get; set; }
+
+    /// <summary>Subcategory within <see cref="Category"/>, e.g. "Heart (cardiology)" (<see cref="NpiClient.GetSubcategoriesAsync"/>).</summary>
+    public string? Subcategory { get; set; }
+
     /// <summary>NUCC classification, e.g. "Chiropractor" (<see cref="NpiClient.GetClassificationsAsync"/>).</summary>
     public string? Classification { get; set; }
 
@@ -115,6 +121,8 @@ public sealed class ProviderSearch
         void AddInt(string name, int? value) => Add(name, value?.ToString(CultureInfo.InvariantCulture));
         void AddBool(string name, bool? value) => Add(name, value is null ? null : value.Value ? "true" : "false");
 
+        Add("category", Category);
+        Add("subcategory", Subcategory);
         Add("classification", Classification);
         Add("specialization", Specialization);
         Add("taxonomy", Taxonomy);
