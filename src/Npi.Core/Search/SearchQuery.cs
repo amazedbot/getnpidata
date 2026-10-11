@@ -305,6 +305,16 @@ public sealed class SearchQuery
             drivenBy.Add("name");
             _driverKind = "name";
         }
+        else if (_addressTemplate is not null)
+        {
+            // Practice building + location (Stage 5.5 item 18): one index range on (building_type, state, city, zip5), like a specialty.
+            var building = $"building_search b WHERE b.building_type = @addressType AND {Location("b", withAddress: false)}";
+            _driver = careCompare.Count == 0
+                ? $"SELECT DISTINCT b.npi FROM {building}"
+                : $"SELECT DISTINCT b.npi FROM building_search b JOIN cc_clinician cc ON cc.npi = b.npi WHERE b.building_type = @addressType AND {Location("b", withAddress: false)} AND {string.Join(" AND ", careCompare)}";
+            _driverKind = "building";
+            drivenBy.Add("location");
+        }
         else if (_hasLocationFilter)
         {
             // With Care Compare filters, join them into the location scan: checking them afterwards means a
@@ -438,7 +448,7 @@ public sealed class SearchQuery
             // Only NPI-level checks left (dataset flags): count the candidates without joining provider,
             // which costs a random lookup per candidate (950k for a whole state). Only for drivers drawn from
             // projection tables; the NPI, flag and Care Compare drivers can list NPIs that aren't projected.
-            if (_driverKind is "location" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
+            if (_driverKind is "location" or "building" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
             {
                 var flags = _remainingNpiOnly.Count > 0 ? " WHERE " + string.Join(" AND ", _remainingNpiOnly.Select(t => Format(t, "c"))) : "";
                 return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";
@@ -453,7 +463,7 @@ public sealed class SearchQuery
     /// gender/entity filters (§11 item 6). Count first; above <see cref="SearchFilter.BroadSearchThreshold"/>
     /// use <see cref="IndexOrderPageSql"/>.
     /// </summary>
-    public bool MayBeBroad => _driverKind is null or "location" || (_driverKind == "date" && !_hasLocationFilter);
+    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "date" && !_hasLocationFilter);
 
     /// <summary>
     /// The page read in sort-index order (name or NPI sorts only, else null). Fast when matches are

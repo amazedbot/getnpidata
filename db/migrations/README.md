@@ -71,6 +71,7 @@ Rules:
 | `073_product_prescribing.sql` | Product pages, part 4 (item 19): every (drug product, NPI) payment pair, and Medicare Part D prescribing per brand and NPI. |
 | `074_product_prescribing_cache.sql` | The prescribing overlap precomputed per product (item 19, part 4). |
 | `075_address_building.sql` | Practice address type (item 18): the FEMA USA Structures building under each practice address, and the label per address (commercial, residential, care, unknown). |
+| `076_building_search.sql` | Practice building × location (item 18), so a building type in a state or county is one index range. |
 
 ## 001_baseline.sql
 

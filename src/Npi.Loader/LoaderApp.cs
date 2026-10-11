@@ -240,6 +240,14 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         return 0;
     }
 
+    /// <summary>The <c>address-types</c> command: relabel the practice addresses from the loaded FEMA buildings now.</summary>
+    public async Task<int> AddressTypesAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new AddressTypeBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
+    }
+
     /// <summary>The <c>reference</c> command: reload NUCC, HUD and Census data even if unchanged.</summary>
     public async Task<int> ReferenceAsync(CancellationToken ct)
     {

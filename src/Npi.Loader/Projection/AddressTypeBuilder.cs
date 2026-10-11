@@ -38,7 +38,8 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
     {
         var watch = Stopwatch.StartNew();
         await using var connection = await database.OpenAsync(ct);
-        var counts = await TableSwap.ReplaceAsync(connection, ["address_type"], minRowRatio, async () =>
+        var counts = await TableSwap.ReplaceAsync(connection, ["address_type", "building_search"], minRowRatio, async () =>
+        {
             await Database.ExecuteAsync(connection,
                 """
                 INSERT INTO `address_type_staging` (`addr_key`, `building_type`, `basis`)
@@ -79,7 +80,15 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
                   LEFT JOIN `address_building` b ON b.`addr_key` = s.`addr_key`
                   LEFT JOIN `address_point` ap ON ap.`addr_key` = s.`addr_key`
                 ) x
-                """, ct), ct);
+                """, ct);
+            // Building × location, like provider_search: the same location columns, so the search's location conditions apply as they are.
+            await Database.ExecuteAsync(connection,
+                """
+                INSERT INTO `building_search_staging` (`building_type`, `state`, `city`, `zip5`, `npi`)
+                SELECT DISTINCT t.`building_type`, IFNULL(l.`state`, ''), IFNULL(l.`city`, ''), IFNULL(l.`zip5`, ''), l.`npi`
+                FROM `provider_location` l JOIN `address_type_staging` t ON t.`addr_key` = l.`addr_key`
+                """, ct);
+        }, ct);
 
         var byType = (await connection.QueryAsync<(string Type, long Rows)>(new CommandDefinition(
             "SELECT `building_type`, COUNT(*) FROM `address_type` GROUP BY `building_type` ORDER BY 2 DESC", cancellationToken: ct))).ToList();

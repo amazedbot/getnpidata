@@ -11,6 +11,7 @@ public enum LoaderCommand
     Datasets,
     Project,
     Credentials,
+    AddressTypes,
     Geocode,
     Overture,
     Publish,
@@ -31,6 +32,7 @@ public static class LoaderCommandLine
         ["datasets"] = LoaderCommand.Datasets,
         ["project"] = LoaderCommand.Project,
         ["credentials"] = LoaderCommand.Credentials,
+        ["address-types"] = LoaderCommand.AddressTypes,
         ["geocode"] = LoaderCommand.Geocode,
         ["overture"] = LoaderCommand.Overture,
         ["publish"] = LoaderCommand.Publish,
@@ -48,6 +50,7 @@ public static class LoaderCommandLine
           datasets [name]  Reload the Stage 5.5 datasets (OIG, CMS, …), or just one
           project          Rebuild the search projection tables (and the standardized credentials)
           credentials      Rebuild the standardized credential tables
+          address-types    Relabel the practice addresses (commercial, residential, care) from the FEMA buildings
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses
           overture [area]  Place practice addresses at their building with Overture Maps data (address

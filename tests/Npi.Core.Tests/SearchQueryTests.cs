@@ -142,10 +142,11 @@ public class SearchQueryTests
             "EXISTS (SELECT 1 FROM address_type bt WHERE bt.addr_key = l.addr_key AND bt.building_type = @addressType))", query.From);
         Assert.Equal("residential", query.Parameters.Get<string>("addressType"));
 
-        // A location-only search drives from the locations, with the building among their conditions.
+        // A location-only search is one index range of building_search, which has the same location columns.
         var located = new SearchQuery(SearchValidation.Normalize(new SearchFilter { CountyFips = "36103", AddressType = "commercial" }), null, null);
-        Assert.Contains("FROM provider_location l WHERE l.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips) AND EXISTS (SELECT 1 FROM address_type bt",
-            located.CountSql, StringComparison.Ordinal);
+        Assert.Equal("SELECT COUNT(*) FROM (SELECT DISTINCT b.npi FROM building_search b WHERE b.building_type = @addressType AND " +
+            "b.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips)) c", located.CountSql);
+        Assert.True(located.MayBeBroad);
 
         // A map search checks the building at each pin instead.
         var area = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Psychologist", AddressType = "residential" }), ["103T00000X"], null, areaSearch: true);
