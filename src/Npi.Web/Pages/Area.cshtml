@@ -1,0 +1,244 @@
+@page "/area/{state?}/{county?}"
+@using System.Globalization
+@using Npi.Core.Search
+@model AreaModel
+@{
+    var a = Model.Area;
+    ViewData["Title"] = Model.Title;
+    var categories = SpecialtyCategories.Default.Categories;
+    var subcategories = Model.SelectedCategory?.Subcategories ?? [];
+    var topCity = a.Cities.Count > 0 ? a.Cities[0].Providers : 1;
+}
+
+@section Scripts {
+    <script src="~/js/search.js" asp-append-version="true" defer></script>
+}
+
+<div class="profile area">
+    <nav aria-label="Breadcrumb" class="crumbs">
+        <a href="@Model.AreaLink(null, null, a.Selected.Category, a.Selected.Subcategory)">United States</a>
+        @if (a.Type != "us"){<text> › </text><a href="@Model.AreaLink(a.State, null, a.Selected.Category, a.Selected.Subcategory)">@GeographyCatalog.StateName(a.State!)</a>}
+        @if (a.Type == "county"){<text> › </text><span>@a.Name</span>}
+    </nav>
+
+    <div class="area-head">
+        <div>
+            <h1>@Model.Title</h1>
+            <p class="summary">@Model.Summary</p>
+        </div>
+        <form method="get" class="area-specialty" action="">
+            <label class="visually-hidden" for="category">Specialty</label>
+            <select id="category" name="category" data-dependent="subcategory" data-source="/lookup/subcategories?category=">
+                <option value="">All specialties</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Name" selected="@(c.Name == a.Selected.Category)">@c.Name</option>
+                }
+            </select>
+            <label class="visually-hidden" for="subcategory">Subcategory</label>
+            <select id="subcategory" name="subcategory" disabled="@(subcategories.Count == 0)">
+                <option value="">Any</option>
+                @foreach (var s in subcategories)
+                {
+                    <option value="@s.Name" selected="@(s.Name == a.Selected.Subcategory)">@s.Name</option>
+                }
+            </select>
+            <button type="submit" class="secondary">Show</button>
+        </form>
+    </div>
+
+    <div class="stat-row">
+        <a class="stat" href="@Model.ListLink()">
+            <span class="label">@Model.Who</span>
+            <strong>@a.Selected.Providers.ToString("N0", CultureInfo.InvariantCulture)</strong>
+            <span class="small">active NPIs with a practice location here</span>
+        </a>
+        <div class="stat">
+            <span class="label">Per 100,000 people</span>
+            <strong>@AreaModel.Rate(a.Selected.Per100k)</strong>
+            <span class="small">@(a.Type == "county" ? $"{a.ParentName} {AreaModel.Rate(a.ParentPer100k)} · US {AreaModel.Rate(a.UsPer100k)}" : a.Type == "state" ? $"US {AreaModel.Rate(a.UsPer100k)}" : $"{a.Population?.ToString("N0", CultureInfo.InvariantCulture)} people")</span>
+        </div>
+        <a class="stat" href="@Model.ListLink(Model.Filter with { NewWithinDays = 90, Sort = "-enumeration" })">
+            <span class="label">New in 90 days</span>
+            <strong>@a.NewProviders.ToString("N0", CultureInfo.InvariantCulture)</strong>
+            <span class="small">NPIs issued in the 90 days to @(a.NewSince?.AddDays(AreaProfileService.NewDays).ToString("MMMM d", CultureInfo.InvariantCulture) ?? "the last update")</span>
+        </a>
+        @if (a.Type != "us")
+        {
+            <div class="stat">
+                <span class="label">Changes recorded</span>
+                <strong>@a.ChangeCount.ToString("N0", CultureInfo.InvariantCulture)</strong>
+                <span class="small">names, specialties, addresses and new NPIs since tracking began (Oct 2026)</span>
+            </div>
+        }
+    </div>
+
+    <p class="area-actions">
+        <a class="button" href="@Model.ListLink()">See the list</a>
+        <a class="button secondary" href="@Model.ExportLink" download>Export all @a.Selected.Providers.ToString("N0", CultureInfo.InvariantCulture) (CSV)</a>
+        <a class="button secondary" href="@Model.MapLink">Open the map</a>
+    </p>
+
+    @if (a.Type == "county")
+    {
+        <div class="profile-row">
+            @if (Model.Map is { } map)
+            {
+                <section class="card map-card" aria-labelledby="map-h">
+                    <h2 id="map-h" class="visually-hidden">Map of the cities with the most @Model.Who.ToLowerInvariant()</h2>
+                    <a class="static-map" href="@Model.MapLink" aria-label="Open the map">
+                        @foreach (var t in map.Tiles)
+                        {
+                            <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
+                                 style="left:@(StaticMap.Css(t.LeftPercent))%;top:@(StaticMap.Css(t.TopPercent))%;width:@(StaticMap.Css(t.WidthPercent))%;height:@(StaticMap.Css(t.HeightPercent))%" />
+                        }
+                        @foreach (var pin in map.Pins.Reverse())
+                        {
+                            <span class="pin" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%">@pin.Label</span>
+                        }
+                    </a>
+                    <p class="map-foot"><span>Pins: the cities below, numbered</span><span>@Html.Raw(Model.Attribution)</span></p>
+                </section>
+            }
+            <section class="card side-card" aria-labelledby="sh-h">
+                <h2 id="sh-h">Shortage areas</h2>
+                @if (a.Shortages.Count == 0)
+                {
+                    <p>The federal government lists no health professional shortage area in @a.Name.</p>
+                }
+                else
+                {
+                    <p>The federal government lists @(a.Shortages.Any(s => s.WholeCounty) ? "all or part" : "parts") of @a.Name as short of these professionals:</p>
+                    <ul class="pills">
+                        @foreach (var s in a.Shortages)
+                        {
+                            <li class="pill warn">@s.DisciplineName · @(s.WholeCounty ? "whole county" : $"{s.ShortageAreas} area{(s.ShortageAreas == 1 ? "" : "s")}")</li>
+                        }
+                    </ul>
+                }
+                <p class="src">HRSA Health Professional Shortage Areas (primary care, dental, mental health).</p>
+            </section>
+        </div>
+
+        <div class="profile-row">
+            <section class="card side-card" aria-labelledby="cities-h">
+                <h2 id="cities-h">Where in the county</h2>
+                @if (a.Cities.Count == 0)
+                {
+                    <p>None listed.</p>
+                }
+                <div class="bars">
+                    @for (var i = 0; i < a.Cities.Count; i++)
+                    {
+                        var c = a.Cities[i];
+                        <div class="bar-row">
+                            <a href="@Model.ListLink(Model.Filter with { City = c.City })">@(i + 1). @c.City</a>
+                            <span class="bar-track" aria-hidden="true"><span class="bar" style="width:@((100.0 * c.Providers / Math.Max(1, topCity)).ToString("0.#", CultureInfo.InvariantCulture))%"></span></span>
+                            <span class="mono">@c.Providers.ToString("N0", CultureInfo.InvariantCulture)</span>
+                        </div>
+                    }
+                </div>
+                <p class="src">By the city in the practice address. A ZIP code that crosses a county line counts in both counties (HUD crosswalk), and a provider with locations in two cities counts in both.</p>
+            </section>
+            <section class="card grow-card" aria-labelledby="hosp-h">
+                <h2 id="hosp-h">Hospitals (@a.Hospitals.Count)</h2>
+                @if (a.Hospitals.Count == 0)
+                {
+                    <p>No Medicare-certified hospital has its address in @a.Name.</p>
+                }
+                else
+                {
+                    <ul class="link-list">
+                        @foreach (var h in a.Hospitals)
+                        {
+                            <li><a href="/facility/@h.Ccn">@h.Name</a> <span class="muted">@h.City@(h.Rating is { } r ? $" · {r} of 5 CMS stars" : "")@(h.Emergency == true ? " · emergency" : "")</span></li>
+                        }
+                    </ul>
+                }
+                <p class="src">Medicare Care Compare, Hospital General Information.</p>
+            </section>
+        </div>
+    }
+
+    @if (a.Children.Count > 0)
+    {
+        <section class="card" aria-labelledby="children-h">
+            <h2 id="children-h">@(a.Type == "us" ? "States" : "Counties")</h2>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">@Model.Who by @(a.Type == "us" ? "state" : "county")</caption>
+                    <thead><tr><th scope="col">@(a.Type == "us" ? "State" : "County")</th><th scope="col">@Model.Who</th><th scope="col">Per 100,000</th><th scope="col">vs @(a.Type == "us" ? "US" : a.Name)</th>@if (a.Type == "state"){<th scope="col">Shortage areas</th>}</tr></thead>
+                    <tbody>
+                        @foreach (var c in a.Children)
+                        {
+                            <tr>
+                                <td><a href="@Model.ChildLink(c)">@c.Name</a></td>
+                                <td class="mono">@c.Providers.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                <td class="mono">@AreaModel.Rate(c.Per100k)</td>
+                                <td>@AreaModel.Ratio(c.Per100k, a.Selected.Per100k)</td>
+                                @if (a.Type == "state"){<td>@string.Join(", ", c.Shortages)</td>}
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">Population from the Census Bureau's county estimates@(a.PopulationYear is { } year ? $" ({year})" : "").</p>
+        </section>
+    }
+
+    @if (a.Specialties.Count > 0)
+    {
+        <section class="card" aria-labelledby="spec-h">
+            <h2 id="spec-h">@(Model.SelectedCategory is null ? "Specialties" : $"Kinds of {Model.SelectedCategory.Title.ToLowerInvariant()}") in @Model.Place</h2>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Providers per 100,000 people by specialty</caption>
+                    <thead><tr><th scope="col">Specialty</th><th scope="col">Providers</th><th scope="col">Per 100,000</th>@if (a.Type != "us"){<th scope="col">vs @(a.Type == "county" ? a.ParentName : "US")</th>}</tr></thead>
+                    <tbody>
+                        @foreach (var c in a.Specialties)
+                        {
+                            <tr>
+                                <td><a href="@Model.SpecialtyLink(c)">@AreaModel.SpecialtyTitle(c)</a></td>
+                                <td class="mono"><a href="@Model.ListLink(Model.Filter with { Category = c.Category, Subcategory = c.Subcategory.Length == 0 ? null : c.Subcategory })">@c.Providers.ToString("N0", CultureInfo.InvariantCulture)</a></td>
+                                <td class="mono">@AreaModel.Rate(c.Per100k)</td>
+                                @if (a.Type != "us"){<td>@AreaModel.Ratio(c.Per100k, Model.ParentRate(c))</td>}
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">Counts from CMS NPPES: active providers with a practice location here and any listed specialty in the group, so one provider can count in several. Per 100,000 uses the Census Bureau's county population estimates.</p>
+        </section>
+    }
+
+    @if (a.Type != "us")
+    {
+        <section class="card" aria-labelledby="ch-h">
+            <h2 id="ch-h">Recent changes</h2>
+            @if (a.Changes.Count == 0)
+            {
+                <p>No changes recorded yet for providers practising here. Tracking began in October 2026; changes appear as weekly NPPES updates arrive.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Recent changes</caption>
+                        <thead><tr><th scope="col">When</th><th scope="col">Provider</th><th scope="col">What changed</th></tr></thead>
+                        <tbody>
+                            @foreach (var c in a.Changes)
+                            {
+                                <tr>
+                                    <td class="mono">@c.DetectedAt.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</td>
+                                    <td><a href="/provider/@c.Npi">@c.Name</a></td>
+                                    <td>@(c.Type switch { "added" => "New NPI", "name" => $"Name: {c.OldValue} → {c.NewValue}", "credential" => $"Credential: {c.OldValue} → {c.NewValue}", "specialty" => $"Specialty: {c.OldValue} → {c.NewValue}", "address" => $"Moved: {c.OldValue} → {c.NewValue}", _ => c.Type })</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            <p class="src">Recorded by comparing each NPPES update with the one before.</p>
+        </section>
+    }
+</div>

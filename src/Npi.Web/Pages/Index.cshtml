@@ -216,6 +216,7 @@ else
                         {
                             <br /><span class="muted">No HRSA shortage areas in force.</span>
                         }
+                        <br /><a href="/area/@county.State/@county.Fips@(Model.Filter.Category is { } areaCategory ? "?category=" + Uri.EscapeDataString(areaCategory) + (Model.Filter.Subcategory is { } areaSub ? "&subcategory=" + Uri.EscapeDataString(areaSub) : "") : "")">About @county.Name: providers per 100,000, specialties, hospitals →</a>
                     </aside>
                 }
 

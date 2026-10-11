@@ -56,6 +56,8 @@ public class ProfileTests
     [InlineData("/provider/123/raw.csv")]
     [InlineData("/provider/123")]
     [InlineData("/group/123")]
+    [InlineData("/area/ZZ")]
+    [InlineData("/area/NY/123")]
     [InlineData("/group/123/raw.json")]
     [InlineData("/group/123/clinicians.csv")]
     [InlineData("/facility/12-34")]
