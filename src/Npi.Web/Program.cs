@@ -94,6 +94,9 @@ app.MapGet("/suggest", async ([FromQuery] string? q, SuggestService suggestions,
     Results.Ok(await suggestions.SuggestAsync(q is { Length: > 100 } ? q[..100] : q, ct)));
 
 // Dependent dropdowns on the search page.
+app.MapGet("/lookup/subcategories", ([FromQuery] string? category) =>
+    Results.Ok(TaxonomyCatalog.GetSubcategories(category) ?? []));
+
 app.MapGet("/lookup/specializations", async ([FromQuery] string? classification, TaxonomyCatalog taxonomy, CancellationToken ct) =>
     string.IsNullOrWhiteSpace(classification) ? Results.Ok(Array.Empty<string>()) : Results.Ok(await taxonomy.GetSpecializationsAsync(classification, ct)));
 

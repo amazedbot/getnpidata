@@ -1,0 +1,225 @@
+category,subcategory,title,singular,synonyms
+"Doctors (MD, DO)",,Doctors,Doctor,doctor;physician;medical doctor
+"Doctors (MD, DO)",Addiction medicine,Addiction medicine doctors,Addiction medicine doctor,addiction doctor;addiction medicine
+"Doctors (MD, DO)",Allergy & immunology,Allergists,Allergist,allergist;immunologist;allergy doctor
+"Doctors (MD, DO)",Anesthesiology,Anesthesiologists,Anesthesiologist,anesthesiologist
+"Doctors (MD, DO)",Arthritis & autoimmune (rheumatology),Rheumatologists,Rheumatologist,rheumatologist
+"Doctors (MD, DO)",Bones & joints (orthopedics),Orthopedic doctors,Orthopedic doctor,orthopedist;orthopedic surgeon;orthopaedic surgeon;orthopedic doctor;bone doctor;hand surgeon
+"Doctors (MD, DO)",Brain & nerves (neurology),Neurologists,Neurologist,neurologist
+"Doctors (MD, DO)",Brain & spine surgery (neurosurgery),Neurosurgeons,Neurosurgeon,neurosurgeon;brain surgeon
+"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)",Cancer and blood specialists,Cancer or blood specialist,oncologist;cancer doctor;hematologist;oncology;radiation oncologist
+"Doctors (MD, DO)",Children & teens (pediatrics),Pediatricians,Pediatrician,pediatrician;childrens doctor;kids doctor;neonatologist
+"Doctors (MD, DO)",Digestive system & liver (gastroenterology),Gastroenterologists,Gastroenterologist,gastroenterologist;gi doctor;hepatologist;liver doctor
+"Doctors (MD, DO)","Ear, nose & throat (ENT)",ENT doctors,ENT doctor,ent doctor;otolaryngologist;ear nose and throat
+"Doctors (MD, DO)",Emergency medicine,Emergency doctors,Emergency doctor,emergency doctor;er doctor
+"Doctors (MD, DO)",Eyes (ophthalmology),Ophthalmologists,Ophthalmologist,ophthalmologist;eye surgeon
+"Doctors (MD, DO)",Family medicine & general practice,Family doctors,Family doctor,family doctor;family physician;primary care doctor;primary care physician;general practitioner;gp
+"Doctors (MD, DO)",General surgery,General surgeons,General surgeon,general surgeon;surgeon;colorectal surgeon;trauma surgeon;transplant surgeon
+"Doctors (MD, DO)",Genetics,Medical geneticists,Medical geneticist,medical geneticist
+"Doctors (MD, DO)",Heart & chest surgery,Heart and chest surgeons,Heart and chest surgeon,heart surgeon;cardiothoracic surgeon;thoracic surgeon
+"Doctors (MD, DO)",Heart (cardiology),Cardiologists,Cardiologist,cardiologist;heart doctor
+"Doctors (MD, DO)",Hormones & diabetes (endocrinology),Endocrinologists,Endocrinologist,endocrinologist;diabetes doctor
+"Doctors (MD, DO)",Hospice & palliative care,Palliative care doctors,Palliative care doctor,palliative care doctor
+"Doctors (MD, DO)",Hospital medicine (hospitalists),Hospitalists,Hospitalist,hospitalist
+"Doctors (MD, DO)",Imaging (radiology),Radiologists,Radiologist,radiologist
+"Doctors (MD, DO)",Infectious disease,Infectious disease doctors,Infectious disease doctor,infectious disease doctor
+"Doctors (MD, DO)",Intensive care (critical care),Critical care doctors,Critical care doctor,intensivist;icu doctor
+"Doctors (MD, DO)",Internal medicine,Internists,Internist,internist
+"Doctors (MD, DO)",Kidneys (nephrology),Nephrologists,Nephrologist,nephrologist;kidney doctor
+"Doctors (MD, DO)",Lab medicine (pathology),Pathologists,Pathologist,pathologist
+"Doctors (MD, DO)",Lungs (pulmonology),Pulmonologists,Pulmonologist,pulmonologist;lung doctor
+"Doctors (MD, DO)",Mental health (psychiatry),Psychiatrists,Psychiatrist,psychiatrist;child psychiatrist
+"Doctors (MD, DO)",Mouth & jaw surgery (oral & maxillofacial),"Oral and maxillofacial surgeons (MD, DO)",Oral and maxillofacial surgeon,
+"Doctors (MD, DO)",Pain medicine,Pain medicine doctors,Pain medicine doctor,pain doctor;pain management;pain specialist
+"Doctors (MD, DO)",Plastic & reconstructive surgery,Plastic surgeons,Plastic surgeon,plastic surgeon;cosmetic surgeon
+"Doctors (MD, DO)",Preventive & occupational medicine,Preventive medicine doctors,Preventive medicine doctor,occupational medicine doctor
+"Doctors (MD, DO)",Rehabilitation medicine (PM&R),Rehabilitation doctors,Rehabilitation doctor,physiatrist
+"Doctors (MD, DO)",Seniors (geriatric medicine),Geriatricians,Geriatrician,geriatrician
+"Doctors (MD, DO)",Skin (dermatology),Dermatologists,Dermatologist,dermatologist;skin doctor
+"Doctors (MD, DO)",Sleep medicine,Sleep medicine doctors,Sleep medicine doctor,sleep doctor;sleep specialist
+"Doctors (MD, DO)",Sports medicine,Sports medicine doctors,Sports medicine doctor,sports medicine doctor
+"Doctors (MD, DO)",Urinary tract (urology),Urologists,Urologist,urologist
+"Doctors (MD, DO)",Veins & arteries (vascular),Vascular specialists,Vascular specialist,vascular surgeon;vein doctor;vein specialist
+"Doctors (MD, DO)",Weight & nutrition (obesity medicine),Obesity medicine doctors,Obesity medicine doctor,weight loss doctor;obesity medicine
+"Doctors (MD, DO)",Women's health (OB/GYN),OB/GYNs,OB/GYN,gynecologist;obgyn;ob gyn;obstetrician;fertility doctor
+"Doctors (MD, DO)",Other doctors,Other doctors,Doctor,
+Nurse practitioners,,Nurse practitioners,Nurse practitioner,nurse practitioner;np
+Nurse practitioners,Acute & critical care,Acute care nurse practitioners,Acute care nurse practitioner,acute care nurse practitioner
+Nurse practitioners,Adults & seniors,Adult and geriatric nurse practitioners,Adult-gerontology nurse practitioner,
+Nurse practitioners,Children & newborns,Pediatric nurse practitioners,Pediatric nurse practitioner,pediatric nurse practitioner
+Nurse practitioners,Family & primary care,Family nurse practitioners,Family nurse practitioner,family nurse practitioner;fnp
+Nurse practitioners,Mental health (psychiatric),Psychiatric nurse practitioners,Psychiatric nurse practitioner,psychiatric nurse practitioner;pmhnp;psych np
+Nurse practitioners,Women's health,Women's health nurse practitioners,Women's health nurse practitioner,
+Nurse practitioners,Other or not specified,Nurse practitioners,Nurse practitioner,
+Physician assistants,,Physician assistants,Physician assistant,physician assistant;physician associate
+Physician assistants,Anesthesiologist assistants,Anesthesiologist assistants,Anesthesiologist assistant,anesthesiologist assistant
+Physician assistants,Medical,Medical physician assistants,Medical physician assistant,
+Physician assistants,Surgical,Surgical physician assistants,Surgical physician assistant,
+Physician assistants,Other or not specified,Physician assistants,Physician assistant,
+Nurses,,Nurses,Nurse,nurse
+Nurses,Clinical nurse specialists,Clinical nurse specialists,Clinical nurse specialist,clinical nurse specialist
+Nurses,Nurse anesthetists (CRNA),Nurse anesthetists,Nurse anesthetist,nurse anesthetist;crna
+Nurses,Nursing assistants & psychiatric technicians,Nursing assistants and psychiatric technicians,Nursing assistant,nurses aide;cna
+Nurses,"Practical & vocational nurses (LPN, LVN)",Licensed practical and vocational nurses,Licensed practical nurse,lpn;lvn;licensed practical nurse
+Nurses,Registered nurses (RN),Registered nurses,Registered nurse,registered nurse;rn
+Midwives & doulas,,Midwives and doulas,Midwife or doula,
+Midwives & doulas,Birth centers,Birth centers,Birth center,birth center;birthing center
+Midwives & doulas,Certified nurse midwives,Certified nurse midwives,Certified nurse midwife,nurse midwife;cnm
+Midwives & doulas,Doulas,Doulas,Doula,doula
+Midwives & doulas,Lactation consultants,Lactation consultants,Lactation consultant,lactation consultant
+Midwives & doulas,Midwives,Midwives,Midwife,midwife
+Dentists,,Dentists,Dentist,dentist;dentistry
+Dentists,Children's dentists,Children's dentists,Children's dentist,pediatric dentist;kids dentist;childrens dentist
+Dentists,"Dentures, crowns & implants (prosthodontists)",Prosthodontists,Prosthodontist,prosthodontist;dental implants
+Dentists,General dentists,General dentists,General dentist,general dentist;family dentist
+Dentists,Gum specialists (periodontists),Periodontists,Periodontist,periodontist;gum specialist
+Dentists,Oral surgeons,Oral surgeons,Oral surgeon,oral surgeon;oral and maxillofacial surgeon
+Dentists,Orthodontists (braces),Orthodontists,Orthodontist,orthodontist;braces
+Dentists,Root canal specialists (endodontists),Endodontists,Endodontist,endodontist;root canal
+Dentists,Other dental specialists,Dental specialists,Dental specialist,
+Dental hygiene & support,,Dental hygienists and support,Dental hygiene and support,
+Dental hygiene & support,Dental assistants & therapists,Dental assistants and therapists,Dental assistant or therapist,dental assistant;dental therapist
+Dental hygiene & support,Dental hygienists,Dental hygienists,Dental hygienist,dental hygienist;hygienist
+Dental hygiene & support,Dental labs,Dental labs,Dental lab,dental lab
+Dental hygiene & support,Denturists,Denturists,Denturist,denturist
+Mental & behavioral health,,Mental health providers,Mental health provider,mental health;mental health provider;behavioral health
+Mental & behavioral health,Addiction counselors,Addiction counselors,Addiction counselor,addiction counselor;substance abuse counselor
+Mental & behavioral health,Addiction treatment centers,Addiction treatment centers,Addiction treatment center,rehab center;addiction treatment;methadone clinic;substance abuse treatment
+Mental & behavioral health,Behavior analysis (ABA),Behavior analysts,Behavior analyst,behavior analyst;aba;aba therapy
+Mental & behavioral health,Counselors,Counselors,Counselor,counselor;mental health counselor;licensed professional counselor;lpc
+Mental & behavioral health,Creative arts therapists,Creative arts therapists,Creative arts therapist,art therapist;music therapist;dance therapist
+Mental & behavioral health,Marriage & family therapists,Marriage and family therapists,Marriage and family therapist,marriage counselor;family therapist;couples therapist;marriage and family therapist
+Mental & behavioral health,Mental health clinics & agencies,Mental health clinics and agencies,Mental health clinic,mental health clinic;mental health center
+Mental & behavioral health,Peer specialists,Peer specialists,Peer specialist,peer specialist
+Mental & behavioral health,Psychiatric nurse practitioners,Psychiatric nurse practitioners,Psychiatric nurse practitioner,
+Mental & behavioral health,Psychiatrists,Psychiatrists,Psychiatrist,
+Mental & behavioral health,Psychologists,Psychologists,Psychologist,psychologist;neuropsychologist
+Mental & behavioral health,Residential treatment,Residential treatment facilities,Residential treatment facility,residential treatment
+Mental & behavioral health,Social workers,Social workers,Social worker,social worker;lcsw
+Mental & behavioral health,Other mental health providers,Other mental health providers,Mental health provider,
+Therapy & rehabilitation,,Therapy and rehabilitation providers,Therapy and rehabilitation provider,rehab;rehabilitation
+Therapy & rehabilitation,Athletic trainers,Athletic trainers,Athletic trainer,athletic trainer
+Therapy & rehabilitation,Exercise physiologists,Exercise physiologists and kinesiotherapists,Exercise physiologist,exercise physiologist
+Therapy & rehabilitation,Occupational therapists,Occupational therapists,Occupational therapist,occupational therapist;occupational therapy
+Therapy & rehabilitation,Occupational therapy assistants,Occupational therapy assistants,Occupational therapy assistant,
+Therapy & rehabilitation,Physical therapists,Physical therapists,Physical therapist,physical therapist;physical therapy;physiotherapist
+Therapy & rehabilitation,Physical therapy assistants,Physical therapy assistants,Physical therapy assistant,
+Therapy & rehabilitation,Prosthetics & orthotics,Prosthetists and orthotists,Prosthetist or orthotist,prosthetist;orthotist;prosthetics;orthotics
+Therapy & rehabilitation,Recreation & developmental therapists,Recreation and developmental therapists,Recreation or developmental therapist,recreation therapist;developmental therapist
+Therapy & rehabilitation,Rehabilitation & physical therapy clinics,Rehabilitation and physical therapy clinics,Rehabilitation clinic,physical therapy clinic;rehab clinic
+Therapy & rehabilitation,Rehabilitation counselors & practitioners,Rehabilitation counselors and practitioners,Rehabilitation counselor,rehabilitation counselor
+Therapy & rehabilitation,Respiratory therapists,Respiratory therapists,Respiratory therapist,respiratory therapist
+Hearing & speech,,Hearing and speech providers,Hearing and speech provider,
+Hearing & speech,Audiologists,Audiologists,Audiologist,audiologist
+Hearing & speech,Hearing & speech centers,Hearing and speech centers,Hearing and speech center,
+Hearing & speech,Hearing aid specialists,Hearing aid specialists,Hearing aid specialist,hearing aid;hearing aids;hearing aid specialist
+Hearing & speech,Speech & audiology assistants,Speech and audiology assistants,Speech or audiology assistant,
+Hearing & speech,Speech-language pathologists,Speech-language pathologists,Speech-language pathologist,speech therapist;speech pathologist;speech therapy
+Eye care,,Eye care providers,Eye care provider,eye care
+Eye care,Eye banks,Eye banks,Eye bank,
+Eye care,Eye surgery centers,Eye surgery centers,Eye surgery center,
+Eye care,Eye technicians,Eye technicians,Eye technician,
+Eye care,Ophthalmologists,Ophthalmologists,Ophthalmologist,
+Eye care,Opticians & eyewear,Opticians and eyewear,Optician or eyewear supplier,optician;glasses;eyeglasses;contact lenses
+Eye care,Optometrists,Optometrists,Optometrist,optometrist;optometry;eye doctor
+Foot care (podiatry),,Podiatrists,Podiatrist,podiatrist;podiatry;foot doctor
+Foot care (podiatry),Foot & ankle surgery,Foot and ankle surgeons,Foot and ankle surgeon,foot surgeon;foot and ankle surgeon
+Foot care (podiatry),Podiatric assistants,Podiatric assistants,Podiatric assistant,
+Foot care (podiatry),Podiatrists,Podiatrists,Podiatrist,
+Foot care (podiatry),Podiatry clinics,Podiatry clinics,Podiatry clinic,
+Chiropractic & complementary care,,Chiropractic and complementary care providers,Complementary care provider,complementary care;alternative medicine
+Chiropractic & complementary care,Acupuncturists,Acupuncturists,Acupuncturist,acupuncturist;acupuncture
+Chiropractic & complementary care,Chiropractors,Chiropractors,Chiropractor,chiropractor;chiropractic
+Chiropractic & complementary care,Homeopaths,Homeopaths,Homeopath,homeopath
+Chiropractic & complementary care,Massage therapists,Massage therapists,Massage therapist,massage therapist;massage
+Chiropractic & complementary care,Naturopaths,Naturopaths,Naturopath,naturopath
+Chiropractic & complementary care,Other complementary care,Other complementary care providers,Complementary care provider,reflexologist;health coach;wellness coach
+Pharmacies,,Pharmacies,Pharmacy,pharmacy;drugstore;drug store
+Pharmacies,Compounding pharmacies,Compounding pharmacies,Compounding pharmacy,compounding pharmacy
+Pharmacies,"Government pharmacies (VA, IHS, military)",Government pharmacies,Government pharmacy,
+Pharmacies,Home infusion pharmacies,Home infusion pharmacies,Home infusion pharmacy,infusion pharmacy
+Pharmacies,Long-term care pharmacies,Long-term care pharmacies,Long-term care pharmacy,long term care pharmacy
+Pharmacies,Mail order pharmacies,Mail order pharmacies,Mail order pharmacy,mail order pharmacy
+Pharmacies,Retail pharmacies,Retail pharmacies,Retail pharmacy,retail pharmacy
+Pharmacies,Specialty pharmacies,Specialty pharmacies,Specialty pharmacy,specialty pharmacy
+Pharmacies,Other or type not given,Pharmacies,Pharmacy,
+Pharmacists,,Pharmacists,Pharmacist,
+Pharmacists,Pharmacists,Pharmacists,Pharmacist,pharmacist
+Pharmacists,Pharmacy technicians,Pharmacy technicians,Pharmacy technician,pharmacy technician
+Nutrition,,Dietitians and nutritionists,Dietitian or nutritionist,nutrition
+Nutrition,Dietetic technicians & managers,Dietetic technicians and dietary managers,Dietetic technician,
+Nutrition,Dietitians,Dietitians,Dietitian,dietitian;dietician;registered dietitian
+Nutrition,Nutritionists,Nutritionists,Nutritionist,nutritionist
+Hospitals,,Hospitals,Hospital,hospital
+Hospitals,Children's hospitals,Children's hospitals,Children's hospital,childrens hospital
+Hospitals,Critical access hospitals,Critical access hospitals,Critical access hospital,critical access hospital
+Hospitals,General hospitals,General hospitals,General hospital,general hospital
+Hospitals,Hospital units,Hospital units,Hospital unit,
+Hospitals,Long-term & specialty hospitals,Long-term and specialty hospitals,Long-term or specialty hospital,long term care hospital
+Hospitals,Military hospitals,Military hospitals,Military hospital,military hospital
+Hospitals,Psychiatric hospitals,Psychiatric hospitals,Psychiatric hospital,psychiatric hospital
+Hospitals,Rehabilitation hospitals,Rehabilitation hospitals,Rehabilitation hospital,rehabilitation hospital;rehab hospital
+Hospitals,Religious nonmedical institutions,Religious nonmedical institutions,Religious nonmedical institution,
+Clinics & centers,,Clinics and centers,Clinic,clinic;health center
+Clinics & centers,Cancer centers,Cancer centers,Cancer center,cancer center
+Clinics & centers,Dental clinics,Dental clinics,Dental clinic,dental clinic
+Clinics & centers,Dialysis centers,Dialysis centers,Dialysis center,dialysis;dialysis center
+Clinics & centers,Family planning & fertility,Family planning and fertility clinics,Family planning clinic,family planning;fertility clinic
+Clinics & centers,Imaging centers,Imaging centers,Imaging center,imaging center;mri;mammogram;mammography;x ray
+Clinics & centers,Military & VA clinics,Military and VA clinics,Military or VA clinic,va clinic
+Clinics & centers,Multi-specialty & specialty clinics,Multi-specialty and specialty clinics,Clinic,multispecialty clinic;specialty clinic
+Clinics & centers,Occupational & employee health,Occupational health clinics,Occupational health clinic,occupational health
+Clinics & centers,Primary care & community health centers,Primary care and community health centers,Community health center,community health center;fqhc;federally qualified health center;rural health clinic;primary care clinic
+Clinics & centers,Rehabilitation & physical therapy clinics,Rehabilitation and physical therapy clinics,Rehabilitation clinic,
+Clinics & centers,Sleep centers,Sleep centers,Sleep center,sleep center;sleep lab
+Clinics & centers,Surgery centers,Surgery centers,Surgery center,surgery center;surgical center;ambulatory surgery center
+Clinics & centers,Urgent care & emergency centers,Urgent care and emergency centers,Urgent care center,urgent care;urgent care center;walk in clinic
+Nursing homes & senior living,,Nursing homes and senior living,Nursing home or senior living,senior living
+Nursing homes & senior living,Adult care homes,Adult care homes,Adult care home,adult care home;group home
+Nursing homes & senior living,Adult day care,Adult day care centers,Adult day care center,adult day care
+Nursing homes & senior living,Assisted living,Assisted living facilities,Assisted living facility,assisted living
+Nursing homes & senior living,Memory care,Memory care centers,Memory care center,memory care;dementia care;alzheimers care
+Nursing homes & senior living,Nursing homes,Nursing homes,Nursing home,nursing home;skilled nursing;skilled nursing facility;snf
+Nursing homes & senior living,PACE programs,PACE programs,PACE program,pace program
+Home care & hospice,,Home care and hospice providers,Home care provider,
+Home care & hospice,Home health agencies,Home health agencies,Home health agency,home health;home health agency;home care
+Home care & hospice,Home infusion,Home infusion agencies,Home infusion agency,home infusion
+Home care & hospice,Home modifications,Home and vehicle modification contractors,Modification contractor,
+Home care & hospice,Hospice,Hospices,Hospice,hospice
+Home care & hospice,Meals at home,Home-delivered meal providers,Meal provider,meals on wheels;home delivered meals
+Home care & hospice,Nursing care agencies,Nursing care agencies,Nursing care agency,
+Home care & hospice,Personal care & in-home support,Personal care and in-home support providers,Personal care provider,personal care;home health aide;caregiver;personal care attendant
+Community & support services,,Community and support services,Community service,social services
+Community & support services,Case management & care coordination,Case managers and care coordinators,Case manager,case manager;care coordinator;case management
+Community & support services,Community health workers & educators,Community health workers and educators,Community health worker,community health worker;health educator;interpreter
+Community & support services,Developmental disability services,Developmental disability services,Developmental disability service,developmental disability services
+Community & support services,Early intervention,Early intervention providers,Early intervention provider,early intervention
+Community & support services,Public health & social service agencies,Public health and social service agencies,Public or social service agency,public health
+Community & support services,Residential care & respite,Residential care and respite providers,Residential or respite care,respite care
+Labs & technicians,,Labs and technicians,Lab or technician,
+Labs & technicians,Blood & organ banks,Blood and organ banks,Blood or organ bank,blood bank;organ procurement
+Labs & technicians,Clinical laboratories,Clinical laboratories,Clinical laboratory,lab;laboratory;clinical lab;blood test
+Labs & technicians,Imaging technologists,Imaging technologists,Imaging technologist,radiologic technologist;sonographer;x ray technician
+Labs & technicians,Lab technicians & phlebotomists,Lab technicians and phlebotomists,Lab technician,phlebotomist;medical technologist
+Labs & technicians,Surgical technologists & assistants,Surgical technologists and assistants,Surgical technologist,surgical technologist;surgical assistant
+Labs & technicians,Other technicians,Other technicians and technologists,Technician,
+Medical equipment & supplies,,Medical equipment and supply companies,Medical equipment supplier,medical equipment;medical supplies;dme
+Medical equipment & supplies,Durable medical equipment,Durable medical equipment suppliers,Medical equipment supplier,durable medical equipment;wheelchair
+Medical equipment & supplies,Emergency response systems,Emergency response system companies,Emergency response company,medical alert
+Medical equipment & supplies,Nutrition & medical foods,Nutrition supply companies,Nutrition supplier,
+Medical equipment & supplies,Oxygen equipment,Oxygen suppliers,Oxygen supplier,oxygen;oxygen supplier
+Medical equipment & supplies,Prosthetic & orthotic suppliers,Prosthetic and orthotic suppliers,Prosthetic or orthotic supplier,
+Ambulance & transportation,,Ambulance and transportation services,Transportation service,
+Ambulance & transportation,Ambulance,Ambulance services,Ambulance service,ambulance;air ambulance
+Ambulance & transportation,EMTs & paramedics,EMTs and paramedics,EMT or paramedic,emt;paramedic
+Ambulance & transportation,Non-emergency medical transportation,Non-emergency medical transportation,Medical transportation,medical transportation;nemt;medical transport
+Ambulance & transportation,Transportation brokers,Transportation brokers,Transportation broker,
+Health plans,,Health plans,Health plan,health plan;hmo;ppo
+Health plans,Health plans,Health plans,Health plan,
+Other,,Other providers,Health care provider,
+Other,Genetic counselors & geneticists,Genetic counselors and geneticists,Genetic counselor,genetic counselor
+Other,Medical groups,Medical groups,Medical group,
+Other,Military health care providers,Military health care providers,Military health care provider,
+Other,Students in training,Students in training,Student in training,student
+Other,Veterinarians,Veterinarians,Veterinarian,veterinarian
+Other,Other,Other providers,Health care provider,

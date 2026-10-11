@@ -122,6 +122,15 @@ public sealed class NpiClient : IDisposable
         return await ReadJsonAsync<ProviderDetail>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>The plain specialty categories, e.g. "Doctors (MD, DO)", in display order.</summary>
+    public Task<IReadOnlyList<string>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
+        GetJsonAsync<IReadOnlyList<string>>("api/v1/taxonomy/categories", cancellationToken);
+
+    /// <summary>The subcategories of one category.</summary>
+    /// <exception cref="NpiApiException">404 when the category is unknown.</exception>
+    public Task<IReadOnlyList<string>> GetSubcategoriesAsync(string category, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<IReadOnlyList<string>>($"api/v1/taxonomy/categories/{Segment(category, nameof(category))}/subcategories", cancellationToken);
+
     /// <summary>All NUCC classifications, e.g. "Chiropractor".</summary>
     public Task<IReadOnlyList<string>> GetClassificationsAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<string>>("api/v1/taxonomy/classifications", cancellationToken);

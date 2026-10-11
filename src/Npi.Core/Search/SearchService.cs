@@ -296,7 +296,14 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 new { city = f.City, state = f.State }, cancellationToken: ct))).ToList();
         }
 
-        return new SearchQuery(f, codes, center, credential: await ResolveCredentialAsync(f, ct), cityZips: cityZips);
+        IReadOnlyCollection<string>? countyZips = null;
+        if (f.CountyFips is not null)
+        {
+            countyZips = (await connection.QueryAsync<string>(new CommandDefinition(
+                "SELECT zip5 FROM zip_county WHERE county_fips = @fips", new { fips = f.CountyFips }, cancellationToken: ct))).ToList();
+        }
+
+        return new SearchQuery(f, codes, center, credential: await ResolveCredentialAsync(f, ct), cityZips: cityZips, countyZips: countyZips);
     }
 
     private async Task<string?> ResolveCredentialAsync(SearchFilter f, CancellationToken ct) =>
@@ -362,6 +369,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
             locations.TryGetValue(npi, out var l);
             var specialty = await taxonomy.FindAsync(p.PrimaryTaxonomyCode, ct);
+            var plain = SpecialtyCategories.Default.Place(p.PrimaryTaxonomyCode);
             result.Add(new ProviderSummary(
                 p.Npi,
                 p.EntityType,
@@ -381,6 +389,9 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             {
                 Flags = flags.GetValueOrDefault(npi, ProviderFlags.None),
                 AddressType = l?.AddressType,
+                Category = plain?.Category,
+                Subcategory = plain?.Subcategory,
+                PlainSpecialty = plain?.Singular,
             });
         }
 

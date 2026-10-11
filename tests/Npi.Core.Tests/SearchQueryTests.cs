@@ -378,4 +378,19 @@ public class SearchQueryTests
     [InlineData(null, null, "M5V 2T6", "M5V 2T6")]
     public void Zips_display_as_zip_plus_four(string? zip5, string? zip4, string? postal, string expected) =>
         Assert.Equal(expected, ProviderNames.Zip(zip5, zip4, postal));
+
+    [Fact]
+    public void A_broad_category_by_county_drives_from_the_zip_index()
+    {
+        var filter = SearchValidation.Normalize(new SearchFilter { Category = "Doctors (MD, DO)", CountyFips = "36103" });
+        string[] zips = ["11701", "11702"];
+        var many = Enumerable.Range(0, SearchQuery.ManyTaxonomyCodes + 1).Select(i => $"2{i:D3}00000X").ToArray();
+        var broad = new SearchQuery(filter, many, null, countyZips: zips);
+        Assert.Contains("FROM provider_search s FORCE INDEX (ix_provider_search_zip) WHERE s.taxonomy_code IN @taxonomyCodes AND s.zip5 IN @countyZips", broad.CountSql, StringComparison.Ordinal);
+        Assert.Equal(zips, broad.Parameters.Get<string[]>("countyZips"));
+
+        // Few codes, or the county's ZIPs not looked up: as before.
+        Assert.DoesNotContain("FORCE INDEX (ix_provider_search_zip)", new SearchQuery(filter, ["111N00000X"], null, countyZips: zips).CountSql, StringComparison.Ordinal);
+        Assert.Contains("s.zip5 IN (SELECT z.zip5 FROM zip_county z WHERE z.county_fips = @countyFips)", new SearchQuery(filter, many, null).CountSql, StringComparison.Ordinal);
+    }
 }

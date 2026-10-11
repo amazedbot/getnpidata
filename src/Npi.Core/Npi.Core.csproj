@@ -11,6 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Plain specialty categories (SpecialtyCategories). -->
+    <EmbeddedResource Include="Search\specialty_categories.csv" LogicalName="Npi.Core.specialty_categories.csv" />
+    <EmbeddedResource Include="Search\specialty_codes.csv" LogicalName="Npi.Core.specialty_codes.csv" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Npi.Core.Tests" />
     <InternalsVisibleTo Include="Npi.Loader.Tests" />
   </ItemGroup>

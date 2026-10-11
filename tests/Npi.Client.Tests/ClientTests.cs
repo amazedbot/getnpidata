@@ -33,6 +33,7 @@ public class ClientTests
 
     private static ProviderSearch EverySearchProperty() => new()
     {
+        Category = "Doctors (MD, DO)", Subcategory = "Heart (cardiology)",
         Classification = "Chiropractor", Specialization = "Sports Physician", Taxonomy = "111NS0005X", State = "NY", County = "36103",
         City = "Babylon", Zip = "11702", Radius = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
         EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true, Telehealth = false,
@@ -55,6 +56,7 @@ public class ClientTests
         Assert.Empty(errors);
         Assert.Equal(new Server.SearchFilter
         {
+            Category = "Doctors (MD, DO)", Subcategory = "Heart (cardiology)",
             Classification = "Chiropractor", Specialization = "Sports Physician", TaxonomyCode = "111NS0005X", State = "NY", CountyFips = "36103",
             City = "Babylon", Zip5 = "11702", RadiusMiles = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
             EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true,
@@ -187,6 +189,17 @@ public class ClientTests
         var badCsv = await Assert.ThrowsAsync<NpiApiException>(() => npi.DownloadProvidersCsvAsync(new ProviderSearch { Zip = "117" }, csv, Ct));
         Assert.Contains("zip", badCsv.Errors.Keys);
         Assert.Equal(0, csv.Length);
+    }
+
+    [Fact]
+    public async Task Specialty_categories_and_their_subcategories()
+    {
+        await using var factory = new ApiFactory();
+        using var npi = new NpiClient(factory.CreateClient());
+        Assert.Contains("Nurse practitioners", await npi.GetCategoriesAsync(Ct));
+        Assert.Contains("Family & primary care", await npi.GetSubcategoriesAsync("Nurse practitioners", Ct));
+        var unknown = await Assert.ThrowsAsync<NpiApiException>(() => npi.GetSubcategoriesAsync("nope", Ct));
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
 
     [Fact]

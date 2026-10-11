@@ -1,0 +1,947 @@
+code,category,subcategory
+101200000X,Mental & behavioral health,Creative arts therapists
+101Y00000X,Mental & behavioral health,Counselors
+101YA0400X,Mental & behavioral health,Addiction counselors
+101YM0800X,Mental & behavioral health,Counselors
+101YP1600X,Mental & behavioral health,Counselors
+101YP2500X,Mental & behavioral health,Counselors
+101YS0200X,Mental & behavioral health,Counselors
+102L00000X,Mental & behavioral health,Other mental health providers
+102X00000X,Mental & behavioral health,Creative arts therapists
+103G00000X,Mental & behavioral health,Psychologists
+103GC0700X,Mental & behavioral health,Psychologists
+103K00000X,Mental & behavioral health,Behavior analysis (ABA)
+103T00000X,Mental & behavioral health,Psychologists
+103TA0400X,Mental & behavioral health,Psychologists
+103TA0700X,Mental & behavioral health,Psychologists
+103TB0200X,Mental & behavioral health,Psychologists
+103TC0700X,Mental & behavioral health,Psychologists
+103TC1900X,Mental & behavioral health,Psychologists
+103TC2200X,Mental & behavioral health,Psychologists
+103TE1000X,Mental & behavioral health,Psychologists
+103TE1100X,Mental & behavioral health,Psychologists
+103TF0000X,Mental & behavioral health,Psychologists
+103TF0200X,Mental & behavioral health,Psychologists
+103TH0004X,Mental & behavioral health,Psychologists
+103TH0100X,Mental & behavioral health,Psychologists
+103TM1700X,Mental & behavioral health,Psychologists
+103TM1800X,Mental & behavioral health,Psychologists
+103TP0016X,Mental & behavioral health,Psychologists
+103TP0814X,Mental & behavioral health,Psychologists
+103TP2700X,Mental & behavioral health,Psychologists
+103TP2701X,Mental & behavioral health,Psychologists
+103TR0400X,Mental & behavioral health,Psychologists
+103TS0200X,Mental & behavioral health,Psychologists
+103TW0100X,Mental & behavioral health,Psychologists
+104100000X,Mental & behavioral health,Social workers
+1041C0700X,Mental & behavioral health,Social workers
+1041S0200X,Mental & behavioral health,Social workers
+106E00000X,Mental & behavioral health,Behavior analysis (ABA)
+106H00000X,Mental & behavioral health,Marriage & family therapists
+106S00000X,Mental & behavioral health,Behavior analysis (ABA)
+111N00000X,Chiropractic & complementary care,Chiropractors
+111NI0013X,Chiropractic & complementary care,Chiropractors
+111NI0900X,Chiropractic & complementary care,Chiropractors
+111NN0400X,Chiropractic & complementary care,Chiropractors
+111NN1001X,Chiropractic & complementary care,Chiropractors
+111NP0017X,Chiropractic & complementary care,Chiropractors
+111NR0200X,Chiropractic & complementary care,Chiropractors
+111NR0400X,Chiropractic & complementary care,Chiropractors
+111NS0005X,Chiropractic & complementary care,Chiropractors
+111NT0100X,Chiropractic & complementary care,Chiropractors
+111NX0100X,Chiropractic & complementary care,Chiropractors
+111NX0800X,Chiropractic & complementary care,Chiropractors
+122300000X,Dentists,General dentists
+1223D0001X,Dentists,Other dental specialists
+1223D0004X,Dentists,Other dental specialists
+1223E0200X,Dentists,Root canal specialists (endodontists)
+1223G0001X,Dentists,General dentists
+1223P0106X,Dentists,Other dental specialists
+1223P0221X,Dentists,Children's dentists
+1223P0300X,Dentists,Gum specialists (periodontists)
+1223P0700X,Dentists,"Dentures, crowns & implants (prosthodontists)"
+1223S0112X,Dentists,Oral surgeons
+1223X0008X,Dentists,Other dental specialists
+1223X0400X,Dentists,Orthodontists (braces)
+1223X2210X,Dentists,Other dental specialists
+122400000X,Dental hygiene & support,Denturists
+124Q00000X,Dental hygiene & support,Dental hygienists
+125J00000X,Dental hygiene & support,Dental assistants & therapists
+125K00000X,Dental hygiene & support,Dental assistants & therapists
+125Q00000X,Dentists,Other dental specialists
+126800000X,Dental hygiene & support,Dental assistants & therapists
+126900000X,Dental hygiene & support,Dental labs
+132700000X,Nutrition,Dietetic technicians & managers
+133N00000X,Nutrition,Nutritionists
+133NN1002X,Nutrition,Nutritionists
+133V00000X,Nutrition,Dietitians
+133VN1004X,Nutrition,Dietitians
+133VN1005X,Nutrition,Dietitians
+133VN1006X,Nutrition,Dietitians
+133VN1101X,Nutrition,Dietitians
+133VN1201X,Nutrition,Dietitians
+133VN1301X,Nutrition,Dietitians
+133VN1401X,Nutrition,Dietitians
+133VN1501X,Nutrition,Dietitians
+136A00000X,Nutrition,Dietetic technicians & managers
+146D00000X,Medical equipment & supplies,Emergency response systems
+146E00000X,Ambulance & transportation,EMTs & paramedics
+146L00000X,Ambulance & transportation,EMTs & paramedics
+146M00000X,Ambulance & transportation,EMTs & paramedics
+146N00000X,Ambulance & transportation,EMTs & paramedics
+152W00000X,Eye care,Optometrists
+152WC0802X,Eye care,Optometrists
+152WL0500X,Eye care,Optometrists
+152WP0200X,Eye care,Optometrists
+152WS0006X,Eye care,Optometrists
+152WV0400X,Eye care,Optometrists
+152WX0102X,Eye care,Optometrists
+156F00000X,Eye care,Eye technicians
+156FC0800X,Eye care,Opticians & eyewear
+156FC0801X,Eye care,Opticians & eyewear
+156FX1100X,Eye care,Eye technicians
+156FX1101X,Eye care,Eye technicians
+156FX1201X,Eye care,Eye technicians
+156FX1202X,Eye care,Eye technicians
+156FX1700X,Eye care,Eye technicians
+156FX1800X,Eye care,Opticians & eyewear
+156FX1900X,Eye care,Eye technicians
+163W00000X,Nurses,Registered nurses (RN)
+163WA0400X,Nurses,Registered nurses (RN)
+163WA2000X,Nurses,Registered nurses (RN)
+163WC0200X,Nurses,Registered nurses (RN)
+163WC0400X,Nurses,Registered nurses (RN)
+163WC1400X,Nurses,Registered nurses (RN)
+163WC1500X,Nurses,Registered nurses (RN)
+163WC1600X,Nurses,Registered nurses (RN)
+163WC2100X,Nurses,Registered nurses (RN)
+163WC3500X,Nurses,Registered nurses (RN)
+163WD0400X,Nurses,Registered nurses (RN)
+163WD1100X,Nurses,Registered nurses (RN)
+163WE0003X,Nurses,Registered nurses (RN)
+163WE0900X,Nurses,Registered nurses (RN)
+163WF0300X,Nurses,Registered nurses (RN)
+163WG0000X,Nurses,Registered nurses (RN)
+163WG0100X,Nurses,Registered nurses (RN)
+163WG0600X,Nurses,Registered nurses (RN)
+163WH0200X,Nurses,Registered nurses (RN)
+163WH0500X,Nurses,Registered nurses (RN)
+163WH1000X,Nurses,Registered nurses (RN)
+163WI0500X,Nurses,Registered nurses (RN)
+163WI0600X,Nurses,Registered nurses (RN)
+163WL0100X,Nurses,Registered nurses (RN)
+163WL0100X,Midwives & doulas,Lactation consultants
+163WM0102X,Nurses,Registered nurses (RN)
+163WM0705X,Nurses,Registered nurses (RN)
+163WM1400X,Nurses,Registered nurses (RN)
+163WM1400X,Chiropractic & complementary care,Massage therapists
+163WN0002X,Nurses,Registered nurses (RN)
+163WN0003X,Nurses,Registered nurses (RN)
+163WN0300X,Nurses,Registered nurses (RN)
+163WN0800X,Nurses,Registered nurses (RN)
+163WN1003X,Nurses,Registered nurses (RN)
+163WP0000X,Nurses,Registered nurses (RN)
+163WP0200X,Nurses,Registered nurses (RN)
+163WP0218X,Nurses,Registered nurses (RN)
+163WP0807X,Nurses,Registered nurses (RN)
+163WP0808X,Nurses,Registered nurses (RN)
+163WP0809X,Nurses,Registered nurses (RN)
+163WP1700X,Nurses,Registered nurses (RN)
+163WP2201X,Nurses,Registered nurses (RN)
+163WR0006X,Nurses,Registered nurses (RN)
+163WR0400X,Nurses,Registered nurses (RN)
+163WR1000X,Nurses,Registered nurses (RN)
+163WS0121X,Nurses,Registered nurses (RN)
+163WS0200X,Nurses,Registered nurses (RN)
+163WU0100X,Nurses,Registered nurses (RN)
+163WW0000X,Nurses,Registered nurses (RN)
+163WW0101X,Nurses,Registered nurses (RN)
+163WX0002X,Nurses,Registered nurses (RN)
+163WX0003X,Nurses,Registered nurses (RN)
+163WX0106X,Nurses,Registered nurses (RN)
+163WX0200X,Nurses,Registered nurses (RN)
+163WX0601X,Nurses,Registered nurses (RN)
+163WX0800X,Nurses,Registered nurses (RN)
+163WX1100X,Nurses,Registered nurses (RN)
+163WX1500X,Nurses,Registered nurses (RN)
+164W00000X,Nurses,"Practical & vocational nurses (LPN, LVN)"
+164X00000X,Nurses,"Practical & vocational nurses (LPN, LVN)"
+167G00000X,Nurses,Nursing assistants & psychiatric technicians
+170100000X,Other,Genetic counselors & geneticists
+170300000X,Other,Genetic counselors & geneticists
+171000000X,Other,Military health care providers
+1710I1002X,Other,Military health care providers
+1710I1003X,Other,Military health care providers
+171100000X,Chiropractic & complementary care,Acupuncturists
+171400000X,Chiropractic & complementary care,Other complementary care
+171M00000X,Community & support services,Case management & care coordination
+171R00000X,Community & support services,Community health workers & educators
+171W00000X,Home care & hospice,Home modifications
+171WH0202X,Home care & hospice,Home modifications
+171WV0202X,Home care & hospice,Home modifications
+172A00000X,Ambulance & transportation,Non-emergency medical transportation
+172M00000X,Chiropractic & complementary care,Other complementary care
+172P00000X,Chiropractic & complementary care,Other complementary care
+172V00000X,Community & support services,Community health workers & educators
+173000000X,Other,Other
+173C00000X,Chiropractic & complementary care,Other complementary care
+173F00000X,Other,Other
+174200000X,Home care & hospice,Meals at home
+174400000X,Other,Other
+1744G0900X,Other,Other
+1744P3200X,Other,Other
+1744R1102X,Other,Other
+1744R1103X,Other,Other
+174H00000X,Community & support services,Community health workers & educators
+174M00000X,Other,Veterinarians
+174MM1900X,Other,Veterinarians
+174N00000X,Midwives & doulas,Lactation consultants
+174V00000X,Other,Other
+175F00000X,Chiropractic & complementary care,Naturopaths
+175L00000X,Chiropractic & complementary care,Homeopaths
+175M00000X,Midwives & doulas,Midwives
+175T00000X,Mental & behavioral health,Peer specialists
+176B00000X,Midwives & doulas,Midwives
+176P00000X,Other,Other
+177F00000X,Other,Other
+183500000X,Pharmacists,Pharmacists
+1835C0205X,Pharmacists,Pharmacists
+1835C0206X,Pharmacists,Pharmacists
+1835C0207X,Pharmacists,Pharmacists
+1835E0208X,Pharmacists,Pharmacists
+1835G0000X,Pharmacists,Pharmacists
+1835G0303X,Pharmacists,Pharmacists
+1835I0206X,Pharmacists,Pharmacists
+1835N0905X,Pharmacists,Pharmacists
+1835N1003X,Pharmacists,Pharmacists
+1835P0018X,Pharmacists,Pharmacists
+1835P0200X,Pharmacists,Pharmacists
+1835P1200X,Pharmacists,Pharmacists
+1835P1300X,Pharmacists,Pharmacists
+1835P1400X,Pharmacists,Pharmacists
+1835P2201X,Pharmacists,Pharmacists
+1835S0206X,Pharmacists,Pharmacists
+1835X0200X,Pharmacists,Pharmacists
+183700000X,Pharmacists,Pharmacy technicians
+193200000X,Other,Medical groups
+193400000X,Other,Medical groups
+202C00000X,"Doctors (MD, DO)",Other doctors
+202D00000X,"Doctors (MD, DO)",Other doctors
+202K00000X,"Doctors (MD, DO)",Veins & arteries (vascular)
+204C00000X,"Doctors (MD, DO)",Sports medicine
+204D00000X,"Doctors (MD, DO)",Other doctors
+204E00000X,"Doctors (MD, DO)",Mouth & jaw surgery (oral & maxillofacial)
+204E00000X,Dentists,Oral surgeons
+204F00000X,"Doctors (MD, DO)",General surgery
+204R00000X,"Doctors (MD, DO)",Brain & nerves (neurology)
+207K00000X,"Doctors (MD, DO)",Allergy & immunology
+207KA0200X,"Doctors (MD, DO)",Allergy & immunology
+207KI0005X,"Doctors (MD, DO)",Allergy & immunology
+207L00000X,"Doctors (MD, DO)",Anesthesiology
+207LA0401X,"Doctors (MD, DO)",Addiction medicine
+207LC0200X,"Doctors (MD, DO)",Intensive care (critical care)
+207LH0002X,"Doctors (MD, DO)",Hospice & palliative care
+207LP2900X,"Doctors (MD, DO)",Pain medicine
+207LP3000X,"Doctors (MD, DO)",Anesthesiology
+207LP3000X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207LP4000X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+207N00000X,"Doctors (MD, DO)",Skin (dermatology)
+207ND0101X,"Doctors (MD, DO)",Skin (dermatology)
+207ND0900X,"Doctors (MD, DO)",Skin (dermatology)
+207NI0002X,"Doctors (MD, DO)",Skin (dermatology)
+207NP0225X,"Doctors (MD, DO)",Skin (dermatology)
+207NP0225X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207NS0135X,"Doctors (MD, DO)",Skin (dermatology)
+207P00000X,"Doctors (MD, DO)",Emergency medicine
+207PE0004X,"Doctors (MD, DO)",Emergency medicine
+207PE0005X,"Doctors (MD, DO)",Other doctors
+207PH0002X,"Doctors (MD, DO)",Hospice & palliative care
+207PP0204X,"Doctors (MD, DO)",Emergency medicine
+207PP0204X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207PS0010X,"Doctors (MD, DO)",Sports medicine
+207PT0002X,"Doctors (MD, DO)",Emergency medicine
+207Q00000X,"Doctors (MD, DO)",Family medicine & general practice
+207QA0000X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207QA0401X,"Doctors (MD, DO)",Addiction medicine
+207QA0505X,"Doctors (MD, DO)",Family medicine & general practice
+207QB0002X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+207QB0505X,"Doctors (MD, DO)",Hormones & diabetes (endocrinology)
+207QD0401X,"Doctors (MD, DO)",Hormones & diabetes (endocrinology)
+207QG0300X,"Doctors (MD, DO)",Seniors (geriatric medicine)
+207QH0002X,"Doctors (MD, DO)",Hospice & palliative care
+207QP0002X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+207QS0010X,"Doctors (MD, DO)",Sports medicine
+207QS1201X,"Doctors (MD, DO)",Sleep medicine
+207R00000X,"Doctors (MD, DO)",Internal medicine
+207RA0000X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207RA0001X,"Doctors (MD, DO)",Heart (cardiology)
+207RA0002X,"Doctors (MD, DO)",Heart (cardiology)
+207RA0201X,"Doctors (MD, DO)",Allergy & immunology
+207RA0401X,"Doctors (MD, DO)",Addiction medicine
+207RB0002X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+207RC0000X,"Doctors (MD, DO)",Heart (cardiology)
+207RC0001X,"Doctors (MD, DO)",Heart (cardiology)
+207RC0200X,"Doctors (MD, DO)",Intensive care (critical care)
+207RE0101X,"Doctors (MD, DO)",Hormones & diabetes (endocrinology)
+207RG0100X,"Doctors (MD, DO)",Digestive system & liver (gastroenterology)
+207RG0300X,"Doctors (MD, DO)",Seniors (geriatric medicine)
+207RH0000X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+207RH0002X,"Doctors (MD, DO)",Hospice & palliative care
+207RH0003X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+207RH0005X,"Doctors (MD, DO)",Heart (cardiology)
+207RI0001X,"Doctors (MD, DO)",Allergy & immunology
+207RI0008X,"Doctors (MD, DO)",Digestive system & liver (gastroenterology)
+207RI0011X,"Doctors (MD, DO)",Heart (cardiology)
+207RI0200X,"Doctors (MD, DO)",Infectious disease
+207RM1200X,"Doctors (MD, DO)",Imaging (radiology)
+207RN0300X,"Doctors (MD, DO)",Kidneys (nephrology)
+207RP1001X,"Doctors (MD, DO)",Lungs (pulmonology)
+207RP1002X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+207RR0500X,"Doctors (MD, DO)",Arthritis & autoimmune (rheumatology)
+207RS0010X,"Doctors (MD, DO)",Sports medicine
+207RS0012X,"Doctors (MD, DO)",Sleep medicine
+207RT0003X,"Doctors (MD, DO)",Digestive system & liver (gastroenterology)
+207RX0202X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+207SC0300X,"Doctors (MD, DO)",Genetics
+207SG0201X,"Doctors (MD, DO)",Genetics
+207SG0202X,"Doctors (MD, DO)",Genetics
+207SG0203X,"Doctors (MD, DO)",Genetics
+207SG0205X,"Doctors (MD, DO)",Genetics
+207SG0207X,"Doctors (MD, DO)",Genetics
+207SM0001X,"Doctors (MD, DO)",Genetics
+207T00000X,"Doctors (MD, DO)",Brain & spine surgery (neurosurgery)
+207U00000X,"Doctors (MD, DO)",Imaging (radiology)
+207UN0901X,"Doctors (MD, DO)",Imaging (radiology)
+207UN0902X,"Doctors (MD, DO)",Imaging (radiology)
+207UN0903X,"Doctors (MD, DO)",Imaging (radiology)
+207V00000X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VB0002X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VC0200X,"Doctors (MD, DO)",Intensive care (critical care)
+207VC0300X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VE0102X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VF0040X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VG0400X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VH0002X,"Doctors (MD, DO)",Hospice & palliative care
+207VM0101X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VX0000X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VX0201X,"Doctors (MD, DO)",Women's health (OB/GYN)
+207VX0201X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+207W00000X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207W00000X,Eye care,Ophthalmologists
+207WX0009X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207WX0009X,Eye care,Ophthalmologists
+207WX0107X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207WX0107X,Eye care,Ophthalmologists
+207WX0108X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207WX0108X,Eye care,Ophthalmologists
+207WX0109X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207WX0109X,Eye care,Ophthalmologists
+207WX0110X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207WX0110X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207WX0110X,Eye care,Ophthalmologists
+207WX0120X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207WX0120X,Eye care,Ophthalmologists
+207WX0200X,"Doctors (MD, DO)",Eyes (ophthalmology)
+207WX0200X,Eye care,Ophthalmologists
+207X00000X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+207XP3100X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+207XP3100X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207XS0106X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+207XS0114X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+207XS0117X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+207XX0004X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+207XX0004X,Foot care (podiatry),Foot & ankle surgery
+207XX0005X,"Doctors (MD, DO)",Sports medicine
+207XX0801X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+207Y00000X,"Doctors (MD, DO)","Ear, nose & throat (ENT)"
+207YP0228X,"Doctors (MD, DO)","Ear, nose & throat (ENT)"
+207YP0228X,"Doctors (MD, DO)",Children & teens (pediatrics)
+207YS0012X,"Doctors (MD, DO)",Sleep medicine
+207YS0123X,"Doctors (MD, DO)","Ear, nose & throat (ENT)"
+207YX0007X,"Doctors (MD, DO)","Ear, nose & throat (ENT)"
+207YX0602X,"Doctors (MD, DO)","Ear, nose & throat (ENT)"
+207YX0901X,"Doctors (MD, DO)","Ear, nose & throat (ENT)"
+207YX0905X,"Doctors (MD, DO)","Ear, nose & throat (ENT)"
+207ZB0001X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZC0006X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZC0008X,"Doctors (MD, DO)",Other doctors
+207ZC0500X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZD0900X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZF0201X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZH0000X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZI0100X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZM0300X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZN0500X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZP0007X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZP0101X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZP0102X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZP0104X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZP0105X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZP0213X,"Doctors (MD, DO)",Lab medicine (pathology)
+207ZP0213X,"Doctors (MD, DO)",Children & teens (pediatrics)
+208000000X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080A0000X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080B0002X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+2080B0002X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080C0008X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080H0002X,"Doctors (MD, DO)",Hospice & palliative care
+2080H0002X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080I0007X,"Doctors (MD, DO)",Allergy & immunology
+2080I0007X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080N0001X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0006X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0008X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2080P0008X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0201X,"Doctors (MD, DO)",Allergy & immunology
+2080P0201X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0202X,"Doctors (MD, DO)",Heart (cardiology)
+2080P0202X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0203X,"Doctors (MD, DO)",Intensive care (critical care)
+2080P0203X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0204X,"Doctors (MD, DO)",Emergency medicine
+2080P0204X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0205X,"Doctors (MD, DO)",Hormones & diabetes (endocrinology)
+2080P0205X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0206X,"Doctors (MD, DO)",Digestive system & liver (gastroenterology)
+2080P0206X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0207X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+2080P0207X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0208X,"Doctors (MD, DO)",Infectious disease
+2080P0208X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0210X,"Doctors (MD, DO)",Kidneys (nephrology)
+2080P0210X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0214X,"Doctors (MD, DO)",Lungs (pulmonology)
+2080P0214X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P0216X,"Doctors (MD, DO)",Arthritis & autoimmune (rheumatology)
+2080P0216X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080P1004X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+2080P1004X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080S0010X,"Doctors (MD, DO)",Sports medicine
+2080S0010X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080S0012X,"Doctors (MD, DO)",Sleep medicine
+2080S0012X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080T0002X,"Doctors (MD, DO)",Emergency medicine
+2080T0002X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2080T0004X,"Doctors (MD, DO)",Digestive system & liver (gastroenterology)
+2080T0004X,"Doctors (MD, DO)",Children & teens (pediatrics)
+208100000X,"Doctors (MD, DO)",Rehabilitation medicine (PM&R)
+2081H0002X,"Doctors (MD, DO)",Hospice & palliative care
+2081N0008X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2081P0004X,"Doctors (MD, DO)",Rehabilitation medicine (PM&R)
+2081P0010X,"Doctors (MD, DO)",Rehabilitation medicine (PM&R)
+2081P0010X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2081P0301X,"Doctors (MD, DO)",Rehabilitation medicine (PM&R)
+2081P2900X,"Doctors (MD, DO)",Pain medicine
+2081S0010X,"Doctors (MD, DO)",Sports medicine
+208200000X,"Doctors (MD, DO)",Plastic & reconstructive surgery
+2082S0099X,"Doctors (MD, DO)",Plastic & reconstructive surgery
+2082S0105X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+2083A0100X,"Doctors (MD, DO)",Preventive & occupational medicine
+2083A0300X,"Doctors (MD, DO)",Addiction medicine
+2083B0002X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+2083C0008X,"Doctors (MD, DO)",Other doctors
+2083P0011X,"Doctors (MD, DO)",Other doctors
+2083P0500X,"Doctors (MD, DO)",Preventive & occupational medicine
+2083P0901X,"Doctors (MD, DO)",Preventive & occupational medicine
+2083S0010X,"Doctors (MD, DO)",Sports medicine
+2083T0002X,"Doctors (MD, DO)",Emergency medicine
+2083X0100X,"Doctors (MD, DO)",Preventive & occupational medicine
+2084A0401X,"Doctors (MD, DO)",Addiction medicine
+2084A2900X,"Doctors (MD, DO)",Intensive care (critical care)
+2084B0002X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+2084B0040X,"Doctors (MD, DO)",Mental health (psychiatry)
+2084B0040X,Mental & behavioral health,Psychiatrists
+2084D0003X,"Doctors (MD, DO)",Imaging (radiology)
+2084E0001X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2084F0202X,"Doctors (MD, DO)",Mental health (psychiatry)
+2084F0202X,Mental & behavioral health,Psychiatrists
+2084H0002X,"Doctors (MD, DO)",Hospice & palliative care
+2084N0008X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2084N0400X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2084N0402X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2084N0402X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2084N0600X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2084P0005X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2084P0015X,"Doctors (MD, DO)",Mental health (psychiatry)
+2084P0015X,Mental & behavioral health,Psychiatrists
+2084P0301X,"Doctors (MD, DO)",Rehabilitation medicine (PM&R)
+2084P0800X,"Doctors (MD, DO)",Mental health (psychiatry)
+2084P0800X,Mental & behavioral health,Psychiatrists
+2084P0802X,"Doctors (MD, DO)",Mental health (psychiatry)
+2084P0802X,Mental & behavioral health,Psychiatrists
+2084P0804X,"Doctors (MD, DO)",Mental health (psychiatry)
+2084P0804X,Mental & behavioral health,Psychiatrists
+2084P0804X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2084P0805X,"Doctors (MD, DO)",Mental health (psychiatry)
+2084P0805X,Mental & behavioral health,Psychiatrists
+2084P2900X,"Doctors (MD, DO)",Pain medicine
+2084S0010X,"Doctors (MD, DO)",Sports medicine
+2084S0012X,"Doctors (MD, DO)",Sleep medicine
+2084V0102X,"Doctors (MD, DO)",Brain & nerves (neurology)
+2085B0100X,"Doctors (MD, DO)",Imaging (radiology)
+2085D0003X,"Doctors (MD, DO)",Imaging (radiology)
+2085H0002X,"Doctors (MD, DO)",Hospice & palliative care
+2085N0700X,"Doctors (MD, DO)",Imaging (radiology)
+2085N0904X,"Doctors (MD, DO)",Imaging (radiology)
+2085P0229X,"Doctors (MD, DO)",Imaging (radiology)
+2085P0229X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2085R0001X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+2085R0202X,"Doctors (MD, DO)",Imaging (radiology)
+2085R0203X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+2085R0204X,"Doctors (MD, DO)",Imaging (radiology)
+2085R0205X,"Doctors (MD, DO)",Imaging (radiology)
+2085U0001X,"Doctors (MD, DO)",Imaging (radiology)
+208600000X,"Doctors (MD, DO)",General surgery
+2086H0002X,"Doctors (MD, DO)",Hospice & palliative care
+2086P0122X,"Doctors (MD, DO)",Weight & nutrition (obesity medicine)
+2086S0102X,"Doctors (MD, DO)",Intensive care (critical care)
+2086S0105X,"Doctors (MD, DO)",Bones & joints (orthopedics)
+2086S0120X,"Doctors (MD, DO)",General surgery
+2086S0120X,"Doctors (MD, DO)",Children & teens (pediatrics)
+2086S0122X,"Doctors (MD, DO)",Plastic & reconstructive surgery
+2086S0127X,"Doctors (MD, DO)",General surgery
+2086S0129X,"Doctors (MD, DO)",Veins & arteries (vascular)
+2086X0206X,"Doctors (MD, DO)","Cancer & blood disorders (oncology, hematology)"
+2086X0206X,"Doctors (MD, DO)",General surgery
+208800000X,"Doctors (MD, DO)",Urinary tract (urology)
+2088F0040X,"Doctors (MD, DO)",Urinary tract (urology)
+2088P0231X,"Doctors (MD, DO)",Urinary tract (urology)
+2088P0231X,"Doctors (MD, DO)",Children & teens (pediatrics)
+208C00000X,"Doctors (MD, DO)",General surgery
+208D00000X,"Doctors (MD, DO)",Family medicine & general practice
+208G00000X,"Doctors (MD, DO)",Heart & chest surgery
+208M00000X,"Doctors (MD, DO)",Hospital medicine (hospitalists)
+208U00000X,"Doctors (MD, DO)",Other doctors
+208VP0000X,"Doctors (MD, DO)",Pain medicine
+208VP0014X,"Doctors (MD, DO)",Pain medicine
+209800000X,"Doctors (MD, DO)",Other doctors
+211D00000X,Foot care (podiatry),Podiatric assistants
+213E00000X,Foot care (podiatry),Podiatrists
+213EG0000X,Foot care (podiatry),Podiatrists
+213EP0504X,Foot care (podiatry),Podiatrists
+213EP1101X,Foot care (podiatry),Podiatrists
+213ER0200X,Foot care (podiatry),Podiatrists
+213ES0000X,Foot care (podiatry),Podiatrists
+213ES0103X,Foot care (podiatry),Foot & ankle surgery
+213ES0131X,Foot care (podiatry),Foot & ankle surgery
+221700000X,Mental & behavioral health,Creative arts therapists
+222Q00000X,Therapy & rehabilitation,Recreation & developmental therapists
+222Z00000X,Therapy & rehabilitation,Prosthetics & orthotics
+224900000X,Therapy & rehabilitation,Prosthetics & orthotics
+224L00000X,Therapy & rehabilitation,Prosthetics & orthotics
+224P00000X,Therapy & rehabilitation,Prosthetics & orthotics
+224Y00000X,Therapy & rehabilitation,Exercise physiologists
+224Z00000X,Therapy & rehabilitation,Occupational therapy assistants
+224ZE0001X,Therapy & rehabilitation,Occupational therapy assistants
+224ZF0002X,Therapy & rehabilitation,Occupational therapy assistants
+224ZL0004X,Therapy & rehabilitation,Occupational therapy assistants
+224ZR0403X,Therapy & rehabilitation,Occupational therapy assistants
+225000000X,Therapy & rehabilitation,Prosthetics & orthotics
+225100000X,Therapy & rehabilitation,Physical therapists
+2251C2600X,Therapy & rehabilitation,Physical therapists
+2251E1200X,Therapy & rehabilitation,Physical therapists
+2251E1300X,Therapy & rehabilitation,Physical therapists
+2251G0304X,Therapy & rehabilitation,Physical therapists
+2251H1200X,Therapy & rehabilitation,Physical therapists
+2251H1300X,Therapy & rehabilitation,Physical therapists
+2251N0400X,Therapy & rehabilitation,Physical therapists
+2251P0200X,Therapy & rehabilitation,Physical therapists
+2251S0007X,Therapy & rehabilitation,Physical therapists
+2251X0800X,Therapy & rehabilitation,Physical therapists
+225200000X,Therapy & rehabilitation,Physical therapy assistants
+225400000X,Therapy & rehabilitation,Rehabilitation counselors & practitioners
+225500000X,Therapy & rehabilitation,Rehabilitation counselors & practitioners
+2255A2300X,Therapy & rehabilitation,Athletic trainers
+2255R0406X,Therapy & rehabilitation,Rehabilitation counselors & practitioners
+225600000X,Mental & behavioral health,Creative arts therapists
+225700000X,Chiropractic & complementary care,Massage therapists
+225800000X,Therapy & rehabilitation,Recreation & developmental therapists
+225A00000X,Mental & behavioral health,Creative arts therapists
+225B00000X,Therapy & rehabilitation,Respiratory therapists
+225C00000X,Therapy & rehabilitation,Rehabilitation counselors & practitioners
+225CA2400X,Therapy & rehabilitation,Rehabilitation counselors & practitioners
+225CA2500X,Therapy & rehabilitation,Rehabilitation counselors & practitioners
+225CX0006X,Therapy & rehabilitation,Rehabilitation counselors & practitioners
+225X00000X,Therapy & rehabilitation,Occupational therapists
+225XE0001X,Therapy & rehabilitation,Occupational therapists
+225XE1200X,Therapy & rehabilitation,Occupational therapists
+225XF0002X,Therapy & rehabilitation,Occupational therapists
+225XG0600X,Therapy & rehabilitation,Occupational therapists
+225XH1200X,Therapy & rehabilitation,Occupational therapists
+225XH1300X,Therapy & rehabilitation,Occupational therapists
+225XL0004X,Therapy & rehabilitation,Occupational therapists
+225XM0800X,Therapy & rehabilitation,Occupational therapists
+225XN1300X,Therapy & rehabilitation,Occupational therapists
+225XP0019X,Therapy & rehabilitation,Occupational therapists
+225XP0200X,Therapy & rehabilitation,Occupational therapists
+225XR0403X,Therapy & rehabilitation,Occupational therapists
+226000000X,Therapy & rehabilitation,Recreation & developmental therapists
+226300000X,Therapy & rehabilitation,Exercise physiologists
+227800000X,Therapy & rehabilitation,Respiratory therapists
+2278C0205X,Therapy & rehabilitation,Respiratory therapists
+2278E0002X,Therapy & rehabilitation,Respiratory therapists
+2278E1000X,Therapy & rehabilitation,Respiratory therapists
+2278G0305X,Therapy & rehabilitation,Respiratory therapists
+2278G1100X,Therapy & rehabilitation,Respiratory therapists
+2278H0200X,Therapy & rehabilitation,Respiratory therapists
+2278P1004X,Therapy & rehabilitation,Respiratory therapists
+2278P1005X,Therapy & rehabilitation,Respiratory therapists
+2278P1006X,Therapy & rehabilitation,Respiratory therapists
+2278P3800X,Therapy & rehabilitation,Respiratory therapists
+2278P3900X,Therapy & rehabilitation,Respiratory therapists
+2278P4000X,Therapy & rehabilitation,Respiratory therapists
+2278S1500X,Therapy & rehabilitation,Respiratory therapists
+227900000X,Therapy & rehabilitation,Respiratory therapists
+2279C0205X,Therapy & rehabilitation,Respiratory therapists
+2279E0002X,Therapy & rehabilitation,Respiratory therapists
+2279E1000X,Therapy & rehabilitation,Respiratory therapists
+2279G0305X,Therapy & rehabilitation,Respiratory therapists
+2279G1100X,Therapy & rehabilitation,Respiratory therapists
+2279H0200X,Therapy & rehabilitation,Respiratory therapists
+2279P1004X,Therapy & rehabilitation,Respiratory therapists
+2279P1005X,Therapy & rehabilitation,Respiratory therapists
+2279P1006X,Therapy & rehabilitation,Respiratory therapists
+2279P3800X,Therapy & rehabilitation,Respiratory therapists
+2279P3900X,Therapy & rehabilitation,Respiratory therapists
+2279P4000X,Therapy & rehabilitation,Respiratory therapists
+2279S1500X,Therapy & rehabilitation,Respiratory therapists
+229N00000X,Therapy & rehabilitation,Prosthetics & orthotics
+231H00000X,Hearing & speech,Audiologists
+231HA2400X,Hearing & speech,Audiologists
+231HA2500X,Hearing & speech,Audiologists
+235500000X,Hearing & speech,Speech & audiology assistants
+2355A2700X,Hearing & speech,Speech & audiology assistants
+2355S0801X,Hearing & speech,Speech & audiology assistants
+235Z00000X,Hearing & speech,Speech-language pathologists
+237600000X,Hearing & speech,Hearing aid specialists
+237700000X,Hearing & speech,Hearing aid specialists
+242T00000X,Labs & technicians,Surgical technologists & assistants
+243U00000X,Labs & technicians,Imaging technologists
+246Q00000X,Labs & technicians,Lab technicians & phlebotomists
+246QB0000X,Labs & technicians,Lab technicians & phlebotomists
+246QC1000X,Labs & technicians,Lab technicians & phlebotomists
+246QC2700X,Labs & technicians,Lab technicians & phlebotomists
+246QH0000X,Labs & technicians,Lab technicians & phlebotomists
+246QH0401X,Labs & technicians,Lab technicians & phlebotomists
+246QH0600X,Labs & technicians,Lab technicians & phlebotomists
+246QI0000X,Labs & technicians,Lab technicians & phlebotomists
+246QL0900X,Labs & technicians,Lab technicians & phlebotomists
+246QL0901X,Labs & technicians,Lab technicians & phlebotomists
+246QM0706X,Labs & technicians,Lab technicians & phlebotomists
+246QM0900X,Labs & technicians,Lab technicians & phlebotomists
+246R00000X,Labs & technicians,Lab technicians & phlebotomists
+246RH0600X,Labs & technicians,Lab technicians & phlebotomists
+246RM2200X,Labs & technicians,Lab technicians & phlebotomists
+246RP1900X,Labs & technicians,Lab technicians & phlebotomists
+246W00000X,Labs & technicians,Other technicians
+246X00000X,Labs & technicians,Imaging technologists
+246XC2901X,Labs & technicians,Imaging technologists
+246XC2903X,Labs & technicians,Imaging technologists
+246XS1301X,Labs & technicians,Imaging technologists
+246Y00000X,Labs & technicians,Other technicians
+246YC3301X,Labs & technicians,Other technicians
+246YC3302X,Labs & technicians,Other technicians
+246YR1600X,Labs & technicians,Other technicians
+246Z00000X,Labs & technicians,Other technicians
+246ZA2600X,Labs & technicians,Other technicians
+246ZB0301X,Labs & technicians,Other technicians
+246ZB0302X,Labs & technicians,Other technicians
+246ZB0500X,Labs & technicians,Other technicians
+246ZB0600X,Labs & technicians,Other technicians
+246ZC0007X,Labs & technicians,Surgical technologists & assistants
+246ZE0500X,Labs & technicians,Other technicians
+246ZE0600X,Labs & technicians,Other technicians
+246ZG0701X,Labs & technicians,Other technicians
+246ZG1000X,Labs & technicians,Other technicians
+246ZI1000X,Labs & technicians,Other technicians
+246ZN0300X,Labs & technicians,Other technicians
+246ZS0410X,Labs & technicians,Surgical technologists & assistants
+246ZX2200X,Labs & technicians,Surgical technologists & assistants
+247000000X,Labs & technicians,Other technicians
+2470A2800X,Labs & technicians,Other technicians
+247100000X,Labs & technicians,Imaging technologists
+2471B0102X,Labs & technicians,Imaging technologists
+2471C1101X,Labs & technicians,Imaging technologists
+2471C1106X,Labs & technicians,Imaging technologists
+2471C3401X,Labs & technicians,Imaging technologists
+2471C3402X,Labs & technicians,Imaging technologists
+2471M1202X,Labs & technicians,Imaging technologists
+2471M2300X,Labs & technicians,Imaging technologists
+2471N0900X,Labs & technicians,Imaging technologists
+2471Q0001X,Labs & technicians,Imaging technologists
+2471R0002X,Labs & technicians,Imaging technologists
+2471S1302X,Labs & technicians,Imaging technologists
+2471V0105X,Labs & technicians,Imaging technologists
+2471V0106X,Labs & technicians,Imaging technologists
+247200000X,Labs & technicians,Other technicians
+2472B0301X,Labs & technicians,Other technicians
+2472D0500X,Labs & technicians,Other technicians
+2472E0500X,Labs & technicians,Other technicians
+2472R0900X,Labs & technicians,Other technicians
+2472V0600X,Labs & technicians,Other technicians
+247ZC0005X,Labs & technicians,Lab technicians & phlebotomists
+251300000X,Community & support services,Public health & social service agencies
+251B00000X,Community & support services,Case management & care coordination
+251C00000X,Community & support services,Developmental disability services
+251E00000X,Home care & hospice,Home health agencies
+251F00000X,Home care & hospice,Home infusion
+251G00000X,Home care & hospice,Hospice
+251J00000X,Home care & hospice,Nursing care agencies
+251K00000X,Community & support services,Public health & social service agencies
+251S00000X,Mental & behavioral health,Mental health clinics & agencies
+251T00000X,Nursing homes & senior living,PACE programs
+251V00000X,Community & support services,Public health & social service agencies
+251X00000X,Community & support services,Developmental disability services
+252Y00000X,Community & support services,Early intervention
+253J00000X,Community & support services,Public health & social service agencies
+253Z00000X,Home care & hospice,Personal care & in-home support
+261Q00000X,Clinics & centers,Multi-specialty & specialty clinics
+261QA0005X,Clinics & centers,Family planning & fertility
+261QA0006X,Clinics & centers,Family planning & fertility
+261QA0600X,Nursing homes & senior living,Adult day care
+261QA0900X,Clinics & centers,Rehabilitation & physical therapy clinics
+261QA0900X,Therapy & rehabilitation,Rehabilitation & physical therapy clinics
+261QA1903X,Clinics & centers,Surgery centers
+261QA3000X,Hearing & speech,Hearing & speech centers
+261QB0400X,Midwives & doulas,Birth centers
+261QC0050X,Hospitals,Critical access hospitals
+261QC1500X,Clinics & centers,Primary care & community health centers
+261QC1800X,Clinics & centers,Occupational & employee health
+261QD0000X,Clinics & centers,Dental clinics
+261QD1600X,Community & support services,Developmental disability services
+261QE0002X,Clinics & centers,Urgent care & emergency centers
+261QE0700X,Clinics & centers,Dialysis centers
+261QE0800X,Clinics & centers,Surgery centers
+261QF0050X,Clinics & centers,Family planning & fertility
+261QF0400X,Clinics & centers,Primary care & community health centers
+261QG0250X,Clinics & centers,Multi-specialty & specialty clinics
+261QH0100X,Clinics & centers,Primary care & community health centers
+261QH0700X,Hearing & speech,Hearing & speech centers
+261QI0500X,Clinics & centers,Multi-specialty & specialty clinics
+261QL0400X,Clinics & centers,Surgery centers
+261QM0801X,Mental & behavioral health,Mental health clinics & agencies
+261QM0850X,Mental & behavioral health,Mental health clinics & agencies
+261QM0855X,Mental & behavioral health,Mental health clinics & agencies
+261QM1000X,Clinics & centers,Primary care & community health centers
+261QM1100X,Clinics & centers,Military & VA clinics
+261QM1101X,Clinics & centers,Military & VA clinics
+261QM1102X,Clinics & centers,Military & VA clinics
+261QM1103X,Clinics & centers,Military & VA clinics
+261QM1200X,Clinics & centers,Imaging centers
+261QM1300X,Clinics & centers,Multi-specialty & specialty clinics
+261QM2500X,Clinics & centers,Multi-specialty & specialty clinics
+261QM2800X,Mental & behavioral health,Addiction treatment centers
+261QM3000X,Community & support services,Early intervention
+261QP0904X,Clinics & centers,Primary care & community health centers
+261QP0905X,Clinics & centers,Primary care & community health centers
+261QP1100X,Foot care (podiatry),Podiatry clinics
+261QP2000X,Clinics & centers,Rehabilitation & physical therapy clinics
+261QP2000X,Therapy & rehabilitation,Rehabilitation & physical therapy clinics
+261QP2300X,Clinics & centers,Primary care & community health centers
+261QP2400X,Clinics & centers,Primary care & community health centers
+261QP3300X,Clinics & centers,Multi-specialty & specialty clinics
+261QR0200X,Clinics & centers,Imaging centers
+261QR0206X,Clinics & centers,Imaging centers
+261QR0207X,Clinics & centers,Imaging centers
+261QR0208X,Clinics & centers,Imaging centers
+261QR0400X,Clinics & centers,Rehabilitation & physical therapy clinics
+261QR0400X,Therapy & rehabilitation,Rehabilitation & physical therapy clinics
+261QR0401X,Clinics & centers,Rehabilitation & physical therapy clinics
+261QR0401X,Therapy & rehabilitation,Rehabilitation & physical therapy clinics
+261QR0404X,Clinics & centers,Rehabilitation & physical therapy clinics
+261QR0404X,Therapy & rehabilitation,Rehabilitation & physical therapy clinics
+261QR0405X,Mental & behavioral health,Addiction treatment centers
+261QR0800X,Clinics & centers,Surgery centers
+261QR1100X,Clinics & centers,Multi-specialty & specialty clinics
+261QR1300X,Clinics & centers,Primary care & community health centers
+261QS0112X,Clinics & centers,Surgery centers
+261QS0132X,Clinics & centers,Surgery centers
+261QS0132X,Eye care,Eye surgery centers
+261QS1000X,Clinics & centers,Primary care & community health centers
+261QS1200X,Clinics & centers,Sleep centers
+261QU0200X,Clinics & centers,Urgent care & emergency centers
+261QV0200X,Clinics & centers,Military & VA clinics
+261QX0100X,Clinics & centers,Occupational & employee health
+261QX0200X,Clinics & centers,Cancer centers
+261QX0203X,Clinics & centers,Cancer centers
+273100000X,Hospitals,Hospital units
+273R00000X,Hospitals,Hospital units
+273Y00000X,Hospitals,Hospital units
+275N00000X,Hospitals,Hospital units
+276400000X,Hospitals,Hospital units
+281P00000X,Hospitals,Long-term & specialty hospitals
+281PC2000X,Hospitals,Long-term & specialty hospitals
+281PC2000X,Hospitals,Children's hospitals
+282E00000X,Hospitals,Long-term & specialty hospitals
+282J00000X,Hospitals,Religious nonmedical institutions
+282N00000X,Hospitals,General hospitals
+282NC0060X,Hospitals,Critical access hospitals
+282NC2000X,Hospitals,Children's hospitals
+282NR1301X,Hospitals,General hospitals
+282NW0100X,Hospitals,General hospitals
+283Q00000X,Hospitals,Psychiatric hospitals
+283X00000X,Hospitals,Rehabilitation hospitals
+283XC2000X,Hospitals,Rehabilitation hospitals
+283XC2000X,Hospitals,Children's hospitals
+284300000X,Hospitals,Long-term & specialty hospitals
+286500000X,Hospitals,Military hospitals
+2865C1500X,Hospitals,Military hospitals
+2865M2000X,Hospitals,Military hospitals
+2865X1600X,Hospitals,Military hospitals
+287300000X,Hospitals,Religious nonmedical institutions
+291900000X,Labs & technicians,Clinical laboratories
+291U00000X,Labs & technicians,Clinical laboratories
+292200000X,Dental hygiene & support,Dental labs
+293D00000X,Labs & technicians,Clinical laboratories
+302F00000X,Health plans,Health plans
+302R00000X,Health plans,Health plans
+305R00000X,Health plans,Health plans
+305S00000X,Health plans,Health plans
+310400000X,Nursing homes & senior living,Assisted living
+3104A0625X,Nursing homes & senior living,Assisted living
+3104A0630X,Nursing homes & senior living,Assisted living
+310500000X,Mental & behavioral health,Residential treatment
+311500000X,Nursing homes & senior living,Memory care
+311Z00000X,Nursing homes & senior living,Adult care homes
+311ZA0620X,Nursing homes & senior living,Adult care homes
+313M00000X,Nursing homes & senior living,Nursing homes
+314000000X,Nursing homes & senior living,Nursing homes
+3140N1450X,Nursing homes & senior living,Nursing homes
+315D00000X,Home care & hospice,Hospice
+315P00000X,Community & support services,Residential care & respite
+317400000X,Hospitals,Religious nonmedical institutions
+320600000X,Community & support services,Residential care & respite
+320700000X,Community & support services,Residential care & respite
+320800000X,Mental & behavioral health,Residential treatment
+320900000X,Community & support services,Residential care & respite
+322D00000X,Mental & behavioral health,Residential treatment
+323P00000X,Mental & behavioral health,Residential treatment
+324500000X,Mental & behavioral health,Addiction treatment centers
+3245S0500X,Mental & behavioral health,Addiction treatment centers
+331L00000X,Labs & technicians,Blood & organ banks
+332000000X,Pharmacies,"Government pharmacies (VA, IHS, military)"
+332100000X,Pharmacies,"Government pharmacies (VA, IHS, military)"
+332800000X,Pharmacies,"Government pharmacies (VA, IHS, military)"
+332900000X,Pharmacies,Other or type not given
+332B00000X,Medical equipment & supplies,Durable medical equipment
+332BC3200X,Medical equipment & supplies,Durable medical equipment
+332BD1200X,Medical equipment & supplies,Durable medical equipment
+332BN1400X,Medical equipment & supplies,Durable medical equipment
+332BP3500X,Medical equipment & supplies,Nutrition & medical foods
+332BX2000X,Medical equipment & supplies,Oxygen equipment
+332G00000X,Eye care,Eye banks
+332H00000X,Eye care,Opticians & eyewear
+332S00000X,Hearing & speech,Hearing aid specialists
+332U00000X,Home care & hospice,Meals at home
+333300000X,Medical equipment & supplies,Emergency response systems
+333600000X,Pharmacies,Other or type not given
+3336C0002X,Pharmacies,Other or type not given
+3336C0003X,Pharmacies,Retail pharmacies
+3336C0004X,Pharmacies,Compounding pharmacies
+3336H0001X,Pharmacies,Home infusion pharmacies
+3336I0012X,Pharmacies,Other or type not given
+3336L0003X,Pharmacies,Long-term care pharmacies
+3336M0002X,Pharmacies,Mail order pharmacies
+3336M0003X,Pharmacies,Other or type not given
+3336N0007X,Pharmacies,Other or type not given
+3336S0011X,Pharmacies,Specialty pharmacies
+335E00000X,Medical equipment & supplies,Prosthetic & orthotic suppliers
+335G00000X,Medical equipment & supplies,Nutrition & medical foods
+335U00000X,Labs & technicians,Blood & organ banks
+335V00000X,Labs & technicians,Imaging technologists
+341600000X,Ambulance & transportation,Ambulance
+3416A0800X,Ambulance & transportation,Ambulance
+3416L0300X,Ambulance & transportation,Ambulance
+3416S0300X,Ambulance & transportation,Ambulance
+341800000X,Ambulance & transportation,Ambulance
+3418M1110X,Ambulance & transportation,Ambulance
+3418M1120X,Ambulance & transportation,Ambulance
+3418M1130X,Ambulance & transportation,Ambulance
+342000000X,Ambulance & transportation,Non-emergency medical transportation
+343800000X,Ambulance & transportation,Non-emergency medical transportation
+343900000X,Ambulance & transportation,Non-emergency medical transportation
+344600000X,Ambulance & transportation,Non-emergency medical transportation
+344800000X,Ambulance & transportation,Non-emergency medical transportation
+347B00000X,Ambulance & transportation,Non-emergency medical transportation
+347C00000X,Ambulance & transportation,Non-emergency medical transportation
+347D00000X,Ambulance & transportation,Non-emergency medical transportation
+347E00000X,Ambulance & transportation,Transportation brokers
+363A00000X,Physician assistants,Other or not specified
+363AM0700X,Physician assistants,Medical
+363AS0400X,Physician assistants,Surgical
+363L00000X,Nurse practitioners,Other or not specified
+363LA2100X,Nurse practitioners,Acute & critical care
+363LA2200X,Nurse practitioners,Adults & seniors
+363LC0200X,Nurse practitioners,Acute & critical care
+363LC1500X,Nurse practitioners,Other or not specified
+363LF0000X,Nurse practitioners,Family & primary care
+363LG0600X,Nurse practitioners,Adults & seniors
+363LN0000X,Nurse practitioners,Children & newborns
+363LN0005X,Nurse practitioners,Children & newborns
+363LP0200X,Nurse practitioners,Children & newborns
+363LP0222X,Nurse practitioners,Children & newborns
+363LP0808X,Nurse practitioners,Mental health (psychiatric)
+363LP0808X,Mental & behavioral health,Psychiatric nurse practitioners
+363LP1700X,Nurse practitioners,Women's health
+363LP2300X,Nurse practitioners,Family & primary care
+363LS0200X,Nurse practitioners,Other or not specified
+363LW0102X,Nurse practitioners,Women's health
+363LX0001X,Nurse practitioners,Women's health
+363LX0106X,Nurse practitioners,Other or not specified
+364S00000X,Nurses,Clinical nurse specialists
+364SA2100X,Nurses,Clinical nurse specialists
+364SA2200X,Nurses,Clinical nurse specialists
+364SC0200X,Nurses,Clinical nurse specialists
+364SC1501X,Nurses,Clinical nurse specialists
+364SC2300X,Nurses,Clinical nurse specialists
+364SE0003X,Nurses,Clinical nurse specialists
+364SE1400X,Nurses,Clinical nurse specialists
+364SF0001X,Nurses,Clinical nurse specialists
+364SG0600X,Nurses,Clinical nurse specialists
+364SH0200X,Nurses,Clinical nurse specialists
+364SH1100X,Nurses,Clinical nurse specialists
+364SI0800X,Nurses,Clinical nurse specialists
+364SL0600X,Nurses,Clinical nurse specialists
+364SM0705X,Nurses,Clinical nurse specialists
+364SN0000X,Nurses,Clinical nurse specialists
+364SN0800X,Nurses,Clinical nurse specialists
+364SP0200X,Nurses,Clinical nurse specialists
+364SP0807X,Nurses,Clinical nurse specialists
+364SP0808X,Nurses,Clinical nurse specialists
+364SP0809X,Nurses,Clinical nurse specialists
+364SP0810X,Nurses,Clinical nurse specialists
+364SP0811X,Nurses,Clinical nurse specialists
+364SP0812X,Nurses,Clinical nurse specialists
+364SP0813X,Nurses,Clinical nurse specialists
+364SP1700X,Nurses,Clinical nurse specialists
+364SP2800X,Nurses,Clinical nurse specialists
+364SR0400X,Nurses,Clinical nurse specialists
+364SS0200X,Nurses,Clinical nurse specialists
+364ST0500X,Nurses,Clinical nurse specialists
+364SW0102X,Nurses,Clinical nurse specialists
+364SX0106X,Nurses,Clinical nurse specialists
+364SX0200X,Nurses,Clinical nurse specialists
+364SX0204X,Nurses,Clinical nurse specialists
+367500000X,Nurses,Nurse anesthetists (CRNA)
+367A00000X,Midwives & doulas,Certified nurse midwives
+367H00000X,Physician assistants,Anesthesiologist assistants
+372500000X,Home care & hospice,Personal care & in-home support
+372600000X,Home care & hospice,Personal care & in-home support
+373H00000X,Community & support services,Developmental disability services
+374700000X,Home care & hospice,Personal care & in-home support
+3747A0650X,Home care & hospice,Personal care & in-home support
+3747P1801X,Home care & hospice,Personal care & in-home support
+374J00000X,Midwives & doulas,Doulas
+374K00000X,Other,Other
+374T00000X,Other,Other
+374U00000X,Home care & hospice,Personal care & in-home support
+376G00000X,Other,Other
+376J00000X,Home care & hospice,Personal care & in-home support
+376K00000X,Nurses,Nursing assistants & psychiatric technicians
+385H00000X,Community & support services,Residential care & respite
+385HR2050X,Community & support services,Residential care & respite
+385HR2055X,Community & support services,Residential care & respite
+385HR2060X,Community & support services,Residential care & respite
+385HR2065X,Community & support services,Residential care & respite
+390200000X,Other,Students in training
+405300000X,Mental & behavioral health,Other mental health providers

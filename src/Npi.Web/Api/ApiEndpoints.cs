@@ -94,6 +94,14 @@ public static class ApiEndpoints
             .WithDescription("Every row of /products/{slug}/prescribers, largest payments first, streamed. UTF-8 with BOM.")
             .Produces(StatusCodes.Status200OK, contentType: "text/csv");
 
+        api.MapGet("/taxonomy/categories", () => TypedResults.Ok(TaxonomyCatalog.GetCategories()))
+            .WithName("ListCategories").WithTags("Lookups").WithSummary("Plain specialty categories")
+            .WithDescription("The site's plain specialty categories (\"Doctors (MD, DO)\", \"Dentists\" …), in display order. Each groups NUCC taxonomy codes; pass one as the category search parameter.")
+            .CacheOutput(CachePolicy);
+
+        api.MapGet("/taxonomy/categories/{category}/subcategories", GetSubcategories)
+            .WithName("ListSubcategories").WithTags("Lookups").WithSummary("Subcategories of one category").CacheOutput(CachePolicy);
+
         api.MapGet("/taxonomy/classifications", async (TaxonomyCatalog taxonomy, CancellationToken ct) =>
                 TypedResults.Ok(await taxonomy.GetClassificationsAsync(ct)))
             .WithName("ListClassifications").WithTags("Lookups").WithSummary("NUCC classifications").CacheOutput(CachePolicy);
@@ -179,6 +187,11 @@ public static class ApiEndpoints
         await details.GetAsync(npi, ct) is { } provider
             ? TypedResults.Ok(provider)
             : NotFound($"No active provider with NPI '{npi}'.");
+
+    private static Results<Ok<IReadOnlyList<string>>, ProblemHttpResult> GetSubcategories(string category) =>
+        TaxonomyCatalog.GetSubcategories(category) is { } subcategories
+            ? TypedResults.Ok(subcategories)
+            : NotFound($"Unknown category '{category}'.");
 
     private static async Task<Results<Ok<IReadOnlyList<string>>, ProblemHttpResult>> GetSpecializationsAsync(
         string classification, TaxonomyCatalog taxonomy, CancellationToken ct)

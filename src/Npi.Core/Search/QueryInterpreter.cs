@@ -3,10 +3,23 @@ using System.Text;
 
 namespace Npi.Core.Search;
 
-/// <summary>A specialty a phrase stands for: a NUCC classification, optionally narrowed to one of its specializations.</summary>
-public sealed record SpecialtyTerm(string Classification, string? Specialization)
+/// <summary>
+/// A specialty a phrase stands for: a plain category, optionally narrowed to a subcategory (<see cref="SpecialtyCategories"/>), or
+/// else a NUCC classification, optionally narrowed to one of its specializations.
+/// </summary>
+public sealed record SpecialtyTerm(string? Classification, string? Specialization)
 {
-    public string Label => Specialization is null ? Classification : $"{Classification} – {Specialization}";
+    public string? Category { get; init; }
+
+    public string? Subcategory { get; init; }
+
+    /// <summary>What a list of them is called ("Cardiologists"); set for plain categories.</summary>
+    public string? Title { get; init; }
+
+    public string Label => Title ?? (Specialization is null ? Classification ?? "" : $"{Classification} – {Specialization}");
+
+    public static SpecialtyTerm For(SpecialtyCategory category, SpecialtySubcategory? subcategory = null) =>
+        new(null, null) { Category = category.Name, Subcategory = subcategory?.Name, Title = subcategory?.Title ?? category.Title };
 }
 
 public sealed record CountyTerm(string Fips, string State, string Name, long Population);
@@ -40,48 +53,14 @@ public sealed record QueryInterpretation(QueryKind Kind, SearchFilter Filter, IR
 }
 
 /// <summary>
-/// The words the search box understands (docs/PRODUCT_PLAN.md step 1.3): specialty phrases from the NUCC taxonomy (names,
-/// display names, plurals) plus everyday words ("cardiologist", "family doctor"), states, counties and USPS city names.
+/// The words the search box understands (docs/PRODUCT_PLAN.md step 1.3): the plain specialty categories (names, titles,
+/// everyday words such as "heart doctor"; <see cref="SpecialtyCategories"/>), then NUCC taxonomy names, display names and
+/// plurals; states, counties and USPS city names.
 /// </summary>
 public sealed class SearchVocabulary
 {
-    /// <summary>Everyday words for specialties, checked against the taxonomy when the vocabulary is built (unknown ones are dropped).</summary>
-    private static readonly (string Phrase, string Classification, string? Specialization)[] Everyday =
-    [
-        ("cardiologist", "Internal Medicine", "Cardiovascular Disease"), ("heart doctor", "Internal Medicine", "Cardiovascular Disease"),
-        ("dermatologist", "Dermatology", null), ("skin doctor", "Dermatology", null),
-        ("pediatrician", "Pediatrics", null), ("childrens doctor", "Pediatrics", null), ("kids doctor", "Pediatrics", null),
-        ("psychiatrist", "Psychiatry & Neurology", "Psychiatry"), ("child psychiatrist", "Psychiatry & Neurology", "Child & Adolescent Psychiatry"),
-        ("neurologist", "Psychiatry & Neurology", "Neurology"),
-        ("orthodontist", "Dentist", "Orthodontics and Dentofacial Orthopedics"), ("endodontist", "Dentist", "Endodontics"),
-        ("periodontist", "Dentist", "Periodontics"), ("pediatric dentist", "Dentist", "Pediatric Dentistry"), ("prosthodontist", "Dentist", "Prosthodontics"),
-        ("oral surgeon", "Oral & Maxillofacial Surgery", null),
-        ("ophthalmologist", "Ophthalmology", null), ("eye doctor", "Optometrist", null), ("eye surgeon", "Ophthalmology", null),
-        ("family doctor", "Family Medicine", null), ("family physician", "Family Medicine", null), ("primary care doctor", "Family Medicine", null),
-        ("general practitioner", "Family Medicine", null), ("gp", "Family Medicine", null),
-        ("internist", "Internal Medicine", null), ("oncologist", "Internal Medicine", "Medical Oncology"), ("cancer doctor", "Internal Medicine", "Medical Oncology"),
-        ("hematologist", "Internal Medicine", "Hematology"), ("gastroenterologist", "Internal Medicine", "Gastroenterology"),
-        ("endocrinologist", "Internal Medicine", "Endocrinology, Diabetes & Metabolism"), ("nephrologist", "Internal Medicine", "Nephrology"),
-        ("kidney doctor", "Internal Medicine", "Nephrology"), ("pulmonologist", "Internal Medicine", "Pulmonary Disease"),
-        ("lung doctor", "Internal Medicine", "Pulmonary Disease"), ("rheumatologist", "Internal Medicine", "Rheumatology"),
-        ("geriatrician", "Internal Medicine", "Geriatric Medicine"), ("infectious disease doctor", "Internal Medicine", "Infectious Disease"),
-        ("allergist", "Allergy & Immunology", null), ("urologist", "Urology", null),
-        ("gynecologist", "Obstetrics & Gynecology", null), ("obgyn", "Obstetrics & Gynecology", null), ("ob gyn", "Obstetrics & Gynecology", null),
-        ("obstetrician", "Obstetrics & Gynecology", null),
-        ("orthopedist", "Orthopaedic Surgery", null), ("orthopedic surgeon", "Orthopaedic Surgery", null), ("orthopaedic surgeon", "Orthopaedic Surgery", null),
-        ("orthopedics", "Orthopaedic Surgery", null), ("neurosurgeon", "Neurological Surgery", null), ("plastic surgeon", "Plastic Surgery", null),
-        ("general surgeon", "Surgery", null), ("surgeon", "Surgery", null),
-        ("ent", "Otolaryngology", null), ("ent doctor", "Otolaryngology", null), ("otolaryngologist", "Otolaryngology", null),
-        ("radiologist", "Radiology", null), ("anesthesiologist", "Anesthesiology", null), ("pathologist", "Pathology", null),
-        ("foot doctor", "Podiatrist", null), ("physical therapy", "Physical Therapist", null), ("occupational therapy", "Occupational Therapist", null),
-        ("speech therapist", "Speech-Language Pathologist", null), ("speech pathologist", "Speech-Language Pathologist", null),
-        ("mental health counselor", "Counselor", null), ("marriage counselor", "Marriage & Family Therapist", null),
-        ("family therapist", "Marriage & Family Therapist", null), ("np", "Nurse Practitioner", null), ("dietitian", "Dietitian, Registered", null),
-        ("hospital", "General Acute Care Hospital", null), ("urgent care", "Clinic/Center", "Urgent Care"), ("nursing home", "Skilled Nursing Facility", null),
-        ("hospice", "Hospice Care, Community Based", null), ("emergency doctor", "Emergency Medicine", null), ("er doctor", "Emergency Medicine", null),
-        ("pain doctor", "Pain Medicine", null), ("pain management", "Pain Medicine", null), ("chiropractic", "Chiropractor", null),
-        ("dentistry", "Dentist", null), ("optometry", "Optometrist", null), ("acupuncture", "Acupuncturist", null), ("massage", "Massage Therapist", null),
-    ];
+    /// <summary>Parenthesized words in subcategory names that are too vague on their own ("Mental health (psychiatric)").</summary>
+    private static readonly HashSet<string> VagueTerms = new(StringComparer.Ordinal) { "psychiatric" };
 
     private static readonly string[] CountySuffixes = ["county", "parish", "borough", "census area", "municipality", "city and borough", "municipio"];
 
@@ -125,17 +104,58 @@ public sealed class SearchVocabulary
             Add(c, new SpecialtyTerm(entries.First(e => string.Equals(e.Classification, c, StringComparison.OrdinalIgnoreCase)).Classification!, null), overwrite: true);
         }
 
-        foreach (var (phrase, classification, specialization) in Everyday)
+        // The plain categories (owner, 2026-10-11) win over NUCC's names. Within them, first come first served: explicit
+        // synonyms ("heart doctor"), then subcategory titles, singulars and the term in parentheses ("cardiologists",
+        // "cardiologist", "cardiology"), then category names and titles. "Other …" subcategories and the Other category add none.
+        var plain = new Dictionary<string, SpecialtyTerm>(StringComparer.Ordinal);
+        void AddPlain(string phrase, SpecialtyTerm term)
         {
-            var exists = entries.Any(e => string.Equals(e.Classification, classification, StringComparison.OrdinalIgnoreCase)
-                                          && (specialization is null || string.Equals(e.Specialization, specialization, StringComparison.OrdinalIgnoreCase)));
-            if (exists)
+            foreach (var form in Forms(QueryText.Normalize(phrase)))
             {
-                var canonical = entries.First(e => string.Equals(e.Classification, classification, StringComparison.OrdinalIgnoreCase));
-                var spec = specialization is null ? null : entries.First(e => string.Equals(e.Classification, classification, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(e.Specialization, specialization, StringComparison.OrdinalIgnoreCase)).Specialization;
-                Add(phrase, new SpecialtyTerm(canonical.Classification!, spec), overwrite: true);
+                if (form.Length > 1)
+                {
+                    plain.TryAdd(form, term);
+                }
             }
+        }
+
+        var categories = SpecialtyCategories.Default.Categories.Where(c => c.Name != SpecialtyCategories.FallbackCategory).ToList();
+        foreach (var category in categories)
+        {
+            category.Synonyms.ToList().ForEach(x => AddPlain(x, SpecialtyTerm.For(category)));
+            foreach (var sub in category.Subcategories)
+            {
+                sub.Synonyms.ToList().ForEach(x => AddPlain(x, SpecialtyTerm.For(category, sub)));
+            }
+        }
+
+        foreach (var category in categories)
+        {
+            foreach (var sub in category.Subcategories.Where(s => !s.Name.StartsWith("Other", StringComparison.Ordinal)))
+            {
+                AddPlain(sub.Title, SpecialtyTerm.For(category, sub));
+                AddPlain(sub.Singular, SpecialtyTerm.For(category, sub));
+                if (Parenthesized(sub.Name) is { } term)
+                {
+                    AddPlain(term, SpecialtyTerm.For(category, sub));
+                }
+            }
+        }
+
+        foreach (var category in categories)
+        {
+            AddPlain(category.Name, SpecialtyTerm.For(category));
+            AddPlain(category.Title, SpecialtyTerm.For(category));
+            AddPlain(category.Singular, SpecialtyTerm.For(category));
+            if (Parenthesized(category.Name) is { } term)
+            {
+                AddPlain(term, SpecialtyTerm.For(category));
+            }
+        }
+
+        foreach (var (phrase, term) in plain)
+        {
+            Specialties[phrase] = term;
         }
 
         foreach (var county in counties)
@@ -188,6 +208,19 @@ public sealed class SearchVocabulary
         }
 
         return key;
+    }
+
+    // "Heart (cardiology)" → "cardiology"; nothing for a list ("(LPN, LVN)") or a vague word.
+    private static string? Parenthesized(string name)
+    {
+        var open = name.LastIndexOf('(');
+        if (open < 0 || !name.EndsWith(')'))
+        {
+            return null;
+        }
+
+        var inner = name[(open + 1)..^1];
+        return inner.Contains(',', StringComparison.Ordinal) || VagueTerms.Contains(QueryText.Normalize(inner)) ? null : inner;
     }
 
     // "st johns" also as "saint johns", and the other way round.
@@ -448,7 +481,8 @@ public static class QueryInterpreter
 
         // City: only with context (a specialty, a state, or "in"/"near" before it), so a surname isn't read as a town.
         // An organization word as the specialty ("hospital") gives no context: "Stony Brook University Hospital" is a name, "hospitals in stony brook" a list.
-        var orgWordSpecialty = specialtyWords is { } ow && tokens[ow.Start..(ow.Start + ow.Length)].All(OrganizationWords.Contains);
+        // A generic word as the specialty ("doctor") gives none either: "doctor john smith" is a name, not doctors in Smith, NV.
+        var orgWordSpecialty = specialtyWords is { } ow && tokens[ow.Start..(ow.Start + ow.Length)].All(t => OrganizationWords.Contains(t) || Generic.Contains(t));
         var cityAllowed = (specialty is not null && !orgWordSpecialty) || state is not null || countyFips is not null;
         if (city is null && zip is null)
         {
@@ -466,14 +500,22 @@ public static class QueryInterpreter
         }
 
         // "Stony Brook University Hospital": an organization word used as the specialty, with other words and no place, is a name.
+        // "Doctor John Smith": a generic word ("doctor") as the specialty, with other words and no place, is dropped.
         var noPlace = state is null && countyFips is null && city is null && zip is null;
-        if (noPlace && specialtyWords is { } sw && Enumerable.Range(0, tokens.Length).Any(i => !used[i] && !Connectors.Contains(tokens[i]))
-            && tokens[sw.Start..(sw.Start + sw.Length)].All(OrganizationWords.Contains))
+        if (noPlace && specialtyWords is { } sw && Enumerable.Range(0, tokens.Length).Any(i => !used[i] && !Connectors.Contains(tokens[i])))
         {
-            specialty = null;
-            for (var j = sw.Start; j < sw.Start + sw.Length; j++)
+            var specialtyTokens = tokens[sw.Start..(sw.Start + sw.Length)];
+            if (specialtyTokens.All(OrganizationWords.Contains))
             {
-                used[j] = false;
+                specialty = null;
+                for (var j = sw.Start; j < sw.Start + sw.Length; j++)
+                {
+                    used[j] = false;
+                }
+            }
+            else if (specialtyTokens.All(Generic.Contains))
+            {
+                specialty = null;
             }
         }
 
@@ -503,6 +545,8 @@ public static class QueryInterpreter
 
         var filter = new SearchFilter
         {
+            Category = specialty?.Category,
+            Subcategory = specialty?.Subcategory,
             Classification = specialty?.Classification,
             Specialization = specialty?.Specialization,
             State = state,
@@ -513,7 +557,8 @@ public static class QueryInterpreter
         };
         if (specialty is not null)
         {
-            parts.Insert(0, new QueryPart("Specialty", specialty.Label, ["classification", "specialization"]));
+            parts.Insert(0, new QueryPart("Specialty", specialty.Label,
+                specialty.Category is not null ? ["category", "subcategory"] : ["classification", "specialization"]));
         }
 
         if (state is not null)

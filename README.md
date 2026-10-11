@@ -52,7 +52,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | See **products in industry payments**: for each drug, device or supply named in payments, which companies pay for it, what for, which specialties and providers they pay most, and the research studies naming it, plus what it is from FDA (drugs: generic name, ingredients, drug class, approval, other makers, approved uses and any boxed warning from the label; devices: description, FDA class, 510(k)/PMA decisions), and public data: Medicare and Medicaid spending by year, what pharmacies pay (NADAC), FDA shortages and recalls, adverse event report counts, ClinicalTrials.gov studies, and which providers paid for a drug also prescribe it to Medicare patients (counts, a sortable list and a CSV); linked from company and provider pages | `/products`, `/product/{slug}`, `/api/v1/products[/{slug}]` |
 | Look up thousands of NPIs at once (paste or upload a file) and download the details, in your order | `/lookup`, `POST /api/v1/providers/lookup[.csv]` |
 | County insights: population and HRSA Health Professional Shortage Areas | Search page (when a county is chosen), `/api/v1/counties/{fips}` |
-| Look up the lists behind the filters: classifications, specializations, states, counties (FIPS) | `/api/v1/taxonomy/…`, `/api/v1/states/…` |
+| Look up the lists behind the filters: specialty categories and subcategories, NUCC classifications and specializations, states, counties (FIPS) | `/api/v1/taxonomy/…`, `/api/v1/states/…` |
 | Check how fresh the data is and which source files it came from | Site footer, `/api/v1/meta` |
 | Interactive API docs (try every call in the browser) | `/swagger` (OpenAPI document at `/openapi/v1.json`) |
 | Call the API from .NET with typed models and errors | [`Npi.Client`](src/Npi.Client/README.md) |
@@ -66,6 +66,8 @@ At least one filter is required. Filters combine with AND.
 
 | Parameter | Meaning | Example |
 |---|---|---|
+| `category` | Plain specialty category. Matches **any** of a provider's up to 15 taxonomies | `Doctors (MD, DO)` |
+| `subcategory` | Subcategory within the category | `Heart (cardiology)` |
 | `classification` | NUCC classification. Matches **any** of a provider's up to 15 taxonomies, not just the primary one | `Chiropractor` |
 | `specialization` | Specialization within the classification | `Sports Physician` |
 | `taxonomy` | A NUCC taxonomy code | `111N00000X` |
@@ -100,8 +102,9 @@ addresses are not searched. Each result row shows the location that matched.
 
 ## Website
 
-- **`/`**: the search form. Specialty and location use dependent dropdowns (Classification → Specialization,
-  State → County). Results appear in a sortable grid, 50 per page, with the total and a **Download CSV** button
+- **`/`**: the search form. Specialty and location use dependent dropdowns (Category → Subcategory in plain words,
+  e.g. "Doctors (MD, DO)" → "Heart (cardiology)", with NUCC's exact Classification → Specialization folded underneath;
+  State → County → City). Results appear in a sortable grid, 50 per page, with the total and a **Download CSV** button
   for the same search, and **View on map** opens the map search with the same filters. The page also works without
   JavaScript and on phones.
 - **`/map`**: map search on [OpenStreetMap](https://www.openstreetmap.org/).
@@ -152,6 +155,8 @@ problem documents. CORS is open for GET, so browser apps on any site can call it
 | `GET /api/v1/providers/{npi}` | Full record, including the enrichment sections. `404` if unknown or deactivated |
 | `POST /api/v1/providers/lookup` | Body `{ "npis": [...] }`, up to 1,000. `{ items: [{ npi, status, provider }] }`, one per requested NPI in order; `status` is `found`, `notFound` or `invalid` |
 | `POST /api/v1/providers/lookup.csv` | The same, as CSV |
+| `GET /api/v1/taxonomy/categories` | The plain specialty categories |
+| `GET /api/v1/taxonomy/categories/{category}/subcategories` | Subcategories of one category |
 | `GET /api/v1/taxonomy/classifications` | All NUCC classifications |
 | `GET /api/v1/taxonomy/classifications/{classification}/specializations` | Specializations of one classification |
 | `GET /api/v1/credentials` | Standardized credentials with provider counts (`credential`, `providers`), most common first |

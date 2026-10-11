@@ -504,17 +504,31 @@ public sealed class SearchIntegrationTests : IDisposable
         var vocabulary = await vocabularies.GetAsync(_ct);
 
         var list = QueryInterpreter.Interpret("chiropractors in suffolk county ny", vocabulary);
-        Assert.Equal((QueryKind.List, "Chiropractor", "36103"), (list.Kind, list.Filter.Classification, list.Filter.CountyFips));
+        Assert.Equal((QueryKind.List, "Chiropractic & complementary care", "Chiropractors", "36103"),
+            (list.Kind, list.Filter.Category, list.Filter.Subcategory, list.Filter.CountyFips));
         Assert.Equal([A, B], await Npis(Search(db), list.Filter));                     // B through its Farmingdale office
         var city = QueryInterpreter.Interpret("pediatricians in farmingdale", vocabulary);
-        Assert.Equal(("Pediatrics", "Farmingdale", "NY"), (city.Filter.Classification, city.Filter.City, city.Filter.State));
+        Assert.Equal(("Doctors (MD, DO)", "Children & teens (pediatrics)", "Farmingdale", "NY"),
+            (city.Filter.Category, city.Filter.Subcategory, city.Filter.City, city.Filter.State));
         Assert.Equal([E], await Npis(Search(db), city.Filter));
+        var nucc = QueryInterpreter.Interpret("sports chiropractor in suffolk county", vocabulary);
+        Assert.Equal(("Chiropractor", "Sports Physician"), (nucc.Filter.Classification, nucc.Filter.Specialization));
+
+        // The plain categories search like the NUCC filters; together both must match; results say the specialty in plain words.
+        var search = Search(db);
+        Assert.Equal([D], await Npis(search, new SearchFilter { Category = "Dentists" }));
+        Assert.Equal([A, B], await Npis(search, new SearchFilter { Category = "chiropractic & complementary care", State = "NY" }));
+        Assert.Empty(await Npis(search, new SearchFilter { Category = "Dentists", Classification = "Chiropractor" }));
+        var page = await search.SearchAsync(new SearchFilter { Category = "Chiropractic & complementary care", Subcategory = "Chiropractors", Sort = "npi" }, _ct);
+        Assert.All(page.Items, p => Assert.Equal(("Chiropractic & complementary care", "Chiropractors", "Chiropractor"), (p.Category, p.Subcategory, p.PlainSpecialty)));
+        var unknown = await Assert.ThrowsAsync<SearchValidationException>(() => search.SearchAsync(new SearchFilter { Category = "Dentists", Subcategory = "Cardiology" }, _ct));
+        Assert.True(unknown.Errors.ContainsKey(nameof(SearchFilter.Subcategory)));
 
         var suggestions = new SuggestService(db.ConnectionString, vocabularies);
         var names = await suggestions.SuggestAsync("o'brien", _ct);
         Assert.Equal(("provider", "/provider/" + A), (names[0].Kind, names[0].Url));
         Assert.Equal("O'BRIEN, JOSÉ Q", names[0].Label);
-        Assert.Contains(await suggestions.SuggestAsync("chiro", _ct), s => s is { Kind: "specialty", Label: "Chiropractor", Text: "Chiropractor in " });
+        Assert.Contains(await suggestions.SuggestAsync("chiro", _ct), s => s is { Kind: "specialty", Label: "Chiropractors", Text: "Chiropractors in " });
         Assert.Contains(await suggestions.SuggestAsync("dentists in suff", _ct), s => s is { Kind: "place", Text: "dentists in Suffolk County, NY" });
     }
 

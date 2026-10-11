@@ -1,4 +1,4 @@
-// Dependent dropdowns: Classification → Specialization, State → County, State/County → City.
+// Dependent dropdowns: Category → Subcategory, Classification → Specialization, State → County, State/County → City.
 // Works without JavaScript too: the server fills the dependent list after a search.
 // Used by the search page and the map page (which has no location fields).
 (() => {

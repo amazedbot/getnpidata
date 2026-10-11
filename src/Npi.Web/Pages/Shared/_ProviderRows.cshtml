@@ -37,7 +37,7 @@
                             <span class="mono muted sub">@p.Npi@if (p.EntityType == 2){<span> · organization</span>}</span>
                         </span>
                     </td>
-                    <td data-label="Specialty">@p.PrimarySpecialty</td>
+                    <td data-label="Specialty" title="@p.PrimarySpecialty">@(p.PlainSpecialty ?? p.PrimarySpecialty)</td>
                     <td data-label="Location">@p.City@(p.State is null ? "" : ", " + p.State) @p.Zip?.Split('-')[0]@if (p.County is not null){<br /><span class="muted sub">@p.County</span>}</td>
                     <td data-label="Phone" class="nowrap @(p.Phone is null ? "empty" : null)">@Format.Phone(p.Phone)</td>
                     <td data-label="Status" class="@(badges.Count == 0 ? "empty" : null)">

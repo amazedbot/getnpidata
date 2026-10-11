@@ -45,8 +45,10 @@ public class QueryInterpreterTests
     {
         var q = Read("Chiropractors in Suffolk County, NY");
         Assert.Equal(QueryKind.List, q.Kind);
-        Assert.Equal(("Chiropractor", null, "NY", "36103"), (q.Filter.Classification, q.Filter.Specialization, q.Filter.State, q.Filter.CountyFips));
-        Assert.Equal(["Specialty: Chiropractor", "State: New York", "County: Suffolk County, NY"], q.Parts.Select(p => $"{p.Label}: {p.Value}"));
+        Assert.Equal(("Chiropractic & complementary care", "Chiropractors", null, "NY", "36103"),
+            (q.Filter.Category, q.Filter.Subcategory, q.Filter.Classification, q.Filter.State, q.Filter.CountyFips));
+        Assert.Equal(["Specialty: Chiropractors", "State: New York", "County: Suffolk County, NY"], q.Parts.Select(p => $"{p.Label}: {p.Value}"));
+        Assert.Equal(["category", "subcategory"], q.Parts[0].Parameters);
         Assert.Null(q.NameText);
     }
 
@@ -54,7 +56,7 @@ public class QueryInterpreterTests
     public void A_county_without_a_state_is_the_most_populous_one_with_a_note()
     {
         var q = Read("dentists suffolk county");
-        Assert.Equal(("Dentist", "36103", "NY"), (q.Filter.Classification, q.Filter.CountyFips, q.Filter.State));
+        Assert.Equal(("Dentists", null, "36103", "NY"), (q.Filter.Category, q.Filter.Subcategory, q.Filter.CountyFips, q.Filter.State));
         Assert.Contains(q.Notes, n => n.Contains("MA", StringComparison.Ordinal));
 
         Assert.Equal("25025", Read("dentists in suffolk county ma").Filter.CountyFips);
@@ -62,24 +64,37 @@ public class QueryInterpreterTests
     }
 
     [Theory]
-    [InlineData("cardiologists in brooklyn", "Internal Medicine", "Cardiovascular Disease", "Brooklyn", "NY")]
-    [InlineData("psychiatrist brooklyn ny", "Psychiatry & Neurology", "Psychiatry", "Brooklyn", "NY")]
-    [InlineData("family doctor in babylon", "Family Medicine", null, "Babylon", "NY")]
-    [InlineData("orthodontists in portland me", "Dentist", "Orthodontics and Dentofacial Orthopedics", "Portland", "ME")]
-    [InlineData("pharmacies in new york city", "Pharmacy", null, "New York", "NY")]
-    [InlineData("sports chiropractor saint james", "Chiropractor", "Sports Physician", "Saint James", "NY")]
-    public void Everyday_words_plurals_and_cities(string text, string classification, string? specialization, string city, string state)
+    [InlineData("cardiologists in brooklyn", "Doctors (MD, DO)", "Heart (cardiology)", "Brooklyn", "NY")]
+    [InlineData("heart doctor in brooklyn", "Doctors (MD, DO)", "Heart (cardiology)", "Brooklyn", "NY")]
+    [InlineData("cardiology brooklyn ny", "Doctors (MD, DO)", "Heart (cardiology)", "Brooklyn", "NY")]
+    [InlineData("psychiatrist brooklyn ny", "Doctors (MD, DO)", "Mental health (psychiatry)", "Brooklyn", "NY")]
+    [InlineData("family doctor in babylon", "Doctors (MD, DO)", "Family medicine & general practice", "Babylon", "NY")]
+    [InlineData("orthodontists in portland me", "Dentists", "Orthodontists (braces)", "Portland", "ME")]
+    [InlineData("pharmacies in new york city", "Pharmacies", null, "New York", "NY")]
+    [InlineData("pharmacists in new york city", "Pharmacists", "Pharmacists", "New York", "NY")]
+    [InlineData("doctors in brooklyn", "Doctors (MD, DO)", null, "Brooklyn", "NY")]
+    [InlineData("family nurse practitioners in babylon", "Nurse practitioners", "Family & primary care", "Babylon", "NY")]
+    public void Everyday_words_plurals_and_cities(string text, string category, string? subcategory, string city, string state)
     {
         var q = Read(text);
-        Assert.Equal((QueryKind.List, classification, specialization, city, state),
-            (q.Kind, q.Filter.Classification, q.Filter.Specialization, q.Filter.City, q.Filter.State));
+        Assert.Equal((QueryKind.List, category, subcategory, null as string, city, state),
+            (q.Kind, q.Filter.Category, q.Filter.Subcategory, q.Filter.Classification, q.Filter.City, q.Filter.State));
+    }
+
+    [Fact]
+    public void A_nucc_name_without_a_plain_category_stays_a_nucc_filter()
+    {
+        var q = Read("sports chiropractor saint james");
+        Assert.Equal((QueryKind.List, null as string, "Chiropractor", "Sports Physician", "Saint James", "NY"),
+            (q.Kind, q.Filter.Category, q.Filter.Classification, q.Filter.Specialization, q.Filter.City, q.Filter.State));
+        Assert.Equal(["classification", "specialization"], q.Parts[0].Parameters);
     }
 
     [Fact]
     public void A_zip_with_near_or_a_distance_is_a_radius_search()
     {
         var near = Read("dentists near 11701");
-        Assert.Equal(("Dentist", "11701", 10), (near.Filter.Classification, near.Filter.Zip5, near.Filter.RadiusMiles));
+        Assert.Equal(("Dentists", "11701", 10), (near.Filter.Category, near.Filter.Zip5, near.Filter.RadiusMiles));
         Assert.Equal(25, Read("chiropractors within 25 miles of 11701").Filter.RadiusMiles);
         Assert.Null(Read("dentists 11701").Filter.RadiusMiles);
         Assert.Equal("11701", Read("dentists 11701-4321").Filter.Zip5);
@@ -91,6 +106,8 @@ public class QueryInterpreterTests
     [InlineData("Dr. Jordan Ellis", "Jordan Ellis")]
     [InlineData("Brooklyn", "Brooklyn")]          // a surname-like word alone isn't read as a town
     [InlineData("Stony Brook University Hospital", "Stony Brook University Hospital")]
+    [InlineData("doctor john smith", "doctor john smith")]
+    [InlineData("doctor jane brooklyn", "doctor jane brooklyn")]   // ... and the surname isn't a town   // "doctor" beside a name and no place isn't the Doctors category
     public void Only_a_name_searches_people_and_organizations(string text, string name)
     {
         var q = Read(text);
@@ -101,7 +118,7 @@ public class QueryInterpreterTests
     public void A_name_beside_a_specialty_or_place_narrows_the_list()
     {
         var person = Read("dentist john smith in brooklyn");
-        Assert.Equal(("Dentist", "Brooklyn", "john", "smith", "similar"), (person.Filter.Classification, person.Filter.City, person.Filter.FirstName, person.Filter.LastName, person.Filter.NameMatch));
+        Assert.Equal(("Dentists", "Brooklyn", "john", "smith", "similar"), (person.Filter.Category, person.Filter.City, person.Filter.FirstName, person.Filter.LastName, person.Filter.NameMatch));
 
         var org = Read("bayside dental group ny");
         Assert.Equal(("NY", "bayside dental group"), (org.Filter.State, org.Filter.OrgName));
@@ -133,7 +150,7 @@ public class QueryInterpreterTests
             [new CityTerm("STONY BROOK", "NY", 2)], new Dictionary<string, string> { ["NY"] = "New York" });
         Assert.Equal(QueryKind.Names, QueryInterpreter.Interpret("Stony Brook University Hospital", vocabulary).Kind);
         var list = QueryInterpreter.Interpret("hospitals in stony brook", vocabulary);
-        Assert.Equal((QueryKind.List, "General Acute Care Hospital", "Stony Brook"), (list.Kind, list.Filter.Classification, list.Filter.City));
+        Assert.Equal((QueryKind.List, "Hospitals", "Stony Brook"), (list.Kind, list.Filter.Category, list.Filter.City));
     }
 
     [Fact]

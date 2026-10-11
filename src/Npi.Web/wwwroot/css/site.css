@@ -147,6 +147,12 @@ fieldset {
 
 legend { font-weight: 600; margin-bottom: 0.25rem; font-family: var(--serif); font-size: 1.05rem; }
 
+/* Exact NUCC taxonomy, folded under the plain specialty categories. */
+details.nucc { flex: 1 1 100%; min-width: 0; }
+details.nucc > summary { font-size: 0.9rem; color: var(--muted); cursor: pointer; }
+details.nucc[open] { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+details.nucc[open] > summary, details.nucc > p { flex-basis: 100%; margin: 0; }
+
 /* min-width: 0 lets a field shrink below its <select>'s longest option, which would otherwise
    push the form past a phone's width. */
 .field { display: flex; flex-direction: column; min-width: 0; flex: 1 1 12rem; }

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -162,6 +163,37 @@ public class ApiTests
     }
 
     [Fact]
+    public async Task Specialty_categories_need_no_database()
+    {
+        await using var factory = new ApiFactory();
+        var client = factory.CreateClient();
+        var categories = await client.GetFromJsonAsync<string[]>("/api/v1/taxonomy/categories", Ct);
+        Assert.Equal("Doctors (MD, DO)", categories![0]);
+        var subcategories = await client.GetFromJsonAsync<string[]>("/api/v1/taxonomy/categories/dentists/subcategories", Ct);
+        Assert.Contains("Orthodontists (braces)", subcategories!);
+        Assert.Equal("Other dental specialists", subcategories![^1]);   // "Other …" last
+
+        var unknown = await client.GetAsync("/api/v1/taxonomy/categories/nope/subcategories", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal("application/problem+json", unknown.Content.Headers.ContentType?.MediaType);
+
+        var dropdown = await client.GetFromJsonAsync<string[]>("/lookup/subcategories?category=" + Uri.EscapeDataString("Doctors (MD, DO)"), Ct);
+        Assert.Contains("Heart (cardiology)", dropdown!);
+        Assert.Empty((await client.GetFromJsonAsync<string[]>("/lookup/subcategories?category=nope", Ct))!);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/providers?subcategory=Medical&state=NY", "subcategory")]
+    public async Task A_subcategory_needs_its_category(string url, string parameter)
+    {
+        await using var factory = new ApiFactory();
+        var response = await factory.CreateClient().GetAsync(url, Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(parameter, out _));
+    }
+
+    [Fact]
     public async Task OpenApi_document_lists_the_api_and_its_search_parameters()
     {
         await using var factory = new ApiFactory();
@@ -173,7 +205,8 @@ public class ApiTests
 
         string[] expected =
         [
-            "/api/v1/providers", "/api/v1/providers.csv", "/api/v1/providers/lookup", "/api/v1/providers/lookup.csv", "/api/v1/providers/{npi}", "/api/v1/taxonomy/classifications",
+            "/api/v1/providers", "/api/v1/providers.csv", "/api/v1/providers/lookup", "/api/v1/providers/lookup.csv", "/api/v1/providers/{npi}", "/api/v1/taxonomy/categories",
+            "/api/v1/taxonomy/categories/{category}/subcategories", "/api/v1/taxonomy/classifications",
             "/api/v1/taxonomy/classifications/{classification}/specializations", "/api/v1/states", "/api/v1/states/{state}/counties", "/api/v1/states/{state}/cities",
             "/api/v1/counties/{fips}", "/api/v1/meta", "/api/v1/credentials", "/api/v1/companies", "/api/v1/companies/{id}", "/api/v1/products", "/api/v1/products/{slug}", "/api/v1/products/{slug}/prescribers", "/api/v1/products/{slug}/prescribers.csv",
         ];

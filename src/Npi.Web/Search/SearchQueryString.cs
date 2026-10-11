@@ -51,6 +51,8 @@ public static class SearchQueryString
 
         var filter = new SearchFilter
         {
+            Category = Text(q, "category"),
+            Subcategory = Text(q, "subcategory"),
             Classification = Text(q, "classification"),
             Specialization = Text(q, "specialization"),
             TaxonomyCode = Text(q, "taxonomy"),
@@ -99,6 +101,8 @@ public static class SearchQueryString
     /// <summary>Every search parameter, in display order. Feeds the OpenAPI document and maps validation errors back to parameter names.</summary>
     public static readonly IReadOnlyList<Parameter> Parameters =
     [
+        new("category", ParameterType.Text, nameof(SearchFilter.Category), "Plain specialty category, e.g. \"Doctors (MD, DO)\" (GET /api/v1/taxonomy/categories). Matches any of the provider's 15 taxonomies."),
+        new("subcategory", ParameterType.Text, nameof(SearchFilter.Subcategory), "Subcategory within the category, e.g. \"Heart (cardiology)\" (GET /api/v1/taxonomy/categories/{c}/subcategories)."),
         new("classification", ParameterType.Text, nameof(SearchFilter.Classification), "NUCC classification, e.g. \"Chiropractor\" (GET /api/v1/taxonomy/classifications). Matches any of the provider's 15 taxonomies."),
         new("specialization", ParameterType.Text, nameof(SearchFilter.Specialization), "NUCC specialization within the classification (GET /api/v1/taxonomy/classifications/{c}/specializations)."),
         new("taxonomy", ParameterType.Text, nameof(SearchFilter.TaxonomyCode), "NUCC taxonomy code, e.g. 111N00000X."),
@@ -169,6 +173,8 @@ public static class SearchQueryString
             }
         }
 
+        Add("category", f.Category);
+        Add("subcategory", f.Subcategory);
         Add("classification", f.Classification);
         Add("specialization", f.Specialization);
         Add("taxonomy", f.TaxonomyCode);
