@@ -7,7 +7,7 @@
     // Task navigation (docs/PRODUCT_PLAN.md §2.1). Areas, Organizations and Find care join as their pages land in Phase 1.
     var nav = new (string Label, string Href, bool Current)[]
     {
-        ("Search & lists", "/search", path == "/" || Under("/search") || Under("/provider/")),
+        ("Search & lists", "/search", path == "/" || Under("/search") || Under("/provider/") || Under("/group/") || Under("/facility/")),
         ("Map", "/map", Under("/map")),
         ("Verify NPIs", "/lookup", Under("/lookup")),
         ("Companies & products", "/companies", Under("/compan") || Under("/product")),

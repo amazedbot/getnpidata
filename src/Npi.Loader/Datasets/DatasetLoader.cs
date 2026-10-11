@@ -81,6 +81,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new HospitalSource(),
         new NursingHomeSource(),
         new FacilityEnrollmentSource(),
+        new MedicareEnrollmentSource(),
         new HcahpsSource(),
         new HomeHealthSource(),
         new HospiceSource(),

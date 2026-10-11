@@ -168,6 +168,49 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Groups_facilities_and_an_organizations_clinicians()
+    {
+        await using var db = await SeededAsync();
+        // D (a dental organization) is enrolled as group 9000000001; A and B bill through it, C (deactivated) too; E is listed in Care
+        // Compare only. A is also affiliated with hospital 330045, which bills under D.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO medicare_enrollment (npi, enrollment_id, pac_id, provider_type, state, org_name) VALUES
+              (@D, 'O20200101000001', '9000000001', 'PART B SUPPLIER - CLINIC/GROUP PRACTICE', 'NY', 'SMITH JONES AND CO LLC');
+            INSERT INTO medicare_reassignment (group_pac_id, group_enrollment_id, group_name, group_state, record_type, npi, specialty) VALUES
+              ('9000000001', 'O20200101000001', 'Smith Jones And Co Llc', 'NY', 'Reassignment', @A, 'Chiropractic'),
+              ('9000000001', 'O20200101000001', 'Smith Jones And Co Llc', 'NY', 'Reassignment', @B, 'Chiropractic'),
+              ('9000000001', 'O20200101000001', 'Smith Jones And Co Llc', 'NY', 'Reassignment', @C, 'Chiropractic');
+            INSERT INTO cc_group (npi, org_pac_id, group_name, members, accepts_assignment) VALUES (@E, '9000000001', 'SMITH JONES & CO', 4, 1);
+            INSERT INTO cc_facility_affiliation (npi, facility_type, ccn) VALUES (@A, 'Hospital', '330045');
+            INSERT INTO cms_hospital (ccn, name, address, city, state, zip, hospital_type, emergency_services, overall_rating) VALUES
+              ('330045', 'GOOD SAMARITAN HOSPITAL', '1000 MONTAUK HWY', 'WEST ISLIP', 'NY', '11795', 'Acute Care Hospitals', 1, 3);
+            INSERT INTO cms_facility_npi (ccn, npi, kind) VALUES ('330045', @D, 'hospital');
+            """, new { A, B, C, D, E });
+        var organizations = new OrganizationService(db.ConnectionString);
+
+        var group = (await organizations.GetGroupAsync("9000000001", 1, _ct))!;
+        Assert.Equal(("SMITH JONES & CO", "NY", true), (group.Name, group.State, group.AcceptsMedicare));   // Care Compare's name first
+        Assert.Equal([B, E, A], group.Clinicians.Page.Select(c => c.Npi));                                // active only, by name: BAKER, NUÑEZ, O'BRIEN
+        Assert.Equal(3, group.Clinicians.Total);
+        Assert.Contains(group.Clinicians.BySpecialty, s => s is { Specialty: "Chiropractor", Clinicians: 2 });
+        Assert.Equal([D], group.Organizations.Select(o => o.Npi));
+        Assert.Null(await organizations.GetGroupAsync("9999999999", 1, _ct));
+        Assert.Null(await organizations.GetGroupAsync("12", 1, _ct));
+
+        Assert.Equal([new OrganizationGroup("9000000001", "SMITH JONES & CO", 3)], await organizations.GetGroupsForNpiAsync(D, _ct));
+        Assert.Equal(["9000000001"], (await organizations.GetGroupsForClinicianAsync(A, _ct)).Select(g => g.PacId));
+        Assert.Equal([B, E, A], await organizations.GetClinicianNpisAsync("9000000001", facility: false, _ct));
+
+        var hospital = (await organizations.GetFacilityAsync("330045", 1, _ct))!;
+        Assert.Equal(("hospital", "GOOD SAMARITAN HOSPITAL", "1000 MONTAUK HWY", "11795"), (hospital.Facility.Kind, hospital.Facility.Name, hospital.Address, hospital.Zip));
+        Assert.Equal([A], hospital.Clinicians.Page.Select(c => c.Npi));
+        Assert.Equal([D], hospital.BillingNpis.Select(o => o.Npi));
+        Assert.Null(await organizations.GetFacilityAsync("999999", 1, _ct));
+        Assert.Equal([A], await organizations.GetClinicianNpisAsync("330045", facility: true, _ct));
+    }
+
+    [Fact]
     public async Task A_deactivated_npi_has_only_its_status()
     {
         await using var db = await SeededAsync();

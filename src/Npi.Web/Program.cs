@@ -22,6 +22,7 @@ builder.Services.AddSingleton(_ => new TaxonomyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new CredentialCatalog(connectionString));
 builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRequiredService<TaxonomyCatalog>(), sp.GetRequiredService<CredentialCatalog>()));
 builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
+builder.Services.AddSingleton(_ => new OrganizationService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
@@ -117,6 +118,34 @@ app.MapGet("/provider/{npi}/raw.csv", async (string npi, HttpContext http, Searc
     return Results.Empty;
 });
 
+// Group practice and facility profiles (step 1.5): the record as JSON, and every clinician as CSV (the summary columns).
+app.MapGet("/group/{pacId}/raw.json", async (string pacId, HttpContext http, OrganizationService organizations, CancellationToken ct) =>
+{
+    if (await organizations.GetGroupAsync(pacId, 1, ct) is not { } group)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"group_{group.PacId}.json\"";
+    return Results.Json(group);
+});
+
+app.MapGet("/facility/{ccn}/raw.json", async (string ccn, HttpContext http, OrganizationService organizations, CancellationToken ct) =>
+{
+    if (await organizations.GetFacilityAsync(ccn, 1, ct) is not { } facility)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"facility_{facility.Facility.Ccn}.json\"";
+    return Results.Json(facility);
+});
+
+app.MapGet("/group/{pacId}/clinicians.csv", (string pacId, HttpContext http, OrganizationService organizations, SearchService search, CancellationToken ct) =>
+    CliniciansCsvAsync(pacId, facility: false, http, organizations, search, ct));
+app.MapGet("/facility/{ccn}/clinicians.csv", (string ccn, HttpContext http, OrganizationService organizations, SearchService search, CancellationToken ct) =>
+    CliniciansCsvAsync(ccn, facility: true, http, organizations, search, ct));
+
 // Type-ahead for the search box (step 1.3).
 app.MapGet("/suggest", async ([FromQuery] string? q, SuggestService suggestions, CancellationToken ct) =>
     Results.Ok(await suggestions.SuggestAsync(q is { Length: > 100 } ? q[..100] : q, ct)));
@@ -161,6 +190,36 @@ app.MapGet("/map/search", async (HttpContext http, SearchService search, Cancell
         return Results.ValidationProblem(SearchQueryString.ByParameterName(ex.Errors));
     }
 });
+
+// Every active clinician of a group or facility as CSV, looked up in batches (SearchService.MaxLookupBatch) and streamed.
+static async Task<IResult> CliniciansCsvAsync(string id, bool facility, HttpContext http, OrganizationService organizations, SearchService search,
+    CancellationToken ct)
+{
+    var npis = await organizations.GetClinicianNpisAsync(id, facility, ct);
+    if (npis.Count == 0)
+    {
+        return Results.NotFound();
+    }
+
+    async IAsyncEnumerable<ProviderSummary> Rows()
+    {
+        foreach (var batch in npis.Chunk(SearchService.MaxLookupBatch))
+        {
+            foreach (var row in await search.LookupAsync(batch, ct))
+            {
+                if (row.Provider is { } provider)
+                {
+                    yield return provider;
+                }
+            }
+        }
+    }
+
+    http.Response.ContentType = "text/csv; charset=utf-8";
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"{(facility ? "facility" : "group")}_{id.ToUpperInvariant()}_clinicians.csv\"";
+    await ProviderCsv.WriteAsync(Rows(), http.Response.Body, ct);
+    return Results.Empty;
+}
 
 app.Run();
 

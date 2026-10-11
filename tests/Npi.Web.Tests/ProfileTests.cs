@@ -55,6 +55,12 @@ public class ProfileTests
     [InlineData("/provider/123/raw.json")]
     [InlineData("/provider/123/raw.csv")]
     [InlineData("/provider/123")]
+    [InlineData("/group/123")]
+    [InlineData("/group/123/raw.json")]
+    [InlineData("/group/123/clinicians.csv")]
+    [InlineData("/facility/12-34")]
+    [InlineData("/facility/12/raw.json")]
+    [InlineData("/facility/1234567/clinicians.csv")]
     public async Task A_malformed_npi_is_not_found_without_the_database(string url)
     {
         await using var factory = new Factory();

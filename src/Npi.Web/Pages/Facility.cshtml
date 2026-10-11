@@ -1,0 +1,110 @@
+@page "/facility/{ccn}"
+@using System.Globalization
+@model FacilityModel
+@{
+    var p = Model.Profile;
+    var f = Model.Facility;
+    ViewData["Title"] = Model.Name;
+}
+
+@section Scripts {
+    <script src="~/js/profile.js" asp-append-version="true" defer></script>
+}
+
+<div class="profile">
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="@Model.KindName" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="52" class="bg" />
+                <path d="M32 80V26h40v54M48 40h8M52 36v8M44 80V64h16v16" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@Model.Name</h1>
+                <p class="summary">@Model.Summary</p>
+                <ul class="pills" aria-label="Status">
+                    <li class="pill ok">Medicare certified</li>
+                    @if (f.EmergencyServices == true){<li class="pill plain">Emergency services</li>}
+                    <li class="pill plain">CMS ID <span class="mono">&nbsp;@f.Ccn</span></li>
+                </ul>
+            </div>
+            <div class="head-actions">
+                @if (f.Phone is not null){<a class="button secondary" href="tel:@f.Phone">Call @Format.Phone(f.Phone)</a>}
+                <a class="button" href="/facility/@f.Ccn/raw.json" download>Download raw data</a>
+            </div>
+        </div>
+        <p class="head-facts">
+            <span>@Model.KindName</span>
+            @if (f.Ownership is not null){<span>Ownership: @f.Ownership</span>}
+            @if (f.CertifiedBeds is { } beds){<span>@beds.ToString("N0", CultureInfo.InvariantCulture) certified beds</span>}
+        </p>
+    </section>
+
+    <section class="card" aria-labelledby="ratings-h">
+        <h2 id="ratings-h">How CMS rates it</h2>
+        <div class="tiles">
+            @foreach (var r in Model.Ratings)
+            {
+                <div class="tile">
+                    <span class="label">@r.Label</span>
+                    @if (r.Stars is { } stars)
+                    {
+                        var full = (int)Math.Floor(stars);
+                        var half = stars - full >= 0.5;
+                        <span class="stars" role="img" aria-label="@stars.ToString("0.#", CultureInfo.InvariantCulture) out of 5 stars">@(new string('★', full))@(half ? "½" : "")<span class="off">@(new string('★', 5 - full - (half ? 1 : 0)))</span></span>
+                        <span class="small">@stars.ToString("0.#", CultureInfo.InvariantCulture) of 5 stars · @r.Note</span>
+                    }
+                    else
+                    {
+                        <strong class="@(r.Bad ? "bad" : null)">@r.Value</strong>
+                        <span class="small">@r.Note</span>
+                    }
+                </div>
+            }
+        </div>
+        <p class="src">Medicare Care Compare. Deaths, safety and readmissions count the measures CMS rates better or worse than the national rate; the rest are no different.</p>
+    </section>
+
+    <div class="profile-row">
+        <div class="grow">
+            <partial name="_ClinicianList" model="Model.Clinicians" />
+        </div>
+        <section class="card side-card" aria-labelledby="loc-h">
+            <h2 id="loc-h">Location</h2>
+            @if (Model.Map is { } map)
+            {
+                <div class="static-map small-map">
+                    @foreach (var t in map.Tiles)
+                    {
+                        <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
+                             style="left:@(StaticMap.Css(t.LeftPercent))%;top:@(StaticMap.Css(t.TopPercent))%;width:@(StaticMap.Css(t.WidthPercent))%;height:@(StaticMap.Css(t.HeightPercent))%" />
+                    }
+                    @foreach (var pin in map.Pins)
+                    {
+                        <span class="pin" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%" aria-hidden="true">●</span>
+                    }
+                </div>
+                <p class="src">@Html.Raw(Model.Attribution)</p>
+            }
+            <p>@(p.Address is null ? null : Npi.Core.Search.CityCatalog.TitleCase(p.Address))<br />@(f.City is null ? null : Npi.Core.Search.CityCatalog.TitleCase(f.City)), @f.State @p.Zip</p>
+            @if (f.Phone is not null){<p><a href="tel:@f.Phone">@Format.Phone(f.Phone)</a></p>}
+        </section>
+    </div>
+
+    <section class="card" aria-labelledby="npis-h">
+        <h2 id="npis-h">Billing NPIs (@p.BillingNpis.Count)</h2>
+        @if (p.BillingNpis.Count == 0)
+        {
+            <p>No active NPI is linked to this facility in CMS's enrollment files.</p>
+        }
+        else
+        {
+            <ul class="link-list">
+                @foreach (var o in p.BillingNpis)
+                {
+                    <li><a href="/provider/@o.Npi">@o.Name</a> <span class="muted">@(o.Specialty)@(o.City is null ? "" : $" · {Npi.Core.Search.CityCatalog.TitleCase(o.City)}, {o.State}") · <span class="mono">@o.Npi</span></span></li>
+                }
+            </ul>
+        }
+        <p class="src">CMS hospital, nursing home, home health and hospice enrollments (CCN to NPI).</p>
+    </section>
+</div>

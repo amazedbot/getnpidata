@@ -150,6 +150,41 @@
         }
     </nav>
 
+    @if (Model.ClinicianList is { } clinicianList)
+    {
+        <partial name="_ClinicianList" model="clinicianList" />
+        @if (Model.Groups.Count > 1)
+        {
+            <section class="card" aria-labelledby="groups-h">
+                <h2 id="groups-h">Medicare groups (@Model.Groups.Count)</h2>
+                <ul class="link-list">
+                    @foreach (var g in Model.Groups)
+                    {
+                        <li><a href="/group/@g.PacId">@CityCatalog.TitleCase(g.Name)</a> <span class="muted">@g.Clinicians.ToString("N0", CultureInfo.InvariantCulture) clinicians · group ID <span class="mono">@g.PacId</span></span></li>
+                    }
+                </ul>
+                <p class="src">Medicare Fee-For-Service Public Provider Enrollment: this NPI is enrolled as each of these groups.</p>
+            </section>
+        }
+    }
+    @if (!Model.IsPerson && p.Profile is { } responsible && (responsible.AuthorizedOfficial is not null || responsible.ParentOrganization is not null))
+    {
+        <section class="card" aria-labelledby="resp-h">
+            <h2 id="resp-h">Who's responsible</h2>
+            <dl class="facts">
+                @if (responsible.AuthorizedOfficial is { } official)
+                {
+                    <dt>Authorized official</dt>
+                    <dd>@CityCatalog.TitleCase(official.Name)@if (official.Credential is not null){<span>, @official.Credential</span>}@if (official.Title is not null){<span class="muted">, @CityCatalog.TitleCase(official.Title)</span>}</dd>
+                    @if (official.Phone is not null){<dt>Phone</dt><dd><a href="tel:@official.Phone">@Format.Phone(official.Phone)</a></dd>}
+                }
+                <dt>Parent organization</dt>
+                <dd>@(responsible.ParentOrganization is null ? "None listed" : CityCatalog.TitleCase(responsible.ParentOrganization) + (responsible.IsOrganizationSubpart == true ? " (this NPI is a subpart)" : ""))</dd>
+            </dl>
+            <p class="src">CMS NPPES.</p>
+        </section>
+    }
+
     <section class="card" id="where" aria-labelledby="where-h">
         <h2 id="where-h">Where @(Model.IsPerson ? "they practise" : "it is")</h2>
         <p class="lede">@(p.Locations.Count switch { 0 => "No practice location listed.", 1 => "One practice location.", var n => $"{n} practice locations." })</p>
@@ -235,7 +270,7 @@
                     {
                         <div class="aff">
                             <span class="aff-icon group" aria-hidden="true"></span>
-                            <span><strong>@(g.Name is null ? "Group " + g.OrgPacId : CityCatalog.TitleCase(g.Name))</strong>
+                            <span><a href="/group/@g.OrgPacId"><strong>@(g.Name is null ? "Group " + g.OrgPacId : CityCatalog.TitleCase(g.Name))</strong></a>
                                 <span class="muted">Group practice@(g.Members is { } m ? $" · {m.ToString("N0", CultureInfo.InvariantCulture)} clinicians" : "")@(g.City is not null ? $" · {CityCatalog.TitleCase(g.City)}, {g.State}" : "")</span></span>
                         </div>
                     }
@@ -244,7 +279,7 @@
                         <div class="aff">
                             <span class="aff-icon facility" aria-hidden="true"></span>
                             <span>
-                                @if (a.Npi is not null){<a href="/provider/@a.Npi"><strong>@(a.Name is null ? "CCN " + a.Ccn : CityCatalog.TitleCase(a.Name))</strong></a>} else {<strong>@(a.Name is null ? "CCN " + a.Ccn : CityCatalog.TitleCase(a.Name))</strong>}
+                                @if (a.Name is not null){<a href="/facility/@a.Ccn"><strong>@CityCatalog.TitleCase(a.Name)</strong></a>} else {<strong>CCN @a.Ccn</strong>}
                                 <span class="muted">@a.FacilityType@(a.OverallRating is { } r ? $" · {r} of 5 CMS stars" : "")@(a.City is not null ? $" · {CityCatalog.TitleCase(a.City)}, {a.State}" : "")</span>
                             </span>
                         </div>
@@ -252,11 +287,22 @@
                 </div>
                 <p class="src">Group practices and facility affiliations from Medicare Care Compare.</p>
             }
+            @if (Model.BillsThrough.Count > 0)
+            {
+                <h3>Bills Medicare through</h3>
+                <ul class="link-list">
+                    @foreach (var g in Model.BillsThrough)
+                    {
+                        <li><a href="/group/@g.PacId">@CityCatalog.TitleCase(g.Name)</a> <span class="muted">group ID <span class="mono">@g.PacId</span></span></li>
+                    }
+                </ul>
+                <p class="src">Medicare enrollment: groups this clinician reassigns Medicare payments to.</p>
+            }
             @foreach (var fac in p.Facilities)
             {
                 <dl class="facts">
                     <dt>@(fac.Kind switch { "hospital" => "Hospital", "nursing_home" => "Nursing home", "home_health" => "Home health agency", "hospice" => "Hospice", _ => fac.Kind })</dt>
-                    <dd><strong>@fac.Name</strong> <span class="muted">CCN @fac.Ccn · @fac.City, @fac.State</span></dd>
+                    <dd><a href="/facility/@fac.Ccn"><strong>@CityCatalog.TitleCase(fac.Name)</strong></a> <span class="muted">CCN @fac.Ccn · @(fac.City is null ? null : CityCatalog.TitleCase(fac.City)), @fac.State</span></dd>
                     @if (fac.Type is not null){<dt>Type</dt><dd>@fac.Type</dd>}
                     @if (fac.Ownership is not null){<dt>Ownership</dt><dd>@fac.Ownership</dd>}
                     @if (fac.EmergencyServices is { } er){<dt>Emergency services</dt><dd>@(er ? "Yes" : "No")</dd>}

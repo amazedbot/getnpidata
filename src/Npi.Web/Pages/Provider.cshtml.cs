@@ -14,7 +14,7 @@ public sealed record StatusPill(string Text, string Kind, string? Title = null);
 /// status; a map preview; the specialty in plain words; then sections in the order people ask (where, what, who with, standing,
 /// Medicare, quality, payments, changes, identifiers). A deactivated NPI gets only "Deactivated on [date]" (owner, 2026-10-11).
 /// </summary>
-public class ProviderModel(ProviderDetailService details, IOptions<MapOptions> mapOptions) : PageModel
+public class ProviderModel(ProviderDetailService details, OrganizationService organizations, IOptions<MapOptions> mapOptions) : PageModel
 {
     public ProviderDetail Provider { get; private set; } = null!;
 
@@ -40,6 +40,15 @@ public class ProviderModel(ProviderDetailService details, IOptions<MapOptions> m
     public string? BackLink { get; private set; }
 
     public string Attribution => mapOptions.Value.Attribution;
+
+    /// <summary>The Medicare groups this organization NPI is enrolled as (step 1.5), largest first.</summary>
+    public IReadOnlyList<OrganizationGroup> Groups { get; private set; } = [];
+
+    /// <summary>The largest group's clinicians, for an organization.</summary>
+    public GroupProfile? OrganizationClinicians { get; private set; }
+
+    /// <summary>The groups a clinician bills Medicare through that Care Compare doesn't already list.</summary>
+    public IReadOnlyList<OrganizationGroup> BillsThrough { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(string npi, CancellationToken ct)
     {
@@ -68,6 +77,20 @@ public class ProviderModel(ProviderDetailService details, IOptions<MapOptions> m
                 .Where(p => p.Latitude is not null && p.Longitude is not null).Select(p => (p.Label, p.Latitude!.Value, p.Longitude!.Value, p.Approximate)),
                 mapOptions.Value.TileUrl)
             : null;
+        if (provider.EntityType == 2)
+        {
+            Groups = await organizations.GetGroupsForNpiAsync(npi, ct);
+            if (Groups.Count > 0)
+            {
+                OrganizationClinicians = await organizations.GetGroupAsync(Groups[0].PacId, 1, ct);
+            }
+        }
+        else
+        {
+            var listed = provider.CareCompare?.GroupPractices.Select(g => g.OrgPacId).ToHashSet() ?? [];
+            BillsThrough = [.. (await organizations.GetGroupsForClinicianAsync(npi, ct)).Where(g => !listed.Contains(g.PacId))];
+        }
+
         BackLink = Request.Headers.Referer.FirstOrDefault() is { } referer && Uri.TryCreate(referer, UriKind.Absolute, out var from)
                    && string.Equals(from.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase)
                    && from.AbsolutePath is "/" or "/search" or "/map"
@@ -138,21 +161,50 @@ public class ProviderModel(ProviderDetailService details, IOptions<MapOptions> m
                 text += " in " + place;
             }
 
-            if (Provider.EnumerationDate is { } since)
+            if (IsPerson && Provider.EnumerationDate is { } since)
             {
                 text += $" since {since.Year.ToString(CultureInfo.InvariantCulture)}";
             }
 
-            if (IsPerson && MainGroup is { Members: { } members })
+            if (IsPerson)
             {
-                text += $", part of a {members.ToString("N0", CultureInfo.InvariantCulture)}-clinician group";
-            }
-            else if (!IsPerson && Provider.Locations.Count > 1)
-            {
-                text += $", {Provider.Locations.Count.ToString(CultureInfo.InvariantCulture)} practice locations";
+                if (MainGroup is { Members: { } members })
+                {
+                    text += $", part of a {members.ToString("N0", CultureInfo.InvariantCulture)}-clinician group";
+                }
+
+                return text + ".";
             }
 
-            return text + ".";
+            // "Chiropractic group in Babylon, NY with 6 clinicians at 2 locations, registered since 2012."
+            var parts = new List<string>();
+            if (Groups.Count > 0 && Groups.Sum(g => g.Clinicians) is var clinicians and > 0)
+            {
+                parts.Add(clinicians == 1 ? "1 clinician" : $"{clinicians.ToString("N0", CultureInfo.InvariantCulture)} clinicians");
+            }
+
+            if (Provider.Locations.Count > 1)
+            {
+                parts.Add($"{Provider.Locations.Count.ToString(CultureInfo.InvariantCulture)} locations");
+            }
+
+            var org = SpecialtyName;
+            if (Place(PrimaryLocation) is { Length: > 0 } where)
+            {
+                org += " in " + where;
+            }
+
+            if (parts.Count > 0)
+            {
+                org += " with " + string.Join(" at ", parts);
+            }
+
+            if (Provider.EnumerationDate is { } registered)
+            {
+                org += $", registered since {registered.Year.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return org + ".";
         }
     }
 
@@ -205,13 +257,27 @@ public class ProviderModel(ProviderDetailService details, IOptions<MapOptions> m
         }
     }
 
-    public bool HasAffiliations => Provider.CareCompare is { } cc && (cc.GroupPractices.Count > 0 || cc.Facilities.Count > 0) || Provider.Facilities.Count > 0;
+    public bool HasAffiliations => Provider.CareCompare is { } cc && (cc.GroupPractices.Count > 0 || cc.Facilities.Count > 0) || Provider.Facilities.Count > 0
+                                   || BillsThrough.Count > 0;
+
+    /// <summary>An organization's clinicians: the first ten of its largest group, with a link to the group page.</summary>
+    public ClinicianListView? ClinicianList => OrganizationClinicians is { } g
+        ? new ClinicianListView(Groups.Count > 1 ? $"Clinicians of {CityCatalog.TitleCase(g.Name)}" : "Clinicians", g.Clinicians, $"/group/{g.PacId}",
+            $"/group/{g.PacId}/clinicians.csv",
+            "Clinicians who bill Medicare through this organization's Medicare group (enrollment reassignments) or list it in Medicare Care Compare.",
+            Limit: 10, AllLink: $"/group/{g.PacId}")
+        : null;
 
     /// <summary>The page's sections that have content, for the "On this page" links.</summary>
     public IEnumerable<(string Id, string Title)> Sections
     {
         get
         {
+            if (OrganizationClinicians is not null)
+            {
+                yield return ("clinicians", "Clinicians");
+            }
+
             yield return ("where", "Locations");
             yield return ("specialties", "Specialties & licenses");
             if (HasAffiliations)

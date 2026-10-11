@@ -371,29 +371,7 @@ public sealed class ProviderDetailService(string connectionString)
             FROM open_payments_company WHERE npi = @npi ORDER BY company_rank
             """, new { npi }, cancellationToken: ct))).ToList();
 
-        var facilities = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
-            """
-            SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name, hh.name, hs.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
-                   COALESCE(h.ownership, n.ownership, hh.ownership, hs.ownership) AS Ownership, COALESCE(h.city, n.city, hh.city, hs.city) AS City,
-                   COALESCE(h.state, n.state, hh.state, hs.state) AS State, COALESCE(h.phone, n.phone, hh.phone, hs.phone) AS Phone,
-                   h.emergency_services AS EmergencyServices, n.certified_beds AS CertifiedBeds,
-                   CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating, CAST(n.inspection_rating AS SIGNED) AS InspectionRating,
-                   CAST(n.staffing_rating AS SIGNED) AS StaffingRating, CAST(n.quality_rating AS SIGNED) AS QualityRating,
-                   (SELECT COUNT(DISTINCT a.npi) FROM cc_facility_affiliation a WHERE a.ccn = f.ccn) AS AffiliatedClinicians,
-                   CAST(COALESCE(sv.star_rating, hs.family_rating) AS SIGNED) AS SurveyRating, hh.quality_rating AS QualityOfCare,
-                   CAST(h.mort_measures AS SIGNED) AS MortMeasures, CAST(h.mort_better AS SIGNED) AS MortBetter, CAST(h.mort_worse AS SIGNED) AS MortWorse,
-                   CAST(h.safety_measures AS SIGNED) AS SafetyMeasures, CAST(h.safety_better AS SIGNED) AS SafetyBetter,
-                   CAST(h.safety_worse AS SIGNED) AS SafetyWorse, CAST(h.readm_measures AS SIGNED) AS ReadmMeasures,
-                   CAST(h.readm_better AS SIGNED) AS ReadmBetter, CAST(h.readm_worse AS SIGNED) AS ReadmWorse
-            FROM cms_facility_npi f
-            LEFT JOIN cms_hospital h ON f.kind = 'hospital' AND h.ccn = f.ccn
-            LEFT JOIN cms_hospital_survey sv ON f.kind = 'hospital' AND sv.ccn = f.ccn
-            LEFT JOIN cms_nursing_home n ON f.kind = 'nursing_home' AND n.ccn = f.ccn
-            LEFT JOIN cms_home_health hh ON f.kind = 'home_health' AND hh.ccn = f.ccn
-            LEFT JOIN cms_hospice hs ON f.kind = 'hospice' AND hs.ccn = f.ccn
-            WHERE f.npi = @npi AND COALESCE(h.name, n.name, hh.name, hs.name) IS NOT NULL
-            ORDER BY f.kind, Name
-            """, new { npi }, cancellationToken: ct));
+        var facilities = await FacilitiesAsync(connection, "FROM cms_facility_npi f", "f.npi = @npi", new { npi }, ct);
 
         // Specialty changes are stored as taxonomy codes and shown by name. Added/removed rows are for feeds, not this page.
         var changes = await connection.QueryAsync<ChangeRow>(new CommandDefinition(
@@ -479,17 +457,7 @@ public sealed class ProviderDetailService(string connectionString)
                     s.PlaceOfService switch { "F" => "Facility", "O" => "Office", _ => s.PlaceOfService }, s.Beneficiaries, s.Services, s.AvgPayment)).ToList()),
             MedicarePrescribing = partD is null ? null : new MedicarePrescribing(partD.DataYear, partD.PrescriberType, partD.Claims, partD.DrugCost,
                 partD.Beneficiaries, partD.BrandClaims, partD.GenericClaims, partD.OpioidClaims, partD.OpioidRate, partD.AntibioticClaims),
-            Facilities = facilities.Select(f => new CertifiedFacility(f.Ccn, f.Kind, f.Name, f.Type, f.Ownership, f.City, f.State, f.Phone,
-                f.EmergencyServices is null ? null : f.EmergencyServices != 0, f.CertifiedBeds, (int?)f.OverallRating, (int?)f.InspectionRating, (int?)f.StaffingRating,
-                (int?)f.QualityRating, (int)f.AffiliatedClinicians)
-            {
-                PatientSurveyRating = (int?)f.SurveyRating,
-                QualityOfCareRating = f.QualityOfCare,
-                Outcomes = f.Kind != "hospital" || (f.MortMeasures is null && f.SafetyMeasures is null && f.ReadmMeasures is null) ? null : new HospitalOutcomes(
-                    new OutcomeCounts((int?)f.MortMeasures, (int?)f.MortBetter, (int?)f.MortWorse),
-                    new OutcomeCounts((int?)f.SafetyMeasures, (int?)f.SafetyBetter, (int?)f.SafetyWorse),
-                    new OutcomeCounts((int?)f.ReadmMeasures, (int?)f.ReadmBetter, (int?)f.ReadmWorse)),
-            }).ToList(),
+            Facilities = facilities,
             StateLicenses = stateLicenses,
             MipsScores = mips.Select(m => new MipsScore(m.Year, m.Source, m.Organization, m.FinalScore, m.Quality, m.Pi, m.Ia, m.Cost)).ToList(),
         };
@@ -510,5 +478,48 @@ public sealed class ProviderDetailService(string connectionString)
             r.IsSoleProprietor is null ? null : r.IsSoleProprietor != 0,
             r.IsSubpart is null ? null : r.IsSubpart != 0,
             r.ParentOrgName, official, mailing, r.PracticeFax);
+    }
+
+    /// <summary>
+    /// Medicare-certified facilities with their ratings and outcomes. <paramref name="from"/> is a FROM clause giving <c>f</c> with
+    /// <c>ccn</c> and <c>kind</c>; <paramref name="where"/> narrows it (shared by the provider page and the facility page).
+    /// </summary>
+    internal static async Task<IReadOnlyList<CertifiedFacility>> FacilitiesAsync(MySqlConnection connection, string from, string where, object param,
+        CancellationToken ct)
+    {
+        var rows = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
+            $"""
+            SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name, hh.name, hs.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
+                   COALESCE(h.ownership, n.ownership, hh.ownership, hs.ownership) AS Ownership, COALESCE(h.city, n.city, hh.city, hs.city) AS City,
+                   COALESCE(h.state, n.state, hh.state, hs.state) AS State, COALESCE(h.phone, n.phone, hh.phone, hs.phone) AS Phone,
+                   h.emergency_services AS EmergencyServices, n.certified_beds AS CertifiedBeds,
+                   CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating, CAST(n.inspection_rating AS SIGNED) AS InspectionRating,
+                   CAST(n.staffing_rating AS SIGNED) AS StaffingRating, CAST(n.quality_rating AS SIGNED) AS QualityRating,
+                   (SELECT COUNT(DISTINCT a.npi) FROM cc_facility_affiliation a WHERE a.ccn = f.ccn) AS AffiliatedClinicians,
+                   CAST(COALESCE(sv.star_rating, hs.family_rating) AS SIGNED) AS SurveyRating, hh.quality_rating AS QualityOfCare,
+                   CAST(h.mort_measures AS SIGNED) AS MortMeasures, CAST(h.mort_better AS SIGNED) AS MortBetter, CAST(h.mort_worse AS SIGNED) AS MortWorse,
+                   CAST(h.safety_measures AS SIGNED) AS SafetyMeasures, CAST(h.safety_better AS SIGNED) AS SafetyBetter,
+                   CAST(h.safety_worse AS SIGNED) AS SafetyWorse, CAST(h.readm_measures AS SIGNED) AS ReadmMeasures,
+                   CAST(h.readm_better AS SIGNED) AS ReadmBetter, CAST(h.readm_worse AS SIGNED) AS ReadmWorse
+            {from}
+            LEFT JOIN cms_hospital h ON f.kind = 'hospital' AND h.ccn = f.ccn
+            LEFT JOIN cms_hospital_survey sv ON f.kind = 'hospital' AND sv.ccn = f.ccn
+            LEFT JOIN cms_nursing_home n ON f.kind = 'nursing_home' AND n.ccn = f.ccn
+            LEFT JOIN cms_home_health hh ON f.kind = 'home_health' AND hh.ccn = f.ccn
+            LEFT JOIN cms_hospice hs ON f.kind = 'hospice' AND hs.ccn = f.ccn
+            WHERE {where} AND COALESCE(h.name, n.name, hh.name, hs.name) IS NOT NULL
+            ORDER BY f.kind, Name
+            """, param, cancellationToken: ct));
+        return rows.Select(f => new CertifiedFacility(f.Ccn, f.Kind, f.Name, f.Type, f.Ownership, f.City, f.State, f.Phone,
+                f.EmergencyServices is null ? null : f.EmergencyServices != 0, f.CertifiedBeds, (int?)f.OverallRating, (int?)f.InspectionRating, (int?)f.StaffingRating,
+                (int?)f.QualityRating, (int)f.AffiliatedClinicians)
+            {
+                PatientSurveyRating = (int?)f.SurveyRating,
+                QualityOfCareRating = f.QualityOfCare,
+                Outcomes = f.Kind != "hospital" || (f.MortMeasures is null && f.SafetyMeasures is null && f.ReadmMeasures is null) ? null : new HospitalOutcomes(
+                    new OutcomeCounts((int?)f.MortMeasures, (int?)f.MortBetter, (int?)f.MortWorse),
+                    new OutcomeCounts((int?)f.SafetyMeasures, (int?)f.SafetyBetter, (int?)f.SafetyWorse),
+                    new OutcomeCounts((int?)f.ReadmMeasures, (int?)f.ReadmBetter, (int?)f.ReadmWorse)),
+            }).ToList();
     }
 }

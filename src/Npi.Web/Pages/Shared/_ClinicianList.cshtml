@@ -1,0 +1,77 @@
+@using System.Globalization
+@model Npi.Web.Pages.ClinicianListView
+@*
+    A group's or facility's clinicians (docs/PRODUCT_PLAN.md step 1.5): specialties as bars, then the people, with paging and a
+    CSV of everyone.
+*@
+@{
+    var list = Model.List;
+    var rows = Model.Limit is { } limit ? list.Page.Take(limit).ToList() : list.Page;
+    var top = list.BySpecialty.Take(8).ToList();
+    var max = Math.Max(1, top.Count > 0 ? top[0].Clinicians : 1);
+}
+<section class="card" id="clinicians" aria-labelledby="clinicians-h">
+    <div class="card-head">
+        <h2 id="clinicians-h">@Model.Title (@list.Total.ToString("N0", CultureInfo.InvariantCulture))</h2>
+        @if (list.Total > 0)
+        {
+            <a class="small" href="@Model.ExportLink" download>Export list (CSV)</a>
+        }
+    </div>
+    @if (list.Total == 0)
+    {
+        <p>No active clinicians are listed.</p>
+    }
+    else
+    {
+        <div class="bars" role="list" aria-label="Clinicians by specialty">
+            @foreach (var s in top)
+            {
+                <div class="bar-row" role="listitem">
+                    <span>@s.Specialty</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar" style="width:@((100.0 * s.Clinicians / max).ToString("0.#", CultureInfo.InvariantCulture))%"></span></span>
+                    <span class="mono">@s.Clinicians.ToString("N0", CultureInfo.InvariantCulture)</span>
+                </div>
+            }
+            @if (list.BySpecialty.Count > top.Count)
+            {
+                <p class="small muted">and @((list.BySpecialty.Count - top.Count).ToString("N0", CultureInfo.InvariantCulture)) more specialties</p>
+            }
+        </div>
+        <div class="table-wrap">
+            <table class="results-table">
+                <caption class="visually-hidden">@Model.Title</caption>
+                <thead><tr><th scope="col">Clinician</th><th scope="col">Specialty</th><th scope="col">Location</th></tr></thead>
+                <tbody>
+                    @foreach (var c in rows)
+                    {
+                        <tr>
+                            <td class="who">
+                                <span class="@Format.AvatarClass(c.Gender, 1)" aria-hidden="true">@Format.Initials(c.Name, 1)</span>
+                                <span>
+                                    <a href="/provider/@c.Npi" class="name">@c.Name@if (c.Credential is not null){<span class="muted">, @c.Credential</span>}</a>
+                                    <span class="mono muted sub">@c.Npi</span>
+                                </span>
+                            </td>
+                            <td data-label="Specialty" class="@(c.Specialty is null ? "empty" : null)">@c.Specialty</td>
+                            <td data-label="Location" class="@(c.City is null ? "empty" : null)">@(c.City is null ? null : Npi.Core.Search.CityCatalog.TitleCase(c.City))@(c.State is null ? "" : ", " + c.State)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.Limit is not null && Model.AllLink is not null && list.Total > rows.Count)
+        {
+            <p><a href="@Model.AllLink">See all @list.Total.ToString("N0", CultureInfo.InvariantCulture) clinicians →</a></p>
+        }
+        else if (Model.Limit is null && list.Pages > 1)
+        {
+            <nav class="pager" aria-label="Clinician pages">
+                @if (list.PageNumber > 1){<a href="@Model.PageLink(list.PageNumber - 1)">‹ Previous</a>}
+                <span>Page @list.PageNumber of @list.Pages.ToString("N0", CultureInfo.InvariantCulture)</span>
+                @if (list.PageNumber < list.Pages){<a href="@Model.PageLink(list.PageNumber + 1)">Next ›</a>}
+            </nav>
+        }
+    }
+    <p class="src">@Model.Source Only active NPIs are listed.</p>
+</section>

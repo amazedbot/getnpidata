@@ -57,6 +57,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("drug_spending", "Part D 2024-12-31 | Part B 2024-12-31 | Medicaid 2024-12-31"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"),
              ("fda_products", "ndc 2026-10-06 | drugsfda 2026-10-06 | label 2026-10-06 | udi 2026-10-06 | 510k 2026-10-06 | pma 2026-10-06"),
              ("fda_shortages", "shortages 2026-10-09"), ("hrsa_hpsa", "HPSA 2026-10-08"),
+             ("medicare_enrollment", "2026-09-30 PPEF_Enrollment_Extract_2026.07.17.csv | 2026-10-31 revalidation_clinic_group_practice_reassignment_pa_xref.csv"),
              ("nadac", "2026 nadac-national-average-drug-acquisition-cost-10-07-2026.csv"),
              ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
@@ -83,6 +84,14 @@ public sealed class DatasetIntegrationTests : IDisposable
     {
         await using var db = await TestDatabase.CreateAsync();
         Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+
+        // Medicare enrollment (step 1.5): the newest extract, Latin-1 read as such, one row per enrollment, no row without an NPI.
+        Assert.Equal(
+            [("1000000004", "I20200101000002", "5000000004", null), ("1000000038", "O20200101000001", "9000000001", "SMITH, JONES & CO, LLC")],
+            await db.QueryAsync<(string, string, string, string?)>("SELECT npi, enrollment_id, pac_id, org_name FROM medicare_enrollment ORDER BY npi"));
+        Assert.Equal([("9000000001", "1000000004", "Reassignment", "Smith, Jones & Co, Llc"), ("9000000001", "1000000012", "Physician Assistant", "Smith, Jones & Co, Llc")],
+            await db.QueryAsync<(string, string, string, string)>("SELECT group_pac_id, npi, record_type, group_name FROM medicare_reassignment ORDER BY npi"));
+        Assert.Contains("PPEF_Enrollment_Extract_2026.07.17.csv", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'medicare_enrollment'"));
 
         // Three DAC rows for 1000000004 (two groups, two addresses) become one clinician row: accepts assignment
         // because one enrollment says Y, telehealth because one practice offers it.
@@ -661,6 +670,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://cms.test/files/OptOut_August2026.csv" => "datasets/optout_sample.csv",
                 "https://cms.test/files/OrderReferring_20261008.csv" => "datasets/orderref_sample.csv",
                 "https://cms.test/files/Hospital_Enrollments_2026.07.31.csv" => "datasets/hospital_enrollments_sample.csv",
+                "https://cms.test/files/PPEF_Enrollment_Extract_2026.07.17.csv" => "datasets/ppef_sample.csv",
+                "https://cms.test/files/revalidation_clinic_group_practice_reassignment_pa_xref.csv" => "datasets/reassignment_sample.csv",
                 "https://cms.test/files/SNF_Enrollments_2026.07.31.csv" => "datasets/snf_enrollments_sample.csv",
                 "https://pdc.test/files/DAC_NationalDownloadableFile.csv" => "datasets/dac_sample.csv",
                 "https://pdc.test/files/Facility_Affiliation.csv" => "datasets/facaff_sample.csv",
