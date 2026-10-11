@@ -22,6 +22,10 @@ public class SpecialtyCategoriesTests
             Assert.DoesNotContain(c.Subcategories.SkipWhile(s => !s.Name.StartsWith("Other", StringComparison.Ordinal)), s => !s.Name.StartsWith("Other", StringComparison.Ordinal));
         });
 
+        // Every category and subcategory explains itself in plain words (profile pages, step 1.4).
+        Assert.All(Categories.Categories, c => Assert.False(string.IsNullOrWhiteSpace(c.Description), c.Name));
+        Assert.All(Categories.Categories.SelectMany(c => c.Subcategories), s => Assert.False(string.IsNullOrWhiteSpace(s.Description), s.Name));
+
         // An everyday word means one thing.
         var synonyms = Categories.Categories.SelectMany(c => c.Synonyms.Concat(c.Subcategories.SelectMany(s => s.Synonyms))).ToList();
         Assert.Equal(synonyms.Count, synonyms.Distinct(StringComparer.OrdinalIgnoreCase).Count());

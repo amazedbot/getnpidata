@@ -168,6 +168,23 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task A_deactivated_npi_has_only_its_status()
+    {
+        await using var db = await SeededAsync();
+        var details = new ProviderDetailService(db.ConnectionString);
+        Assert.Null(await details.GetAsync(C, _ct));
+        Assert.Equal((true, new DateOnly(2025, 1, 1)), await details.GetDeactivationAsync(C, _ct));
+        Assert.Equal((false, null as DateOnly?), await details.GetDeactivationAsync(A, _ct));      // active
+        Assert.Equal((false, null as DateOnly?), await details.GetDeactivationAsync("1234567893", _ct)); // unknown
+        Assert.Equal((false, null as DateOnly?), await details.GetDeactivationAsync("12", _ct));
+
+        // The table is part of the projection: a reactivated NPI leaves it at the next build.
+        await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 0 WHERE NPI = @C", new { C });
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        Assert.Equal((false, null as DateOnly?), await details.GetDeactivationAsync(C, _ct));
+    }
+
+    [Fact]
     public async Task Similar_names_find_misspellings_and_organization_words_anywhere()
     {
         await using var db = await SeededAsync();

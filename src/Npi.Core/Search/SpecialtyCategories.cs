@@ -10,6 +10,9 @@ namespace Npi.Core.Search;
 public sealed record SpecialtyCategory(string Name, string Title, string Singular, IReadOnlyList<string> Synonyms,
     IReadOnlyList<SpecialtySubcategory> Subcategories)
 {
+    /// <summary>What they do, in plain words (written for this site).</summary>
+    public string? Description { get; init; }
+
     /// <summary>Every taxonomy code of every subcategory.</summary>
     public IReadOnlySet<string> Codes { get; } = Subcategories.SelectMany(s => s.Codes).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -19,7 +22,11 @@ public sealed record SpecialtyCategory(string Name, string Title, string Singula
 
 /// <summary>A subcategory ("Heart (cardiology)", list title "Cardiologists", one "Cardiologist") and the NUCC codes it stands for.</summary>
 public sealed record SpecialtySubcategory(string Category, string Name, string Title, string Singular, IReadOnlyList<string> Synonyms,
-    IReadOnlySet<string> Codes);
+    IReadOnlySet<string> Codes)
+{
+    /// <summary>What they do, in plain words (written for this site).</summary>
+    public string? Description { get; init; }
+}
 
 /// <summary>Where a taxonomy code sits in the plain categories.</summary>
 public sealed record SpecialtyPlacement(string Category, string Subcategory, string Singular);
@@ -27,7 +34,7 @@ public sealed record SpecialtyPlacement(string Category, string Subcategory, str
 /// <summary>
 /// The plain specialty categories the site offers instead of NUCC's classifications (owner, 2026-10-11): about 25 categories
 /// of about 200 subcategories, each a set of NUCC taxonomy codes. Hand-made lists embedded in Npi.Core:
-/// <c>specialty_categories.csv</c> (category, subcategory, title, singular, synonyms; category rows have no subcategory; order
+/// <c>specialty_categories.csv</c> (category, subcategory, title, singular, synonyms, description; category rows have no subcategory; order
 /// = display order) and <c>specialty_codes.csv</c> (code, category, subcategory; a code may sit in several subcategories, e.g.
 /// psychiatrists under Doctors and under Mental health; its first row is where it is shown). A code missing from the list
 /// (a new NUCC release) falls under Other › Other until the list is updated; the loader logs such codes.
@@ -94,7 +101,7 @@ public sealed class SpecialtyCategories
             .ToDictionary(g => g.Key, g => (IReadOnlySet<string>)g.Select(r => r.Code).ToHashSet(StringComparer.OrdinalIgnoreCase));
 
         var categories = new List<SpecialtyCategory>();
-        var pending = new List<(string Name, string Title, string Singular, string[] Synonyms)>();
+        var pending = new List<(string Name, string Title, string Singular, string[] Synonyms, string? Description)>();
         var subs = new Dictionary<string, List<SpecialtySubcategory>>(StringComparer.Ordinal);
         using (var csv = new CsvReader(categoriesCsv, config))
         {
@@ -107,9 +114,10 @@ public sealed class SpecialtyCategories
                 var title = csv.GetField("title")!;
                 var singular = csv.GetField("singular")!;
                 var synonyms = csv.GetField("synonyms")!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var description = csv.TryGetField<string>("description", out var d) && !string.IsNullOrWhiteSpace(d) ? d.Trim() : null;
                 if (subcategory.Length == 0)
                 {
-                    pending.Add((category, title, singular, synonyms));
+                    pending.Add((category, title, singular, synonyms, description));
                     subs[category] = [];
                     continue;
                 }
@@ -120,13 +128,13 @@ public sealed class SpecialtyCategories
                 }
 
                 list.Add(new SpecialtySubcategory(category, subcategory, title, singular, synonyms,
-                    codesBySub.TryGetValue((category, subcategory), out var codes) ? codes : new HashSet<string>()));
+                    codesBySub.TryGetValue((category, subcategory), out var codes) ? codes : new HashSet<string>()) { Description = description });
             }
         }
 
-        foreach (var (name, title, singular, synonyms) in pending)
+        foreach (var (name, title, singular, synonyms, description) in pending)
         {
-            categories.Add(new SpecialtyCategory(name, title, singular, synonyms, subs[name]));
+            categories.Add(new SpecialtyCategory(name, title, singular, synonyms, subs[name]) { Description = description });
         }
 
         var known = categories.SelectMany(c => c.Subcategories).Select(s => (s.Category, s.Name)).ToHashSet();

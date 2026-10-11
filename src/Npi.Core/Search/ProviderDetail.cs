@@ -12,6 +12,14 @@ public sealed record ProviderLocation(bool IsPrimary, string? Address1, string? 
 
     /// <summary>What the label rests on: the FEMA building type and size, and any signs of a business at the address.</summary>
     public string? BuildingBasis { get; init; }
+
+    /// <summary>Where the address is on the map (provider_map); null when it couldn't be placed.</summary>
+    public double? Latitude { get; init; }
+
+    public double? Longitude { get; init; }
+
+    /// <summary>True when the point is only the ZIP's centre, not the street address.</summary>
+    public bool Approximate { get; init; }
 }
 
 /// <summary>The person an organization registered as its authorized official.</summary>
@@ -107,7 +115,7 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record TaxRow(sbyte Slot, string Code, string? Classification, string? Specialization, sbyte IsPrimary, string? LicenseNo, string? LicenseState);
 
     private sealed record LocRow(sbyte IsPrimary, string? Address1, string? Address2, string? City, string? State, string? Zip5, string? Zip4,
-        string? PostalCode, string? CountryCode, string? Phone, string? BuildingType, string? BuildingBasis);
+        string? PostalCode, string? CountryCode, string? Phone, string? BuildingType, string? BuildingBasis, double? Lat, double? Lon, sbyte? Approximate);
 
     private sealed record ProfileRow(sbyte? IsSoleProprietor, sbyte? IsSubpart, string? ParentOrgName,
         string? OfficialPrefix, string? OfficialFirstName, string? OfficialMiddleName, string? OfficialLastName, string? OfficialSuffix,
@@ -167,6 +175,24 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
         string? UseDescription, string? ContentDescription, string? AffiliationName, string? AffiliationCity, string? AffiliationState);
 
+    /// <summary>
+    /// For an NPI that is no longer active: found, and its deactivation date when NPPES gave one. Not found for an active or
+    /// unknown NPI (owner, 2026-10-11: deactivated NPIs are shown only as "Deactivated on [date]").
+    /// </summary>
+    public async Task<(bool Found, DateOnly? Date)> GetDeactivationAsync(string npi, CancellationToken ct)
+    {
+        if (!InputFormats.IsNpi(npi))
+        {
+            return (false, null);
+        }
+
+        await using var connection = new MySqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        var rows = (await connection.QueryAsync<DateTime?>(new CommandDefinition(
+            "SELECT deactivation_date FROM provider_deactivated WHERE npi = @npi", new { npi }, cancellationToken: ct))).ToList();
+        return rows.Count == 0 ? (false, null) : (true, rows[0] is { } d ? DateOnly.FromDateTime(d) : null);
+    }
+
     public async Task<ProviderDetail?> GetAsync(string npi, CancellationToken ct)
     {
         if (!InputFormats.IsNpi(npi))
@@ -199,8 +225,9 @@ public sealed class ProviderDetailService(string connectionString)
             """
             SELECT l.is_primary AS IsPrimary, l.address1 AS Address1, l.address2 AS Address2, l.city AS City, l.state AS State, l.zip5 AS Zip5,
                    l.zip4 AS Zip4, l.postal_code AS PostalCode, l.country_code AS CountryCode, l.phone AS Phone,
-                   at.building_type AS BuildingType, at.basis AS BuildingBasis
+                   at.building_type AS BuildingType, at.basis AS BuildingBasis, m.lat AS Lat, m.lon AS Lon, m.approximate AS Approximate
             FROM provider_location l LEFT JOIN address_type at ON at.addr_key = l.addr_key
+            LEFT JOIN provider_map m ON m.npi = l.npi AND m.addr_key = l.addr_key
             WHERE l.npi = @npi ORDER BY l.is_primary DESC, l.id
             """, new { npi }, cancellationToken: ct));
         var otherNames = await connection.QueryAsync<string>(new CommandDefinition(
@@ -420,7 +447,10 @@ public sealed class ProviderDetailService(string connectionString)
             p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value),
             taxonomies.Select(t => new ProviderTaxonomy(t.Slot, t.Code, t.Classification, t.Specialization, t.IsPrimary != 0, t.LicenseNo, t.LicenseState)).ToList(),
             locations.Select(l => new ProviderLocation(l.IsPrimary != 0, l.Address1, l.Address2, l.City, l.State,
-                ProviderNames.Zip(l.Zip5, l.Zip4, l.PostalCode), l.CountryCode, l.Phone) { BuildingType = l.BuildingType, BuildingBasis = l.BuildingBasis }).ToList(),
+                ProviderNames.Zip(l.Zip5, l.Zip4, l.PostalCode), l.CountryCode, l.Phone)
+            {
+                BuildingType = l.BuildingType, BuildingBasis = l.BuildingBasis, Latitude = l.Lat, Longitude = l.Lon, Approximate = l.Approximate == 1,
+            }).ToList(),
             otherNames.ToList())
         {
             Profile = profile is null ? null : ToProfile(profile),

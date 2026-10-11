@@ -336,3 +336,70 @@ a.chip:hover { border-color: var(--accent); color: var(--accent); }
 .suggest-list { min-width: 0; width: min(100%, 34rem); max-width: none; }
 .suggest-list li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .suggest-list li .muted { white-space: nowrap; }
+
+/* Provider profile (docs/PRODUCT_PLAN.md step 1.4). */
+.profile { display: flex; flex-direction: column; gap: 1.1rem; max-width: 74rem; }
+.profile .card, .profile-status { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.3rem; min-width: 0; }
+.profile .card > h2 { margin-top: 0; }
+.profile .card > :last-child { margin-bottom: 0; }
+.profile .lede { margin-top: -0.25rem; }
+.profile .src { font-size: 0.85rem; color: var(--muted); }
+.profile .label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.crumbs { font-size: 0.95rem; }
+.head-row { display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: flex-start; }
+.avatar-lg { flex: 0 0 6.5rem; width: 6.5rem; height: 6.5rem; }
+.avatar-lg .bg { fill: #E6E9E8; } .avatar-lg .fg { fill: #5C6B65; } .avatar-lg .stroke { stroke: #12362F; }
+.avatar-lg.male .bg { fill: #DCE8F5; } .avatar-lg.male .fg { fill: #2F5F95; }
+.avatar-lg.female .bg { fill: #EEE2F2; } .avatar-lg.female .fg { fill: #7A4A93; }
+.avatar-lg.org .bg { fill: #E8F1ED; }
+.head-main { flex: 1 1 24rem; min-width: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.head-main h1 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.15; overflow-wrap: anywhere; }
+.head-main .credential { color: var(--muted); font-weight: 600; }
+.head-main .summary { margin: 0; font-size: 1.15rem; line-height: 1.45; }
+.pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.2rem 0 0; padding: 0; list-style: none; }
+.pill { display: inline-flex; align-items: center; padding: 0.2rem 0.7rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.88rem; font-weight: 600; background: var(--surface); }
+.pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); background: color-mix(in srgb, var(--ok) 8%, var(--surface)); }
+.pill.warn { color: var(--warn); border-color: var(--warn); }
+.pill.alert { color: var(--error); border-color: var(--error); }
+.head-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; flex: 0 1 auto; }
+.head-facts { display: flex; flex-wrap: wrap; gap: 0.3rem 1.3rem; margin: 1rem 0 0; padding-top: 0.8rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.95rem; }
+.head-facts .mono { color: var(--fg); }
+.head-contact { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0 0; }
+.profile-row { display: flex; flex-wrap: wrap; gap: 1.1rem; }
+.map-card { flex: 999 1 28rem; padding: 0 !important; overflow: hidden; }
+.what-card { flex: 1 1 18rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.what-card h2 { margin: 0; }
+.what-card p { margin: 0; line-height: 1.55; }
+.static-map { position: relative; display: block; aspect-ratio: 768 / 300; overflow: hidden; background: #EEF1EC; }
+.static-map img { position: absolute; max-width: none; }
+.static-map .pin { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; justify-content: center; min-width: 1.6rem; height: 1.6rem; padding: 0 0.3rem; border-radius: 999px; background: #0E6A73; color: #FFFFFF; font-size: 0.8rem; font-weight: 700; border: 2px solid #FFFFFF; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.static-map .pin.approx { background: #6B7C76; }
+.map-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; margin: 0; padding: 0.5rem 1rem; font-size: 0.8rem; color: var(--muted); }
+.on-page { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.locations { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 0.75rem; }
+.loc { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.8rem; border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
+.affiliations { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); gap: 0.6rem; }
+.aff { display: flex; gap: 0.75rem; align-items: center; padding: 0.7rem; border: 1px solid var(--border); border-radius: 10px; }
+.aff > span:last-child { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.aff-icon { flex: 0 0 2.4rem; height: 2.4rem; border-radius: 10px; background: #E8F1ED; }
+.aff-icon.group { background: #E8F1ED radial-gradient(circle at 35% 40%, #12362F 0 0.3rem, transparent 0.32rem), radial-gradient(circle at 65% 40%, #12362F 0 0.3rem, transparent 0.32rem); }
+.aff-icon.facility { background: #E8F1ED linear-gradient(#12362F, #12362F) center / 0.3rem 1.2rem no-repeat, linear-gradient(#12362F, #12362F) center / 1.2rem 0.3rem no-repeat; }
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { display: flex; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.checks li:last-child { border-bottom: 0; }
+.checks li > span { flex: 0 0 1rem; font-weight: 700; text-align: center; }
+.checks .good > span { color: var(--ok); } .checks .warn > span { color: var(--warn); } .checks .bad > span { color: var(--error); } .checks .info > span { color: var(--muted); }
+.big-numbers { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0.4rem 0 0.8rem; }
+.big-numbers div { display: flex; flex-direction: column; }
+.big-numbers strong { font-family: var(--serif); font-size: 1.75rem; line-height: 1.1; }
+.big-numbers span { color: var(--muted); font-size: 0.9rem; }
+.profile-status { max-width: 40rem; }
+.profile-status .pill { font-size: 1.05rem; }
+@media (max-width: 40rem) {
+    .head-row { flex-direction: column; align-items: center; text-align: center; }
+    .head-main { flex-basis: auto; align-items: center; }
+    .pills { justify-content: center; }
+    .head-actions { justify-content: center; width: 100%; }
+    .head-contact .button { flex: 1 1 auto; text-align: center; white-space: nowrap; }
+    .avatar-lg { flex-basis: 5.25rem; width: 5.25rem; height: 5.25rem; }
+}
