@@ -6,8 +6,10 @@
 @font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 600 700; font-display: swap; src: url("/fonts/source-serif-4-600-700-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 600 700; font-display: swap; src: url("/fonts/source-serif-4-600-700-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
-/* Design tokens (docs/PRODUCT_PLAN.md, combined direction): deep green sidebar, serif headings, teal accent. */
+/* Design tokens (docs/PRODUCT_PLAN.md, combined direction): deep green sidebar, serif headings, teal accent.
+   Light only (owner, 2026-10-11): no dark mode, and form controls and scrollbars stay light too. */
 :root {
+    color-scheme: light;
     --green: #12362F;
     --green-2: #1C4A40;
     --on-green: #D9E7E1;
@@ -29,25 +31,6 @@
         --serif: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
     --sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --fg: #E3ECE8;
-        --muted: #A3B5AD;
-        --bg: #0E1715;
-        --surface: #15211E;
-        --panel: #1A2925;
-        --accent: #5FC2CB;
-        --accent-hover: #8AD6DD;
-        --accent-fg: #0E1715;
-        --border: #2D3F3A;
-        --input: #4A625B;
-        --line: #22322E;
-        --ok: #7FD39B;
-        --warn: #E6B85C;
-        --error: #FF8F7A;
-    }
 }
 
 * { box-sizing: border-box; }
@@ -241,7 +224,7 @@ button.secondary:hover, .button.secondary:hover { background: var(--panel); colo
     .area-results { display: flex; flex-direction: column; max-height: calc(100vh - 10rem); }
     .area-table-wrap { overflow-y: auto; }
 }
-/* Leaflet tooltips and popups are always light, so keep their text dark in dark mode too. */
+/* Leaflet tooltips and popups: dark text on their white boxes. */
 .leaflet-container .pin-content { color: #17231F; font-size: 0.8rem; }
 .leaflet-container .pin-content ul { margin: 0.25rem 0 0; padding-left: 1.1rem; max-height: 14rem; overflow-y: auto; }
 .leaflet-container .pin-content a { color: #0E6A73; }
@@ -309,7 +292,6 @@ a.chip:hover { border-color: var(--accent); color: var(--accent); }
 .empty-state { background: var(--surface); border: 1px dashed var(--input); border-radius: var(--radius); padding: 1.5rem; }
 .empty-state h2 { margin-top: 0; }
 .name-block { margin-bottom: 1.5rem; }
-@media (prefers-color-scheme: dark) { .export-panel { background: var(--panel); border-color: var(--border); } }
 @media (max-width: 52rem) { .filters { max-width: none; } }
 
 .results-table td { vertical-align: middle; }
