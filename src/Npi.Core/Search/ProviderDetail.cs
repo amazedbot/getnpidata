@@ -104,6 +104,13 @@ public sealed record ProviderDetail(
 
     /// <summary>Changes recorded since change tracking began, newest first (Stage 5.5 item 11).</summary>
     public IReadOnlyList<ProviderChange> Changes { get; init; } = [];
+
+    /// <summary>How current and trustworthy the record looks (docs/PRODUCT_PLAN.md step 3.1); null when not labelled yet.</summary>
+    public ProviderQuality? Quality { get; init; }
+
+    /// <summary>What Care Compare lists for the clinician (its practices by ZIP code), behind the record-quality check; null when not listed.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public QualityCareCompare? QualityCareCompare { get; init; }
 }
 
 /// <summary>Reads one provider from the projection. Deactivated NPIs are not in the projection, so they come back as null.</summary>
@@ -169,6 +176,8 @@ public sealed class ProviderDetailService(string connectionString)
 
     private sealed record PaymentCompanyRow(string Company, double Total, double General, double Research, double AssociatedResearch,
         double Ownership, int Records, string? CompanyId);
+
+    private sealed record QualityRow(sbyte Label, int Reasons, short Activity);
 
     private sealed record ChangeRow(DateTime DetectedAt, string ChangeType, string? OldValue, string? NewValue);
 
@@ -416,6 +425,12 @@ public sealed class ProviderDetailService(string connectionString)
             FROM cc_mips WHERE npi = @npi ORDER BY program_year DESC, final_score DESC, id LIMIT 5
             """, new { npi }, cancellationToken: ct));
 
+        var quality = await connection.QuerySingleOrDefaultAsync<QualityRow>(new CommandDefinition(
+            "SELECT label AS Label, reasons AS Reasons, activity AS Activity FROM provider_quality WHERE npi = @npi", new { npi }, cancellationToken: ct));
+        List<QualityCareCompareLocation> ccLocations = clinician is null ? [] : (await connection.QueryAsync<QualityCareCompareLocation>(new CommandDefinition(
+            "SELECT address1 AS Address1, city AS City, state AS State, zip5 AS Zip5 FROM cc_clinician_location WHERE npi = @npi ORDER BY zip5",
+            new { npi }, cancellationToken: ct))).ToList();
+
         var standardCredential = (await SearchService.StandardCredentialsAsync(connection, [npi], ct)).GetValueOrDefault(npi);
         return new ProviderDetail(
             p.Npi, p.EntityType,
@@ -449,6 +464,8 @@ public sealed class ProviderDetailService(string connectionString)
                     y.AssociatedResearchRecords, y.OwnershipInvested, y.OwnershipValue, y.OwnershipRecords)).ToList(),
                 paymentCompanies.Select(c => new IndustryPaymentCompany(c.Company, c.Total, c.General, c.Research, c.AssociatedResearch, c.Ownership,
                     c.Records, c.CompanyId)).ToList()),
+            Quality = quality is null ? null : new ProviderQuality((QualityLabel)quality.Label, (QualityReason)quality.Reasons, (QualityActivity)quality.Activity),
+            QualityCareCompare = clinician is null ? null : new QualityCareCompare(clinician.PrimarySpecialty, ccLocations),
             Changes = changes.Select(c => new ProviderChange(DateOnly.FromDateTime(c.DetectedAt), c.ChangeType, c.OldValue, c.NewValue)).ToList(),
             MedicareServices = utilization is null ? null : new MedicareServices(utilization.DataYear, utilization.ProviderType,
                 utilization.Participating is null ? null : utilization.Participating != 0, utilization.DistinctServices, utilization.Beneficiaries,

@@ -37,7 +37,8 @@ public class ClientTests
         Classification = "Chiropractor", Specialization = "Sports Physician", Taxonomy = "111NS0005X", State = "NY", County = "36103",
         City = "Babylon", Zip = "11702", Radius = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
         EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true, Telehealth = false,
-        MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
+        MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", Quality = "notStale", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city",
+        Page = 3, PageSize = 100,
     };
 
     [Fact]
@@ -60,7 +61,8 @@ public class ClientTests
             Classification = "Chiropractor", Specialization = "Sports Physician", TaxonomyCode = "111NS0005X", State = "NY", CountyFips = "36103",
             City = "Babylon", Zip5 = "11702", RadiusMiles = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
             EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true,
-            Telehealth = false, MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
+            Telehealth = false, MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", Quality = "notStale", NewWithinDays = 30,
+            UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
         }, filter);
 
         // And the client covers every parameter the server documents.
@@ -144,11 +146,15 @@ public class ClientTests
     [InlineData(typeof(Server.CompanySecListing), typeof(CompanySecListing))]
     [InlineData(typeof(Server.CompanyIntegrityAgreement), typeof(CompanyIntegrityAgreement))]
     [InlineData(typeof(Server.LookupRow), typeof(LookupRow))]
+    [InlineData(typeof(Server.ProviderQuality), typeof(RecordQuality))]
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
+        // The names as JSON writes them: [JsonIgnore] properties aren't sent, [JsonPropertyName] renames.
         static IEnumerable<string> Names(Type t) =>
-            t.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.Name != "EqualityContract").Select(p => p.Name);
+            t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.Name != "EqualityContract" && p.GetCustomAttribute<System.Text.Json.Serialization.JsonIgnoreAttribute>() is null)
+                .Select(p => p.GetCustomAttribute<System.Text.Json.Serialization.JsonPropertyNameAttribute>()?.Name ?? p.Name);
 
         Assert.Empty(Names(server).Except(Names(client), StringComparer.OrdinalIgnoreCase));
     }

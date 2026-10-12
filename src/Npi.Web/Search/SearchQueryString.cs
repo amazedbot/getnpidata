@@ -78,6 +78,7 @@ public static class SearchQueryString
             MedicareActive = Bool("medicareActive", nameof(SearchFilter.MedicareActive)),
             Shortage = Text(q, "shortage"),
             AddressType = Text(q, "addressType"),
+            Quality = Text(q, "quality"),
             NewWithinDays = Int("newWithinDays", nameof(SearchFilter.NewWithinDays)),
             UpdatedWithinDays = Int("updatedWithinDays", nameof(SearchFilter.UpdatedWithinDays)),
             Sort = Text(q, "sort"),
@@ -134,6 +135,9 @@ public static class SearchQueryString
             "primaryCare, dental or mentalHealth: a practice location in a county with an HRSA Health Professional Shortage Area of that kind."),
         new("addressType", ParameterType.Text, nameof(SearchFilter.AddressType),
             "commercial, residential or unknown: a practice location in that kind of building (FEMA USA Structures and signs of a business at the address). Needs another filter."),
+        new("quality", ParameterType.Text, nameof(SearchFilter.Quality),
+            "Record quality: notStale (hide stale records), current, check or stale. Stale = not updated in NPPES for 10+ years with no sign of current practice; " +
+            "check = something conflicts or is missing (see each result's quality reasons). Needs another filter."),
         new("medicareActive", ParameterType.TrueFalse, nameof(SearchFilter.MedicareActive),
             "true: only providers who billed Medicare Part B or Part D in the latest CMS data year; false: those who didn't."),
         new("newWithinDays", ParameterType.WholeNumber, nameof(SearchFilter.NewWithinDays),
@@ -158,7 +162,7 @@ public static class SearchQueryString
 
     private static readonly string[] FilterKeys =
         ["classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential",
-         "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears", "medicareActive", "shortage", "addressType",
+         "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears", "medicareActive", "shortage", "addressType", "quality",
          "newWithinDays", "updatedWithinDays"];
 
     /// <summary>"?classification=…&amp;state=…" for the filter, optionally with a different page/sort.</summary>
@@ -200,6 +204,7 @@ public static class SearchQueryString
         Add("medicareActive", f.MedicareActive is { } active ? (active ? "true" : "false") : null);
         Add("shortage", f.Shortage);
         Add("addressType", f.AddressType);
+        Add("quality", f.Quality);
         Add("newWithinDays", f.NewWithinDays?.ToString(CultureInfo.InvariantCulture));
         Add("updatedWithinDays", f.UpdatedWithinDays?.ToString(CultureInfo.InvariantCulture));
         Add("sort", sort ?? f.Sort);

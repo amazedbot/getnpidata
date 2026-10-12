@@ -153,6 +153,11 @@ public sealed class SearchQuery
             }
         }
 
+        if (filter.Quality is not null)
+        {
+            providerTemplates.Add(("quality", RecordQuality.FilterSql(filter.Quality)));
+        }
+
         if (filter.MinYears is not null)
         {
             Parameters.Add("maxGraduationYear", DateTime.UtcNow.Year - filter.MinYears.Value);
@@ -315,6 +320,19 @@ public sealed class SearchQuery
             drivenBy.Add("name");
             _driverKind = "name";
         }
+        else if (filter.Quality is not null && _hasLocationFilter && _addressTemplate is null && !areaSearch)
+        {
+            // Record quality + location (docs/PRODUCT_PLAN.md step 3.1): one index range on (label, state, city, zip5), like the
+            // practice building; checking the label of every located provider took 30 s for CA.
+            Parameters.Add("qualityLabels", RecordQuality.FilterLabels(filter.Quality));
+            var labelled = $"qs.label IN @qualityLabels AND {Location("qs", withAddress: false)}";
+            _driver = careCompare.Count == 0
+                ? $"SELECT DISTINCT qs.npi FROM quality_search qs WHERE {labelled}"
+                : $"SELECT DISTINCT qs.npi FROM quality_search qs JOIN cc_clinician cc ON cc.npi = qs.npi WHERE {labelled} AND {string.Join(" AND ", careCompare)}";
+            _driverKind = "quality";
+            drivenBy.Add("quality");
+            drivenBy.Add("location");
+        }
         else if (_addressTemplate is not null)
         {
             // Practice building + location (Stage 5.5 item 18): one index range on (building_type, state, city, zip5), like a specialty.
@@ -352,7 +370,7 @@ public sealed class SearchQuery
 
         _remaining.AddRange(providerTemplates.Where(t => !drivenBy.Contains(t.Kind)).Select(t => Format(t.Template, "p")));
         // NPI-level checks (dataset flags, the standardized credential) don't need the provider row, so a count can skip that join.
-        _remainingNpiOnly.AddRange(providerTemplates.Where(t => (t.Kind == "flag" || (t.Kind == "credential" && credential is not null)) && !drivenBy.Contains(t.Kind))
+        _remainingNpiOnly.AddRange(providerTemplates.Where(t => (t.Kind is "flag" or "quality" || (t.Kind == "credential" && credential is not null)) && !drivenBy.Contains(t.Kind))
             .Select(t => t.Template));
         if (taxonomyCodes is not null && !drivenBy.Contains("taxonomy"))
         {
@@ -461,7 +479,7 @@ public sealed class SearchQuery
             // Only NPI-level checks left (dataset flags): count the candidates without joining provider,
             // which costs a random lookup per candidate (950k for a whole state). Only for drivers drawn from
             // projection tables; the NPI, flag and Care Compare drivers can list NPIs that aren't projected.
-            if (_driverKind is "location" or "building" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
+            if (_driverKind is "location" or "building" or "quality" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
             {
                 var flags = _remainingNpiOnly.Count > 0 ? " WHERE " + string.Join(" AND ", _remainingNpiOnly.Select(t => Format(t, "c"))) : "";
                 return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";
@@ -476,7 +494,9 @@ public sealed class SearchQuery
     /// gender/entity filters (§11 item 6). Count first; above <see cref="SearchFilter.BroadSearchThreshold"/>
     /// use <see cref="IndexOrderPageSql"/>.
     /// </summary>
-    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "date" && !_hasLocationFilter);
+    // A label that keeps most providers (notStale) may be broad; a single label is sparse enough that sorting its candidates is faster
+    // than walking the name index (CA + stale: 20 s walking, 3.8 s sorting; CA + notStale: 16.8 s sorting).
+    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "quality" && Filter.Quality == RecordQuality.FilterNotStale) || (_driverKind == "date" && !_hasLocationFilter);
 
     /// <summary>
     /// The page read in sort-index order (name or NPI sorts only, else null). Fast when matches are

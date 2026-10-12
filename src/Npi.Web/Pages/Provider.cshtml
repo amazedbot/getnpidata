@@ -377,6 +377,27 @@
         <p class="src">HHS-OIG exclusion list (LEIE), CMS opt-out and order and refer lists, state licensing boards. Matched by NPI (licenses by state, number and name).</p>
     </section>
 
+    @if (p.Quality is { } quality)
+    {
+        <section class="card" id="record-quality" aria-labelledby="rq-h">
+            <h2 id="rq-h">Record quality: @(quality.Label switch { QualityLabel.Stale => "looks stale", QualityLabel.Check => "needs a check", _ => "looks current" })</h2>
+            <p class="muted">@(quality.Label switch
+            {
+                QualityLabel.Stale => "This record is old and nothing in the public data shows the provider still practises here. Confirm before relying on it.",
+                QualityLabel.Check => "Something in this record conflicts with other sources or is missing. Confirm the details below before relying on it.",
+                _ => "Nothing we checked suggests the record is out of date.",
+            })</p>
+            <ul class="checks">
+                @foreach (var note in Model.QualityNotes)
+                {
+                    <li class="@note.Kind"><span aria-hidden="true">@(note.Kind switch { "good" => "✓", "bad" => "✕", "warn" => "!", _ => "i" })</span>@note.Text</li>
+                }
+            </ul>
+            <p class="src">Our own check, rebuilt with each weekly load: the NPPES record's age and address, compared with Medicare (billing, enrollment,
+                Care Compare), Open Payments, state licensing boards and building data. A label is a prompt to verify, not a finding.</p>
+        </section>
+    }
+
     @if (p.MedicareServices is not null || p.MedicarePrescribing is not null)
     {
         <section class="card" id="medicare" aria-labelledby="med-h">

@@ -93,7 +93,7 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
     /// <summary>True when any filter other than specialty and location is set: the "More filters" drawer opens.</summary>
     public bool MoreFiltersSet => Filter is not { LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
         Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null, MedicareActive: null, Shortage: null,
-        AddressType: null, NewWithinDays: null, UpdatedWithinDays: null };
+        AddressType: null, Quality: null, NewWithinDays: null, UpdatedWithinDays: null };
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {

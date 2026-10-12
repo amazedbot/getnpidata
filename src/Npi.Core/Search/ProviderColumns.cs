@@ -18,7 +18,7 @@ public static class ProviderColumns
     /// <summary>The set names with their labels, in the order the export panel lists them.</summary>
     public static readonly IReadOnlyList<(string Value, string Label)> Sets =
     [
-        (Summary, "Summary (22 columns)"),
+        (Summary, "Summary (24 columns)"),
         (Contact, "Contact: name, specialty, address, phone"),
         (Compliance, "Compliance: status and Medicare flags"),
     ];
@@ -49,18 +49,20 @@ public static class ProviderColumns
     private static readonly ProviderColumn Telehealth = new("Telehealth", r => Yes(r.Flags.OffersTelehealth));
     private static readonly ProviderColumn Billed = new("Billed Medicare", r => Yes(r.Flags.BilledMedicare));
     private static readonly ProviderColumn Building = new("Practice Building", r => AddressTypes.Label(r.AddressType));
+    private static readonly ProviderColumn Quality = new("Record Quality", r => r.Quality is { } q ? RecordQuality.Name(q.Label) : null);
+    private static readonly ProviderColumn QualityReasons = new("Quality Reasons", r => r.Quality is { } q ? string.Join("; ", q.ReasonTexts) : null);
 
     public static readonly IReadOnlyList<ProviderColumn> SummaryColumns =
     [
         Npi, EntityType, Name, Credential, Specialty, Address1, Address2, City, State, Zip, County, Phone, Gender, Enumerated, Updated,
-        Excluded, OptOut, OrderRefer, Assignment, Telehealth, Billed, Building,
+        Excluded, OptOut, OrderRefer, Assignment, Telehealth, Billed, Building, Quality, QualityReasons,
     ];
 
     public static readonly IReadOnlyList<ProviderColumn> ContactColumns =
         [Npi, Name, Credential, Specialty, Address1, Address2, City, State, Zip, County, Phone, Building];
 
     public static readonly IReadOnlyList<ProviderColumn> ComplianceColumns =
-        [Npi, EntityType, Name, Credential, Specialty, State, Enumerated, Updated, Excluded, OptOut, OrderRefer, Assignment, Billed];
+        [Npi, EntityType, Name, Credential, Specialty, State, Enumerated, Updated, Excluded, OptOut, OrderRefer, Assignment, Billed, Quality, QualityReasons];
 
     /// <summary>The columns of a set; unknown or missing names mean the summary.</summary>
     public static IReadOnlyList<ProviderColumn> For(string? set) => set?.ToLowerInvariant() switch

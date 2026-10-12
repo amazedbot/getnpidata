@@ -5,7 +5,8 @@ namespace Npi.Loader.Datasets;
 /// <summary>
 /// Care Compare Doctors and Clinicians National Downloadable File (CLAUDE.md §7 Stage 5.5 item 3a). The file
 /// has one row per clinician × enrollment × group × address (~3.4M rows for ~1.6M NPIs); it is loaded raw
-/// and summarized into cc_clinician (one row per NPI) and cc_group (one row per NPI and group practice).
+/// and summarized into cc_clinician (one row per NPI), cc_group (one row per NPI and group practice) and cc_clinician_location
+/// (one row per NPI and ZIP code, for the record-quality check, docs/PRODUCT_PLAN.md step 3.1).
 /// </summary>
 public sealed class CareCompareClinicianSource : DatasetSource
 {
@@ -20,6 +21,7 @@ public sealed class CareCompareClinicianSource : DatasetSource
         new("sec_spec_all", "secondary_specialties"), new("Telehlth", "telehealth"), new("Facility Name", "group_name"),
         new("org_pac_id", "org_pac_id"), new("num_org_mem", "group_members", CsvValue.OptionalWholeNumber),
         new("City/Town", "city"), new("State", "state"), new("ind_assgn", "ind_assignment"), new("grp_assgn", "grp_assignment"),
+        new("adr_ln_1", "address1"), new("ZIP Code", "zip"),
     ];
 
     public override Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct) => context.ProviderDataAsync(DatasetId, ct);
@@ -35,7 +37,7 @@ public sealed class CareCompareClinicianSource : DatasetSource
                 var rows = await CsvTableLoader.LoadAsync(connection, path, raw, Columns, ct);
                 context.Log.Information("Loaded {Rows:N0} Care Compare clinician rows", rows);
 
-                var counts = await TableSwap.ReplaceAsync(connection, ["cc_clinician", "cc_group"], context.Options.MinRowRatio, async () =>
+                var counts = await TableSwap.ReplaceAsync(connection, ["cc_clinician", "cc_group", "cc_clinician_location"], context.Options.MinRowRatio, async () =>
                 {
                     await Database.ExecuteAsync(connection,
                         $"""
@@ -50,6 +52,12 @@ public sealed class CareCompareClinicianSource : DatasetSource
                         INSERT INTO `cc_group_staging` (`npi`, `org_pac_id`, `group_name`, `members`, `accepts_assignment`, `city`, `state`)
                         SELECT `npi`, `org_pac_id`, MAX(`group_name`), MAX(`group_members`), COALESCE(MAX(`grp_assignment` = 'Y'), 0), MIN(`city`), MIN(`state`)
                         FROM `{raw}` WHERE `org_pac_id` IS NOT NULL GROUP BY `npi`, `org_pac_id`
+                        """, ct);
+                    await Database.ExecuteAsync(connection,
+                        $"""
+                        INSERT INTO `cc_clinician_location_staging` (`npi`, `zip5`, `address1`, `city`, `state`)
+                        SELECT `npi`, LEFT(`zip`, 5), MIN(`address1`), MIN(`city`), MIN(`state`)
+                        FROM `{raw}` WHERE `zip` REGEXP '^[0-9][0-9][0-9][0-9][0-9]' GROUP BY `npi`, LEFT(`zip`, 5)
                         """, ct);
                 }, ct);
                 return counts["cc_clinician"];

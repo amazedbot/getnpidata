@@ -72,6 +72,12 @@ Rules:
 | `074_product_prescribing_cache.sql` | The prescribing overlap precomputed per product (item 19, part 4). |
 | `075_address_building.sql` | Practice address type (item 18): the FEMA USA Structures building under each practice address, and the label per address (commercial, residential, care, unknown). |
 | `076_building_search.sql` | Practice building × location (item 18), so a building type in a state or county is one index range. |
+| `077_provider_deactivated.sql` | Every deactivated NPI with its date, for the "Deactivated on [date]" status page (redesign step 1.4). |
+| `078_medicare_enrollment.sql` | Medicare enrollment (PPEF) and group reassignments (redesign step 1.5). |
+| `079_area_counts.sql`, `080_area_new_providers.sql` | Provider counts per area and specialty for the area pages (redesign step 1.6). |
+| `081_cc_dac_raw_address.sql`, `082_cc_clinician_location.sql` | Care Compare practice addresses per clinician and ZIP code, for the record-quality check (Phase 3 step 3.1). |
+| `083_provider_quality.sql` | Record quality per provider: current / check / stale, with the reasons and signs of practice (Phase 3 step 3.1). |
+| `084_quality_search.sql` | Record quality × practice location, so a label in a state or county is one index range (Phase 3 step 3.1). |
 
 ## 001_baseline.sql
 

@@ -180,15 +180,17 @@ internal static class EnrichmentSql
 
     internal const string OptedOutNpis = "SELECT DISTINCT o.npi FROM medicare_opt_out o WHERE " + ActiveOptOut;
 
-    /// <summary>The flags of the NPIs in @npis.</summary>
+    /// <summary>The flags of the NPIs in @npis, with the record-quality label (0 when not labelled yet).</summary>
     internal static readonly string FlagsSql =
         "SELECT p.npi AS Npi, " +
         "CAST(" + Excluded.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS Excluded, " +
         "CAST(" + OptedOut.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OptedOut, " +
         "CAST(" + OrderRefer.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS OrderRefer, " +
         "CAST(COALESCE(cc.accepts_assignment, 0) AS SIGNED) AS AcceptsAssignment, CAST(COALESCE(cc.telehealth, 0) AS SIGNED) AS Telehealth, " +
-        "CAST(" + BilledMedicare.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS BilledMedicare " +
-        "FROM provider p LEFT JOIN cc_clinician cc ON cc.npi = p.npi WHERE p.npi IN @npis";
+        "CAST(" + BilledMedicare.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS BilledMedicare, " +
+        "CAST(COALESCE(pq.label, 0) AS SIGNED) AS QualityLabelCode, CAST(COALESCE(pq.reasons, 0) AS SIGNED) AS QualityReasonBits, " +
+        "CAST(COALESCE(pq.activity, 0) AS SIGNED) AS QualityActivityBits " +
+        "FROM provider p LEFT JOIN cc_clinician cc ON cc.npi = p.npi LEFT JOIN provider_quality pq ON pq.npi = p.npi WHERE p.npi IN @npis";
 }
 
 /// <summary>Descriptions of the HHS-OIG exclusion authorities (LEIE EXCLTYPE codes).</summary>

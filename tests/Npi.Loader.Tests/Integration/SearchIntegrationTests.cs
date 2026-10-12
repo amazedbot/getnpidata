@@ -829,6 +829,65 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal("residential", area.Items[0].Provider.AddressType);
     }
 
+    [Fact]
+    public async Task Records_are_labelled_current_check_or_stale()
+    {
+        await using var db = await SeededAsync();
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct); // specialty_code_category
+        var quality = new QualityBuilder(db.Database, Logger.None, 0.95);
+        Assert.True(await quality.IsStaleAsync(_ct));
+
+        // A: not updated since 2012, no sign of practice. B: Care Compare lists another profession, and practices only in Los Angeles
+        // (25+ miles from its Brooklyn and Farmingdale addresses). D: a PO box,
+        // not on the map, no phone. E: Care Compare agrees, mapped, a phone, updated this month. (As of 2026-10-04, E's update.)
+        await db.ExecuteAsync(
+            """
+            UPDATE provider SET last_update_date = '2012-01-01' WHERE npi = @A;
+            UPDATE provider SET last_update_date = '2019-01-01' WHERE npi = @B;
+            UPDATE provider_location SET phone = '6315550100' WHERE npi IN (@A, @B, @E) AND is_primary = 1;
+            UPDATE provider_location SET address1 = 'P.O. Box 5' WHERE npi = @D;
+            INSERT INTO provider_map (npi, addr_key, lat, lon, approximate, pt, source)
+              SELECT npi, addr_key, 40.7, -73.4, 0, ST_SRID(POINT(-73.4, 40.7), 0), 'address' FROM provider_location WHERE npi IN (@A, @B, @E) AND is_primary = 1;
+            INSERT INTO cc_clinician (npi, primary_specialty, accepts_assignment, telehealth) VALUES
+              (@B, 'NURSE PRACTITIONER', 0, 0), (@E, 'PEDIATRIC MEDICINE', 1, 0);
+            INSERT INTO zip_centroid (zip5, lat, lon) VALUES ('90012', 34.0614, -118.2385);
+            INSERT INTO cc_clinician_location (npi, zip5, address1, city, state) VALUES
+              (@B, '90012', '1 CIVIC CTR', 'LOS ANGELES', 'CA'), (@E, '11735', '200 MAIN ST', 'FARMINGDALE', 'NY');
+            """, new { A, B, D, E });
+        Assert.Equal(4L, await quality.BuildAsync(_ct));
+        Assert.False(await quality.IsStaleAsync(_ct));
+
+        var rows = (await db.QueryAsync<(string, sbyte, int, short)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
+            .ToDictionary(r => r.Item1, r => (Label: (QualityLabel)r.Item2, Reasons: (QualityReason)r.Item3, Activity: (QualityActivity)r.Item4));
+        Assert.Equal((QualityLabel.Stale, QualityReason.NotUpdated5Years | QualityReason.NotUpdated10Years | QualityReason.NoActivity, QualityActivity.None),
+            rows[A]);
+        Assert.Equal((QualityLabel.Check, QualityReason.NotUpdated5Years | QualityReason.CareCompareAddress | QualityReason.CareCompareSpecialty,
+            QualityActivity.CareCompare), rows[B]);
+        Assert.Equal((QualityLabel.Check, QualityReason.NoActivity | QualityReason.NotMapped | QualityReason.PoBox | QualityReason.NoPhone, QualityActivity.None),
+            rows[D]);
+        Assert.Equal((QualityLabel.Current, QualityReason.None, QualityActivity.CareCompare), rows[E]);
+        Assert.All(rows.Values, r => Assert.Equal(RecordQuality.Classify(r.Reasons), r.Label)); // the SQL label = the C# rule
+
+        // Search: the filter, and the label on each result.
+        var search = Search(db);
+        Assert.Equal([A], await Npis(search, new SearchFilter { State = "NY", Quality = "stale" }));
+        Assert.Equal([B, D, E], await Npis(search, new SearchFilter { State = "NY", Quality = "notStale" }));
+        Assert.Equal([E], await Npis(search, new SearchFilter { State = "NY", Quality = "Current" }));
+        Assert.Equal([B, D], await Npis(search, new SearchFilter { State = "NY", Quality = "check" }));
+        var page = await search.SearchAsync(new SearchFilter { State = "NY" }, _ct);
+        Assert.Equal(["Not updated in 10+ years", "No sign of current practice"], page.Items.Single(i => i.Npi == A).Quality!.ReasonTexts);
+        Assert.Equal(["listed in Medicare's Care Compare"], page.Items.Single(i => i.Npi == E).Quality!.Signs);
+
+        // The profile explains it, with what Care Compare lists.
+        var detail = (await new ProviderDetailService(db.ConnectionString).GetAsync(B, _ct))!;
+        Assert.Equal(QualityLabel.Check, detail.Quality!.Label);
+        var notes = RecordQuality.Explain(detail.Quality, detail.LastUpdateDate, new DateOnly(2026, 10, 12), true, detail.QualityCareCompare);
+        Assert.Contains(new QualityNote("bad", "Medicare's Care Compare lists practices only elsewhere (25+ miles from every address here): " +
+                                               "1 CIVIC CTR, LOS ANGELES, CA 90012"), notes);
+        Assert.Contains(new QualityNote("bad", "Medicare's Care Compare lists another profession (Nurse Practitioner)"), notes);
+        Assert.Contains(new QualityNote("warn", "Not updated in NPPES for 7 years (last update January 2019)"), notes);
+    }
+
     /// <summary>The Source Cooperative listing of the FEMA USA Structures files and the two fixture files.</summary>
     private sealed class FakeFema : HttpMessageHandler
     {

@@ -28,7 +28,7 @@ public partial class VerifyModel(SearchService search) : PageModel
     public static readonly IReadOnlyList<(string Key, string Label)> Tabs =
     [
         ("attention", "Needs attention"), ("all", "All"), ("active", "Active"), ("deactivated", "Deactivated"), ("excluded", "Excluded (OIG)"),
-        ("optedout", "Opted out of Medicare"), ("notfound", "Not found"), ("invalid", "Invalid"),
+        ("optedout", "Opted out of Medicare"), ("stale", "Stale record"), ("check", "Record to check"), ("notfound", "Not found"), ("invalid", "Invalid"),
     ];
 
     static VerifyModel() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // old .xls files
@@ -150,6 +150,8 @@ public partial class VerifyModel(SearchService search) : PageModel
         "deactivated" => row.Status == LookupStatus.Deactivated,
         "excluded" => row.Provider?.Flags.Excluded == true,
         "optedout" => row.Provider?.Flags.OptedOutOfMedicare == true,
+        "stale" => row.Provider?.Quality?.Label == QualityLabel.Stale,
+        "check" => row.Provider?.Quality?.Label == QualityLabel.Check,
         "notfound" => row.Status == LookupStatus.NotFound,
         "invalid" => row.Status == LookupStatus.Invalid,
         _ => true,
@@ -184,6 +186,14 @@ public partial class VerifyModel(SearchService search) : PageModel
         if (results.Count == 0)
         {
             results.Add(("Active", "ok"));
+        }
+
+        // Record quality (docs/PRODUCT_PLAN.md step 3.1), with the main reason.
+        if (row.Provider.Quality is { Label: not QualityLabel.Current } quality)
+        {
+            var reasons = quality.ReasonTexts;
+            results.Add(((quality.Label == QualityLabel.Stale ? "Stale record" : "Record to check") + (reasons.Count > 0 ? ": " + reasons[0].ToLowerInvariant() : ""),
+                quality.Label == QualityLabel.Stale ? "warn" : null));
         }
 
         if (row.Provider.EntityType == 1 && flags.CanOrderAndRefer)

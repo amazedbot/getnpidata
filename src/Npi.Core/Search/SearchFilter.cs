@@ -93,6 +93,12 @@ public sealed record SearchFilter
     /// </summary>
     public string? AddressType { get; init; }
 
+    /// <summary>
+    /// Record quality (<see cref="RecordQuality"/>, docs/PRODUCT_PLAN.md step 3.1): <c>notStale</c> (hide stale records), <c>current</c>,
+    /// <c>check</c> or <c>stale</c>. Needs another filter.
+    /// </summary>
+    public string? Quality { get; init; }
+
     /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
     public bool? MedicareActive { get; init; }
 

@@ -66,6 +66,11 @@
                 {
                     <p class="muted small">Of @N(Model.Medicare.Individuals) active individuals, @N(Model.Medicare.OrderRefer) can order and refer for Medicare. @N(Model.Medicare.BilledMedicare) of the active NPIs billed Medicare in the latest data year.</p>
                 }
+                @if (c["stale"] + c["check"] > 0)
+                {
+                    <p class="muted small">Record quality of the active NPIs: @N(c["active"] - c["stale"] - c["check"]) look current, @N(c["check"]) need a check and @N(c["stale"]) look stale
+                        (not updated in NPPES for 10+ years, with no sign of current practice). Each row says why.</p>
+                }
             </section>
 
             <section class="card" aria-labelledby="rows-h">

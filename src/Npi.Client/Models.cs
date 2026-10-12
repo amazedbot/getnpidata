@@ -57,6 +57,25 @@ public sealed class ProviderSummary
 
     /// <summary>The primary specialty in plain words, e.g. "Cardiologist".</summary>
     public string? PlainSpecialty { get; set; }
+
+    /// <summary>How current and trustworthy the record looks; null when not labelled yet.</summary>
+    public RecordQuality? Quality { get; set; }
+}
+
+/// <summary>
+/// The record-quality label: <c>current</c>, <c>check</c> (something conflicts or is missing) or <c>stale</c> (not updated in NPPES
+/// for 10+ years with no sign of current practice), with the reasons and the signs of current practice found.
+/// </summary>
+public sealed class RecordQuality
+{
+    /// <summary>current, check or stale.</summary>
+    public string Label { get; set; } = "";
+
+    /// <summary>The reasons in a few words each, most serious first, e.g. "Not updated in 10+ years".</summary>
+    public IReadOnlyList<string> Reasons { get; set; } = [];
+
+    /// <summary>The signs of current practice found, e.g. "billed Medicare".</summary>
+    public IReadOnlyList<string> Signs { get; set; } = [];
 }
 
 /// <summary>Yes/no facts from the joined datasets.</summary>
@@ -217,6 +236,9 @@ public sealed class ProviderDetail
 
     /// <summary>Changes recorded since change tracking began (October 2026), newest first.</summary>
     public IReadOnlyList<ProviderChange> Changes { get; set; } = [];
+
+    /// <summary>How current and trustworthy the record looks; null when not labelled yet.</summary>
+    public RecordQuality? Quality { get; set; }
 }
 
 /// <summary>A change noticed between two weekly/monthly NPPES loads.</summary>

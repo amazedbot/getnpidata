@@ -42,6 +42,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | Find names despite typos or a different spelling, and organizations by any words of their legal or DBA name | "Name match: Similar" on the search and map pages, `nameMatch=similar` |
 | Filter by OIG exclusion, Medicare opt-out, order/refer eligibility, Medicare assignment, telehealth, years in practice, Medicare activity and shortage areas | Same (see [Search filters](#search-filters)) |
 | Filter by the **kind of building** at a practice address: commercial or institutional, residential (often a home office), or unknown; each provider page shows the building and what the label rests on | "Practice building" on the search and map pages, `addressType`, CSV column "Practice Building" |
+| See how **current and trustworthy** each record looks: **Current**, **Check** (something conflicts or is missing: Medicare's Care Compare lists another address or profession, a lapsed state license, an address that can't be mapped or is a PO box, no phone, or an old record with no sign of practice) or **Stale** (not updated in NPPES for 10+ years and no sign of current practice anywhere in the public data), with the reasons; hide stale records from any list | Provider pages ("Record quality"), result badges, `/verify` tabs, CSV/Excel columns "Record Quality" and "Quality Reasons", `quality` filter, API `quality` |
 | Find **new providers** (NPI issued in the last 30/90/365 days) and **recently updated** records in any area; sort newest first for a feed | Same (`newWithinDays`, `updatedWithinDays`) |
 | See compliance and Medicare badges on every result | Website grid, CSV and API flags |
 | Paged, sortable results with the total match count | Website grid, API JSON |
@@ -99,6 +100,7 @@ At least one filter is required. Filters combine with AND.
 | `medicareActive` | `true`: only providers who billed Medicare Part B or Part D in the latest data year | `true` |
 | `shortage` | `primaryCare`, `dental` or `mentalHealth`: a practice location in a county with that kind of shortage area | `dental` |
 | `addressType` | `commercial`, `residential` or `unknown`: a practice location in that kind of building (FEMA USA Structures, and signs of a business at the address). Needs another filter | `residential` |
+| `quality` | Record quality: `notStale` (hide stale records), `current`, `check` or `stale`. Needs another filter | `notStale` |
 | `newWithinDays` | New providers: NPI issued (enumerated) within the last this many days, 1–3650. With `sort=-enumeration`, a newest-first feed | `30` |
 | `updatedWithinDays` | NPPES record updated within the last this many days, 1–3650 | `7` |
 | `sort` | `name` (default), `npi`, `credential`, `city`, `state`, `zip`, `lastUpdate`, `enumeration`; prefix `-` for descending | `-lastUpdate` |

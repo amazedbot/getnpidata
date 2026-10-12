@@ -52,4 +52,23 @@ public class VerifyPageTests
         Assert.Equal(["attention", "all", "notfound"], Tabs(new LookupRow("1234567893", LookupStatus.NotFound, null)));
         Assert.Equal(["attention", "all", "invalid"], Tabs(new LookupRow("1234567890", LookupStatus.Invalid, null)));
     }
+
+    [Fact]
+    public void Record_quality_gets_its_own_tab_pill_and_badge()
+    {
+        var row = Active();
+        var stale = row with { Provider = row.Provider! with { Quality = new ProviderQuality(QualityLabel.Stale,
+            QualityReason.NotUpdated5Years | QualityReason.NotUpdated10Years | QualityReason.NoActivity, QualityActivity.None) } };
+        var check = row with { Provider = row.Provider! with { Quality = new ProviderQuality(QualityLabel.Check, QualityReason.NoPhone, QualityActivity.MedicareBilling) } };
+        string[] Tabs(LookupRow r) => [.. VerifyModel.Tabs.Select(t => t.Key).Where(t => VerifyModel.InTab(t, r))];
+
+        Assert.Equal(["all", "active", "stale"], Tabs(stale));
+        Assert.Equal(["all", "active", "check"], Tabs(check));
+        Assert.Equal([("Active", "ok"), ("Stale record: not updated in 10+ years", "warn")], VerifyModel.Results(stale));
+        Assert.Equal([("Active", "ok"), ("Record to check: no phone", null)], VerifyModel.Results(check));
+
+        var badge = Assert.Single(ProviderRows.Badges(stale.Provider!));
+        Assert.Equal(("Stale record", "warn", "Record quality: Not updated in 10+ years; No sign of current practice"), (badge.Text, badge.Kind, badge.Title));
+        Assert.Equal("Check record", Assert.Single(ProviderRows.Badges(check.Provider!)).Text);
+    }
 }

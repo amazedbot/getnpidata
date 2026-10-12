@@ -32,6 +32,9 @@ public sealed record ProviderSummary(
     /// <summary>The primary specialty in plain words, e.g. "Cardiologist" (<see cref="PrimarySpecialty"/> keeps NUCC's wording).</summary>
     public string? PlainSpecialty { get; init; }
 
+    /// <summary>How current and trustworthy the record looks (docs/PRODUCT_PLAN.md step 3.1); null when not labelled yet.</summary>
+    public ProviderQuality? Quality { get; init; }
+
     /// <summary>The kind of building at the shown location (<see cref="AddressTypes"/>, Stage 5.5 item 18); null when not labelled.</summary>
     public string? AddressType { get; init; }
 }

@@ -59,6 +59,7 @@ public static partial class SearchValidation
             Credential = Clean(filter.Credential, nameof(SearchFilter.Credential)),
             Shortage = Clean(filter.Shortage, nameof(SearchFilter.Shortage)),
             AddressType = Clean(filter.AddressType, nameof(SearchFilter.AddressType))?.ToLowerInvariant(),
+            Quality = Clean(filter.Quality, nameof(SearchFilter.Quality)) is { } quality ? RecordQuality.FilterValue(quality) ?? quality : null,
             Sort = Clean(filter.Sort, nameof(SearchFilter.Sort)),
             NameMatch = Clean(filter.NameMatch, nameof(SearchFilter.NameMatch))?.ToLowerInvariant() is { } match && match != NameSearch.Prefix ? match : null,
         };
@@ -71,6 +72,10 @@ public static partial class SearchValidation
             if (f.AddressType is not null)
             {
                 Error(nameof(SearchFilter.AddressType), "Practice building needs another filter, such as a state, a county or a specialty.");
+            }
+            else if (f.Quality is not null)
+            {
+                Error(nameof(SearchFilter.Quality), "Record quality needs another filter, such as a state, a county or a specialty.");
             }
             else
             {
@@ -144,6 +149,11 @@ public static partial class SearchValidation
         if (f.AddressType is not null && !AddressTypes.IsValid(f.AddressType))
         {
             Error(nameof(SearchFilter.AddressType), "Practice building must be commercial, residential or unknown.");
+        }
+
+        if (f.Quality is not null && RecordQuality.FilterValue(f.Quality) is null)
+        {
+            Error(nameof(SearchFilter.Quality), "Record quality must be notStale, current, check or stale.");
         }
 
         if (f.MinYears is < 1 or > 70)

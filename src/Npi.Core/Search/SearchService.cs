@@ -21,7 +21,12 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
     private sealed record ZipCountyRow(string Zip5, string CountyName);
 
     // EXISTS yields a BIGINT; CAST keeps the type fixed for Dapper.
-    private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer, long AcceptsAssignment, long Telehealth, long BilledMedicare);
+    private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer, long AcceptsAssignment, long Telehealth, long BilledMedicare,
+        long QualityLabelCode, long QualityReasonBits, long QualityActivityBits)
+    {
+        public ProviderQuality? Quality => QualityLabelCode == 0 ? null
+            : new ProviderQuality((QualityLabel)QualityLabelCode, (QualityReason)QualityReasonBits, (QualityActivity)QualityActivityBits);
+    }
 
     private sealed record PageRow(string Npi, long Total);
 
@@ -391,9 +396,10 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         }
 
         var standardCredentials = await StandardCredentialsAsync(connection, npis, ct);
-        var flags = (await connection.QueryAsync<FlagRow>(new CommandDefinition(EnrichmentSql.FlagsSql, new { npis }, cancellationToken: ct)))
-            .ToDictionary(f => f.Npi, f => new ProviderFlags(f.Excluded != 0, f.OptedOut != 0, f.OrderRefer != 0, f.AcceptsAssignment != 0, f.Telehealth != 0,
-                f.BilledMedicare != 0));
+        var flagRows = (await connection.QueryAsync<FlagRow>(new CommandDefinition(EnrichmentSql.FlagsSql, new { npis }, cancellationToken: ct)))
+            .ToDictionary(f => f.Npi);
+        var flags = flagRows.ToDictionary(f => f.Key, f => new ProviderFlags(f.Value.Excluded != 0, f.Value.OptedOut != 0, f.Value.OrderRefer != 0,
+            f.Value.AcceptsAssignment != 0, f.Value.Telehealth != 0, f.Value.BilledMedicare != 0));
 
         var result = new List<ProviderSummary>(npis.Count);
         foreach (var npi in npis)
@@ -424,6 +430,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 p.LastUpdateDate is null ? null : DateOnly.FromDateTime(p.LastUpdateDate.Value))
             {
                 Flags = flags.GetValueOrDefault(npi, ProviderFlags.None),
+                Quality = flagRows.GetValueOrDefault(npi)?.Quality,
                 AddressType = l?.AddressType,
                 Category = plain?.Category,
                 Subcategory = plain?.Subcategory,
