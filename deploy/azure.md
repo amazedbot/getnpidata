@@ -84,6 +84,9 @@ Store the passwords in a password manager. Never commit them.
 
 ## 4. Loader PC → Azure
 
+> **Superseded (owner, 2026-10-12):** the nightly load will run in Azure on a schedule, not on the loader PC, so the PC does not publish to Azure.
+> This section describes the old design and is kept until the Azure phase works out the new one (CLAUDE.md §2 "Azure loading").
+
 On the loader PC, set the publisher connection string as a user secret:
 
 ```powershell

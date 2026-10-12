@@ -2,7 +2,7 @@
 
 Status: **approved by the owner on 2026-10-11**, with the decisions recorded in §6. CLAUDE.md carries the new direction.
 The work goes one phase (and one step) at a time; each step is committed, summarized, and waits for the owner's "go".
-Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care), 1.9 (developer page, Application Insights, privacy notice, accessibility and speed). **Phase 1 is complete.** Next: the owner chooses the next phase (§3).
+Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care), 1.9 (developer page, Application Insights, privacy notice, accessibility and speed). **Phase 1 is complete.** Next: **Phase 3, data quality signals and change history** (owner, 2026-10-12); Phase 2 waits until a feature needs hosting.
 
 **Vision.** getnpidata is the affordable answer layer on top of free government data. It goes deeper than free lookup
 tools and costs a small fraction of what enterprise vendors charge. It answers questions instead of dumping data.
@@ -217,10 +217,10 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
 ### Phase 2: Private test hosting (only when a feature needs it)
 
 - **Goal:** a private, password-protected test copy on Azure for features that can't be tested locally (alerts, email, accounts). No public launch until every phase is complete (owner, 2026-10-11).
-- **Scope:** the parts of CLAUDE.md §7 Stage 6 that the test copy needs (publisher, deploy workflow, Task Scheduler), behind a password.
+- **Scope:** the site on Azure behind a password, deployed by GitHub Actions, and **the nightly load running in Azure on a schedule, not on the owner's PC** (owner, 2026-10-12): Azure downloads the source files, loads them, builds the projection and refreshes the datasets itself. The design (where the loader runs, a database large enough for the raw data, the DuckDB-based Overture and FEMA steps) and its cost estimate come first. The PC stays the development and test environment.
 - **When:** only when a feature needs it; the owner is asked first, with a cost estimate.
 - **Data:** nothing new.
-- **Worked when:** the test copy serves every page within the Phase 1 speed targets, the nightly publish succeeds 7 days in a row, and the monthly cost matches the estimate.
+- **Worked when:** the test copy serves every page within the Phase 1 speed targets, the nightly load in Azure succeeds 7 days in a row, and the monthly cost matches the estimate.
 
 ### Phase 3: Data quality signals and change history
 

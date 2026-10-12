@@ -22,7 +22,7 @@ or private hosts.
 | 4 Website | Done |
 | 5 REST API + `Npi.Client` | Done |
 | 5.5 More data and features (owner's addition, before Azure) | **In progress.** Items 1–15 merged and loaded on `workplace` (11 trimmed; item 1 backfilled 2026-10-09; item 15 covers CO, CT, DE, FL, IL, MD, NY, TX, WA; item 17 added by the owner 2026-10-10; item 19 done, all 4 parts; item 18 done); item 16 left (§7 Stage 5.5) |
-| 6 Publish to Azure, deploy, Task Scheduler | **Not started.** No public launch until every phase of the product plan is done (owner, 2026-10-11). A private, password-protected test copy only when a feature needs hosting, with the owner's OK and a cost estimate first (§11 item 2) |
+| 6 Publish to Azure, deploy, Task Scheduler | **Not started; design changed (owner, 2026-10-12): the nightly load will run in Azure, not on the PC (§2).** No public launch until every phase of the product plan is done (owner, 2026-10-11). A private, password-protected test copy only when a feature needs hosting, with the owner's OK and a cost estimate first (§11 item 2) |
 | Product redesign ([docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md)) | **In progress.** Plan approved 2026-10-11. Phase 1: step 1.1 (combined design drawings) approved; steps 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, group and facility profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care) and 1.9 (developer page, Application Insights, privacy notice, accessibility and speed pass) done: **Phase 1 complete**. From Phase 9, the company and product redesign (drawings P09/P10) and a Companies & products main page are done (owner, 2026-10-12). Stage 5.5 item 16 moves to the plan's Phase 8 |
 
 On the loader PC, `workplace` holds the full data (current through 2026-10-04, 9,482,099 active providers). The site
@@ -57,7 +57,9 @@ CMS NPPES files ──► Npi.Loader (Windows PC, scheduled) ──► local MyS
 |---|---|
 | Website | ASP.NET Core on **.NET 10 (LTS)**, Razor Pages. Not .NET 8: its support ends Nov 2026 |
 | Language | **C#** for all code. The legacy VB loader was ported and then deleted (§3) |
-| Loader runtime | C# .NET 10 console app on the owner's Windows PC next to the local MySQL, scheduled with **Windows Task Scheduler** |
+| Loader runtime | C# .NET 10 console app. **Today:** on the owner's Windows PC next to the local MySQL (development and test). **Production:** runs on a schedule in Azure (owner, 2026-10-12; see "Azure loading" below) |
+| Azure loading | **The nightly load runs in Azure, not on the owner's PC** (owner, 2026-10-12): the PC does not feed Azure. Downloading the CMS and other source files, loading, building the projection and refreshing the datasets all run on a schedule in Azure, against an Azure database. The local PC + `workplace` remain the development and test environment. This supersedes the Stage 6 design of a publisher on the loader PC and Windows Task Scheduler; the Azure design (where the loader runs, how the full raw data is held, cost) is worked out and estimated at the start of the Azure phase (docs/PRODUCT_PLAN.md Phase 2), before anything is created |
+| Next phase (2026-10-12) | **Phase 3** (data quality signals and change history) is next; the Azure phase (Phase 2) waits until a feature needs hosting (owner) |
 | Local database | **MySQL 8.4 LTS** (8.0 reached end of life in April 2026) |
 | Hosting | **Azure App Service** (Linux, .NET 10) + **Azure Database for MySQL – Flexible Server** (Burstable B1ms to start, MySQL 8.4), both in **East US** |
 | Azure provisioning | The **owner creates the resources in the Azure portal** following `deploy/azure.md`. Claude Code does not provision. No custom domain for now (default `*.azurewebsites.net`) |
@@ -453,6 +455,10 @@ Specialization), Address 1, Address 2, City, State, ZIP, County, Phone, Gender, 
 - **Known slower combinations** (under the 30 s timeout): Los Angeles County's area page with all specialties (2.1 s; Cook County 1.0 s; the top-cities count over every location); a whole state + a very broad category (Mental & behavioral health + CA, 482,487 matches, 8.5 s; Doctors + NY 1.8 s); a state + Care Compare flag, e.g. NY + telehealth + accepts assignment 5.1 s, CA + accepts + minYears 6.8 s, telehealth alone 5.2 s; a whole state + a year of new providers (NY 5.8 s, CA 5.9 s) or + 90 days of updates (NY 4.7 s).
 
 ### Stage 6 — Publish to Azure & deploy (not started; wait for the owner)
+
+> **Superseded in part (owner, 2026-10-12):** the nightly load runs in Azure, not on the owner's PC (§2 "Azure loading"). Items 1 (a publisher on the
+> loader PC) and 4 (Windows Task Scheduler) below describe the old design and are kept for reference; the new design is decided at the start of
+> the Azure phase. Items 2 (deploying the site) and 3 (cost guard) still apply.
 1. **Publisher** (`Npi.Loader publish`): connect to `RemoteMySql` and apply the migrations remotely.
    - **Diff sync:** compare local `row_hash` with a local `publish_state(npi, hash)` table. Batch-upsert changed rows with multi-row `INSERT … ON DUPLICATE KEY UPDATE` (~1000 rows per batch, in transactions), and delete removed NPIs.
    - **Child tables:** replace all rows of each changed NPI.
@@ -527,8 +533,10 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 
 1. ~~Test DB backup~~ Done 2026-10-07 (restored as `npi_test`, schema in `001_baseline.sql`).
 2. **Stage 6 (waits for the owner).** No public launch until every phase of [docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md) is done (owner, 2026-10-11). A private, password-protected test copy may be set up when a feature needs real hosting (alerts, email, accounts): ask first, with a cost estimate. The owner has no Azure subscription yet and will create one, then the resources in the portal (East US, no custom domain).
-   - When the owner says to start: measure the projection size and give the cost estimate first.
-   - Then build the publisher, the deploy workflow and `deploy/register-task.ps1` (§7 Stage 6).
+   - **Order (owner, 2026-10-12):** Phase 3 comes first; the Azure phase waits until a feature needs hosting.
+   - **The nightly load runs in Azure, not on the PC** (owner, 2026-10-12; §2). When the owner says to start: design the in-Azure loading (where the loader runs on a schedule, a database large enough for the raw data, the DuckDB-based Overture and FEMA steps), measure, and give the cost estimate first.
+   - Measured 2026-10-12: `workplace` is 34.1 GB (data + indexes), of which about 25 GB is what the site reads; npidata alone is 7.2 GB. A Burstable B1ms (2 GB memory) would be slow at that size.
+   - Then build the scheduled loader in Azure and the deploy workflow (§7 Stage 6).
 3. **HUD API token:** issued. It must be present as the `HudApiToken` user-secret on the loader PC (never in the repo).
 4. ~~Local MySQL~~ Done 2026-10-07 (MySQL 8.4.9 on the loader PC, §8).
 5. **API keys at launch:** off (rate-limited only). The owner can switch them on with `Api:RequireKey=true` + `Api:Keys`.
@@ -591,3 +599,4 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 | 2026-10-11 | — | **Light only** (owner): the dark color scheme (`prefers-color-scheme: dark` tokens in `site.css`) is removed; `color-scheme: light` on the page and a `color-scheme` meta in both layouts keep form controls and scrollbars light on dark-mode systems. |
 | 2026-10-11 | Redesign 1.9 | **Developer page, Application Insights, privacy, accessibility and speed** (docs/PRODUCT_PLAN.md step 1.9; drawing P11). `/developers`, `/privacy`, telemetry wired but off until a connection string is set (no Azure resource yet). **Lighthouse (mobile) on 18 pages:** accessibility 100 on all; performance 90–99 (home 96, search lists 91–93, profiles 96–98, area 94–98, verify 99, find care 96–99, developers 98, companies/products 97–98), the map page 84–90 between runs (its largest paint is a map tile drawn by Leaflet; was 78). **Old URLs:** 45 pages, API calls and exports answer (43 × 200, `/swagger` 301 to its page, `/go?q=<NPI>` 302 to the profile). Tests: 505 without MySQL (no Core or loader change). **Phase 1 is complete.** |
 | 2026-10-12 | Phase 9 (pulled forward) | **Companies & products redesign** (owner: a main page with stats, top companies and products, CSV of every company and product, raw data per company and product, pages like drawings P09 and P10). `/companies-and-products` (now the menu link), `/companies.csv` (2,960 companies), `/products.csv` (9,566 products), `/api/v1/companies.csv`, `/api/v1/products.csv`, `/company/{id}/raw.json`, `/product/{slug}/raw.json`; company and product pages rebuilt summary-first. **Live (warm):** main page 0.04 s (first load 3 s, then cached an hour), company pages 0.13 s, product pages 0.19 s, CSVs 0.12–0.15 s, raw JSON 0.08–0.09 s. Lighthouse (mobile): accessibility 100, performance 93–98 on the main page, Pfizer, Eliquis, da Vinci and both lists. Tests: 510 without MySQL, Loader 187 with MySQL. |
+| 2026-10-12 | — | **Decisions (owner):** Phase 3 is next (the Azure phase waits until a feature needs hosting); when Azure comes, the nightly load runs in Azure, not on the owner's PC, which superseded the Stage 6 publisher + Task Scheduler design (§2, §7 Stage 6, §11 item 2). Measured for the estimate: `workplace` 34.1 GB, about 25 GB of it read by the site. |
