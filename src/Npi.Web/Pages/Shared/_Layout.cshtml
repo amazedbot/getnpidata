@@ -4,7 +4,7 @@
     var version = await Geography.GetDataVersionAsync(Context.RequestAborted);
     var path = Context.Request.Path.Value ?? "/";
     bool Under(string prefix) => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-    // Task navigation (docs/PRODUCT_PLAN.md §2.1). Organizations and Find care join as their pages land in Phase 1.
+    // Task navigation (docs/PRODUCT_PLAN.md §2.1). Organizations joins as its page lands in Phase 1; Find care has its own plain layout.
     var nav = new (string Label, string Href, bool Current)[]
     {
         ("Search & lists", "/search", path == "/" || Under("/search") || Under("/provider/") || Under("/group/") || Under("/facility/")),
@@ -13,6 +13,7 @@
         ("Areas", "/area", Under("/area")),
         ("Companies & products", "/companies", Under("/compan") || Under("/product")),
         ("Developers & API", "/swagger", false),
+        ("Find care (patients)", "/find-care", false),
     };
 }
 <!DOCTYPE html>

@@ -740,6 +740,30 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.NotNull(county);
         Assert.InRange(40.682177, county.South, county.North);
         Assert.Null(await maps.GetStartAreaAsync(new SearchFilter { Classification = "Chiropractor" }, _ct));
+
+        // Find care (docs/PRODUCT_PLAN.md step 1.8): nearest first, widening until enough are found (here all 50 miles).
+        await db.ExecuteAsync(
+            """
+            INSERT INTO cc_facility_affiliation (npi, facility_type, ccn) VALUES (@E, 'Hospital', '330045');
+            INSERT INTO cms_hospital (ccn, name, address, city, state, zip, hospital_type, emergency_services, overall_rating) VALUES
+              ('330045', 'GOOD SAMARITAN HOSPITAL', '1000 MONTAUK HWY', 'WEST ISLIP', 'NY', '11795', 'Acute Care Hospitals', 1, 3);
+            """, new { E });
+        var care = new CareFinder(db.ConnectionString, search);
+        var children = CareFinder.Resolve("children", null)!;
+        var near = (await care.FindAsync(new CareRequest(children, "11701"), _ct))!;
+        Assert.Equal([A, E], near.Items.Select(r => r.Nearest.Provider.Npi)); // A (pediatrics too) in Amityville, E in Farmingdale
+        Assert.Equal(50, near.RadiusMiles);
+        Assert.True(near.Items[0].Nearest.DistanceMiles < near.Items[1].Nearest.DistanceMiles);
+        Assert.Equal((40.682177, -73.414596), (near.CenterLat, near.CenterLon)); // one placed address in 11701: the Census centre
+        var withHospitals = await care.WithHospitalsAsync(near.Items, _ct);
+        Assert.Equal([null, "GOOD SAMARITAN HOSPITAL"], withHospitals.Select(r => r.Hospital));
+
+        var back = (await care.FindAsync(new CareRequest(CareFinder.Resolve("back", null)!, "11701"), _ct))!;
+        Assert.Equal([A, B], back.Items.Select(r => r.Nearest.Provider.Npi)); // chiropractors; B once, at its nearer (Farmingdale) office
+        Assert.Equal("300 Conklin St", back.Items[1].Nearest.Provider.Address1);
+        Assert.Empty((await care.FindAsync(new CareRequest(CareFinder.Resolve("dentist", null)!, "11701"), _ct))!.Items); // D is an organization
+        Assert.Null(await care.FindAsync(new CareRequest(children, "99999"), _ct)); // no Census centre, no addresses
+        Assert.Equal("11735", await care.NearestZipAsync(40.731, -73.441, _ct));
     }
 
     [Fact]
