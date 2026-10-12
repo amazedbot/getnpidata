@@ -388,6 +388,36 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal([("100000000001", "Pfizer, Inc.", 40.0)], eliquis.Companies.Select(c => (c.CompanyId, c.Name, c.Amount)));
         Assert.Equal([("Food and Beverage", 40.0)], eliquis.ByNature.Select(n => (n.Nature, n.Amount)));
         Assert.Equal([("1000000012", "BAKER, AL", "MD, PhD", 40.0, 2)], eliquis.TopProviders.Select(r => (r.Npi, r.Name, r.Credential, r.Amount, r.Records)));
+
+        // The Companies & products page (owner, 2026-10-12): totals agree with the lists and the exports hold every row.
+        using var industry = new IndustryService(db.ConnectionString, companies, products);
+        var overview = await industry.GetOverviewAsync(_ct);
+        var allCompanies = await companies.SearchAsync(null, 1, CompanyService.MaxPageSize, _ct);
+        var allProducts = await products.SearchAsync(null, null, 1, ProductService.MaxPageSize, _ct);
+        Assert.Equal((allCompanies.TotalCount, allProducts.TotalCount), (overview.Companies, overview.Products));
+        Assert.Equal(allCompanies.Items.Sum(c => c.Payments), overview.Paid, 2);
+        Assert.Equal(allCompanies.Items.Take(IndustryService.TopCount).Select(c => c.Id), overview.TopCompanies.Select(c => c.Id));
+        Assert.Equal(allProducts.Items.Take(IndustryService.TopCount).Select(p => p.Slug), overview.TopProducts.Select(p => p.Slug));
+        Assert.Equal(allProducts.Items.Count, overview.ProductKinds.Sum(k => k.Products));
+        Assert.Equal([2024, 2025], overview.Years.Select(y => y.Year));
+        Assert.Equal((2024, 2025, 2025), (overview.FirstYear, overview.LastYear, overview.ProductYear));
+        Assert.Equal(await db.ScalarAsync<long>("SELECT COUNT(*) FROM open_payments_summary"), overview.ProvidersPaid);
+        Assert.Same(overview, await industry.GetOverviewAsync(_ct)); // cached
+
+        string Csv(Func<Stream, Task<long>> write)
+        {
+            using var stream = new MemoryStream();
+            write(stream).GetAwaiter().GetResult();
+            return System.Text.Encoding.UTF8.GetString(stream.ToArray()).TrimStart('\uFEFF');
+        }
+
+        var companyCsv = Csv(s => IndustryCsv.WriteCompaniesAsync(industry.AllCompaniesAsync(_ct), s, "https://site.test", _ct)).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(string.Join(',', IndustryCsv.CompanyHeader), companyCsv[0]);
+        Assert.Equal(allCompanies.TotalCount + 1, companyCsv.Length);
+        Assert.Contains(companyCsv, l => l.StartsWith("100000000001,\"Pfizer, Inc.\",", StringComparison.Ordinal) && l.EndsWith(",https://site.test/company/100000000001", StringComparison.Ordinal));
+        var productCsv = Csv(s => IndustryCsv.WriteProductsAsync(industry.AllProductsAsync(_ct), s, "https://site.test", _ct)).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(allProducts.TotalCount + 1, productCsv.Length);
+        Assert.Contains(productCsv, l => l.StartsWith("Eliquis,Drug,Cardiology,", StringComparison.Ordinal) && l.EndsWith(",https://site.test/product/eliquis", StringComparison.Ordinal));
         Assert.Equal([("Internal Medicine", 1, 40.0)], eliquis.TopSpecialties.Select(x => (x.Specialty, x.Providers, x.Amount)));
         // The teaching hospital's payment counts for the product, not for a provider; research counts every recipient.
         var ibrance = (await products.GetAsync("ibrance", _ct))!;

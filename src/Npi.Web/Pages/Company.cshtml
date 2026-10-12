@@ -2,259 +2,351 @@
 @using System.Globalization
 @model CompanyModel
 @{
+    // Summary-first company profile (drawing P09; docs/PRODUCT_PLAN.md Phase 9, owner 2026-10-12): who it is, what it paid and for what,
+    // which products and whom, safety and oversight, then the full tables.
     var c = Model.Company;
     ViewData["Title"] = c.Name;
     var years = c.Years;
+    var newest = Model.Newest;
     var showResearch = years.Any(y => y.Research > 0);
     var showOwnership = years.Any(y => y.OwnershipInvested > 0 || y.OwnershipValue > 0);
     var recipientResearch = c.TopProviders.Any(r => r.Research > 0);
     var recipientAssociated = c.TopProviders.Any(r => r.AssociatedResearch > 0);
     var recipientOwnership = c.TopProviders.Any(r => r.Ownership > 0);
+    var natureTotal = c.ByNature.Sum(n => n.Amount);
 }
 
-<p><a href="/companies">‹ All companies</a></p>
+<div class="profile company">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/companies-and-products">Companies &amp; products</a> › <a href="/companies">Companies that pay providers</a></nav>
 
-<h1>@c.Name</h1>
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="Company" viewBox="0 0 96 96">
+                <rect width="96" height="96" rx="22" class="bg" />
+                <path d="M26 72V40l14 8V40l14 8V28h16v44z" fill="none" class="stroke" stroke-width="3.5" stroke-linejoin="round" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@c.Name</h1>
+                <p class="summary">@Model.Summary</p>
+                @if (Model.Pills.Count > 0)
+                {
+                    <ul class="pills">
+                        @foreach (var (text, style) in Model.Pills){<li class="pill @style">@text</li>}
+                    </ul>
+                }
+            </div>
+            <div class="head-actions">
+                <a class="button" href="/company/@Uri.EscapeDataString(c.Id)/raw.json" download>Download raw data</a>
+            </div>
+        </div>
+        @if (Model.ActiveAgreements.Count > 0)
+        {
+            <div class="notice alert" role="note">
+                <strong>Under an HHS-OIG integrity agreement.</strong>
+                An entity of this name agreed to OIG oversight after settling a federal health care fraud case
+                (@string.Join("; ", Model.ActiveAgreements.Select(a => a.Name))). See <a href="#oversight-h">Safety and oversight</a>.
+            </div>
+        }
+        <p class="src">A payment from a company isn't evidence of wrongdoing. Companies report every payment to doctors and teaching hospitals to CMS Open Payments (the Sunshine Act).</p>
+    </section>
 
-<dl class="facts">
-    @if (c.OtherNames.Count > 0)
-    {
-        <dt>Also reported as</dt><dd>@string.Join("; ", c.OtherNames)</dd>
-    }
-    @if (c.State is not null || c.Country is not null)
-    {
-        <dt>Located in</dt><dd>@string.Join(", ", new[] { c.State, c.Country }.Where(x => !string.IsNullOrWhiteSpace(x)))</dd>
-    }
-    <dt>Open Payments ID</dt><dd>@c.Id</dd>
-    @if (c.FirstYear is not null)
-    {
-        <dt>Years reported</dt><dd>@c.FirstYear–@c.LastYear</dd>
-    }
-    @if (c.Providers is { } providers)
-    {
-        <dt>Providers paid</dt><dd>@Format.Number(providers) <span class="muted">(NPIs, all years)</span></dd>
-    }
-</dl>
-
-<p>
-    <strong>@Format.Money(c.General)</strong> in general payments (meals, consulting, speaking, travel, gifts …)
-    @if (c.Research > 0)
-    {
-        <text>and <strong>@Format.Money(c.Research)</strong> in research payments</text>
-    }
-    to doctors, other prescribers and teaching hospitals@(c.FirstYear is null ? "" : $" in {c.FirstYear}–{c.LastYear}").
-    @if (c.OwnershipValue > 0 || c.OwnershipInvested > 0)
-    {
-        <text>Physicians also reported ownership or investment interests in it worth <strong>@Format.Money(c.OwnershipValue)</strong>.</text>
-    }
-</p>
-@{ var activeAgreements = c.IntegrityAgreements.Where(a => string.Equals(a.Status, "Effective", StringComparison.OrdinalIgnoreCase)).ToList(); }
-@if (activeAgreements.Count > 0)
-{
-    <div class="notice alert" role="note">
-        <strong>Under an HHS-OIG integrity agreement.</strong>
-        An entity of this name agreed to OIG oversight after settling a federal health care fraud case
-        (@string.Join("; ", activeAgreements.Select(a => a.Name))). See “Integrity agreements” below.
+    <div class="stat-row">
+        <div class="stat">
+            <span class="label">Paid, @Model.Years</span>
+            <strong>@Format.ShortMoney(c.General + c.Research)</strong>
+            <span class="small">@Format.ShortMoney(c.General) general@(c.Research > 0 ? $" + {Format.ShortMoney(c.Research)} research" : "")</span>
+        </div>
+        @if (c.Providers is { } reached)
+        {
+            <a class="stat" href="#providers-h">
+                <span class="label">Providers reached</span>
+                <strong>@Format.Number(reached)</strong>
+                <span class="small">NPIs paid at least once</span>
+            </a>
+        }
+        @if (newest is not null)
+        {
+            <div class="stat">
+                <span class="label">Paid in @newest.Year</span>
+                <strong>@Format.ShortMoney(newest.General + newest.Research)</strong>
+                <span class="small">@Format.Number(newest.GeneralRecords + newest.ResearchRecords) payments</span>
+            </div>
+        }
+        @if (c.OwnershipValue > 0 || c.OwnershipInvested > 0)
+        {
+            <div class="stat">
+                <span class="label">Physician ownership</span>
+                <strong>@Format.ShortMoney(c.OwnershipValue)</strong>
+                <span class="small">value of interests held by physicians</span>
+            </div>
+        }
     </div>
-}
-<div class="notice" role="note">
-    Companies that make drugs, devices and supplies must report what they give to doctors and teaching hospitals (the Sunshine Act).
-    A payment is not evidence of wrongdoing, but it may matter to you as a patient: ask your provider about it if it does.
+
+    <div class="profile-row top-align">
+        @if (years.Count > 0)
+        {
+            <section class="card grow-card" aria-labelledby="yr-h">
+                <h2 id="yr-h">Payments by year</h2>
+                <partial name="_YearBars" model="Model.Bars" />
+                <p class="src">General and research payments, CMS Open Payments program years @Model.Years. <a href="#years-h">The numbers by year</a></p>
+            </section>
+        }
+        @if (c.ByNature.Count > 0)
+        {
+            <section class="card side-card" aria-labelledby="for-h">
+                <h2 id="for-h">What it paid for (@c.DetailYear)</h2>
+                <ul class="amount-list">
+                    @foreach (var n in c.ByNature.Take(8))
+                    {
+                        <li><span title="@n.Nature">@Format.Nature(n.Nature)</span><span class="mono">@Format.ShortMoney(n.Amount)</span></li>
+                    }
+                </ul>
+                @if (c.ByNature.Count > 8){<p class="src">@Format.Number(c.ByNature.Count - 8) more kinds, @Format.ShortMoney(c.ByNature.Skip(8).Sum(n => n.Amount)) in all.</p>}
+                <p class="src">General payments in @c.DetailYear, @Format.ShortMoney(natureTotal) in all.</p>
+            </section>
+        }
+    </div>
+
+    <div class="profile-row top-align">
+        @if (c.TopProducts.Count > 0)
+        {
+            <section class="card grow-card" aria-labelledby="prod-h">
+                <h2 id="prod-h">Products named in its payments (@c.DetailYear)</h2>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Products named in the company's general payments, @c.DetailYear</caption>
+                        <thead><tr><th scope="col">Product</th><th scope="col">Type</th><th scope="col">@c.DetailYear</th><th scope="col">Payments</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in c.TopProducts.Take(10))
+                            {
+                                <tr><td>@if (p.Slug is not null){<a href="/product/@Uri.EscapeDataString(p.Slug)">@p.Name</a>}else{@p.Name}</td><td>@p.Kind</td><td class="nowrap">@Format.ShortMoney(p.Amount)</td><td>@Format.Number(p.Records)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (c.TopProducts.Count > 10)
+                {
+                    <details>
+                        <summary>@(c.TopProducts.Count - 10) more products</summary>
+                        <ul class="amount-list">
+                            @foreach (var p in c.TopProducts.Skip(10))
+                            {
+                                <li><span>@if (p.Slug is not null){<a href="/product/@Uri.EscapeDataString(p.Slug)">@p.Name</a>}else{@p.Name} <span class="muted">@p.Kind</span></span><span class="mono">@Format.ShortMoney(p.Amount)</span></li>
+                            }
+                        </ul>
+                    </details>
+                }
+                <p class="src">A payment can name up to five products and counts for each.</p>
+            </section>
+        }
+        @if (c.TopSpecialties.Count > 0)
+        {
+            <section class="card side-card" aria-labelledby="spec-h">
+                <h2 id="spec-h">Who it pays most</h2>
+                <ul class="amount-list">
+                    <li class="amount-head"><span>Specialty</span><span>Providers</span></li>
+                    @foreach (var s in c.TopSpecialties)
+                    {
+                        <li><span>@s.Specialty</span><span class="mono">@Format.Number(s.Providers)</span></li>
+                    }
+                </ul>
+                <p class="src">Active providers by primary specialty, every published year.</p>
+                @if (c.TopProviders.Count > 0){<p><a href="#providers-h">The @c.TopProviders.Count providers it paid most →</a></p>}
+            </section>
+        }
+    </div>
+
+    @if (c.Recalls is not null || c.SecListings.Count > 0 || c.IntegrityAgreements.Count > 0)
+    {
+        <section class="card" aria-labelledby="oversight-h">
+            <h2 id="oversight-h">Safety and oversight</h2>
+            <div class="oversight">
+                <div>
+                    <span class="label">FDA recalls</span>
+                    @if (c.Recalls is { } r)
+                    {
+                        <p>@Format.Number(r.Total) recall report@(r.Total == 1 ? "" : "s") matched by company name@(r.Latest.FirstOrDefault() is { Initiated: { } d } first ? $"; the newest {d.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}, {first.Classification}" : "")@(r.ClassI > 0 ? $". {Format.Number(r.ClassI)} Class I (the most serious)" : "").</p>
+                        <p><a href="#recalls-h">The newest recalls</a></p>
+                    }
+                    else
+                    {
+                        <p class="muted">None matched by name.</p>
+                    }
+                </div>
+                <div>
+                    <span class="label">SEC</span>
+                    @if (c.SecListings.Count > 0)
+                    {
+                        @foreach (var s in c.SecListings)
+                        {
+                            <p>@(s.IsParent ? "Parent: " : "")@s.Name · @(s.Exchange is null ? "" : $"{s.Exchange}: ")@s.Ticker · <a href="@s.EdgarUrl">filings on EDGAR</a>@if (s.IsParent){<span class="muted"> (@(s.Note ?? "subsidiary"), from our list of known parents)</span>}</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="muted">No public company of this name.</p>
+                    }
+                </div>
+                <div>
+                    <span class="label">HHS-OIG integrity agreements</span>
+                    @if (c.IntegrityAgreements.Count > 0)
+                    {
+                        <p>@(Model.ActiveAgreements.Count > 0 ? $"In effect: {Model.ActiveAgreements.Count}" : "None in effect")@(c.IntegrityAgreements.Count > Model.ActiveAgreements.Count ? $"; {c.IntegrityAgreements.Count - Model.ActiveAgreements.Count} past" : "").</p>
+                        <p><a href="#cia-h">The agreements</a></p>
+                    }
+                    else
+                    {
+                        <p class="muted">None matched by name.</p>
+                    }
+                </div>
+            </div>
+            <p class="src">openFDA enforcement reports, SEC company tickers and HHS-OIG, matched by name, so check the source.</p>
+        </section>
+    }
+
+    @if (years.Count > 0)
+    {
+        <section class="card" aria-labelledby="years-h">
+            <h2 id="years-h">Payments by year, in full</h2>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">The company's payments by program year</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Year</th><th scope="col">General payments</th>
+                            @if (showResearch) { <th scope="col">Research</th> }
+                            @if (showOwnership) { <th scope="col">Ownership invested</th><th scope="col">Ownership value</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var y in years)
+                        {
+                            <tr>
+                                <td>@y.Year</td><td>@Format.Amount(y.General, y.GeneralRecords)</td>
+                                @if (showResearch) { <td>@Format.Amount(y.Research, y.ResearchRecords)</td> }
+                                @if (showOwnership) { <td>@Format.Amount(y.OwnershipInvested)</td><td>@Format.Amount(y.OwnershipValue)</td> }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">Amount (number of payments). Ownership is the value of a physician's ownership or investment interest, as reported, not a payment.</p>
+        </section>
+    }
+
+    @if (c.TopProviders.Count > 0)
+    {
+        <section class="card" aria-labelledby="providers-h">
+            <h2 id="providers-h">Providers it paid the most</h2>
+            <p class="src">The @c.TopProviders.Count active providers with the largest amounts of any kind from this company, over every published year.</p>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">The providers the company paid the most</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">General</th>
+                            @if (recipientResearch) { <th scope="col">Research</th> }
+                            @if (recipientAssociated) { <th scope="col" title="Research funding paid to an institution where this provider was a principal investigator">Research as investigator</th> }
+                            @if (recipientOwnership) { <th scope="col">Ownership</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in c.TopProviders)
+                        {
+                            <tr>
+                                <td><a href="/provider/@r.Npi">@r.Name</a>@if (r.Credential is not null){<span class="muted">, @r.Credential</span>}</td>
+                                <td>@r.Specialty</td>
+                                <td>@string.Join(", ", new[] { r.City, r.State }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
+                                <td>@Format.Amount(r.General)</td>
+                                @if (recipientResearch) { <td>@Format.Amount(r.Research)</td> }
+                                @if (recipientAssociated) { <td>@Format.Amount(r.AssociatedResearch)</td> }
+                                @if (recipientOwnership) { <td>@Format.Amount(r.Ownership)</td> }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    @if (c.Recalls is { } recalls)
+    {
+        <section class="card" aria-labelledby="recalls-h">
+            <h2 id="recalls-h">FDA recalls</h2>
+            <p>
+                <strong>@Format.Number(recalls.Total)</strong> drug and device recall@(recalls.Total == 1 ? "" : "s") since 2004
+                (Class I, the most serious: @Format.Number(recalls.ClassI); Class II: @Format.Number(recalls.ClassII); Class III: @Format.Number(recalls.ClassIII))@(recalls.Ongoing > 0 ? $", {Format.Number(recalls.Ongoing)} listed by FDA as ongoing" : "").
+                Recalling firm: @string.Join("; ", recalls.Firms).
+            </p>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">The newest FDA recalls</caption>
+                    <thead><tr><th scope="col">Started</th><th scope="col">Recall</th><th scope="col">Class</th><th scope="col">Status</th><th scope="col">Product</th><th scope="col">Reason</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in recalls.Latest)
+                        {
+                            <tr>
+                                <td class="nowrap">@r.Initiated?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                <td>@r.RecallNumber <span class="muted">(@(r.ProductType == "Devices" ? "device" : "drug"))</span></td>
+                                <td>@r.Classification</td><td>@r.Status</td>
+                                <td class="long" title="@r.Product">@ProductModel.Clip(r.Product ?? "", 240)</td><td class="long" title="@r.Reason">@ProductModel.Clip(r.Reason ?? "", 240)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">
+                The newest @recalls.Latest.Count, from FDA enforcement reports (openFDA), matched by the recalling firm's name; a firm of the same name is not always
+                the same company. Class I: may cause serious harm or death; Class II: temporary or reversible harm; Class III: unlikely to cause harm.
+                Every recall: <a href="https://www.accessdata.fda.gov/scripts/ires/index.cfm">FDA's Enforcement Report</a>.
+            </p>
+        </section>
+    }
+
+    @if (c.IntegrityAgreements.Count > 0)
+    {
+        <section class="card" aria-labelledby="cia-h">
+            <h2 id="cia-h">Integrity agreements (HHS-OIG)</h2>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">OIG integrity agreements</caption>
+                    <thead><tr><th scope="col">Agreement with</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Location</th></tr></thead>
+                    <tbody>
+                        @foreach (var a in c.IntegrityAgreements)
+                        {
+                            <tr>
+                                <td><a href="@a.Url">@a.Name</a></td><td>@a.Type</td>
+                                <td>@a.Status @a.StatusDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td><td>@a.Location</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">Companies that settle federal health care fraud cases may agree to years of OIG oversight (a Corporate Integrity Agreement). Matched by name. Details at <a href="https://oig.hhs.gov/compliance/corporate-integrity-agreements/">oig.hhs.gov</a>.</p>
+        </section>
+    }
+
+    <section class="card" aria-labelledby="about-h">
+        <h2 id="about-h">About this record</h2>
+        <dl class="facts">
+            @if (c.OtherNames.Count > 0){<dt>Also reported as</dt><dd>@string.Join("; ", c.OtherNames)</dd>}
+            @if (c.State is not null || c.Country is not null){<dt>Located in</dt><dd>@string.Join(", ", new[] { c.State, c.Country }.Where(x => !string.IsNullOrWhiteSpace(x)))</dd>}
+            <dt>Open Payments ID</dt><dd class="mono">@c.Id</dd>
+            @if (c.FirstYear is not null){<dt>Years reported</dt><dd>@Model.Years</dd>}
+            <dt>Official record</dt><dd><a href="@c.OpenPaymentsUrl">openpaymentsdata.cms.gov</a></dd>
+            <dt>Raw data</dt><dd><a href="/company/@Uri.EscapeDataString(c.Id)/raw.json" download>JSON</a> · <a href="/api/v1/companies/@Uri.EscapeDataString(c.Id)">API</a></dd>
+        </dl>
+        @if (c.SimilarNames.Count > 0)
+        {
+            <h3>Similar company names</h3>
+            <p class="src">Companies often report under several entities (a U.S. sales arm, a research unit, a subsidiary). These share a word of this name and may be related; a name match only.</p>
+            <ul class="plain-list">
+                @foreach (var s in c.SimilarNames)
+                {
+                    <li><a href="/company/@Uri.EscapeDataString(s.Id)">@s.Name</a> <span class="muted">· @Format.ShortMoney(s.Payments)@(s.Providers is { } n ? $" · {Format.Number(n)} providers" : "")</span></li>
+                }
+            </ul>
+        }
+        <p class="src">Source: CMS Open Payments, every published program year (products and kinds of payment: @(c.DetailYear?.ToString(CultureInfo.InvariantCulture) ?? "the newest year")).</p>
+    </section>
 </div>
-
-@if (years.Count > 0)
-{
-    <h2>Payments by year</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">The company's payments by program year</caption>
-            <thead>
-                <tr>
-                    <th scope="col">Year</th><th scope="col">General payments</th>
-                    @if (showResearch) { <th scope="col">Research</th> }
-                    @if (showOwnership) { <th scope="col">Ownership invested</th><th scope="col">Ownership value</th> }
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var y in years)
-                {
-                    <tr>
-                        <td>@y.Year</td><td>@Format.Amount(y.General, y.GeneralRecords)</td>
-                        @if (showResearch) { <td>@Format.Amount(y.Research, y.ResearchRecords)</td> }
-                        @if (showOwnership) { <td>@Format.Amount(y.OwnershipInvested)</td><td>@Format.Amount(y.OwnershipValue)</td> }
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">Amount (number of payments).</p>
-}
-
-@if (c.ByNature.Count > 0)
-{
-    <h2>What the general payments were for (@c.DetailYear)</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">General payments by kind</caption>
-            <thead><tr><th scope="col">Kind of payment</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
-            <tbody>
-                @foreach (var n in c.ByNature)
-                {
-                    <tr><td>@n.Nature</td><td>@Format.Money(n.Amount)</td><td>@Format.Number(n.Records)</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
-
-@if (c.TopProducts.Count > 0)
-{
-    <h2>Products named in its payments (@c.DetailYear)</h2>
-    <p class="muted">The drugs, devices and supplies its general payments in @c.DetailYear named (a payment can name up to five; it counts for each). Select one for who else pays for it and whom.</p>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">Products named in the company's general payments</caption>
-            <thead><tr><th scope="col">Product</th><th scope="col">Type</th><th scope="col">Category</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
-            <tbody>
-                @foreach (var p in c.TopProducts)
-                {
-                    <tr><td>@if (p.Slug is not null){<a href="/product/@p.Slug">@p.Name</a>}else{@p.Name}</td><td>@p.Kind</td><td>@p.Category</td><td>@Format.Money(p.Amount)</td><td>@Format.Number(p.Records)</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
-
-@if (c.TopSpecialties.Count > 0)
-{
-    <h2>Specialties it pays the most</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">Specialties of the providers the company paid, all years</caption>
-            <thead><tr><th scope="col">Specialty</th><th scope="col">Providers</th><th scope="col">Amount, all kinds</th></tr></thead>
-            <tbody>
-                @foreach (var s in c.TopSpecialties)
-                {
-                    <tr><td>@s.Specialty</td><td>@Format.Number(s.Providers)</td><td>@Format.Money(s.Amount)</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">Active providers by their primary specialty in NPPES, over every published year.</p>
-}
-
-@if (c.TopProviders.Count > 0)
-{
-    <h2>Providers it paid the most</h2>
-    <p class="muted">The @c.TopProviders.Count active providers with the largest amounts of any kind from this company, over every published year.</p>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">The providers the company paid the most</caption>
-            <thead>
-                <tr>
-                    <th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">General</th>
-                    @if (recipientResearch) { <th scope="col">Research</th> }
-                    @if (recipientAssociated) { <th scope="col" title="Research funding paid to an institution where this provider was a principal investigator">Research as investigator</th> }
-                    @if (recipientOwnership) { <th scope="col">Ownership</th> }
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var r in c.TopProviders)
-                {
-                    <tr>
-                        <td><a href="/provider/@r.Npi">@r.Name</a>@if (r.Credential is not null){<span class="muted">, @r.Credential</span>}</td>
-                        <td>@r.Specialty</td>
-                        <td>@string.Join(", ", new[] { r.City, r.State }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
-                        <td>@Format.Amount(r.General)</td>
-                        @if (recipientResearch) { <td>@Format.Amount(r.Research)</td> }
-                        @if (recipientAssociated) { <td>@Format.Amount(r.AssociatedResearch)</td> }
-                        @if (recipientOwnership) { <td>@Format.Amount(r.Ownership)</td> }
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
-
-@if (c.Recalls is { } recalls)
-{
-    <h2>FDA recalls</h2>
-    <p>
-        <strong>@Format.Number(recalls.Total)</strong> drug and device recall@(recalls.Total == 1 ? "" : "s") since 2004
-        (Class I, the most serious: @Format.Number(recalls.ClassI); Class II: @Format.Number(recalls.ClassII); Class III: @Format.Number(recalls.ClassIII))@(recalls.Ongoing > 0 ? $", {Format.Number(recalls.Ongoing)} listed by FDA as ongoing" : "").
-        Recalling firm: @string.Join("; ", recalls.Firms).
-    </p>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">The newest FDA recalls</caption>
-            <thead><tr><th scope="col">Started</th><th scope="col">Recall</th><th scope="col">Class</th><th scope="col">Status</th><th scope="col">Product</th><th scope="col">Reason</th></tr></thead>
-            <tbody>
-                @foreach (var r in recalls.Latest)
-                {
-                    <tr>
-                        <td>@r.Initiated?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                        <td>@r.RecallNumber <span class="muted">(@(r.ProductType == "Devices" ? "device" : "drug"))</span></td>
-                        <td>@r.Classification</td><td>@r.Status</td>
-                        <td class="long">@r.Product</td><td class="long">@r.Reason</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">
-        The newest @recalls.Latest.Count, from FDA enforcement reports (openFDA), matched to this company by the recalling firm's name; a firm of the
-        same name is not always the same company. Class I: may cause serious harm or death; Class II: temporary or reversible harm; Class III: unlikely to cause harm.
-        Search every recall at <a href="https://www.accessdata.fda.gov/scripts/ires/index.cfm">FDA's Enforcement Report</a>.
-    </p>
-}
-
-@if (c.SecListings.Count > 0)
-{
-    <h2>Public company (SEC)</h2>
-    <ul>
-        @foreach (var s in c.SecListings)
-        {
-            <li>@if (s.IsParent){<text>Parent company: </text>}<a href="@s.EdgarUrl">@s.Name</a>: @s.Ticker@(s.Exchange is null ? "" : $" on {s.Exchange}") <span class="muted">· SEC CIK @s.Cik@(s.IsParent ? $" · {s.Note ?? "subsidiary"}, from our list of known parent companies" : "")</span></li>
-        }
-    </ul>
-    <p class="muted">SEC EDGAR registrants with their filings (annual reports, ownership): of the same name (a name match), or the parent company of a subsidiary from a hand-made list of the larger drug and device makers.</p>
-}
-
-@if (c.IntegrityAgreements.Count > 0)
-{
-    <h2>Integrity agreements (HHS-OIG)</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">OIG integrity agreements</caption>
-            <thead><tr><th scope="col">Agreement with</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Location</th></tr></thead>
-            <tbody>
-                @foreach (var a in c.IntegrityAgreements)
-                {
-                    <tr>
-                        <td><a href="@a.Url">@a.Name</a></td><td>@a.Type</td>
-                        <td>@a.Status @a.StatusDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td><td>@a.Location</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">Companies that settle federal health care fraud cases may agree to years of OIG oversight (a Corporate Integrity Agreement). Matched to this company by name. Details at <a href="https://oig.hhs.gov/compliance/corporate-integrity-agreements/">oig.hhs.gov</a>.</p>
-}
-
-@if (c.SimilarNames.Count > 0)
-{
-    <h2>Similar company names</h2>
-    <p class="muted">Companies often report under several entities (a U.S. sales arm, a research unit, a subsidiary). These share a word of this name and may be related; this is a name match only.</p>
-    <ul>
-        @foreach (var s in c.SimilarNames)
-        {
-            <li><a href="/company/@Uri.EscapeDataString(s.Id)">@s.Name</a> <span class="muted">· @Format.Amount(s.Payments)@(s.Providers is { } n ? $" · {Format.Number(n)} providers" : "")</span></li>
-        }
-    </ul>
-}
-
-<p class="muted">
-    Sources: CMS Open Payments, every published program year (the products and kinds of payment: @(c.DetailYear?.ToString(CultureInfo.InvariantCulture) ?? "the newest year")).
-    Ownership is the value of an ownership or investment interest (as reported), not a payment.
-    See the company's own record at <a href="@c.OpenPaymentsUrl">openpaymentsdata.cms.gov</a>.
-</p>

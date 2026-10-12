@@ -68,6 +68,12 @@ public static class ApiEndpoints
             .WithSummary("Companies that report to Open Payments")
             .WithDescription($"Drug and device makers and group purchasing organizations, largest payments (general + research, every published year) first. name matches any part of the company's name or other names, or its Open Payments ID; empty lists every company. pageSize 1–{CompanyService.MaxPageSize} (default 50).");
 
+        api.MapGet("/companies.csv", IndustryEndpoints.CompaniesCsvAsync)
+            .WithName("ExportCompaniesCsv").WithTags("Companies")
+            .WithSummary("Every company, as CSV")
+            .WithDescription("Every company that reports to Open Payments, largest payments first: ID, names, location, general and research payments and ownership over every published year, providers paid, years, page link. UTF-8 with BOM.")
+            .Produces(StatusCodes.Status200OK, contentType: "text/csv");
+
         api.MapGet("/companies/{id}", GetCompanyAsync)
             .WithName("GetCompany").WithTags("Companies")
             .WithSummary("One company")
@@ -77,6 +83,12 @@ public static class ApiEndpoints
             .WithName("SearchProducts").WithTags("Products")
             .WithSummary("Products named in Open Payments")
             .WithDescription($"Drugs, biologicals, devices and supplies named in the newest program year's general payments, largest first. name matches any part of the name (or the product's slug); kind is one of {string.Join(", ", ProductService.Kinds)}. pageSize 1–{ProductService.MaxPageSize} (default 50).");
+
+        api.MapGet("/products.csv", IndustryEndpoints.ProductsCsvAsync)
+            .WithName("ExportProductsCsv").WithTags("Products")
+            .WithSummary("Every product, as CSV")
+            .WithDescription("Every product named in the newest program year's general payments, largest first: name, type, category, NDC, device identifier, payments naming it, companies, providers paid, page link. UTF-8 with BOM.")
+            .Produces(StatusCodes.Status200OK, contentType: "text/csv");
 
         api.MapGet("/products/{slug}", GetProductAsync)
             .WithName("GetProduct").WithTags("Products")

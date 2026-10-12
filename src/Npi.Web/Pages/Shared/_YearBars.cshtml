@@ -1,0 +1,11 @@
+@model Npi.Web.Pages.YearBars
+<ol class="year-bars" aria-label="@Model.Label">
+    @foreach (var (year, value) in Model.Columns)
+    {
+        <li>
+            <span class="bar-value">@Format.ShortMoney(value)</span>
+            <span class="bar-col" aria-hidden="true"><span style="height:@Model.Height(value)%"></span></span>
+            <span class="bar-year">@year</span>
+        </li>
+    }
+</ol>

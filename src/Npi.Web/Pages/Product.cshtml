@@ -2,416 +2,520 @@
 @using System.Globalization
 @model ProductModel
 @{
+    // Summary-first product profile (drawing P10; docs/PRODUCT_PLAN.md Phase 9, owner 2026-10-12): what it is, the numbers, prescribing
+    // and who pays for it, cost and safety, then the full tables.
     var p = Model.Product;
     ViewData["Title"] = p.Name;
+    var drug = p.Drug;
+    var device = p.Device;
+    var rx = p.Prescribing;
+    var ae = p.AdverseEvents is { Reports: > 0 } a0 ? a0 : null;
+    var trials = p.Trials is { Studies: > 0 } t0 ? t0 : null;
+    var spending = Model.MedicareSpending;
+    var price = p.Prices.FirstOrDefault();
+    var kindCrumb = p.Kind switch { "Drug" => "Drugs", "Biological" => "Biologicals", "Device" => "Devices", "Medical Supply" => "Medical supplies", _ => null };
 }
 
-<p><a href="/products">‹ All products</a></p>
+<div class="profile product">
+    <nav aria-label="Breadcrumb" class="crumbs">
+        <a href="/companies-and-products">Companies &amp; products</a> › <a href="/products">Products in industry payments</a>
+        @if (kindCrumb is not null){<text> › </text><a href="/products?kind=@Uri.EscapeDataString(p.Kind!)">@kindCrumb</a>}
+    </nav>
 
-<h1>@p.Name</h1>
-
-<dl class="facts">
-    @if (p.Kind is not null)
-    {
-        <dt>Type</dt><dd>@p.Kind</dd>
-    }
-    @if (p.Category is not null)
-    {
-        <dt>Category</dt><dd>@p.Category</dd>
-    }
-    @if (p.Ndc is not null)
-    {
-        <dt>NDC (drug code)</dt><dd>@p.Ndc</dd>
-    }
-    @if (p.DeviceId is not null)
-    {
-        <dt>Device identifier</dt><dd>@p.DeviceId</dd>
-    }
-    <dt>Companies paying</dt><dd>@Format.Number(p.CompanyCount)</dd>
-    <dt>Providers paid</dt><dd>@Format.Number(p.Providers)</dd>
-</dl>
-
-<p>
-    <strong>@Format.Money(p.Amount)</strong> in @Format.Number(p.Records) general payment@(p.Records == 1 ? "" : "s") naming this product in @p.Year
-    (meals, consulting, speaking, travel …), from @Format.Number(p.CompanyCount) @(p.CompanyCount == 1 ? "company" : "companies")
-    to @Format.Number(p.Providers) providers@(p.Research is { } r0 ? $", plus {Format.Money(r0.Amount)} of research payments" : "").
-</p>
-<div class="notice" role="note">
-    Drug and device makers report every payment to doctors and teaching hospitals, and which products it was about (the Sunshine Act).
-    A payment is not evidence of wrongdoing, but you may want to know about it when your provider recommends this product.
-</div>
-
-@{ var currentShortages = p.Shortages.Where(s => s.Status is "Current").ToList(); }
-@if (currentShortages.Count > 0)
-{
-    <div class="notice alert" role="note">
-        <strong>FDA lists a current shortage</strong> of @(currentShortages[0].GenericName ?? p.Name)@(currentShortages[0].Availability is { } av ? $" ({av.ToLowerInvariant()})" : "").
-        See “Drug shortages” below.
-    </div>
-}
-
-@if (p.Drug is { } drug)
-{
-    @if (drug.BoxedWarning is not null)
-    {
-        <div class="notice alert" role="note">
-            <strong>FDA boxed warning</strong> (the most serious kind of warning on a drug label):
-            <p class="prewrap">@Clip(drug.BoxedWarning, 1500)</p>
-            @if (drug.DailyMedUrl is not null) { <a href="@drug.DailyMedUrl">Read the full label on DailyMed</a> }
-        </div>
-    }
-    <h2>About this @(p.Kind?.ToLowerInvariant() == "biological" ? "biological" : "drug")</h2>
-    <dl class="facts">
-        @if (drug.BrandName is not null) { <dt>Brand name</dt><dd>@drug.BrandName</dd> }
-        @if (drug.GenericName is not null) { <dt>Generic name</dt><dd>@drug.GenericName</dd> }
-        @if (drug.ActiveIngredients is not null) { <dt>Active ingredients</dt><dd>@drug.ActiveIngredients</dd> }
-        @if (drug.PharmClasses is not null) { <dt>Drug class</dt><dd>@drug.PharmClasses</dd> }
-        @if (drug.DosageForm is not null || drug.Route is not null) { <dt>Form</dt><dd>@string.Join(", ", new[] { drug.DosageForm?.ToLowerInvariant(), drug.Route?.ToLowerInvariant() }.Where(x => x is not null))</dd> }
-        @if (drug.ProductType is not null) { <dt>Type</dt><dd>@drug.ProductType.ToLowerInvariant()</dd> }
-        @if (drug.Labeler is not null) { <dt>Labeler</dt><dd>@drug.Labeler</dd> }
-        @if (drug.ApplicationNumber is not null)
-        {
-            <dt>FDA application</dt>
-            <dd>
-                @if (drug.DrugsAtFdaUrl is not null){<a href="@drug.DrugsAtFdaUrl">@drug.ApplicationNumber</a>}else{@drug.ApplicationNumber}
-                @if (drug.MarketingCategory is not null){<span class="muted"> (@drug.MarketingCategory)</span>}
-                @if (drug.Sponsor is not null){<span class="muted">, held by @drug.Sponsor</span>}
-            </dd>
-        }
-        else if (drug.MarketingCategory is not null) { <dt>Marketing category</dt><dd>@drug.MarketingCategory</dd> }
-        @if (drug.ApprovalDate is { } approved) { <dt>First approved</dt><dd>@approved.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd> }
-        else if (drug.MarketingStart is { } start) { <dt>On the market since</dt><dd>@start.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd> }
-        <dt>Other makers</dt>
-        <dd>@(drug.OtherMakers == 0 ? "None listed: no generic or other version of the same ingredients is listed with FDA"
-              : $"{Format.Number(drug.OtherMakers)} other {(drug.OtherMakers == 1 ? "company lists" : "companies list")} the same ingredients" + (drug.GenericMakers > 0 ? $", {Format.Number(drug.GenericMakers)} with an approved generic" : ""))</dd>
-    </dl>
-    @if (drug.Indications is not null)
-    {
-        <h3>What it's approved for</h3>
-        <details>
-            <summary>@Clip(drug.Indications, 300)</summary>
-            <p class="prewrap">@drug.Indications</p>
-        </details>
-        <p class="muted">From the FDA drug label@(drug.LabelDate is { } ld ? $" of {ld.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}" : "")@(drug.DailyMedUrl is null ? "." : "")@if (drug.DailyMedUrl is not null){<text>; the full label (dosage, side effects, interactions) is on <a href="@drug.DailyMedUrl">DailyMed</a>.</text>}</p>
-    }
-    <p class="muted">FDA's NDC directory and Drugs@FDA, @(drug.MatchedBy == "name" ? $"matched by the brand name (the NDC reported in the payments isn't listed with FDA); listing {drug.ProductNdc}" : $"matched by the product's NDC {drug.ProductNdc} as reported in the payments"). Not medical advice: ask your doctor or pharmacist.</p>
-}
-
-@if (p.Device is { } device)
-{
-    <h2>About this device</h2>
-    <p class="muted">FDA's device database (GUDID) record of the device identifier named most in the payments: one model of the product line.</p>
-    <dl class="facts">
-        @if (device.BrandName is not null) { <dt>Brand</dt><dd>@device.BrandName</dd> }
-        @if (device.Company is not null) { <dt>Company</dt><dd>@device.Company</dd> }
-        @if (device.Description is not null) { <dt>Model described</dt><dd>@device.Description@if (device.Model is not null){<span class="muted"> (@device.Model)</span>}</dd> }
-        @if (device.GmdnTerm is not null) { <dt>Device type</dt><dd>@device.GmdnTerm</dd> }
-        @if (device.ProductCode is not null) { <dt>FDA product code</dt><dd>@device.ProductCode@if (device.ProductCodeName is not null){<text> · @device.ProductCodeName</text>}</dd> }
-        @if (device.DeviceClass is not null) { <dt>FDA class</dt><dd>Class @device.DeviceClass @(device.DeviceClass switch { "1" => "(lowest risk)", "2" => "(moderate risk)", "3" => "(highest risk)", _ => "" })</dd> }
-        @if (device.MedicalSpecialty is not null) { <dt>Specialty</dt><dd>@device.MedicalSpecialty</dd> }
-        @if (device.IsRx is not null || device.IsOtc is not null) { <dt>Sold</dt><dd>@(device.IsRx == true ? "by prescription" : device.IsOtc == true ? "over the counter" : "—")</dd> }
-        @if (device.Implantable == true) { <dt>Implant</dt><dd>Yes</dd> }
-        @if (device.DistributionStatus is not null) { <dt>Status</dt><dd>@device.DistributionStatus</dd> }
-        <dt>GUDID record</dt><dd><a href="@device.GudidUrl">@device.DeviceId</a></dd>
-    </dl>
-    @if (device.GmdnDefinition is not null)
-    {
-        <p>@Clip(device.GmdnDefinition, 600)</p>
-    }
-    @if (device.Premarket.Count > 0)
-    {
-        <h3>FDA clearance or approval</h3>
-        <div class="table-wrap">
-            <table>
-                <caption class="visually-hidden">Premarket decisions the device cites</caption>
-                <thead><tr><th scope="col">Number</th><th scope="col">Kind</th><th scope="col">Device</th><th scope="col">Applicant</th><th scope="col">Decided</th></tr></thead>
-                <tbody>
-                    @foreach (var m in device.Premarket)
-                    {
-                        <tr>
-                            <td><a href="@m.Url">@m.Number</a></td><td>@m.Kind</td><td class="long">@m.DeviceName</td><td>@m.Applicant</td>
-                            <td>@m.DecisionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-        <p class="muted">A 510(k) clearance means FDA found the device substantially equivalent to one already on the market; a PMA approval follows FDA's review of clinical evidence (high-risk devices).</p>
-    }
-}
-
-@if (p.Spending.Count > 0)
-{
-    var newest = p.Spending.Max(s => s.Year);
-    <h2>What Medicare and Medicaid spend on it</h2>
-    <p>
-        @foreach (var g in p.Spending.Where(s => s.Year == newest).GroupBy(s => s.Program))
-        {
-            var total = g.Sum(s => s.Spending);
-            var benes = g.Sum(s => s.Beneficiaries ?? 0);
-            <text>@g.Key: <strong>@Format.Money(total)</strong> in @newest@(benes > 0 ? $" for {Format.Number((long)benes)} patients" : ""). </text>
-        }
-    </p>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">Spending by program and year</caption>
-            <thead><tr><th scope="col">Program</th><th scope="col">Year</th><th scope="col">Spending</th><th scope="col">Claims</th><th scope="col">Patients</th><th scope="col">Per unit</th></tr></thead>
-            <tbody>
-                @foreach (var s in p.Spending)
+    <section class="card profile-head" aria-labelledby="what">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="@(Model.Icon == "drug" ? "Drug" : "Device")" viewBox="0 0 96 96">
+                <rect width="96" height="96" rx="22" class="bg" />
+                @if (Model.Icon == "drug")
                 {
-                    <tr>
-                        <td>@s.Program@if (!string.Equals(s.BrandName, p.Name, StringComparison.OrdinalIgnoreCase)){<span class="muted"> (@s.BrandName)</span>}</td>
-                        <td>@s.Year</td><td>@Format.Money(s.Spending)</td>
-                        <td>@(s.Claims is { } c ? Format.Number((long)c) : "—")</td><td>@(s.Beneficiaries is { } b ? Format.Number((long)b) : "—")</td>
-                        <td>@(s.PerUnit is { } u ? u.ToString("$#,##0.00", CultureInfo.InvariantCulture) : "—")</td>
-                    </tr>
+                    <rect x="22" y="38" width="52" height="22" rx="11" transform="rotate(-35 48 49)" fill="none" class="stroke" stroke-width="3.5" />
+                    <path d="M41 37l13 22" class="stroke" stroke-width="3.5" />
                 }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">CMS Medicare Part D (pharmacy), Part B (given in a clinic or hospital outpatient department) and Medicaid spending by drug, matched by brand name; gross spending before manufacturer rebates. Small counts are suppressed by CMS.</p>
-}
+                else
+                {
+                    <rect x="28" y="22" width="40" height="52" rx="8" fill="none" class="stroke" stroke-width="3.5" />
+                    <path d="M38 36h20M38 46h20M48 58v8M44 62h8" fill="none" class="stroke" stroke-width="3.5" stroke-linecap="round" />
+                }
+            </svg>
+            <div class="head-main">
+                <h1 id="what">@p.Name@if (drug?.GenericName is { } generic && !string.Equals(generic, p.Name, StringComparison.OrdinalIgnoreCase)){<text> </text><span class="generic">@generic.ToLowerInvariant()</span>}</h1>
+                <p class="summary">@Model.Summary</p>
+                <ul class="pills">
+                    @foreach (var (text, style) in Model.Pills){<li class="pill @style">@text</li>}
+                </ul>
+            </div>
+            <div class="head-actions">
+                <a class="button" href="/product/@Uri.EscapeDataString(p.Slug)/raw.json" download>Download raw data</a>
+            </div>
+        </div>
+        @if (drug?.BoxedWarning is { } warning)
+        {
+            <div class="notice alert" role="note">
+                <strong>FDA boxed warning</strong> (the most serious kind of warning on a drug label): @ProductModel.Clip(warning, 260)
+                @if (drug.DailyMedUrl is not null){<a href="@drug.DailyMedUrl">Read the label on DailyMed</a>}
+            </div>
+        }
+        @if (Model.CurrentShortages.FirstOrDefault() is { } shortage)
+        {
+            <div class="notice alert" role="note">
+                <strong>FDA lists a current shortage</strong> of @(shortage.GenericName ?? p.Name)@(shortage.Availability is { } av ? $" ({av.ToLowerInvariant()})" : ""). See <a href="#shortages-h">Drug shortages</a>.
+            </div>
+        }
+    </section>
 
-@if (p.Prices.Count > 0)
-{
-    <h2>What pharmacies pay (NADAC)</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">NADAC prices of the drug's packages</caption>
-            <thead><tr><th scope="col">Package</th><th scope="col">NDC</th><th scope="col">Price per unit</th><th scope="col">Type</th><th scope="col">As of</th></tr></thead>
-            <tbody>
+    <div class="stat-row">
+        @if (rx is not null)
+        {
+            <a class="stat" href="#rx-h">
+                <span class="label">Prescribers, @rx.Year</span>
+                <strong>@Format.Number(rx.Prescribers)</strong>
+                <span class="small">@Format.Number(rx.Claims) Medicare Part D claims</span>
+            </a>
+        }
+        <div class="stat">
+            <span class="label">Paid to providers, @p.Year</span>
+            <strong>@Format.ShortMoney(p.Amount)</strong>
+            <span class="small">@Format.Number(p.Records) payments to @Format.Number(p.Providers) providers</span>
+        </div>
+        @if (ae is not null)
+        {
+            <a class="stat" href="#ae-h">
+                <span class="label">@(ae.Kind == "drug" ? "Adverse event reports" : "Device problem reports")</span>
+                <strong>@Format.Number(ae.Reports ?? 0)</strong>
+                <span class="small">@(ae.Kind == "drug" ? $"{Format.Number(ae.Serious ?? 0)} serious (FDA FAERS)" : $"{Format.Number(ae.Deaths ?? 0)} deaths, {Format.Number(ae.Injuries ?? 0)} injuries (FDA MAUDE)")</span>
+            </a>
+        }
+        @if (trials is not null)
+        {
+            <a class="stat" href="@trials.SearchUrl">
+                <span class="label">Clinical trials</span>
+                <strong>@Format.Number(trials.Studies ?? 0)</strong>
+                <span class="small">@Format.Number(trials.Recruiting ?? 0) recruiting</span>
+            </a>
+        }
+        else if (rx is null)
+        {
+            <div class="stat">
+                <span class="label">Companies paying for it</span>
+                <strong>@Format.Number(p.CompanyCount)</strong>
+                <span class="small">in @p.Year payments</span>
+            </div>
+        }
+    </div>
+
+    <div class="profile-row top-align">
+        @if (rx is not null)
+        {
+            <section class="card grow-card" aria-labelledby="ov-h">
+                <h2 id="ov-h">Paid providers who prescribe it</h2>
+                <p class="lead-text">
+                    Of the @Format.Number(rx.PaidProviders) active providers paid in @rx.PaymentYear payments naming @p.Name,
+                    <strong>@Format.Number(rx.PaidPrescribers) (@ProductModel.Percent(rx.PaidPrescriberShare))</strong> prescribed it to Medicare patients in @rx.Year,
+                    writing @ProductModel.Percent(rx.PaidClaimShare, 1) of all its Medicare claims.
+                </p>
+                <p class="src">Being paid by a drug's maker and prescribing it are both legal and common. Medicare data is a year behind the payment data.</p>
+                @if (Model.TopPrescribers is { TotalCount: > 0 } all){<p><a href="/product/@Uri.EscapeDataString(p.Slug)/prescribers"><strong>See the @Format.Number(all.TotalCount) providers →</strong></a></p>}
+            </section>
+        }
+        @if (p.Companies.Count > 0)
+        {
+            <section class="card side-card" aria-labelledby="co-h">
+                <h2 id="co-h">Companies paying for it (@p.Year)</h2>
+                <ul class="amount-list">
+                    @foreach (var c in p.Companies.Take(5))
+                    {
+                        <li><a href="/company/@Uri.EscapeDataString(c.CompanyId)">@c.Name</a><span class="mono">@Format.ShortMoney(c.Amount)</span></li>
+                    }
+                    @if (p.Companies.Count > 5)
+                    {
+                        <li><span class="muted">@(p.Companies.Count - 5) more compan@(p.Companies.Count - 5 == 1 ? "y" : "ies")</span><span class="mono">@Format.ShortMoney(p.Companies.Skip(5).Sum(c => c.Amount))</span></li>
+                    }
+                </ul>
+            </section>
+        }
+        @if (spending is not null || price is not null)
+        {
+            <section class="card grow-card" aria-labelledby="cost-h">
+                <h2 id="cost-h">What it costs</h2>
+                <ul class="amount-list">
+                    @if (spending is { } m)
+                    {
+                        <li><span>@m.Program spending, @m.Year</span><span class="mono">@Format.ShortMoney(m.Spending)</span></li>
+                        @if (m.Patients > 0){<li><span>@m.Program patients, @m.Year</span><span class="mono">@Format.ShortNumber((long)m.Patients)</span></li>}
+                    }
+                    @foreach (var other in p.Spending.Where(s => s.Program == "Medicaid").GroupBy(s => s.Year).OrderByDescending(g => g.Key).Take(1))
+                    {
+                        <li><span>Medicaid spending, @other.Key</span><span class="mono">@Format.ShortMoney(other.Sum(s => s.Spending))</span></li>
+                    }
+                    @if (price is not null)
+                    {
+                        <li><span>What pharmacies pay (NADAC)@(price.PricingUnit is null ? "" : $", per {price.PricingUnit.ToLowerInvariant()}")</span><span class="mono">@price.PerUnit.ToString("$#,##0.00", CultureInfo.InvariantCulture)</span></li>
+                    }
+                </ul>
+                <p class="src">CMS spending by drug (gross, before rebates) and Medicaid NADAC. <a href="#spending-h">Every year and program</a></p>
+            </section>
+        }
+        <section class="card grow-card" aria-labelledby="safety-h">
+            <h2 id="safety-h">Safety record</h2>
+            <ul class="amount-list">
+                <li><span>FDA recalls naming it</span><span class="mono">@(p.Recalls is { } rc ? Format.Number(rc.Total) : "0")</span></li>
+                @if (Model.IsDrug)
+                {
+                    <li><span>Drug shortages</span><span>@(Model.CurrentShortages.Count > 0 ? "Current shortage" : p.Shortages.Count > 0 ? "Resolved" : "None listed")</span></li>
+                }
+                @if (ae is not null)
+                {
+                    <li><span>@(ae.Kind == "drug" ? "Adverse event reports" : "Device problem reports")</span><span class="mono">@Format.Number(ae.Reports ?? 0)</span></li>
+                }
+                @if (device?.DeviceClass is { } dc)
+                {
+                    <li><span>FDA risk class</span><span>Class @dc @(dc switch { "1" => "(lowest)", "2" => "(moderate)", "3" => "(highest)", _ => "" })</span></li>
+                }
+            </ul>
+            <p class="src">Reports to FDA don't prove the product caused the event.</p>
+        </section>
+    </div>
+
+    @if (drug is not null)
+    {
+        <section class="card" aria-labelledby="about-h">
+            <h2 id="about-h">About this @(p.Kind?.ToLowerInvariant() == "biological" ? "biological" : "drug")</h2>
+            @if (drug.Indications is not null)
+            {
+                <h3>What it's approved for</h3>
+                <details>
+                    <summary>@ProductModel.Clip(drug.Indications, 300)</summary>
+                    <p class="prewrap">@drug.Indications</p>
+                </details>
+            }
+            <dl class="facts">
+                @if (drug.BrandName is not null) { <dt>Brand name</dt><dd>@drug.BrandName</dd> }
+                @if (drug.GenericName is not null) { <dt>Generic name</dt><dd>@drug.GenericName</dd> }
+                @if (drug.ActiveIngredients is not null) { <dt>Active ingredients</dt><dd>@drug.ActiveIngredients</dd> }
+                @if (drug.PharmClasses is not null) { <dt>Drug class</dt><dd>@drug.PharmClasses</dd> }
+                @if (drug.DosageForm is not null || drug.Route is not null) { <dt>Form</dt><dd>@string.Join(", ", new[] { drug.DosageForm?.ToLowerInvariant(), drug.Route?.ToLowerInvariant() }.Where(x => x is not null))</dd> }
+                @if (drug.Labeler is not null) { <dt>Labeler</dt><dd>@drug.Labeler</dd> }
+                @if (drug.ApplicationNumber is not null)
+                {
+                    <dt>FDA application</dt>
+                    <dd>
+                        @if (drug.DrugsAtFdaUrl is not null){<a href="@drug.DrugsAtFdaUrl">@drug.ApplicationNumber</a>}else{@drug.ApplicationNumber}
+                        @if (drug.MarketingCategory is not null){<span class="muted"> (@drug.MarketingCategory)</span>}
+                        @if (drug.Sponsor is not null){<span class="muted">, held by @drug.Sponsor</span>}
+                    </dd>
+                }
+                else if (drug.MarketingCategory is not null) { <dt>Marketing category</dt><dd>@drug.MarketingCategory</dd> }
+                @if (drug.ApprovalDate is { } approved) { <dt>First approved</dt><dd>@approved.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd> }
+                else if (drug.MarketingStart is { } start) { <dt>On the market since</dt><dd>@start.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd> }
+                <dt>Other makers</dt>
+                <dd>@(drug.OtherMakers == 0 ? "None listed: no generic or other version of the same ingredients is listed with FDA"
+                      : $"{Format.Number(drug.OtherMakers)} other {(drug.OtherMakers == 1 ? "company lists" : "companies list")} the same ingredients" + (drug.GenericMakers > 0 ? $", {Format.Number(drug.GenericMakers)} with an approved generic" : ""))</dd>
+                @if (p.Ndc is not null) { <dt>NDC in the payments</dt><dd class="mono">@p.Ndc</dd> }
+            </dl>
+            <p class="src">FDA's NDC directory, Drugs@FDA and the drug label@(drug.LabelDate is { } ld ? $" of {ld.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}" : "")@(drug.MatchedBy == "name" ? $", matched by the brand name (listing {drug.ProductNdc})" : $", matched by NDC {drug.ProductNdc}")@if (drug.DailyMedUrl is not null){<text>; the full label is on <a href="@drug.DailyMedUrl">DailyMed</a></text>}. Not medical advice: ask your doctor or pharmacist.</p>
+        </section>
+    }
+
+    @if (device is not null)
+    {
+        <section class="card" aria-labelledby="about-h">
+            <h2 id="about-h">About this device</h2>
+            @if (device.GmdnDefinition is not null){<p>@ProductModel.Clip(device.GmdnDefinition, 600)</p>}
+            <dl class="facts">
+                @if (device.BrandName is not null) { <dt>Brand</dt><dd>@device.BrandName</dd> }
+                @if (device.Company is not null) { <dt>Company</dt><dd>@device.Company</dd> }
+                @if (device.Description is not null) { <dt>Model described</dt><dd>@device.Description@if (device.Model is not null){<span class="muted"> (@device.Model)</span>}</dd> }
+                @if (device.GmdnTerm is not null) { <dt>Device type</dt><dd>@device.GmdnTerm</dd> }
+                @if (device.ProductCode is not null) { <dt>FDA product code</dt><dd>@device.ProductCode@if (device.ProductCodeName is not null){<text> · @device.ProductCodeName</text>}</dd> }
+                @if (device.DeviceClass is not null) { <dt>FDA class</dt><dd>Class @device.DeviceClass @(device.DeviceClass switch { "1" => "(lowest risk)", "2" => "(moderate risk)", "3" => "(highest risk)", _ => "" })</dd> }
+                @if (device.MedicalSpecialty is not null) { <dt>Specialty</dt><dd>@device.MedicalSpecialty</dd> }
+                @if (device.IsRx is not null || device.IsOtc is not null) { <dt>Sold</dt><dd>@(device.IsRx == true ? "by prescription" : device.IsOtc == true ? "over the counter" : "—")</dd> }
+                @if (device.Implantable == true) { <dt>Implant</dt><dd>Yes</dd> }
+                @if (device.DistributionStatus is not null) { <dt>Status</dt><dd>@device.DistributionStatus</dd> }
+                <dt>GUDID record</dt><dd><a href="@device.GudidUrl">@device.DeviceId</a></dd>
+            </dl>
+            @if (device.Premarket.Count > 0)
+            {
+                <h3>FDA clearance or approval</h3>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Premarket decisions the device cites</caption>
+                        <thead><tr><th scope="col">Number</th><th scope="col">Kind</th><th scope="col">Device</th><th scope="col">Applicant</th><th scope="col">Decided</th></tr></thead>
+                        <tbody>
+                            @foreach (var m in device.Premarket)
+                            {
+                                <tr>
+                                    <td><a href="@m.Url">@m.Number</a></td><td>@m.Kind</td><td class="long">@m.DeviceName</td><td>@m.Applicant</td>
+                                    <td class="nowrap">@m.DecisionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="src">A 510(k) clearance means FDA found the device substantially equivalent to one already on the market; a PMA approval follows FDA's review of clinical evidence (high-risk devices).</p>
+            }
+            <p class="src">FDA's device database (GUDID) record of the device identifier named most in the payments: one model of the product line.</p>
+        </section>
+    }
+
+    @if (rx is not null)
+    {
+        <section class="card" aria-labelledby="rx-h">
+            <h2 id="rx-h">Medicare prescribing</h2>
+            <p>
+                In @rx.Year, <strong>@Format.Number(rx.Prescribers)</strong> providers wrote <strong>@Format.Number(rx.Claims)</strong> Medicare Part D claims
+                for it@(rx.DrugCost is { } cost ? $" ({Format.Money(cost)})" : "").
+            </p>
+            @if (Model.TopPrescribers is { Items.Count: > 0 } top)
+            {
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Paid providers who prescribed it, paid the most</caption>
+                        <thead><tr><th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Paid</th><th scope="col">Medicare claims</th></tr></thead>
+                        <tbody>
+                            @foreach (var x in top.Items)
+                            {
+                                <tr>
+                                    <td><a href="/provider/@x.Npi">@x.Name</a>@if (x.Credential is not null){<span class="muted">, @x.Credential</span>}</td>
+                                    <td>@x.Specialty</td><td>@Format.Money(x.Paid)</td><td>@Format.Number(x.Claims)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p><a href="/product/@Uri.EscapeDataString(p.Slug)/prescribers">All @Format.Number(top.TotalCount) paid providers who prescribed it</a> (sortable, with CSV).</p>
+            }
+            <p class="src">CMS Medicare Part D Prescribers by Provider and Drug (@string.Join(", ", rx.Brands)), matched by brand name; Part D covers Medicare's outpatient prescriptions only.</p>
+        </section>
+    }
+
+    @if (p.Spending.Count > 0)
+    {
+        <section class="card" aria-labelledby="spending-h">
+            <h2 id="spending-h">What Medicare and Medicaid spend on it</h2>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Spending by program and year</caption>
+                    <thead><tr><th scope="col">Program</th><th scope="col">Year</th><th scope="col">Spending</th><th scope="col">Claims</th><th scope="col">Patients</th><th scope="col">Per unit</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in p.Spending)
+                        {
+                            <tr>
+                                <td>@s.Program@if (!string.Equals(s.BrandName, p.Name, StringComparison.OrdinalIgnoreCase)){<span class="muted"> (@s.BrandName)</span>}</td>
+                                <td>@s.Year</td><td>@Format.Money(s.Spending)</td>
+                                <td>@(s.Claims is { } cl ? Format.Number((long)cl) : "—")</td><td>@(s.Beneficiaries is { } b ? Format.Number((long)b) : "—")</td>
+                                <td>@(s.PerUnit is { } u ? u.ToString("$#,##0.00", CultureInfo.InvariantCulture) : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">CMS Medicare Part D (pharmacy), Part B (given in a clinic or hospital outpatient department) and Medicaid spending by drug, matched by brand name; gross spending before manufacturer rebates. Small counts are suppressed by CMS.</p>
+            @if (p.Prices.Count > 0)
+            {
+                <h3>What pharmacies pay (NADAC)</h3>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">NADAC prices of the drug's packages</caption>
+                        <thead><tr><th scope="col">Package</th><th scope="col">NDC</th><th scope="col">Price per unit</th><th scope="col">Type</th><th scope="col">As of</th></tr></thead>
+                        <tbody>
+                            @foreach (var pr in p.Prices)
+                            {
+                                <tr>
+                                    <td>@pr.Description</td><td>@pr.Ndc</td>
+                                    <td>@pr.PerUnit.ToString("$#,##0.00###", CultureInfo.InvariantCulture)@(pr.PricingUnit is null ? "" : $" per {pr.PricingUnit.ToLowerInvariant()}")</td>
+                                    <td>@pr.Kind</td><td class="nowrap">@pr.EffectiveDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="src">Medicaid's National Average Drug Acquisition Cost: what retail pharmacies pay on average, from a weekly survey; not the price you pay.</p>
+            }
+        </section>
+    }
+    else if (p.Prices.Count > 0)
+    {
+        <section class="card" aria-labelledby="spending-h">
+            <h2 id="spending-h">What pharmacies pay (NADAC)</h2>
+            <ul class="amount-list">
                 @foreach (var pr in p.Prices)
                 {
-                    <tr>
-                        <td>@pr.Description</td><td>@pr.Ndc</td>
-                        <td>@pr.PerUnit.ToString("$#,##0.00###", CultureInfo.InvariantCulture)@(pr.PricingUnit is null ? "" : $" per {pr.PricingUnit.ToLowerInvariant()}")</td>
-                        <td>@pr.Kind</td><td>@pr.EffectiveDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                    </tr>
+                    <li><span>@pr.Description <span class="muted">@pr.Ndc</span></span><span class="mono">@pr.PerUnit.ToString("$#,##0.00###", CultureInfo.InvariantCulture)@(pr.PricingUnit is null ? "" : $" per {pr.PricingUnit.ToLowerInvariant()}")</span></li>
                 }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">Medicaid's National Average Drug Acquisition Cost: what retail pharmacies pay on average, from a weekly survey; not the price you pay.</p>
-}
-
-@if (p.Shortages.Count > 0)
-{
-    <h2>Drug shortages</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">FDA drug shortage listings</caption>
-            <thead><tr><th scope="col">Status</th><th scope="col">Product</th><th scope="col">Company</th><th scope="col">Availability</th><th scope="col">Reason</th><th scope="col">Updated</th></tr></thead>
-            <tbody>
-                @foreach (var s in p.Shortages)
-                {
-                    <tr>
-                        <td>@s.Status</td><td class="long">@(s.Presentation ?? s.GenericName)</td><td>@s.Company</td><td>@s.Availability</td>
-                        <td class="long">@s.Reason@if (s.RelatedInfo is not null){<span class="muted"> · @s.RelatedInfo</span>}</td>
-                        <td>@s.UpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">FDA's drug shortage list, matched by the drug's NDC or generic name. See <a href="https://dps.fda.gov/drugshortages">FDA's drug shortage database</a>.</p>
-}
-
-@if (p.Recalls is { } recalls)
-{
-    <h2>FDA recalls</h2>
-    <p>
-        <strong>@Format.Number(recalls.Total)</strong> recall@(recalls.Total == 1 ? "" : "s") naming it since 2004
-        (Class I, the most serious: @Format.Number(recalls.ClassI); Class II: @Format.Number(recalls.ClassII); Class III: @Format.Number(recalls.ClassIII)).
-    </p>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">The newest FDA recalls naming the product</caption>
-            <thead><tr><th scope="col">Started</th><th scope="col">Recall</th><th scope="col">Class</th><th scope="col">Firm</th><th scope="col">Product</th><th scope="col">Reason</th></tr></thead>
-            <tbody>
-                @foreach (var r in recalls.Latest)
-                {
-                    <tr>
-                        <td>@r.Initiated?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td><td>@r.RecallNumber</td><td>@r.Classification</td><td>@r.Firm</td>
-                        <td class="long">@r.Product</td><td class="long">@r.Reason</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">FDA enforcement reports whose product description names this @(p.Drug is not null || p.Kind is "Drug" or "Biological" ? "drug (by name or NDC)" : "device, by a company paying for it"). Class I: may cause serious harm or death; Class II: temporary or reversible harm; Class III: unlikely to cause harm.</p>
-}
-
-@if (p.AdverseEvents is { Reports: > 0 } ae)
-{
-    <h2>Adverse event reports</h2>
-    <p>
-        @if (ae.Kind == "drug")
-        {
-            <text>FDA has received <strong>@Format.Number(ae.Reports ?? 0)</strong> adverse event reports naming “@ae.QueryName”@(ae.Serious is { } serious ? $", {Format.Number(serious)} of them serious (death, hospitalization, disability or other serious outcome)" : "").</text>
-        }
-        else
-        {
-            <text>FDA has received <strong>@Format.Number(ae.Reports ?? 0)</strong> medical device reports for “@ae.QueryName”: @Format.Number(ae.Deaths ?? 0) deaths, @Format.Number(ae.Injuries ?? 0) injuries, @Format.Number(ae.Malfunctions ?? 0) malfunctions.</text>
-        }
-    </p>
-    <p class="muted">
-        From FDA's @(ae.Kind == "drug" ? "FAERS" : "MAUDE") database via <a href="@ae.QueryUrl">openFDA</a>, counted @ae.FetchedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture).
-        Anyone can file a report, and a report does not prove the product caused the event; counts grow with how widely a product is used. Do not stop a treatment without talking to your doctor.
-    </p>
-}
-
-@if (p.Trials is { Studies: > 0 } trials)
-{
-    <h2>Clinical trials</h2>
-    <p>
-        <strong>@Format.Number(trials.Studies ?? 0)</strong> studies on ClinicalTrials.gov list “@trials.QueryName” as an intervention@(trials.Recruiting is > 0 ? $", {Format.Number(trials.Recruiting.Value)} recruiting now" : "").
-        <a href="@trials.SearchUrl">Search them on ClinicalTrials.gov</a>.
-    </p>
-}
-
-@if (p.Prescribing is { } rx)
-{
-    <h2>Paid providers who prescribe it</h2>
-    <p>
-        In @rx.Year, <strong>@Format.Number(rx.Prescribers)</strong> providers wrote <strong>@Format.Number(rx.Claims)</strong> Medicare Part D claims
-        for it@(rx.DrugCost is { } cost ? $" ({Format.Money(cost)})" : "").
-        Of the @Format.Number(rx.PaidProviders) active providers paid in @rx.PaymentYear payments naming it,
-        <strong>@Format.Number(rx.PaidPrescribers)</strong>@(rx.PaidPrescriberShare is { } ps ? $" ({ps.ToString("P0", CultureInfo.InvariantCulture)})" : "") prescribed it,
-        writing @Format.Number(rx.PaidClaims) claims@(rx.PaidClaimShare is { } cs ? $": {cs.ToString("P1", CultureInfo.InvariantCulture)} of all its Medicare claims" : "").
-    </p>
-    @if (Model.TopPrescribers is { Items.Count: > 0 } top)
-    {
-        <div class="table-wrap">
-            <table>
-                <caption class="visually-hidden">Paid providers who prescribed it, paid the most</caption>
-                <thead><tr><th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Paid</th><th scope="col">Medicare claims</th></tr></thead>
-                <tbody>
-                    @foreach (var x in top.Items)
-                    {
-                        <tr>
-                            <td><a href="/provider/@x.Npi">@x.Name</a>@if (x.Credential is not null){<span class="muted">, @x.Credential</span>}</td>
-                            <td>@x.Specialty</td><td>@Format.Money(x.Paid)</td><td>@Format.Number(x.Claims)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-        <p><a href="/product/@p.Slug/prescribers">See all @Format.Number(top.TotalCount) paid providers who prescribed it</a> (sortable, with CSV).</p>
+            </ul>
+            <p class="src">Medicaid's National Average Drug Acquisition Cost: what retail pharmacies pay on average; not the price you pay.</p>
+        </section>
     }
-    <p class="muted">CMS Medicare Part D Prescribers by Provider and Drug (@string.Join(", ", rx.Brands)), matched by brand name; Part D covers Medicare's outpatient prescriptions only. Being paid by a drug's maker and prescribing it are both legal and common.</p>
-}
 
-@if (p.Companies.Count > 0)
-{
-    <h2>Companies paying for it</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">Companies whose payments named the product</caption>
-            <thead><tr><th scope="col">Company</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
-            <tbody>
-                @foreach (var c in p.Companies)
-                {
-                    <tr><td><a href="/company/@Uri.EscapeDataString(c.CompanyId)">@c.Name</a></td><td>@Format.Money(c.Amount)</td><td>@Format.Number(c.Records)</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
-
-@if (p.ByNature.Count > 0)
-{
-    <h2>What the payments were for</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">Payments naming the product by kind</caption>
-            <thead><tr><th scope="col">Kind of payment</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
-            <tbody>
-                @foreach (var n in p.ByNature)
-                {
-                    <tr><td>@n.Nature</td><td>@Format.Money(n.Amount)</td><td>@Format.Number(n.Records)</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
-
-@if (p.TopSpecialties.Count > 0)
-{
-    <h2>Specialties paid the most</h2>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">Specialties of the providers paid</caption>
-            <thead><tr><th scope="col">Specialty</th><th scope="col">Providers</th><th scope="col">Amount</th></tr></thead>
-            <tbody>
-                @foreach (var s in p.TopSpecialties)
-                {
-                    <tr><td>@s.Specialty</td><td>@Format.Number(s.Providers)</td><td>@Format.Money(s.Amount)</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-    <p class="muted">Active providers by their primary specialty in NPPES.</p>
-}
-
-@if (p.TopProviders.Count > 0)
-{
-    <h2>Providers paid the most</h2>
-    <p class="muted">The @p.TopProviders.Count active providers with the largest general payments naming this product in @p.Year.</p>
-    <div class="table-wrap">
-        <table>
-            <caption class="visually-hidden">Providers paid the most in payments naming the product</caption>
-            <thead><tr><th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
-            <tbody>
-                @foreach (var r in p.TopProviders)
-                {
-                    <tr>
-                        <td><a href="/provider/@r.Npi">@r.Name</a>@if (r.Credential is not null){<span class="muted">, @r.Credential</span>}</td>
-                        <td>@r.Specialty</td>
-                        <td>@string.Join(", ", new[] { r.City, r.State }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
-                        <td>@Format.Money(r.Amount)</td><td>@Format.Number(r.Records)</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
-
-@if (p.Research is { } research)
-{
-    <h2>Research naming it (@research.Year)</h2>
-    <p>
-        <strong>@Format.Money(research.Amount)</strong> in @Format.Number(research.Records) research payment@(research.Records == 1 ? "" : "s")
-        for @Format.Number(research.Studies) stud@(research.Studies == 1 ? "y" : "ies"), mostly to hospitals and research sites.
-    </p>
-    @if (research.TopStudies.Count > 0)
+    @if (p.Shortages.Count > 0)
     {
-        <div class="table-wrap">
-            <table>
-                <caption class="visually-hidden">The largest studies</caption>
-                <thead><tr><th scope="col">Study</th><th scope="col">Sponsor</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
-                <tbody>
-                    @foreach (var s in research.TopStudies)
-                    {
-                        <tr>
-                            <td class="long">@(s.Study ?? s.NctId)@if (s.ClinicalTrialsUrl is not null){<text> </text><a href="@s.ClinicalTrialsUrl">@s.NctId</a>}</td>
-                            <td>@if (s.CompanyId is not null){<a href="/company/@Uri.EscapeDataString(s.CompanyId)">@(s.CompanyName ?? s.CompanyId)</a>}</td>
-                            <td>@Format.Money(s.Amount)</td><td>@Format.Number(s.Records)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+        <section class="card" aria-labelledby="shortages-h">
+            <h2 id="shortages-h">Drug shortages</h2>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">FDA drug shortage listings</caption>
+                    <thead><tr><th scope="col">Status</th><th scope="col">Product</th><th scope="col">Company</th><th scope="col">Availability</th><th scope="col">Reason</th><th scope="col">Updated</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in p.Shortages)
+                        {
+                            <tr>
+                                <td>@s.Status</td><td class="long">@(s.Presentation ?? s.GenericName)</td><td>@s.Company</td><td>@s.Availability</td>
+                                <td class="long">@s.Reason@if (s.RelatedInfo is not null){<span class="muted"> · @s.RelatedInfo</span>}</td>
+                                <td class="nowrap">@s.UpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">FDA's drug shortage list, matched by the drug's NDC or generic name. See <a href="https://dps.fda.gov/drugshortages">FDA's drug shortage database</a>.</p>
+        </section>
     }
-}
 
-@functions {
-    // At most about max characters, cut at a space.
-    private static string Clip(string text, int max) =>
-        text.Length <= max ? text : text[..(text.LastIndexOf(' ', max) is > 0 and var i ? i : max)] + " …";
-}
+    @if (p.Recalls is { } recalls)
+    {
+        <section class="card" aria-labelledby="recalls-h">
+            <h2 id="recalls-h">FDA recalls</h2>
+            <p>
+                <strong>@Format.Number(recalls.Total)</strong> recall@(recalls.Total == 1 ? "" : "s") naming it since 2004
+                (Class I, the most serious: @Format.Number(recalls.ClassI); Class II: @Format.Number(recalls.ClassII); Class III: @Format.Number(recalls.ClassIII)).
+            </p>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">The newest FDA recalls naming the product</caption>
+                    <thead><tr><th scope="col">Started</th><th scope="col">Recall</th><th scope="col">Class</th><th scope="col">Firm</th><th scope="col">Product</th><th scope="col">Reason</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in recalls.Latest)
+                        {
+                            <tr>
+                                <td class="nowrap">@r.Initiated?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td><td>@r.RecallNumber</td><td>@r.Classification</td><td>@r.Firm</td>
+                                <td class="long" title="@r.Product">@ProductModel.Clip(r.Product ?? "", 240)</td><td class="long" title="@r.Reason">@ProductModel.Clip(r.Reason ?? "", 240)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">FDA enforcement reports whose product description names this @(Model.IsDrug ? "drug (by name or NDC)" : "device, by a company paying for it"). Class I: may cause serious harm or death; Class II: temporary or reversible harm; Class III: unlikely to cause harm.</p>
+        </section>
+    }
 
-<p class="muted">
-    Source: CMS Open Payments, @p.Year program year. A payment can name up to five products and counts for each, so amounts of different products
-    can't be added up. Products are grouped by name as companies reported them (“Eliquis” and “ELIQUIS” are one product; “Eliquis 5 mg” is another).
-    Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.
-</p>
+    @if (ae is not null)
+    {
+        <section class="card" aria-labelledby="ae-h">
+            <h2 id="ae-h">Adverse event reports</h2>
+            <p>
+                @if (ae.Kind == "drug")
+                {
+                    <text>FDA has received <strong>@Format.Number(ae.Reports ?? 0)</strong> adverse event reports naming “@ae.QueryName”@(ae.Serious is { } serious ? $", {Format.Number(serious)} of them serious (death, hospitalization, disability or other serious outcome)" : "").</text>
+                }
+                else
+                {
+                    <text>FDA has received <strong>@Format.Number(ae.Reports ?? 0)</strong> medical device reports for “@ae.QueryName”: @Format.Number(ae.Deaths ?? 0) deaths, @Format.Number(ae.Injuries ?? 0) injuries, @Format.Number(ae.Malfunctions ?? 0) malfunctions.</text>
+                }
+            </p>
+            <p class="src">
+                From FDA's @(ae.Kind == "drug" ? "FAERS" : "MAUDE") database via <a href="@ae.QueryUrl">openFDA</a>, counted @ae.FetchedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture).
+                Anyone can file a report, and a report does not prove the product caused the event; counts grow with how widely a product is used. Do not stop a treatment without talking to your doctor.
+                @if (trials is not null){<text>Clinical trials: @Format.Number(trials.Studies ?? 0) studies list “@trials.QueryName” on <a href="@trials.SearchUrl">ClinicalTrials.gov</a>.</text>}
+            </p>
+        </section>
+    }
+
+    <div class="profile-row top-align">
+        @if (p.ByNature.Count > 0)
+        {
+            <section class="card grow-card" aria-labelledby="nature-h">
+                <h2 id="nature-h">What the payments were for (@p.Year)</h2>
+                <ul class="amount-list">
+                    @foreach (var n in p.ByNature)
+                    {
+                        <li><span title="@n.Nature">@Format.Nature(n.Nature) <span class="muted">· @Format.Number(n.Records)</span></span><span class="mono">@Format.ShortMoney(n.Amount)</span></li>
+                    }
+                </ul>
+            </section>
+        }
+        @if (p.TopSpecialties.Count > 0)
+        {
+            <section class="card grow-card" aria-labelledby="spec-h">
+                <h2 id="spec-h">Specialties paid the most</h2>
+                <ul class="amount-list">
+                    @foreach (var s in p.TopSpecialties)
+                    {
+                        <li><span>@s.Specialty <span class="muted">· @Format.Number(s.Providers) providers</span></span><span class="mono">@Format.ShortMoney(s.Amount)</span></li>
+                    }
+                </ul>
+                <p class="src">Active providers by their primary specialty in NPPES.</p>
+            </section>
+        }
+    </div>
+
+    @if (p.TopProviders.Count > 0)
+    {
+        <section class="card" aria-labelledby="paid-h">
+            <h2 id="paid-h">Providers paid the most</h2>
+            <p class="src">The @p.TopProviders.Count active providers with the largest general payments naming this product in @p.Year.</p>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Providers paid the most in payments naming the product</caption>
+                    <thead><tr><th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in p.TopProviders)
+                        {
+                            <tr>
+                                <td><a href="/provider/@r.Npi">@r.Name</a>@if (r.Credential is not null){<span class="muted">, @r.Credential</span>}</td>
+                                <td>@r.Specialty</td>
+                                <td>@string.Join(", ", new[] { r.City, r.State }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
+                                <td>@Format.Money(r.Amount)</td><td>@Format.Number(r.Records)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    @if (p.Research is { } research)
+    {
+        <section class="card" aria-labelledby="research-h">
+            <h2 id="research-h">Research naming it (@research.Year)</h2>
+            <p>
+                <strong>@Format.Money(research.Amount)</strong> in @Format.Number(research.Records) research payment@(research.Records == 1 ? "" : "s")
+                for @Format.Number(research.Studies) stud@(research.Studies == 1 ? "y" : "ies"), mostly to hospitals and research sites.
+            </p>
+            @if (research.TopStudies.Count > 0)
+            {
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">The largest studies</caption>
+                        <thead><tr><th scope="col">Study</th><th scope="col">Sponsor</th><th scope="col">Amount</th><th scope="col">Payments</th></tr></thead>
+                        <tbody>
+                            @foreach (var s in research.TopStudies)
+                            {
+                                <tr>
+                                    <td class="long">@(s.Study ?? s.NctId)@if (s.ClinicalTrialsUrl is not null){<text> </text><a href="@s.ClinicalTrialsUrl">@s.NctId</a>}</td>
+                                    <td>@if (s.CompanyId is not null){<a href="/company/@Uri.EscapeDataString(s.CompanyId)">@(s.CompanyName ?? s.CompanyId)</a>}</td>
+                                    <td>@Format.Money(s.Amount)</td><td>@Format.Number(s.Records)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+
+    <section class="card" aria-labelledby="record-h">
+        <h2 id="record-h">About this record</h2>
+        <dl class="facts">
+            @if (p.Category is not null){<dt>Category in the payments</dt><dd>@p.Category</dd>}
+            @if (p.Ndc is not null){<dt>NDC (drug code)</dt><dd class="mono">@p.Ndc</dd>}
+            @if (p.DeviceId is not null){<dt>Device identifier</dt><dd class="mono">@p.DeviceId</dd>}
+            <dt>Raw data</dt><dd><a href="/product/@Uri.EscapeDataString(p.Slug)/raw.json" download>JSON</a> · <a href="/api/v1/products/@Uri.EscapeDataString(p.Slug)">API</a></dd>
+        </dl>
+        <p class="src">
+            Source: CMS Open Payments, @p.Year program year. A payment from a company isn't evidence of wrongdoing. A payment can name up to five products and counts for each,
+            so amounts of different products can't be added up. Products are grouped by name as companies reported them (“Eliquis” and “ELIQUIS” are one product;
+            “Eliquis 5 mg” is another). Verify at <a href="https://openpaymentsdata.cms.gov/">openpaymentsdata.cms.gov</a>.
+        </p>
+    </section>
+</div>
