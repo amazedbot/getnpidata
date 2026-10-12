@@ -158,10 +158,14 @@ public sealed class FacilityEnrollmentSource : DatasetSource
     public const string SnfTitle = "Skilled Nursing Facility Enrollments";
     public const string HomeHealthTitle = "Home Health Agency Enrollments";
     public const string HospiceTitle = "Hospice Enrollments";
+    public const string FqhcTitle = "Federally Qualified Health Center Enrollments";
+    public const string RhcTitle = "Rural Health Clinic Enrollments";
 
-    // Catalog title → cms_facility_npi.kind.
+    // Catalog title → cms_facility_npi.kind. Health centers and rural clinics (owner's OK 2026-10-12, record quality) have no Care
+    // Compare ratings, so the facility pages leave them out; they count as a sign of current operation.
     private static readonly (string Title, string Kind)[] Files =
-        [(HospitalTitle, "hospital"), (SnfTitle, "nursing_home"), (HomeHealthTitle, "home_health"), (HospiceTitle, "hospice")];
+        [(HospitalTitle, "hospital"), (SnfTitle, "nursing_home"), (HomeHealthTitle, "home_health"), (HospiceTitle, "hospice"), (FqhcTitle, "fqhc"),
+         (RhcTitle, "rhc")];
 
     public override string Name => "cms_facility_enrollments";
 

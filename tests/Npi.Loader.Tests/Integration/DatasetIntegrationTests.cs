@@ -48,12 +48,16 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cc_hospices", "2026-08-19 Hospice_General-Information_Aug2026_2.csv | 2026-08-07 Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv"),
              ("cc_hospitals", "2026-07-22 Hospital_General_Information.csv"), ("cc_mips", "PY 2024 2026-08-18 ec_score_file.csv"),
              ("cc_nursing_homes", "2026-09-30 NH_ProviderInfo_Sep2026.csv"),
-             ("census_county_population", "vintage 2025"),
+             ("census_county_population", "vintage 2025"), ("cms_dme_suppliers", "2024-12-31 mup_dme_ry26_p05_v10_dy24_supr.csv"),
              ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"
-                 + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"),
+                 + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"
+                 + " | 2026-07-17 FQHC_Enrollments_2026.07.17.csv | 2026-07-17 RHC_Enrollments_2026.07.17.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
+             ("cms_otp_providers", "2026-10-03 OPIOID_TREATMENT_PROGRAM_PROVIDERS_10052026.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
              ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"),
+             ("cms_provider_of_services", "2026-06-30 Hospital_and_other.DATA.Q2_2026.csv | 2026-06-30 POS_iQIES.DATA.Q2_2026.csv"),
+             ("cms_revalidation", "2026-10-31 revalidation_base.csv"),
              ("drug_spending", "Part D 2024-12-31 | Part B 2024-12-31 | Medicaid 2024-12-31"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"),
              ("fda_products", "ndc 2026-10-06 | drugsfda 2026-10-06 | label 2026-10-06 | udi 2026-10-06 | 510k 2026-10-06 | pma 2026-10-06"),
              ("fda_shortages", "shortages 2026-10-09"), ("hrsa_hpsa", "HPSA 2026-10-08"),
@@ -110,9 +114,25 @@ public sealed class DatasetIntegrationTests : IDisposable
             "SELECT certified_beds, overall_rating, staffing_rating, quality_rating FROM cms_nursing_home WHERE ccn = '335001'")).Single());
 
         // Windows-1252 enrollment files load (their names contain bytes that aren't valid UTF-8).
-        Assert.Equal([("330045", "1000000038", "hospital"), ("331501", "1000000038", "hospice"), ("335001", "1000000046", "nursing_home"),
-                ("337001", "1000000038", "home_health")],
+        Assert.Equal([("330045", "1000000038", "hospital"), ("331501", "1000000038", "hospice"), ("331936", "1000000020", "fqhc"),
+                ("335001", "1000000046", "nursing_home"), ("337001", "1000000038", "home_health"), ("353982", "1000000053", "rhc")],
             await db.QueryAsync<(string, string, string)>("SELECT ccn, npi, kind FROM cms_facility_npi ORDER BY ccn"));
+
+        // Signs of current practice for the record-quality label (step 3.1): one row per NPI, rows without an NPI dropped.
+        Assert.Equal([("1000000038", "CENTER FOR COMMUNITY ALTERNATIVES,", new DateTime(2024, 5, 1))],
+            await db.QueryAsync<(string, string, DateTime)>("SELECT npi, name, effective_date FROM cms_otp_provider"));
+        Assert.Equal([("1000000004", (DateTime?)new DateTime(2027, 12, 31)), ("1000000038", null)],
+            await db.QueryAsync<(string, DateTime?)>("SELECT npi, due_date FROM medicare_revalidation ORDER BY npi")); // the latest (adjusted) date
+        Assert.Equal([("1000000038", (short)2024, (int?)238, (int?)244), ("1000000046", (short)2024, null, 15)],
+            await db.QueryAsync<(string, short, int?, int?)>("SELECT npi, data_year, beneficiaries, claims FROM medicare_dme_supplier ORDER BY npi"));
+
+        // Provider of Services: both parts, the iQIES row winning (337001 is certified there); 07 = a change of status, kept as such.
+        Assert.Equal(
+            [("330045", (sbyte)1, "00", (DateTime?)null, "11795"), ("330777", (sbyte)0, "01", new DateTime(2025, 3, 1), "11201"),
+             ("330888", (sbyte)0, "07", new DateTime(2020, 1, 1), "11201"), ("331501", (sbyte)0, null, new DateTime(2024, 6, 30), "11763"),
+             ("337001", (sbyte)1, null, null, "11788")],
+            await db.QueryAsync<(string, sbyte, string?, DateTime?, string)>(
+                "SELECT ccn, active, termination_code, termination_date, zip5 FROM cms_pos_facility ORDER BY ccn"));
     }
 
     [Fact]
@@ -715,6 +735,13 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://pdc.test/files/Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv" => "datasets/hospice_cahps_sample.csv",
                 "https://cms.test/files/HHA_Enrollments_2026.07.17.csv" => "datasets/hha_enrollments_sample.csv",
                 "https://cms.test/files/Hospice_Enrollments_2026.07.17.csv" => "datasets/hospice_enrollments_sample.csv",
+                "https://cms.test/files/FQHC_Enrollments_2026.07.17.csv" => "datasets/fqhc_enrollments_sample.csv",
+                "https://cms.test/files/RHC_Enrollments_2026.07.17.csv" => "datasets/rhc_enrollments_sample.csv",
+                "https://cms.test/files/OPIOID_TREATMENT_PROGRAM_PROVIDERS_10052026.csv" => "datasets/otp_sample.csv",
+                "https://cms.test/files/revalidation_base.csv" => "datasets/revalidation_sample.csv",
+                "https://cms.test/files/mup_dme_ry26_p05_v10_dy24_supr.csv" => "datasets/dme_supplier_sample.csv",
+                "https://cms.test/files/Hospital_and_other.DATA.Q2_2026.csv" => "datasets/pos_qies_sample.csv",
+                "https://cms.test/files/POS_iQIES.DATA.Q2_2026.csv" => "datasets/pos_iqies_sample.csv",
                 "https://cms.test/files/MUP_PHY_D24_Prov.csv" => "datasets/physician_by_provider_sample.csv",
                 "https://cms.test/files/MUP_PHY_D24_Prov_Svc.csv" => "datasets/physician_by_service_sample.csv",
                 "https://cms.test/files/mup_dpr_dy24_npi.csv" => "datasets/part_d_by_provider_sample.csv",

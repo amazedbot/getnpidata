@@ -119,15 +119,19 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
         log.Information("Overture {Area} loaded: {Points:N0} usable address keys of {Places:N0} places read, in {Seconds:N0}s", label, index.Points, index.Places, watch.Elapsed.TotalSeconds);
 
         var matches = new List<(string Key, PointMatch Match)>();
+        var listed = new List<(string Key, ListedPlace Place)>();
         foreach (var c in candidates)
         {
             if (index.Match(c.Address1, c.City, c.Zip5) is { } match)
             {
                 matches.Add((c.AddrKey, match));
             }
+
+            listed.AddRange(index.PlacesAt(c.Address1, c.Zip5).Select(p => (c.AddrKey, p)));
         }
 
         await SaveAsync(connection, matches, release, ct);
+        await SavePlacesAsync(connection, candidates.Select(c => c.AddrKey).ToList(), listed, release, ct);
         var outcome = new OvertureOutcome(release, candidates.Count,
             matches.Count(m => m.Match.Source == PointSource.Address), matches.Count(m => m.Match.Source == PointSource.Place),
             matches.Count(m => m.Match.Source == PointSource.PlaceName));
@@ -168,13 +172,16 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
         using (var command = duck.CreateCommand())
         {
             command.CommandText =
-                $"SELECT names.primary, addresses[1].freeform, addresses[1].postcode, addresses[1].locality, bbox.ymin, bbox.xmin, confidence " +
+                $"SELECT names.primary, addresses[1].freeform, addresses[1].postcode, addresses[1].locality, bbox.ymin, bbox.xmin, confidence, " +
+                "operating_status, list_max(list_transform(sources, s -> s.update_time)) " +
                 $"FROM read_parquet('{root}/theme=places/type=place/*', hive_partitioning = 1) " +
                 FormattableString.Invariant($"WHERE {inBox} AND confidence >= {options.OverturePlaceMinConfidence}");
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                index.AddPlace(Text(reader, 0), Text(reader, 1), Text(reader, 2), Text(reader, 3), Number(reader, 4), Number(reader, 5), Number(reader, 6));
+                index.AddPlace(Text(reader, 0), Text(reader, 1), Text(reader, 2), Text(reader, 3), Number(reader, 4), Number(reader, 5), Number(reader, 6),
+                    Text(reader, 7), Text(reader, 8) is { Length: >= 10 } u && DateOnly.TryParseExact(u[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var d) ? d : null);
             }
         }
 
@@ -205,6 +212,36 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
                 "INSERT INTO `address_point` (`addr_key`, `source`, `lat`, `lon`, `matched`, `release`, `matched_at`) VALUES " + string.Join(", ", values) +
                 " AS new ON DUPLICATE KEY UPDATE `source` = new.`source`, `lat` = new.`lat`, `lon` = new.`lon`, `matched` = new.`matched`, " +
                 "`release` = new.`release`, `matched_at` = new.`matched_at`",
+                ct, param: p);
+        }
+    }
+
+    /// <summary>Replaces the listed businesses of the area's practice addresses (address_place, migration 087).</summary>
+    private static async Task SavePlacesAsync(MySqlConnection connection, List<string> keys, List<(string Key, ListedPlace Place)> listed, string release,
+        CancellationToken ct)
+    {
+        foreach (var chunk in keys.Chunk(5000))
+        {
+            await Database.ExecuteAsync(connection, "DELETE FROM `address_place` WHERE `addr_key` IN @keys", ct, param: new { keys = chunk });
+        }
+
+        foreach (var chunk in listed.Chunk(1000))
+        {
+            var p = new DynamicParameters();
+            var values = new List<string>(chunk.Length);
+            for (var i = 0; i < chunk.Length; i++)
+            {
+                var (key, place) = chunk[i];
+                values.Add($"(@k{i}, @n{i}, @s{i}, @u{i}, @release)");
+                p.Add($"k{i}", key);
+                p.Add($"n{i}", place.Name.Length <= 255 ? place.Name : place.Name[..255]);
+                p.Add($"s{i}", place.OperatingStatus is { Length: <= 20 } s ? s : null);
+                p.Add($"u{i}", place.Updated?.ToDateTime(TimeOnly.MinValue));
+            }
+
+            p.Add("release", release);
+            await Database.ExecuteAsync(connection,
+                "INSERT IGNORE INTO `address_place` (`addr_key`, `name`, `operating_status`, `updated`, `release`) VALUES " + string.Join(", ", values),
                 ct, param: p);
         }
     }

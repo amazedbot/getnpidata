@@ -235,7 +235,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
     - a phone on file;
     - deactivation or reactivation history.
 
-    Shown as Current / Check / Stale with the reasons. **Done 2026-10-12 (step 3.1):** `provider_quality`, rebuilt after each load; on profiles, result badges, Verify NPIs (tabs and pills), CSV/Excel and the API, and a `quality` filter. Rules in CLAUDE.md §7 Stage 5.5 "Record quality"; the spot check of 50 stale records is step 3.5.
+    Shown as Current / Check / Stale with the reasons. **Done 2026-10-12 (step 3.1):** `provider_quality`, rebuilt after each load; on profiles, result badges, Verify NPIs (tabs and pills), CSV/Excel and the API, and a `quality` filter. Rules in CLAUDE.md §7 Stage 5.5 "Record quality"; the spot check of 50 stale records is step 3.5. **More signs (owner, 2026-10-12):** Open Payments in either of the last two years, Medicare reassignments, MIPS, facility affiliations, open business listings at the address (Overture), FQHC and rural clinic enrollments, opioid treatment programs, the Medicare revalidation list, equipment suppliers' Medicare billing; closures from Overture (permanently closed) and the Provider of Services file (terminated facilities).
   - **The change recorder widened:** secondary locations, phone, every taxonomy (not just the primary), organization name, licenses (where a state publishes them), exclusions and opt-outs as they start and end.
   - **Change pages:** "Changes in [county] this month", "New practices", "Closed or moved".
 - **Data:**
