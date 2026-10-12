@@ -494,7 +494,9 @@ public sealed class SearchQuery
     /// gender/entity filters (§11 item 6). Count first; above <see cref="SearchFilter.BroadSearchThreshold"/>
     /// use <see cref="IndexOrderPageSql"/>.
     /// </summary>
-    public bool MayBeBroad => _driverKind is null or "location" or "building" or "quality" || (_driverKind == "date" && !_hasLocationFilter);
+    // A label that keeps most providers (notStale) may be broad; a single label is sparse enough that sorting its candidates is faster
+    // than walking the name index (CA + stale: 20 s walking, 3.8 s sorting; CA + notStale: 16.8 s sorting).
+    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "quality" && Filter.Quality == RecordQuality.FilterNotStale) || (_driverKind == "date" && !_hasLocationFilter);
 
     /// <summary>
     /// The page read in sort-index order (name or NPI sorts only, else null). Fast when matches are

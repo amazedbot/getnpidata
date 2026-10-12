@@ -66,7 +66,8 @@ public class RecordQualityTests
         Assert.StartsWith("FROM (SELECT DISTINCT qs.npi FROM quality_search qs WHERE qs.label IN @qualityLabels AND ", located.From, StringComparison.Ordinal);
         Assert.DoesNotContain("provider_quality", located.From, StringComparison.Ordinal);
         Assert.Equal([3], located.Parameters.Get<IReadOnlyList<int>>("qualityLabels"));
-        Assert.True(located.MayBeBroad);
+        Assert.False(located.MayBeBroad); // sorting a sparse label's candidates beats walking the name index (CA + stale: 20 s → 3.8 s)
+        Assert.True(new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "CA", Quality = "notStale" }), null, null).MayBeBroad);
         Assert.Equal([1, 2], RecordQuality.FilterLabels("notStale"));
     }
 
