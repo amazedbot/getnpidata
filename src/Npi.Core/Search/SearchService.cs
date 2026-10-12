@@ -252,6 +252,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         var requested = npis.Select(n => n.Trim()).Where(n => n.Length > 0).Distinct(StringComparer.Ordinal).ToList();
         var valid = requested.Where(InputFormats.HasValidCheckDigit).ToList();
         var found = new Dictionary<string, ProviderSummary>(StringComparer.Ordinal);
+        Dictionary<string, DateTime?> deactivated = new(StringComparer.Ordinal), excludedSince = new(StringComparer.Ordinal), optOutEnds = new(StringComparer.Ordinal);
         if (valid.Count > 0)
         {
             await using var connection = await OpenAsync(ct);
@@ -260,12 +261,47 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             {
                 found[summary.Npi] = summary;
             }
+
+            async Task DatesAsync(Dictionary<string, DateTime?> into, string sql, List<string> list)
+            {
+                if (list.Count > 0)
+                {
+                    foreach (var (npi, date) in await connection.QueryAsync<(string, DateTime?)>(new CommandDefinition(sql, new { npis = list }, cancellationToken: ct)))
+                    {
+                        into[npi] = date;
+                    }
+                }
+            }
+
+            // Deactivated NPIs aren't in the projection; provider_deactivated (migration 077) keeps their date.
+            await DatesAsync(deactivated, "SELECT npi, deactivation_date FROM provider_deactivated WHERE npi IN @npis",
+                valid.Where(n => !found.ContainsKey(n)).ToList());
+            await DatesAsync(excludedSince, "SELECT npi, MIN(exclusion_date) FROM oig_exclusion WHERE npi IN @npis GROUP BY npi",
+                found.Values.Where(p => p.Flags.Excluded).Select(p => p.Npi).ToList());
+            await DatesAsync(optOutEnds, $"SELECT o.npi, MAX(o.end_date) FROM medicare_opt_out o WHERE o.npi IN @npis AND {EnrichmentSql.ActiveOptOut} GROUP BY o.npi",
+                found.Values.Where(p => p.Flags.OptedOutOfMedicare).Select(p => p.Npi).ToList());
         }
+
+        static DateOnly? Day(Dictionary<string, DateTime?> dates, string npi) =>
+            dates.TryGetValue(npi, out var d) && d is { } date ? DateOnly.FromDateTime(date) : null;
 
         return requested.Select(n => !InputFormats.HasValidCheckDigit(n)
                 ? new LookupRow(n, LookupStatus.Invalid, null)
-                : found.TryGetValue(n, out var p) ? new LookupRow(n, LookupStatus.Found, p) : new LookupRow(n, LookupStatus.NotFound, null))
+                : found.TryGetValue(n, out var p)
+                    ? new LookupRow(n, LookupStatus.Found, p) { ExclusionDate = Day(excludedSince, n), OptOutEndDate = Day(optOutEnds, n) }
+                    : deactivated.ContainsKey(n)
+                        ? new LookupRow(n, LookupStatus.Deactivated, null) { DeactivationDate = Day(deactivated, n) }
+                        : new LookupRow(n, LookupStatus.NotFound, null))
             .ToList();
+    }
+
+    /// <summary>When each of the given datasets (<c>reference_data</c> sources) was last loaded, for "as of" notes.</summary>
+    public async Task<IReadOnlyDictionary<string, DateTime>> GetSourceLoadDatesAsync(IReadOnlyList<string> sources, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        return (await connection.QueryAsync<(string Source, DateTime LoadedAt)>(new CommandDefinition(
+                "SELECT source, loaded_at FROM reference_data WHERE source IN @sources", new { sources }, cancellationToken: ct)))
+            .ToDictionary(r => r.Source, r => r.LoadedAt, StringComparer.Ordinal);
     }
 
     private async Task<SearchQuery> PrepareAsync(MySqlConnection connection, SearchFilter filter, CancellationToken ct)

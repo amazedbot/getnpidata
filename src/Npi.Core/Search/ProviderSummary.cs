@@ -42,14 +42,27 @@ public enum LookupStatus
     /// <summary>An active provider; <see cref="LookupRow.Provider"/> is set.</summary>
     Found,
 
-    /// <summary>Well-formed but unknown, or deactivated (deactivated NPIs are never shown).</summary>
+    /// <summary>Well-formed but not in NPPES.</summary>
     NotFound,
 
     /// <summary>Not 10 digits, or the check digit is wrong (a typo).</summary>
     Invalid,
+
+    /// <summary>Deactivated in NPPES; <see cref="LookupRow.DeactivationDate"/> says when (docs/PRODUCT_PLAN.md decision 2).</summary>
+    Deactivated,
 }
 
 /// <summary>One requested NPI and what the lookup found for it.</summary>
-public sealed record LookupRow(string Npi, LookupStatus Status, ProviderSummary? Provider);
+public sealed record LookupRow(string Npi, LookupStatus Status, ProviderSummary? Provider)
+{
+    /// <summary>When NPPES deactivated the NPI (status Deactivated).</summary>
+    public DateOnly? DeactivationDate { get; init; }
+
+    /// <summary>The earliest OIG exclusion date of an excluded provider.</summary>
+    public DateOnly? ExclusionDate { get; init; }
+
+    /// <summary>When the provider's current Medicare opt-out ends; null when not opted out or open-ended.</summary>
+    public DateOnly? OptOutEndDate { get; init; }
+}
 
 public sealed record SearchResult(IReadOnlyList<ProviderSummary> Items, int Page, int PageSize, long TotalCount, DateOnly? DataAsOf);

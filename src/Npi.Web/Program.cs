@@ -34,7 +34,11 @@ builder.Services.AddSingleton(sp => new SearchVocabularyCatalog(connectionString
 builder.Services.AddSingleton(sp => new SuggestService(connectionString, sp.GetRequiredService<SearchVocabularyCatalog>()));
 builder.Services.Configure<MapOptions>(builder.Configuration.GetSection(MapOptions.Section));
 // /search is the search page with the list builder open (docs/PRODUCT_PLAN.md step 1.3); / is the home page.
-builder.Services.AddRazorPages(o => o.Conventions.AddPageRoute("/Index", "search"));
+builder.Services.AddRazorPages(o =>
+{
+    o.Conventions.AddPageRoute("/Index", "search");
+    o.Conventions.AddPageRoute("/Verify", "lookup"); // the bulk lookup's first URL (docs/PRODUCT_PLAN.md §2.1)
+});
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));

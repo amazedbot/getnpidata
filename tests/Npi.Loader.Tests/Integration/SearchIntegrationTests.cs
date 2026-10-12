@@ -647,22 +647,39 @@ public sealed class SearchIntegrationTests : IDisposable
     public async Task Bulk_lookup_keeps_request_order_and_reports_each_npi()
     {
         await using var db = await SeededAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO oig_exclusion (npi, business_name, exclusion_type, exclusion_date) VALUES (@A, NULL, '1128b4', '2025-01-15'), (@A, NULL, '1128b4', '2023-05-01');
+            INSERT INTO medicare_opt_out (npi, specialty, effective_date, end_date, can_order_refer) VALUES (@B, 'Chiropractic', '2024-01-30', '2099-01-30', 1);
+            """, new { A, B });
         var search = Search(db);
 
-        var rows = await search.LookupAsync([E, C, "1234567890", A, E, " "], _ct);
+        var rows = await search.LookupAsync([E, C, "1234567890", A, E, " ", "1234567893", B], _ct);
 
-        Assert.Equal([(E, LookupStatus.Found), (C, LookupStatus.NotFound), ("1234567890", LookupStatus.Invalid), (A, LookupStatus.Found)],
+        Assert.Equal(
+            [(E, LookupStatus.Found), (C, LookupStatus.Deactivated), ("1234567890", LookupStatus.Invalid), (A, LookupStatus.Found),
+                ("1234567893", LookupStatus.NotFound), (B, LookupStatus.Found)],
             rows.Select(r => (r.Npi, r.Status)));
         Assert.Equal("NUÑEZ, ELENA", rows[0].Provider!.Name);
+        Assert.Equal(new DateOnly(2025, 1, 1), rows[1].DeactivationDate); // docs/PRODUCT_PLAN.md decision 2
         Assert.Equal("AMITYVILLE", rows[3].Provider!.City); // the primary location: a lookup has no location filter
+        Assert.Equal((new DateOnly(2023, 5, 1), null as DateOnly?), (rows[3].ExclusionDate, rows[3].OptOutEndDate)); // the earliest exclusion
+        Assert.Equal((null as DateOnly?, new DateOnly(2099, 1, 30)), (rows[5].ExclusionDate, rows[5].OptOutEndDate));
 
         using var csv = new MemoryStream();
         await ProviderCsv.WriteLookupAsync(rows.ToAsyncEnumerable(), csv, _ct);
         var lines = System.Text.Encoding.UTF8.GetString(csv.ToArray()).TrimStart('\uFEFF').Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-        Assert.StartsWith("Requested NPI,Lookup Status,NPI,Entity Type,Name", lines[0], StringComparison.Ordinal);
-        Assert.StartsWith($"{E},Found,{E},Individual,", lines[1], StringComparison.Ordinal);
-        Assert.Equal($"{C},Not found or deactivated", lines[2]);
-        Assert.Equal("1234567890,Invalid NPI", lines[3]);
+        Assert.StartsWith("Requested NPI,Lookup Status,Deactivation Date,OIG Exclusion Date,Medicare Opt-Out End Date,NPI,Entity Type,Name", lines[0],
+            StringComparison.Ordinal);
+        Assert.StartsWith($"{E},Active,,,,{E},Individual,", lines[1], StringComparison.Ordinal);
+        Assert.Equal($"{C},Deactivated,2025-01-01,,", lines[2]);
+        Assert.Equal("1234567890,Invalid NPI,,,", lines[3]);
+        Assert.StartsWith($"{A},Active,,2023-05-01,,{A},", lines[4], StringComparison.Ordinal);
+        Assert.Equal("1234567893,Not found,,,", lines[5]);
+
+        // The Excel download has the same columns.
+        using var xlsx = new MemoryStream();
+        Assert.Equal(6, await ProviderXlsx.WriteLookupAsync(rows.ToAsyncEnumerable(), xlsx, _ct));
     }
 
     [Fact]

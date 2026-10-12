@@ -53,7 +53,7 @@ facilities an organization runs. Counties come with population and shortage-area
 | See a provider's full record: all specialties with license numbers, all practice locations, other names, registration details (mailing address, authorized official, parent organization), other identifiers, electronic endpoints (Direct addresses, FHIR), compliance, state license status and board actions (CO, CT, DE, FL, IL, MD, NY, TX, WA), Care Compare, MIPS quality scores, facilities (hospitals with HCAHPS patient-survey stars and deaths / safety / readmission measures vs the national rate, nursing homes, home health agencies, hospices), Medicare services and prescribing, industry payments (newest year by kind; every year since 2019 with research and ownership interests; top companies over all years), and the changes recorded between NPPES updates (name, credential, primary specialty, primary address) | `/provider/{npi}`, `/api/v1/providers/{npi}` |
 | See **companies that pay providers**: what each drug or device maker paid per year, what for, which products the payments named, which specialties and which providers it paid the most, plus its FDA recalls, SEC stock listing and HHS-OIG integrity agreements; linked from every provider's payments | `/companies`, `/company/{id}`, `/api/v1/companies[/{id}]` |
 | See **products in industry payments**: for each drug, device or supply named in payments, which companies pay for it, what for, which specialties and providers they pay most, and the research studies naming it, plus what it is from FDA (drugs: generic name, ingredients, drug class, approval, other makers, approved uses and any boxed warning from the label; devices: description, FDA class, 510(k)/PMA decisions), and public data: Medicare and Medicaid spending by year, what pharmacies pay (NADAC), FDA shortages and recalls, adverse event report counts, ClinicalTrials.gov studies, and which providers paid for a drug also prescribe it to Medicare patients (counts, a sortable list and a CSV); linked from company and provider pages | `/products`, `/product/{slug}`, `/api/v1/products[/{slug}]` |
-| Look up thousands of NPIs at once (paste or upload a file) and download the details, in your order | `/lookup`, `POST /api/v1/providers/lookup[.csv]` |
+| Verify a roster: paste NPIs or upload a CSV or Excel file, see how many are active, deactivated (with the date), excluded, opted out of Medicare, not found or invalid, filter the rows, and download every row with its details | `/verify` (also `/lookup`), `POST /api/v1/providers/lookup[.csv]` |
 | County insights: population and HRSA Health Professional Shortage Areas | Search page (when a county is chosen), `/api/v1/counties/{fips}` |
 | Look up the lists behind the filters: specialty categories and subcategories, NUCC classifications and specializations, states, counties (FIPS) | `/api/v1/taxonomy/…`, `/api/v1/states/…` |
 | Check how fresh the data is and which source files it came from | Site footer, `/api/v1/meta` |
@@ -130,9 +130,13 @@ addresses are not searched. Each result row shows the location that matched.
   NPPES updates (name, credential, primary specialty, primary practice address), from October 2026 on: NPPES itself
   publishes only the current record, so there is no earlier history.
 - Results enumerated in the last 90 days carry a **New** badge.
-- **`/lookup`**: bulk NPI lookup. Paste NPIs or upload a CSV or text file (up to 50,000 NPIs, 10 MB); every
-  10-digit number counts. The CSV has one row per NPI, in your order, with a Lookup Status (Found, Not found or
-  deactivated, Invalid NPI — a wrong check digit, usually a typo).
+- **`/verify`** (also `/lookup`): verify NPIs. Paste NPIs or upload a CSV, text or Excel file (up to 50,000 NPIs,
+  10 MB); every 10-digit number counts, or, when the first row names a column with "NPI", only that column. The page
+  shows a summary (active, deactivated, OIG excluded, opted out of Medicare, not found or invalid), tabs to filter the
+  rows ("Needs attention" first), each NPI's result ("Deactivated on [date]", "On the OIG exclusion list since …",
+  "Opted out of Medicare until …") and the sources' dates. The CSV and Excel downloads have one row per NPI, in your
+  order, with a Lookup Status (Active, Deactivated, Not found, Invalid NPI — a wrong check digit, usually a typo), the
+  deactivation, exclusion and opt-out end dates, and the summary columns.
 - **`/export.csv?…`**: the CSV for any search (UTF-8 with BOM, so Excel shows accents correctly). It's named
   `npi_search_<yyyyMMdd>.csv`.
 - **Footer**: the date the data is current through and the number of active providers.
@@ -156,7 +160,7 @@ problem documents. CORS is open for GET, so browser apps on any site can call it
 | `GET /api/v1/providers?…filters…` | `{ items, page, pageSize, totalCount, dataAsOf }` |
 | `GET /api/v1/providers.csv?…filters…` | Every match as CSV (paging ignored), streamed |
 | `GET /api/v1/providers/{npi}` | Full record, including the enrichment sections. `404` if unknown or deactivated |
-| `POST /api/v1/providers/lookup` | Body `{ "npis": [...] }`, up to 1,000. `{ items: [{ npi, status, provider }] }`, one per requested NPI in order; `status` is `found`, `notFound` or `invalid` |
+| `POST /api/v1/providers/lookup` | Body `{ "npis": [...] }`, up to 1,000. `{ items: [{ npi, status, provider, deactivationDate, exclusionDate, optOutEndDate }] }`, one per requested NPI in order; `status` is `found`, `deactivated`, `notFound` or `invalid` |
 | `POST /api/v1/providers/lookup.csv` | The same, as CSV |
 | `GET /api/v1/taxonomy/categories` | The plain specialty categories |
 | `GET /api/v1/taxonomy/categories/{category}/subcategories` | Subcategories of one category |
