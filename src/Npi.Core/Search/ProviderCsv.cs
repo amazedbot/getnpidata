@@ -43,16 +43,35 @@ public static class ProviderCsv
     }
 
     /// <summary>
-    /// Bulk lookup results (Stage 5.5 item 8): "Requested NPI" and "Lookup Status" columns, then the summary
-    /// columns (empty when the NPI wasn't found). One row per requested NPI, in request order.
+    /// The bulk lookup columns (Stage 5.5 item 8, docs/PRODUCT_PLAN.md step 1.7): "Requested NPI", "Lookup Status", the
+    /// deactivation, exclusion and opt-out end dates, then the summary columns (empty when the NPI isn't active).
     /// </summary>
+    public static readonly string[] LookupHeader =
+        ["Requested NPI", "Lookup Status", "Deactivation Date", "OIG Exclusion Date", "Medicare Opt-Out End Date", .. Header];
+
+    /// <summary>The lookup status as written in the CSV and Excel files.</summary>
+    public static string StatusLabel(LookupStatus status) => status switch
+    {
+        LookupStatus.Found => "Active",
+        LookupStatus.Deactivated => "Deactivated",
+        LookupStatus.NotFound => "Not found",
+        _ => "Invalid NPI",
+    };
+
+    /// <summary>One lookup row's values, in <see cref="LookupHeader"/> order.</summary>
+    public static IEnumerable<string?> LookupValues(LookupRow row)
+    {
+        static string? Date(DateOnly? d) => d?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        string?[] head = [row.Npi, StatusLabel(row.Status), Date(row.DeactivationDate), Date(row.ExclusionDate), Date(row.OptOutEndDate)];
+        return row.Provider is { } p ? head.Concat(ProviderColumns.SummaryColumns.Select(c => c.Value(p))) : head;
+    }
+
+    /// <summary>Bulk lookup results with <see cref="LookupHeader"/>: one row per requested NPI, in request order.</summary>
     public static async Task<long> WriteLookupAsync(IAsyncEnumerable<LookupRow> rows, Stream output, CancellationToken ct)
     {
         await using var writer = new StreamWriter(output, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), 1 << 16, leaveOpen: true);
         await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
-        csv.WriteField("Requested NPI");
-        csv.WriteField("Lookup Status");
-        foreach (var h in Header)
+        foreach (var h in LookupHeader)
         {
             csv.WriteField(h);
         }
@@ -61,16 +80,9 @@ public static class ProviderCsv
         long count = 0;
         await foreach (var row in rows.WithCancellation(ct))
         {
-            csv.WriteField(row.Npi);
-            csv.WriteField(row.Status switch
+            foreach (var value in LookupValues(row))
             {
-                LookupStatus.Found => "Found",
-                LookupStatus.NotFound => "Not found or deactivated",
-                _ => "Invalid NPI",
-            });
-            if (row.Provider is { } provider)
-            {
-                WriteSummary(csv, provider);
+                csv.WriteField(value);
             }
 
             await csv.NextRecordAsync();
@@ -82,13 +94,5 @@ public static class ProviderCsv
 
         await csv.FlushAsync();
         return count;
-    }
-
-    private static void WriteSummary(CsvWriter csv, ProviderSummary r)
-    {
-        foreach (var c in ProviderColumns.SummaryColumns)
-        {
-            csv.WriteField(c.Value(r));
-        }
     }
 }

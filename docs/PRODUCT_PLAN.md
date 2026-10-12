@@ -2,7 +2,7 @@
 
 Status: **approved by the owner on 2026-10-11**, with the decisions recorded in §6. CLAUDE.md carries the new direction.
 The work goes one phase (and one step) at a time; each step is committed, summarized, and waits for the owner's "go".
-Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages). Next: **1.7, verify NPIs**.
+Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs). Next: **1.8, find care**.
 
 **Vision.** getnpidata is the affordable answer layer on top of free government data. It goes deeper than free lookup
 tools and costs a small fraction of what enterprise vendors charge. It answers questions instead of dumping data.
@@ -172,7 +172,7 @@ The menu is a sidebar on desktop (a menu button on phones). Companies and produc
 | 1.4 | Clinician profile: avatar, one-sentence summary, map preview, specialty in plain words, cards, sections in question order, raw-data download; the minimal "Deactivated on [date]" status page. **Done 2026-10-11:** summary card with avatar, summary sentence, status chips, Copy NPI, raw data (JSON/CSV), Call/Directions; static OSM map preview; plain-language specialty descriptions for every category and subcategory; sections in question order with sources; `provider_deactivated` (migration 077) and the status page | T1 under 10 s on desktop and phone |
 | 1.5 | Organization, facility and group profiles. **Done 2026-10-11:** Medicare enrollment data added (owner's OK: organization NPI ↔ group PAC ID ↔ clinicians); `/group/{pacId}`, `/facility/{ccn}`, organization NPIs list their clinicians; clinician pages link groups and facilities; CSV of every clinician | T5 test script passes |
 | 1.6 | Area pages (state, county). **Done 2026-10-11:** `/area`, `/area/{state}`, `/area/{state}/{county}` with a specialty picker; counts and per 100,000 vs state and US precomputed after each projection (`area_provider_count`); new in 90 days, top cities, shortage areas, hospitals, changes; every number links to its list; "Areas" in the menu | T4 test script passes |
-| 1.7 | Verify NPIs: on-screen summary, filterable results ("Deactivated on [date]" included), download | T3 test script passes |
+| 1.7 | Verify NPIs: on-screen summary, filterable results ("Deactivated on [date]" included), download. **Done 2026-10-11:** `/verify` (and `/lookup`): upload CSV, text or Excel, or paste; summary tiles; tabs (needs attention, each status); results with deactivation, exclusion and opt-out dates; sources with load dates; CSV and Excel of every row. Name/specialty/state matching, changes since a date and the PDF report stay in Phase 4 | T3 test script passes |
 | 1.8 | Find care (patients) | A first-time user finds a nearby specialist in under 60 s |
 | 1.9 | API developer page; Azure Application Insights across the site and API, with a privacy notice; accessibility and mobile pass; README and CLAUDE.md | Lighthouse ≥ 90 for accessibility and performance on the main pages; all old URLs resolve |
 

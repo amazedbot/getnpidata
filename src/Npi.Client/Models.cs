@@ -1537,11 +1537,14 @@ public enum LookupStatus
     /// <summary>An active provider; <see cref="LookupRow.Provider"/> is set.</summary>
     Found,
 
-    /// <summary>Unknown, or deactivated (deactivated NPIs are never shown).</summary>
+    /// <summary>Not in NPPES.</summary>
     NotFound,
 
     /// <summary>Not 10 digits, or the check digit is wrong.</summary>
     Invalid,
+
+    /// <summary>Deactivated in NPPES; <see cref="LookupRow.DeactivationDate"/> says when.</summary>
+    Deactivated,
 }
 
 /// <summary>One requested NPI in a bulk lookup.</summary>
@@ -1552,6 +1555,15 @@ public sealed class LookupRow
     public LookupStatus Status { get; set; }
 
     public ProviderSummary? Provider { get; set; }
+
+    /// <summary>When NPPES deactivated the NPI (status <see cref="LookupStatus.Deactivated"/>).</summary>
+    public DateTime? DeactivationDate { get; set; }
+
+    /// <summary>The earliest OIG exclusion date of an excluded provider.</summary>
+    public DateTime? ExclusionDate { get; set; }
+
+    /// <summary>When the provider's current Medicare opt-out ends; null when not opted out or open-ended.</summary>
+    public DateTime? OptOutEndDate { get; set; }
 }
 
 /// <summary>The API's bulk lookup response.</summary>

@@ -9,7 +9,7 @@
     {
         ("Search & lists", "/search", path == "/" || Under("/search") || Under("/provider/") || Under("/group/") || Under("/facility/")),
         ("Map", "/map", Under("/map")),
-        ("Verify NPIs", "/lookup", Under("/lookup")),
+        ("Verify NPIs", "/verify", Under("/verify") || path.Equals("/lookup", StringComparison.OrdinalIgnoreCase)),
         ("Areas", "/area", Under("/area")),
         ("Companies & products", "/companies", Under("/compan") || Under("/product")),
         ("Developers & API", "/swagger", false),

@@ -15,7 +15,15 @@ public static class ProviderXlsx
 
     /// <param name="output">Written synchronously by the zip archive: a file or memory stream, not a response body.</param>
     /// <returns>The number of providers written.</returns>
-    public static async Task<long> WriteAsync(IAsyncEnumerable<ProviderSummary> rows, Stream output, IReadOnlyList<ProviderColumn> columns, CancellationToken ct)
+    public static Task<long> WriteAsync(IAsyncEnumerable<ProviderSummary> rows, Stream output, IReadOnlyList<ProviderColumn> columns, CancellationToken ct) =>
+        WriteAsync(rows, output, columns.Select(c => c.Header).ToList(), r => columns.Select(c => c.Value(r)), ct);
+
+    /// <summary>Bulk lookup results (docs/PRODUCT_PLAN.md step 1.7) with the CSV's columns (<see cref="ProviderCsv.LookupHeader"/>).</summary>
+    public static Task<long> WriteLookupAsync(IAsyncEnumerable<LookupRow> rows, Stream output, CancellationToken ct) =>
+        WriteAsync(rows, output, ProviderCsv.LookupHeader, ProviderCsv.LookupValues, ct);
+
+    private static async Task<long> WriteAsync<T>(IAsyncEnumerable<T> rows, Stream output, IReadOnlyList<string> header, Func<T, IEnumerable<string?>> values,
+        CancellationToken ct)
     {
         using var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true);
         Part(zip, "[Content_Types].xml",
@@ -48,7 +56,7 @@ public static class ProviderXlsx
             xml.WriteEndElement();
             xml.WriteEndElement();
             xml.WriteStartElement("sheetData", ns);
-            Row(xml, ns, columns.Select(c => (string?)c.Header), header: true);
+            Row(xml, ns, header, header: true);
             await foreach (var r in rows.WithCancellation(ct))
             {
                 if (count == MaxRows)
@@ -56,7 +64,7 @@ public static class ProviderXlsx
                     break;
                 }
 
-                Row(xml, ns, columns.Select(c => c.Value(r)), header: false);
+                Row(xml, ns, values(r), header: false);
                 count++;
             }
 

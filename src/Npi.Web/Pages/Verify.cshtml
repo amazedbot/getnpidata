@@ -1,0 +1,137 @@
+@page "/verify"
+@using System.Globalization
+@using Npi.Core.Search
+@model VerifyModel
+@inject GeographyCatalog Geography
+@{
+    ViewData["Title"] = "Verify NPIs";
+    static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
+    static string Day(DateTime? d) => d?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown";
+    var rows = Model.Rows;
+    var c = Model.Counts;
+    var pages = (Model.ShownTotal + VerifyModel.RowsPerPage - 1) / VerifyModel.RowsPerPage;
+}
+
+<div class="profile verify">
+    <div>
+        <h1>Verify NPIs</h1>
+        <p class="lede">Check a roster against the latest federal data: active or deactivated, OIG exclusions, Medicare opt-out and order-and-refer eligibility. Free, up to @N(VerifyModel.MaxNpis) NPIs at a time.</p>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="card verify-input" aria-labelledby="list-h">
+        <h2 id="list-h" class="visually-hidden">Your list</h2>
+        @if (Model.Error is not null)
+        {
+            <p class="error" role="alert">@Model.Error</p>
+        }
+        <div class="verify-fields">
+            <div class="drop">
+                <svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
+                <label for="Upload">Upload a CSV, text or Excel file</label>
+                <input id="Upload" name="Upload" type="file" accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain" />
+                <span class="src">Every 10-digit number is checked, in order; when the first row names an NPI column, only that column. Up to @(VerifyModel.MaxUploadBytes / 1_000_000) MB.</span>
+            </div>
+            <div class="paste">
+                <label for="Npis">…or paste NPIs (any separators)</label>
+                <textarea id="Npis" name="Npis" rows="6" placeholder="1003000126, 1234567893 …"></textarea>
+                <button type="submit">Check</button>
+            </div>
+        </div>
+    </form>
+
+    @if (rows is not null)
+    {
+        <form method="post" id="results" class="verify-results">
+            <input type="hidden" name="List" value="@Model.List" />
+            <input type="hidden" name="ListName" value="@Model.ListName" />
+            <input type="hidden" name="Tab" value="@Model.CurrentTab" />
+
+            <section aria-labelledby="sum-h" class="verify-summary">
+                <div class="card-head">
+                    <h2 id="sum-h">@(Model.ListName is { } name ? name + ": " : "")@N(rows.Count) @(rows.Count == 1 ? "NPI" : "NPIs") checked</h2>
+                    <div class="area-actions">
+                        <button type="submit" class="secondary" asp-page-handler="Csv">Download CSV</button>
+                        <button type="submit" class="secondary" asp-page-handler="Xlsx">Download Excel</button>
+                    </div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat good"><span class="label">Active</span><strong>@N(c["active"])</strong></div>
+                    <div class="stat @(c["deactivated"] > 0 ? "bad" : null)"><span class="label">Deactivated</span><strong>@N(c["deactivated"])</strong></div>
+                    <div class="stat @(c["excluded"] > 0 ? "bad" : null)"><span class="label">Excluded (OIG)</span><strong>@N(c["excluded"])</strong></div>
+                    <div class="stat @(c["optedout"] > 0 ? "warned" : null)"><span class="label">Opted out of Medicare</span><strong>@N(c["optedout"])</strong></div>
+                    <div class="stat @(c["notfound"] + c["invalid"] > 0 ? "warned" : null)"><span class="label">Not found or invalid</span><strong>@N(c["notfound"] + c["invalid"])</strong>
+                        @if (c["invalid"] > 0){<span class="small">@N(c["invalid"]) with a wrong check digit</span>}</div>
+                </div>
+                @if (Model.Medicare.Individuals > 0)
+                {
+                    <p class="muted small">Of @N(Model.Medicare.Individuals) active individuals, @N(Model.Medicare.OrderRefer) can order and refer for Medicare. @N(Model.Medicare.BilledMedicare) of the active NPIs billed Medicare in the latest data year.</p>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="rows-h">
+                <h2 id="rows-h" class="visually-hidden">Results</h2>
+                <div class="tabs" role="group" aria-label="Show">
+                    @foreach (var (key, label) in VerifyModel.Tabs)
+                    {
+                        if (c[key] == 0 && key is not ("all" or "attention"))
+                        {
+                            continue;
+                        }
+                        <button type="submit" name="Show" value="@key" class="tab" aria-pressed="@(key == Model.CurrentTab ? "true" : "false")">@label · @N(c[key])</button>
+                    }
+                </div>
+
+                @if (Model.ShownTotal == 0)
+                {
+                    <p class="muted">Nothing needs attention: every NPI is active, not excluded and not opted out.</p>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table>
+                            <caption class="visually-hidden">@VerifyModel.Tabs.First(t => t.Key == Model.CurrentTab).Label</caption>
+                            <thead>
+                                <tr><th scope="col">#</th><th scope="col">NPI</th><th scope="col">Name in NPPES</th><th scope="col">Specialty</th><th scope="col">Location</th><th scope="col">Updated</th><th scope="col">Result</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var (number, row) in Model.Shown)
+                                {
+                                    var p = row.Provider;
+                                    <tr>
+                                        <td class="mono">@number</td>
+                                        <td class="mono">@if (row.Status is LookupStatus.Found or LookupStatus.Deactivated){<a href="/provider/@row.Npi">@row.Npi</a>}else{@row.Npi}</td>
+                                        <td>@if (p is not null){<a href="/provider/@p.Npi">@p.Name</a>@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}}else{<span class="muted">—</span>}</td>
+                                        <td>@(p?.PlainSpecialty ?? p?.PrimarySpecialty)</td>
+                                        <td>@(p is null ? null : string.Join(", ", new[] { p.City, p.State }.Where(s => !string.IsNullOrEmpty(s))))</td>
+                                        <td class="nowrap">@p?.LastUpdateDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</td>
+                                        <td><ul class="pills">@foreach (var (text, style) in VerifyModel.Results(row)){<li class="pill @style">@text</li>}</ul></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (pages > 1)
+                    {
+                        <div class="pager">
+                            @if (Model.PageNumber > 1){<button type="submit" name="p" value="@(Model.PageNumber - 1)" class="secondary">Previous</button>}
+                            <span>Rows @N((Model.PageNumber - 1) * VerifyModel.RowsPerPage + 1)–@N(Math.Min(Model.PageNumber * VerifyModel.RowsPerPage, Model.ShownTotal)) of @N(Model.ShownTotal)</span>
+                            @if (Model.PageNumber < pages){<button type="submit" name="p" value="@(Model.PageNumber + 1)" class="secondary">Next</button>}
+                        </div>
+                    }
+                }
+                @{ var version = await Geography.GetDataVersionAsync(HttpContext.RequestAborted); }
+                <p class="src">Sources: NPPES as of @Day(version?.AsOfDate) (deactivations: @(version?.DeactivationFile ?? "unknown"))@foreach (var (source, label) in VerifyModel.Sources){<text> · @label, loaded @Day(Model.SourceDates.TryGetValue(source, out var d) ? d : null)</text>}. The downloads have every row with the same columns as the search CSV, plus the status and dates.</p>
+            </section>
+        </form>
+    }
+    else
+    {
+        <section class="muted">
+            <p>
+                Each NPI gets a status: <em>Active</em>, <em>Deactivated on [date]</em>, <em>Not found</em> or <em>Invalid</em> (wrong check digit, usually a typo).
+                Active NPIs are also checked against the OIG exclusion list, Medicare opt-outs and Medicare order-and-refer eligibility.
+            </p>
+            <p>Programs can use <code>POST /api/v1/providers/lookup</code> (JSON) or <code>/api/v1/providers/lookup.csv</code>; see the <a href="/swagger">API docs</a>.</p>
+        </section>
+    }
+</div>
