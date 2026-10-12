@@ -9,6 +9,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Git-ignored local overrides (connection strings for dev); production uses App Service configuration.
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
+// Azure Application Insights (docs/PRODUCT_PLAN.md decision 7, step 1.9), described on /privacy. Off unless a connection
+// string is configured (App Service: APPLICATIONINSIGHTS_CONNECTION_STRING). Query strings (names, ZIPs and other search
+// terms) and client addresses are removed before anything is sent.
+if (Telemetry.ConnectionString(builder.Configuration) is { } insights)
+{
+    Telemetry.Add(builder.Services, insights);
+}
+
 // The site reads the search projection. Production: App Service connection string "RemoteMySql"
 // (CLAUDE.md §7 Stage 6.2). Locally it points at workplace via user-secrets (read-only login, §8).
 var connectionString = builder.Configuration.GetConnectionString("RemoteMySql");

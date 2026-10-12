@@ -14,6 +14,13 @@ public class MapModel(TaxonomyCatalog taxonomy, MapService maps, CredentialCatal
 {
     public MapOptions Map => mapOptions.Value;
 
+    /// <summary>The tile server's origin ("https://tile.openstreetmap.org"), for a preconnect hint; null without tiles.</summary>
+    public string? TileOrigin =>
+        Uri.TryCreate(Map.TileUrl.Replace("{z}", "0", StringComparison.Ordinal).Replace("{x}", "0", StringComparison.Ordinal)
+            .Replace("{y}", "0", StringComparison.Ordinal).Replace("{s}", "a", StringComparison.Ordinal), UriKind.Absolute, out var uri)
+            ? uri.GetLeftPart(UriPartial.Authority)
+            : null;
+
     public FilterFields Fields { get; private set; } = new(new SearchFilter(), [], [], new Dictionary<string, string[]>());
 
     /// <summary>The area to open on: the bbox in the URL, else the area of the search's location filters; null = the whole country.</summary>

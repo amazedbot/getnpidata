@@ -69,10 +69,9 @@ a:hover { color: var(--accent-hover); }
 .side-nav { display: flex; flex-direction: column; gap: 0.15rem; }
 .side-nav a { display: block; padding: 0.6rem 0.75rem; border-radius: 8px; color: var(--on-green); text-decoration: none; font-weight: 500; }
 .side-nav a:hover, .side-nav a.current { background: var(--green-2); color: #FFFFFF; }
-.side-nav.closed { display: none; }
 .side-note { margin: auto 0 0; padding: 1rem 0.75rem 0; border-top: 1px solid #2A5A4E; font-size: 0.875rem; color: #A9C4B9; }
 .side-note strong { color: #FFFFFF; font-weight: 600; }
-.menu-toggle { background: transparent; border: 0; color: #FFFFFF; padding: 0.5rem; min-width: 2.75rem; min-height: 2.75rem; cursor: pointer; }
+.menu-toggle { display: none; align-items: center; justify-content: center; background: transparent; border: 0; color: #FFFFFF; padding: 0.5rem; min-width: 2.75rem; min-height: 2.75rem; cursor: pointer; }
 .menu-toggle:hover { background: var(--green-2); color: #FFFFFF; }
 
 .content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
@@ -90,6 +89,8 @@ main { padding: 1.5rem 2rem 2.5rem; max-width: 80rem; width: 100%; }
     .side { flex: 0 0 auto; padding: 0.4rem 0.75rem; }
     .brand { padding: 0.25rem; }
     .side-nav { flex-direction: row; flex-wrap: wrap; padding-bottom: 0.4rem; }
+    .js .menu-toggle { display: inline-flex; }
+    .js .side-nav:not(.open) { display: none; }
     .side-note { display: none; }
     .topbar { padding: 0.6rem 1rem; }
     main { padding: 1rem 1rem 2rem; }
@@ -518,3 +519,19 @@ main.care-main { padding-top: 1.75rem; padding-bottom: 3.5rem; display: flex; fl
     .care-form { padding: 1.1rem; }
     .care-bar, .care-hero, main.care-main { padding-left: 1rem; padding-right: 1rem; }
 }
+
+/* API guide (docs/PRODUCT_PLAN.md step 1.9). */
+.dev-head h1 { margin-bottom: 0.4rem; }
+.dev-head .lede { max-width: 48rem; }
+.developers pre { margin: 0 0 1rem; padding: 0.9rem 1.1rem; border-radius: 10px; background: #0F1F1B; color: #DCEBE5; font-family: var(--mono); font-size: 0.85rem; line-height: 1.6; overflow-x: auto; white-space: pre; }
+.developers pre code { font-family: inherit; color: inherit; background: none; }
+.developers .card p { margin: 0 0 0.6rem; }
+.dev-side { flex: 1 1 18rem; min-width: 0; display: flex; flex-direction: column; gap: 1.1rem; }
+.ep-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 0.25rem 2rem; }
+.ep-groups h3 { margin: 0.6rem 0 0.25rem; }
+.ep-list { list-style: none; margin: 0; padding: 0; }
+.ep-list li { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 0.2rem 0.75rem; padding: 0.55rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.ep-method { font-family: var(--mono); font-size: 0.78rem; font-weight: 500; color: var(--green); background: #E8F1ED; border-radius: 5px; padding: 0.1rem 0; text-align: center; align-self: start; }
+.prose { max-width: 48rem; }
+.prose .card ul { padding-left: 1.2rem; line-height: 1.55; }
+.prose .card li { margin-bottom: 0.4rem; }

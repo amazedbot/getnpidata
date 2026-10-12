@@ -17,6 +17,7 @@ loader PC publishes the search projection to the Azure database; the site reads 
 | Database | `npi` | `utf8mb4` / `utf8mb4_0900_ai_ci` |
 | App Service plan | `plan-getnpidata` | Linux, **B1** |
 | Web app | `getnpidata` (globally unique; becomes `<name>.azurewebsites.net`) | Runtime .NET 10, HTTPS only, Always On, health check `/health` |
+| Application Insights (optional) | `appi-getnpidata` | Workspace-based, with a Log Analytics workspace `log-getnpidata` in the same group; retention 90 days. Usage measurement (docs/PRODUCT_PLAN.md decision 7), described on `/privacy` |
 
 ### Rough monthly cost (East US, pay-as-you-go, Oct 2026 list prices; verify in the Azure pricing calculator)
 
@@ -25,6 +26,7 @@ loader PC publishes the search projection to the Azure database; the site reads 
 | App Service B1 Linux | 13 |
 | MySQL B1ms compute | 12–15 |
 | MySQL storage 32 GB | 4 |
+| Application Insights (server-side requests only; the first 5 GB a month are free, then ≈ $2.30/GB; 90 days' retention included) | ≈ 0 at launch traffic |
 | **Total** | **≈ 30** |
 
 Backup storage up to the provisioned storage size is included. Scale up only if the Stage 3
@@ -75,6 +77,7 @@ Store the passwords in a password manager. Never commit them.
   `Api__PermitLimit` (requests per client IP per window, default 60) and `Api__WindowSeconds` (default 60).
   To require API keys later: `Api__RequireKey=true` plus one or more `Api__Keys__0`, `Api__Keys__1`, …
   (secrets; the site refuses to start when keys are required but none are set).
+- **Application Insights:** set `APPLICATIONINSIGHTS_CONNECTION_STRING` (Application settings) to the resource's connection string; without it the site sends nothing. The site sends request paths, status codes, durations, database calls and errors, never query strings, client addresses or browser details (`src/Npi.Web/Telemetry.cs`); keep `/privacy` in step if that changes. Set a daily cap (e.g. 1 GB) on the workspace so a traffic spike can't run up a bill.
 - **Configuration → General:** HTTPS only = On, Always On = On, minimum TLS 1.2.
 - **Health check:** path `/health`.
 - **Custom domain:** optional; add a CNAME + managed certificate once the owner picks a name.

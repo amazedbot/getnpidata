@@ -12,7 +12,7 @@
         ("Verify NPIs", "/verify", Under("/verify") || path.Equals("/lookup", StringComparison.OrdinalIgnoreCase)),
         ("Areas", "/area", Under("/area")),
         ("Companies & products", "/companies", Under("/compan") || Under("/product")),
-        ("Developers & API", "/swagger", false),
+        ("Developers & API", "/developers", Under("/developers")),
         ("Find care (patients)", "/find-care", false),
     };
 }
@@ -24,6 +24,7 @@
     <meta name="theme-color" content="#12362F" />
     <meta name="color-scheme" content="light" />
     <title>@ViewData["Title"] – getnpidata</title>
+    <script>document.documentElement.classList.add("js")</script>
     @await RenderSectionAsync("Head", required: false)
     <link rel="preload" href="/fonts/source-sans-3-400-700-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/source-serif-4-600-700-latin.woff2" as="font" type="font/woff2" crossorigin />
@@ -35,7 +36,7 @@
         <aside class="side">
             <div class="side-top">
                 <a class="brand" href="/">getnpidata</a>
-                <button type="button" class="menu-toggle" aria-expanded="false" aria-controls="site-nav" hidden>
+                <button type="button" class="menu-toggle" aria-expanded="false" aria-controls="site-nav">
                     <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
                     <span class="visually-hidden">Menu</span>
                 </button>
@@ -79,6 +80,7 @@
                     Census, HRSA, FDA and state licensing boards. This is public information; deactivated NPIs are never listed as active.
                     Counties via the HUD USPS ZIP–County crosswalk, specialties via the NUCC Health Care Provider Taxonomy.
                 </p>
+                <p><a href="/privacy">Privacy</a> · <a href="/developers">API</a> · <a href="/find-care">Find care (patients)</a></p>
             </footer>
         </div>
     </div>
