@@ -28,6 +28,7 @@ builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
 builder.Services.AddSingleton(_ => new AreaProfileService(connectionString));
 builder.Services.AddSingleton(_ => new MapService(connectionString));
+builder.Services.AddSingleton(sp => new CareFinder(connectionString, sp.GetRequiredService<SearchService>()));
 builder.Services.AddSingleton(_ => new CompanyService(connectionString));
 builder.Services.AddSingleton(_ => new ProductService(connectionString));
 builder.Services.AddSingleton(sp => new SearchVocabularyCatalog(connectionString, sp.GetRequiredService<TaxonomyCatalog>()));

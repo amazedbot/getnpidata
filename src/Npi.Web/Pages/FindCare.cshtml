@@ -1,0 +1,176 @@
+@page "/find-care"
+@using System.Globalization
+@using Npi.Core.Search
+@using Microsoft.Extensions.Options
+@model FindCareModel
+@inject IOptions<MapOptions> MapOptions
+@{
+    Layout = "_FindCareLayout";
+    ViewData["Title"] = Model.Chosen is { } c && Model.Results is not null ? $"{c.Plural} near {Model.Zip}" : "Find care near you";
+    var needKey = Model.Need ?? (Model.Specialty is not null ? "other" : null);
+    var categories = SpecialtyCategories.Default.Categories.Where(cat => cat.Name != SpecialtyCategories.FallbackCategory);
+    var results = Model.Results;
+    var pages = results is null ? 0 : (results.Items.Count + FindCareModel.PerPage - 1) / FindCareModel.PerPage;
+    string submitLabel = Model.Chosen is { } chosen && Model.Zip is { Length: 5 } ? $"Show {chosen.Plural.ToLowerInvariant()} near {Model.Zip}" : "Show care near me";
+}
+
+@section Scripts {
+    <script src="~/js/find-care.js" asp-append-version="true" defer></script>
+}
+
+<form method="get" action="/find-care" class="care-form">
+    @if (Model.Error is not null)
+    {
+        <p class="error" role="alert">@Model.Error</p>
+    }
+    <fieldset>
+        <legend>1. What kind of care?</legend>
+        <div class="needs">
+            @foreach (var n in CareFinder.Needs)
+            {
+                <input type="radio" name="need" value="@n.Key" id="need-@n.Key" checked="@(needKey == n.Key)" data-plural="@n.Plural" />
+                <label for="need-@n.Key" class="need">@n.Label</label>
+            }
+            <input type="radio" name="need" value="other" id="need-other" checked="@(needKey == "other")" />
+            <label for="need-other" class="need">Something else…</label>
+        </div>
+        <div class="other-pick">
+            <label for="specialty">Choose the kind of care</label>
+            <select id="specialty" name="specialty">
+                <option value="">Choose…</option>
+                @foreach (var cat in categories)
+                {
+                    <optgroup label="@cat.Name">
+                        <option value="@cat.Name" selected="@(Model.Specialty == cat.Name)">@cat.Title (all)</option>
+                        @foreach (var s in cat.Subcategories.Where(s => s.Name != SpecialtyCategories.FallbackSubcategory))
+                        {
+                            var value = cat.Name + "|" + s.Name;
+                            <option value="@value" selected="@(Model.Specialty == value)">@s.Title</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+    </fieldset>
+
+    <div class="where">
+        <label for="zip" class="q">2. Where?</label>
+        <div class="where-row">
+            <input id="zip" name="zip" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" placeholder="ZIP code" value="@Model.Zip" />
+            <button type="button" class="secondary" id="near-me" hidden>Use my location</button>
+        </div>
+        <p class="small muted" id="near-me-status" role="status"></p>
+    </div>
+
+    <fieldset>
+        <legend>3. Anything that matters to you? <span class="muted">(optional)</span></legend>
+        <div class="prefs">
+            <label><input type="checkbox" name="medicare" value="true" checked="@Model.Medicare" /> Takes Medicare</label>
+            <label><input type="checkbox" name="video" value="true" checked="@Model.Video" /> Offers video visits</label>
+            <label><input type="radio" name="gender" value="" checked="@(Model.Gender is null)" /> Anyone</label>
+            <label><input type="radio" name="gender" value="F" checked="@(Model.Gender == "F")" /> A woman</label>
+            <label><input type="radio" name="gender" value="M" checked="@(Model.Gender == "M")" /> A man</label>
+        </div>
+    </fieldset>
+
+    <button type="submit" class="care-submit" id="care-submit">@submitLabel</button>
+</form>
+
+@if (results is not null && Model.Chosen is { } need)
+{
+    <section aria-labelledby="res-h" class="care-results">
+        <h2 id="res-h">@need.Plural near @Model.Zip</h2>
+        <p class="care-note">Being listed doesn't mean they're taking new patients or are in your insurance plan. Call to check before you go.</p>
+
+        @if (results.Items.Count == 0)
+        {
+            <p>We didn't find any within @results.RadiusMiles miles. Try fewer preferences, or another kind of care.</p>
+        }
+        else
+        {
+            <p class="muted">
+                @(results.More ? "Many" : results.Items.Count.ToString("N0", CultureInfo.InvariantCulture)) within @results.RadiusMiles miles, nearest first.
+                @if (results.RadiusMiles > 10){<text>There were few closer, so we looked farther.</text>}
+                @if (Model.Medicare){<text> "Takes Medicare" means Medicare lists them as accepting its approved amount.</text>}
+            </p>
+
+            @if (Model.Map is { } map)
+            {
+                <div class="care-map">
+                    <a class="static-map" href="@Model.MapLink()" aria-label="See them on a map">
+                        @foreach (var t in map.Tiles)
+                        {
+                            <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
+                                 style="left:@(StaticMap.Css(t.LeftPercent))%;top:@(StaticMap.Css(t.TopPercent))%;width:@(StaticMap.Css(t.WidthPercent))%;height:@(StaticMap.Css(t.HeightPercent))%" />
+                        }
+                        @foreach (var pin in map.Pins.Reverse())
+                        {
+                            <span class="pin" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%">@pin.Label</span>
+                        }
+                    </a>
+                    <p class="map-foot"><span>Numbers match the list below</span><span>@Html.Raw(MapOptions.Value.Attribution)</span></p>
+                </div>
+            }
+
+            <ol class="care-cards">
+                @for (var i = 0; i < Model.Shown.Count; i++)
+                {
+                    var r = Model.Shown[i];
+                    var p = r.Nearest.Provider;
+                    var person = p.EntityType == 1;
+                    var tone = !person ? "org" : p.Gender switch { "M" => "male", "F" => "female", _ => "neutral" };
+                    <li class="care-card">
+                        <svg class="avatar-lg @tone" aria-hidden="true" viewBox="0 0 104 104">
+                            <circle cx="52" cy="52" r="52" class="bg" />
+                            @if (person)
+                            {
+                                <circle cx="52" cy="41" r="18" class="fg" />
+                                <path d="M20 92c5-20 17-30 32-30s27 10 32 30" class="fg" />
+                            }
+                            else
+                            {
+                                <path d="M30 78V40l22-13 22 13v38M44 78V62h16v16M40 46h6M58 46h6M40 54h6M58 54h6" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
+                            }
+                        </svg>
+                        <div class="care-who">
+                            <h3><span class="num">@Model.Number(i).</span> <a href="/provider/@p.Npi">@FindCareModel.NaturalName(p)</a>@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</h3>
+                            <span>@(p.PlainSpecialty ?? p.PrimarySpecialty) · @(FindCareModel.Miles(r.Nearest.DistanceMiles) + " away" + (r.Nearest.Approximate ? " (about)" : ""))</span>
+                            <span class="muted">@string.Join(", ", new[] { p.Address1, p.Address2, p.City }.Where(s => !string.IsNullOrEmpty(s)).Select(s => CityCatalog.TitleCase(s!))), @p.State @p.Zip</span>
+                            @{
+                                var tags = new List<string>();
+                                if (p.Flags.AcceptsMedicareAssignment) { tags.Add("Takes Medicare"); }
+                                if (p.Flags.OffersTelehealth) { tags.Add("Video visits"); }
+                            }
+                            @if (tags.Count > 0 || r.Hospital is not null)
+                            {
+                                <ul class="care-tags">
+                                    @foreach (var t in tags){<li>@t</li>}
+                                    @if (r.Hospital is not null){<li>Works with <a href="/facility/@r.HospitalCcn">@CityCatalog.TitleCase(r.Hospital)</a></li>}
+                                </ul>
+                            }
+                        </div>
+                        <div class="care-actions">
+                            @if (p.Phone is not null){<a class="button" href="tel:@p.Phone">Call @Format.Phone(p.Phone)</a>}else{<span class="muted small">No phone listed</span>}
+                            <a class="button secondary" href="@FindCareModel.Directions(r.Nearest)">Directions</a>
+                            <a class="small" href="/provider/@p.Npi">Full profile</a>
+                        </div>
+                    </li>
+                }
+            </ol>
+
+            <nav class="care-more" aria-label="More results">
+                @if (Model.PageNumber > 1){<a class="button secondary" href="@Model.Link(Model.PageNumber - 1)">‹ Closer ones</a>}
+                @if (Model.PageNumber < pages){<a class="button secondary" href="@Model.Link(Model.PageNumber + 1)">Show more ›</a>}
+                @if (Model.MapLink() is { } mapLink){<a href="@mapLink">See them on a map →</a>}
+            </nav>
+        }
+    </section>
+}
+else if (!Model.Asked)
+{
+    <section class="care-about">
+        <h2>How this works</h2>
+        <p>We list doctors, dentists, therapists and other licensed providers registered with the federal government, nearest first, with the phone number and address. Medicare and video-visit details come from Medicare's Care Compare.</p>
+        <p>Being listed doesn't mean a provider is taking new patients or is in your insurance plan, so call first. In an emergency, call 911.</p>
+    </section>
+}

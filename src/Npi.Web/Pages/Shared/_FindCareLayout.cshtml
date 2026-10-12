@@ -1,0 +1,42 @@
+@using System.Globalization
+@inject Npi.Core.Search.GeographyCatalog Geography
+@{
+    // The patient path (docs/PRODUCT_PLAN.md §2.4): its own plain header, no professional sidebar.
+    var version = await Geography.GetDataVersionAsync(Context.RequestAborted);
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12362F" />
+    <title>@ViewData["Title"] – getnpidata</title>
+    <link rel="preload" href="/fonts/source-sans-3-400-700-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/source-serif-4-600-700-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="care">
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="care-header">
+        <div class="care-bar">
+            <a class="brand" href="/find-care">getnpidata <span>· Find care</span></a>
+            <a href="/" class="care-pro">For professionals</a>
+        </div>
+        <div class="care-hero">
+            <h1>Find care near you</h1>
+            <p>Three questions. Free, no sign-up.</p>
+        </div>
+    </header>
+    <main id="main" class="care-main">
+        @RenderBody()
+    </main>
+    <footer class="site-footer care-footer">
+        <p>
+            Information from the federal NPI registry (CMS NPPES) and Medicare Care Compare, as of
+            <strong>@(version?.AsOfDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown")</strong>.
+            It's public information; we don't sell anything and don't rank providers for payment.
+        </p>
+    </footer>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
