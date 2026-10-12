@@ -58,7 +58,9 @@ facilities an organization runs. Counties come with population and shortage-area
 | County insights: population and HRSA Health Professional Shortage Areas | Search page (when a county is chosen), `/api/v1/counties/{fips}` |
 | Look up the lists behind the filters: specialty categories and subcategories, NUCC classifications and specializations, states, counties (FIPS) | `/api/v1/taxonomy/…`, `/api/v1/states/…` |
 | Check how fresh the data is and which source files it came from | Site footer, `/api/v1/meta` |
+| A guide to the API: quick start (curl and .NET), limits, freshness, endpoints by task | `/developers` |
 | Interactive API docs (try every call in the browser) | `/swagger` (OpenAPI document at `/openapi/v1.json`) |
+| What the site measures about visits (Azure Application Insights: paths and timings, no search terms, IP addresses or cookies) | `/privacy` |
 | Call the API from .NET with typed models and errors | [`Npi.Client`](src/Npi.Client/README.md) |
 
 Every search URL is shareable: the website, its CSV download and the API all use the same query parameters and the
@@ -320,6 +322,7 @@ needs `SELECT`.
 | `ConnectionStrings:RemoteMySql` | Web | — | Database the site reads (secret) |
 | `Api:PermitLimit`, `Api:WindowSeconds` | Web | `60`, `60` | API rate limit per client IP |
 | `Api:RequireKey`, `Api:Keys` | Web | `false`, — | Require `X-Api-Key` (keys are secrets) |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` (or `ApplicationInsights:ConnectionString`) | Web | not set (telemetry off) | Azure Application Insights for the site and API, server-side only; query strings and client details are removed (see `/privacy`) |
 | `Map:TileUrl`, `Map:Attribution`, `Map:MaxZoom` | Web | OpenStreetMap standard tiles, its credit line, `19` | Map tiles for the map search page; empty `TileUrl` turns the map off. OpenStreetMap's free server allows only light use: a busy public site should switch to a hosted tile provider (a key in the URL is a secret) |
 
 Environment variables work too: prefix `NPI_` for the loader (for example `NPI_HudApiToken`). For the site, use the

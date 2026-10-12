@@ -2,7 +2,7 @@
 
 Status: **approved by the owner on 2026-10-11**, with the decisions recorded in §6. CLAUDE.md carries the new direction.
 The work goes one phase (and one step) at a time; each step is committed, summarized, and waits for the owner's "go".
-Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care). Next: **1.9, API developer page, Application Insights, accessibility and mobile pass**.
+Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care), 1.9 (developer page, Application Insights, privacy notice, accessibility and speed). **Phase 1 is complete.** Next: the owner chooses the next phase (§3).
 
 **Vision.** getnpidata is the affordable answer layer on top of free government data. It goes deeper than free lookup
 tools and costs a small fraction of what enterprise vendors charge. It answers questions instead of dumping data.
@@ -174,7 +174,7 @@ The menu is a sidebar on desktop (a menu button on phones). Companies and produc
 | 1.6 | Area pages (state, county). **Done 2026-10-11:** `/area`, `/area/{state}`, `/area/{state}/{county}` with a specialty picker; counts and per 100,000 vs state and US precomputed after each projection (`area_provider_count`); new in 90 days, top cities, shortage areas, hospitals, changes; every number links to its list; "Areas" in the menu | T4 test script passes |
 | 1.7 | Verify NPIs: on-screen summary, filterable results ("Deactivated on [date]" included), download. **Done 2026-10-11:** `/verify` (and `/lookup`): upload CSV, text or Excel, or paste; summary tiles; tabs (needs attention, each status); results with deactivation, exclusion and opt-out dates; sources with load dates; CSV and Excel of every row. Name/specialty/state matching, changes since a date and the PDF report stay in Phase 4 | T3 test script passes |
 | 1.8 | Find care (patients). **Done 2026-10-11:** `/find-care` with its own plain layout: ten everyday kinds of care plus "something else", ZIP or "use my location", Medicare / video visits / woman or man; cards nearest first (widening 2 → 50 miles) with phone, address, directions, tags and a hospital it works with, a numbered map, and the new-patients/insurance note | A first-time user finds a nearby specialist in under 60 s |
-| 1.9 | API developer page; Azure Application Insights across the site and API, with a privacy notice; accessibility and mobile pass; README and CLAUDE.md | Lighthouse ≥ 90 for accessibility and performance on the main pages; all old URLs resolve |
+| 1.9 | API developer page; Azure Application Insights across the site and API, with a privacy notice; accessibility and mobile pass; README and CLAUDE.md. **Done 2026-10-11:** `/developers`; Application Insights wired (server-side, query strings and client details removed; on once a connection string is set); `/privacy`; Lighthouse mobile: accessibility 100 on 18 pages, performance 90–99 except the map page (84–90); all old URLs answer | Lighthouse ≥ 90 for accessibility and performance on the main pages; all old URLs resolve |
 
 ### 2.5.1 Page-speed budget (set in step 1.2)
 

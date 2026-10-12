@@ -97,7 +97,8 @@
             @if (Model.Map is { } map)
             {
                 <div class="care-map">
-                    <a class="static-map" href="@Model.MapLink()" aria-label="See them on a map">
+                    <a class="static-map" href="@Model.MapLink()">
+                        <span class="visually-hidden">See them on a map</span>
                         @foreach (var t in map.Tiles)
                         {
                             <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
@@ -105,7 +106,7 @@
                         }
                         @foreach (var pin in map.Pins.Reverse())
                         {
-                            <span class="pin" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%">@pin.Label</span>
+                            <span class="pin" aria-hidden="true" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%">@pin.Label</span>
                         }
                     </a>
                     <p class="map-foot"><span>Numbers match the list below</span><span>@Html.Raw(MapOptions.Value.Attribution)</span></p>

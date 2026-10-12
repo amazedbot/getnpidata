@@ -1,0 +1,108 @@
+@page "/developers"
+@using System.Globalization
+@using Microsoft.Extensions.Options
+@inject Npi.Core.Search.GeographyCatalog Geography
+@inject IOptions<Npi.Web.Api.ApiOptions> ApiOptions
+@{
+    ViewData["Title"] = "API and developers";
+    // The API guide (docs/PRODUCT_PLAN.md §2.1, step 1.9; drawing P11): examples first, then Swagger for the details.
+    var site = $"{Request.Scheme}://{Request.Host}";
+    var version = await Geography.GetDataVersionAsync(HttpContext.RequestAborted);
+    var api = ApiOptions.Value;
+    var endpoints = new (string Task, (string Method, string Path, string What)[] Items)[]
+    {
+        ("Look up and list", [
+            ("GET", "/providers/{npi}", "One provider: everything we know (404 when unknown or deactivated)"),
+            ("GET", "/providers?… · /providers.csv?…", "Search with any filter, paged JSON or every match as streamed CSV"),
+        ]),
+        ("Verify", [
+            ("POST", "/providers/lookup · .csv", "Up to 1,000 NPIs per request: found, deactivated (with the date), not found or invalid, with flags"),
+        ]),
+        ("Filter values", [
+            ("GET", "/taxonomy/categories · /{category}/subcategories", "The plain specialty categories the category and subcategory filters take"),
+            ("GET", "/taxonomy/classifications · /{c}/specializations", "NUCC classifications and specializations"),
+            ("GET", "/credentials", "Standardized credentials, most common first"),
+            ("GET", "/states · /states/{st}/counties · /cities", "Place names and county FIPS codes"),
+        ]),
+        ("Areas", [
+            ("GET", "/counties/{fips}", "Population and health professional shortage areas of a county"),
+        ]),
+        ("Companies and products", [
+            ("GET", "/companies?name= · /companies/{id}", "Companies that pay providers (Open Payments), with FDA, SEC and OIG records"),
+            ("GET", "/products?name= · /products/{slug}", "Drugs and devices named in those payments, with FDA and Medicare data"),
+            ("GET", "/products/{slug}/prescribers · .csv", "Paid providers who prescribe it (Medicare Part D)"),
+        ]),
+        ("Freshness", [
+            ("GET", "/meta", "The data's as-of date and the source files and versions"),
+        ]),
+    };
+}
+
+<div class="profile developers">
+    <div class="dev-head">
+        <h1>A free API for every US provider</h1>
+        <p class="lede">The same data and searches as this site: profiles, lists, bulk verification, areas, companies and products. JSON, or streamed CSV with no row limit. @(api.RequireKey ? "An API key is required (header X-Api-Key)." : "No key needed.")</p>
+        <p class="area-actions">
+            <a class="button" href="/swagger">Try it in the browser (Swagger)</a>
+            <a class="button secondary" href="/openapi/v1.json">OpenAPI document</a>
+            <a class="button secondary" href="https://github.com/amazedbot/getnpidata/tree/master/src/Npi.Client">.NET client</a>
+        </p>
+    </div>
+
+    <div class="profile-row">
+        <section class="card grow-card" aria-labelledby="quick-h">
+            <h2 id="quick-h">Quick start</h2>
+            <p>Every chiropractor in Suffolk County, NY (county FIPS 36103), 50 a page:</p>
+            <pre><code>curl "@site/api/v1/providers?category=Chiropractic%20%26%20complementary%20care&amp;subcategory=Chiropractors&amp;county=36103"</code></pre>
+            <p>All of them as CSV, streamed:</p>
+            <pre><code>curl -o chiropractors.csv \
+  "@site/api/v1/providers.csv?category=Chiropractic%20%26%20complementary%20care&amp;subcategory=Chiropractors&amp;county=36103"</code></pre>
+            <p>Verify a list of NPIs:</p>
+            <pre><code>curl -X POST "@site/api/v1/providers/lookup" \
+  -H "Content-Type: application/json" \
+  -d '{"npis": ["1003000126", "1234567893"]}'</code></pre>
+            <p>From .NET with the typed client (<code>Npi.Client</code>):</p>
+            <pre><code>using var npi = new NpiClient(new Uri("@site/"));
+var page = await npi.SearchProvidersAsync(new ProviderSearch
+{
+    Category = "Chiropractic &amp; complementary care",
+    Subcategory = "Chiropractors",
+    County = "36103",
+});
+Console.WriteLine($"{page.TotalCount} chiropractors");</code></pre>
+        </section>
+        <div class="dev-side">
+            <section class="card" aria-labelledby="lim-h">
+                <h2 id="lim-h">Limits</h2>
+                <p>@api.PermitLimit.ToString(CultureInfo.InvariantCulture) requests per @(api.WindowSeconds == 60 ? "minute" : $"{api.WindowSeconds} seconds") per IP address. CSV exports have no row limit. Over the limit you get <code>429</code> with a <code>Retry-After</code> header.</p>
+            </section>
+            <section class="card" aria-labelledby="fresh-h">
+                <h2 id="fresh-h">Freshness</h2>
+                <p><code>GET /api/v1/meta</code> gives the data's as-of date (now @(version?.AsOfDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) ?? "unknown")) and source files. NPPES updates are loaded every week.</p>
+            </section>
+            <section class="card" aria-labelledby="err-h">
+                <h2 id="err-h">Errors</h2>
+                <p>Every error is an RFC 7807 problem (JSON with <code>title</code>, <code>detail</code> and, for bad parameters, <code>errors</code> by parameter name).</p>
+            </section>
+        </div>
+    </div>
+
+    <section class="card" aria-labelledby="ep-h">
+        <h2 id="ep-h">Endpoints by task</h2>
+        <div class="ep-groups">
+            @foreach (var (task, items) in endpoints)
+            {
+                <div>
+                    <h3>@task</h3>
+                    <ul class="ep-list">
+                        @foreach (var (method, path, what) in items)
+                        {
+                            <li><span class="ep-method">@method</span><span><code>@path</code><br /><span class="muted">@what</span></span></li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+        <p class="src">All paths are under <code>/api/v1</code>. The full parameter list and response shapes are in <a href="/swagger">Swagger</a>.</p>
+    </section>
+</div>

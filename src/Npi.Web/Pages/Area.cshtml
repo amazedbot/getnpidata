@@ -78,7 +78,8 @@
             {
                 <section class="card map-card" aria-labelledby="map-h">
                     <h2 id="map-h" class="visually-hidden">Map of the cities with the most @Model.Who.ToLowerInvariant()</h2>
-                    <a class="static-map" href="@Model.MapLink" aria-label="Open the map">
+                    <a class="static-map" href="@Model.MapLink">
+                        <span class="visually-hidden">Open the map</span>
                         @foreach (var t in map.Tiles)
                         {
                             <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
@@ -86,7 +87,7 @@
                         }
                         @foreach (var pin in map.Pins.Reverse())
                         {
-                            <span class="pin" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%">@pin.Label</span>
+                            <span class="pin" aria-hidden="true" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%">@pin.Label</span>
                         }
                     </a>
                     <p class="map-foot"><span>Pins: the cities below, numbered</span><span>@Html.Raw(Model.Attribution)</span></p>

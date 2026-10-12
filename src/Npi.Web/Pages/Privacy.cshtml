@@ -1,0 +1,36 @@
+@page "/privacy"
+@{
+    ViewData["Title"] = "Privacy";
+    // The privacy notice for the usage measurement (docs/PRODUCT_PLAN.md decision 7, step 1.9). Keep it in step with Telemetry.cs.
+}
+
+<div class="profile prose">
+    <h1>Privacy</h1>
+    <p class="lede">This site has no accounts, no cookies, no ads and no tracking across other sites. We don't sell or share anything about visitors.</p>
+
+    <section class="card" aria-labelledby="measure-h">
+        <h2 id="measure-h">What we measure</h2>
+        <p>To keep the site fast and working, we use Microsoft Azure Application Insights. For each page or API request it records:</p>
+        <ul>
+            <li>the page or API path (for example <code>/provider/1234567893</code> or <code>/api/v1/providers</code>), but <strong>not</strong> what comes after the "?", so names, ZIP codes and other search terms are left out;</li>
+            <li>whether it worked, how long it took, and the database calls it made;</li>
+            <li>errors, so we can fix them;</li>
+            <li>a rough location (country, region and city) that Microsoft works out from the connection and then discards the address. We don't record IP addresses or browser details.</li>
+        </ul>
+        <p>Nothing is stored in your browser for this. The measurements are kept by Microsoft for us for up to 90 days and used only to see which pages are used, how fast they are, and what breaks.</p>
+    </section>
+
+    <section class="card" aria-labelledby="not-h">
+        <h2 id="not-h">What we don't keep</h2>
+        <ul>
+            <li>NPI lists you check on <a href="/verify">Verify NPIs</a>: they're looked up and returned to you, not saved.</li>
+            <li>Your location on <a href="/find-care">Find care</a>: "Use my location" sends only a rounded position (about a kilometre) to find the nearest ZIP code, and it isn't saved.</li>
+            <li>Anything you type into searches, beyond the hosting service's standard web server logs, which are kept briefly for security and troubleshooting.</li>
+        </ul>
+    </section>
+
+    <section class="card" aria-labelledby="data-h">
+        <h2 id="data-h">The provider information</h2>
+        <p>Everything shown about providers is public information from the federal NPI registry (CMS NPPES) and other public government data, as listed in each section's source. Providers can correct their registry record at <a href="https://nppes.cms.hhs.gov/">NPPES</a>; the change appears here after the next weekly update.</p>
+    </section>
+</div>
