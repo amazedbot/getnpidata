@@ -78,6 +78,9 @@ Rules:
 | `081_cc_dac_raw_address.sql`, `082_cc_clinician_location.sql` | Care Compare practice addresses per clinician and ZIP code, for the record-quality check (Phase 3 step 3.1). |
 | `083_provider_quality.sql` | Record quality per provider: current / check / stale, with the reasons and signs of practice (Phase 3 step 3.1). |
 | `084_quality_search.sql` | Record quality × practice location, so a label in a state or county is one index range (Phase 3 step 3.1). |
+| `085_practice_signals.sql` | Signs of current practice: opioid treatment programs, Medicare revalidation list, equipment suppliers that billed Medicare (Phase 3 step 3.1). |
+| `086_cms_pos_facility.sql` | CMS Provider of Services: every certified facility, active or terminated, for closures (Phase 3 step 3.1). |
+| `087_address_place.sql` | Businesses Overture Maps lists at each practice address, with operating status (Phase 3 step 3.1). |
 
 ## 001_baseline.sql
 

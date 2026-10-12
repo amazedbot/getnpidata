@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Dapper;
+using MySqlConnector;
 using Npi.Core.Search;
+using Npi.Loader.Geocoding;
 using Npi.Loader.Datasets;
 using Npi.Loader.Db;
 using Serilog;
@@ -20,8 +22,9 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     /// <summary>The <c>reference_data</c> sources the label reads; a newer load of any of them makes it stale.</summary>
     public static readonly IReadOnlyList<string> Inputs =
     [
-        "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring", "open_payments",
-        "cms_facility_enrollments", "state_licenses", "provider_map", "address_type",
+        "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring", "open_payments_years",
+        "cms_facility_enrollments", "state_licenses", "provider_map", "address_type", "cc_mips", "cc_facility_affiliations", "cms_otp_providers",
+        "cms_revalidation", "cms_dme_suppliers", "cms_provider_of_services", "overture",
     ];
 
     // A state license status that means the license can't be used (the states' own wording; matched case-insensitively).
@@ -33,6 +36,123 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 
     // A PO box in the street line ("PO BOX 12", "P.O. Box", "POST OFFICE BOX").
     internal const string PoBox = "(^|[^A-Z])(P[ .]*O[ .]*BOX|POST OFFICE BOX)([^A-Z]|$)";
+
+    /// <summary>
+    /// Organizations matched by address and name (<see cref="BusinessNames"/>) to a business Overture lists at the address (open: a sign
+    /// of operation; only permanently closed: <see cref="QualityReason.ListedClosed"/>) and to a terminated certified facility in the
+    /// Provider of Services file at the same street address (<see cref="QualityReason.FacilityClosed"/>, unless the organization holds a
+    /// current certified facility, and only when its NPI predates the termination). Ownership changes (code 07) aren't closures.
+    /// </summary>
+    private async Task MatchBusinessesAsync(MySqlConnection connection, string activity, string flags, string businesses, CancellationToken ct)
+    {
+        var open = new HashSet<string>(StringComparer.Ordinal);
+        var closed = new HashSet<string>(StringComparer.Ordinal);
+        var words = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+        IReadOnlySet<string> Words(string name)
+        {
+            if (!words.TryGetValue(name, out var w))
+            {
+                words[name] = w = BusinessNames.Words(name);
+            }
+
+            return w;
+        }
+
+        await foreach (var row in connection.QueryUnbufferedAsync<(string Npi, string OrgName, string PlaceName, string? Status)>(
+                           """
+                           SELECT o.`npi`, o.`name`, ap.`name`, ap.`operating_status`
+                           FROM `provider` p JOIN `provider_location` l ON l.`npi` = p.`npi`
+                           JOIN `address_place` ap ON ap.`addr_key` = l.`addr_key`
+                           JOIN `provider_org_name` o ON o.`npi` = p.`npi`
+                           WHERE p.`entity_type` = 2
+                           """).WithCancellation(ct))
+        {
+            if (BusinessNames.Same(Words(row.OrgName), Words(row.PlaceName)))
+            {
+                (row.Status == "permanently_closed" ? closed : open).Add(row.Npi);
+            }
+        }
+
+        // Terminated facilities by ZIP, house number and street; none where a certified facility is still active (a hospital's old
+        // swing-bed or home health unit closes while the hospital, and the groups practising in it, carry on).
+        var terminated = new Dictionary<(string, string, string), List<(IReadOnlySet<string> Words, DateTime? Date)>>();
+        var stillCertified = new HashSet<(string, string, string)>();
+        foreach (var f in await connection.QueryAsync<(string Name, string Address, string Zip5, sbyte Active, DateTime? Date)>(new CommandDefinition(
+                     """
+                     SELECT `name`, `address`, `zip5`, `active`, `termination_date` FROM `cms_pos_facility`
+                     WHERE `zip5` IS NOT NULL AND `name` IS NOT NULL AND `address` IS NOT NULL AND (`active` = 1 OR COALESCE(`termination_code`, '') <> '07')
+                     """, cancellationToken: ct)))
+        {
+            if (AddressNormalizer.Split(f.Address) is var (number, street))
+            {
+                var key = (f.Zip5, number, street);
+                if (f.Active == 1)
+                {
+                    stillCertified.Add(key);
+                    continue;
+                }
+
+                if (!terminated.TryGetValue(key, out var list))
+                {
+                    terminated[key] = list = [];
+                }
+
+                list.Add((BusinessNames.Words(f.Name), f.Date));
+            }
+        }
+
+        foreach (var key in stillCertified)
+        {
+            terminated.Remove(key);
+        }
+
+        var facilityClosed = new HashSet<string>(StringComparer.Ordinal);
+        await foreach (var row in connection.QueryUnbufferedAsync<(string Npi, string? Address1, string Zip5, string OrgName, DateTime? Enumerated)>(
+                           """
+                           SELECT l.`npi`, l.`address1`, l.`zip5`, o.`name`, p.`enumeration_date`
+                           FROM `provider_location` l JOIN `provider` p ON p.`npi` = l.`npi` AND p.`entity_type` = 2
+                           JOIN `provider_org_name` o ON o.`npi` = l.`npi`
+                           WHERE l.`zip5` IN (SELECT DISTINCT f.`zip5` FROM `cms_pos_facility` f WHERE f.`active` = 0)
+                           """).WithCancellation(ct))
+        {
+            if (AddressNormalizer.Split(row.Address1) is var (number, street) && terminated.TryGetValue((row.Zip5, number, street), out var here)
+                && here.Any(f => (f.Date is null || row.Enumerated is null || row.Enumerated <= f.Date) && BusinessNames.Same(Words(row.OrgName), f.Words)))
+            {
+                facilityClosed.Add(row.Npi);
+            }
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"CREATE TABLE `{businesses}` (`npi` CHAR(10) NOT NULL, `kind` TINYINT NOT NULL, PRIMARY KEY (`npi`, `kind`)) ENGINE=InnoDB", cancellationToken: ct));
+        var rows = open.Select(n => (Npi: n, Kind: 1)).Concat(closed.Except(open).Select(n => (Npi: n, Kind: 2)))
+            .Concat(facilityClosed.Select(n => (Npi: n, Kind: 3))).ToList();
+        foreach (var chunk in rows.Chunk(1000))
+        {
+            var p = new DynamicParameters();
+            var values = new List<string>(chunk.Length);
+            for (var i = 0; i < chunk.Length; i++)
+            {
+                values.Add($"(@n{i}, {chunk[i].Kind})");
+                p.Add($"n{i}", chunk[i].Npi);
+            }
+
+            await connection.ExecuteAsync(new CommandDefinition($"INSERT INTO `{businesses}` (`npi`, `kind`) VALUES {string.Join(", ", values)}", p,
+                cancellationToken: ct));
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO `{activity}` (`npi`, `bits`) SELECT `npi`, {(int)QualityActivity.MapListing} FROM `{businesses}` WHERE `kind` = 1 " +
+            $"ON DUPLICATE KEY UPDATE `bits` = `bits` | {(int)QualityActivity.MapListing}", commandTimeout: 0, cancellationToken: ct));
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO `{flags}` (`npi`, `bits`) SELECT `npi`, {(int)QualityReason.ListedClosed} FROM `{businesses}` WHERE `kind` = 2 " +
+            $"ON DUPLICATE KEY UPDATE `bits` = `bits` | {(int)QualityReason.ListedClosed}", commandTimeout: 0, cancellationToken: ct));
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO `{flags}` (`npi`, `bits`) SELECT b.`npi`, {(int)QualityReason.FacilityClosed} FROM `{businesses}` b " +
+            $"LEFT JOIN `{activity}` a ON a.`npi` = b.`npi` WHERE b.`kind` = 3 AND (a.`npi` IS NULL OR a.`bits` & {(int)QualityActivity.CertifiedFacility} = 0) " +
+            $"ON DUPLICATE KEY UPDATE `{flags}`.`bits` = `{flags}`.`bits` | {(int)QualityReason.FacilityClosed}", commandTimeout: 0, cancellationToken: ct));
+        log.Information("Record quality: {Open:N0} organizations listed as open businesses, {Closed:N0} only as permanently closed, {Facility:N0} at a closed certified facility",
+            open.Count, closed.Except(open).Count(), facilityClosed.Count);
+    }
 
     /// <summary>True when the projection, or one of the <see cref="Inputs"/>, was rebuilt since the labels were.</summary>
     public async Task<bool> IsStaleAsync(CancellationToken ct)
@@ -60,7 +180,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         const string activity = "quality_activity_scratch";
         const string flags = "quality_flag_scratch";
         const string specialties = "quality_cc_specialty_scratch";
-        string[] scratch = [activity, flags, specialties];
+        const string businesses = "quality_business_scratch";
+        string[] scratch = [activity, flags, specialties, businesses];
         try
         {
             foreach (var table in scratch)
@@ -90,9 +211,17 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 (QualityActivity.Prescribing, "SELECT `npi` FROM `medicare_part_d`"),
                 (QualityActivity.CareCompare, "SELECT `npi` FROM `cc_clinician`"),
                 (QualityActivity.MedicareEnrollment, "SELECT DISTINCT `npi` FROM `medicare_enrollment`"),
+                (QualityActivity.MedicareEnrollment, "SELECT `npi` FROM `medicare_revalidation`"),
                 (QualityActivity.OrderRefer, "SELECT DISTINCT `npi` FROM `medicare_order_referring` WHERE `npi` IS NOT NULL"),
-                (QualityActivity.IndustryPayments, "SELECT `npi` FROM `open_payments_summary`"),
+                (QualityActivity.GroupReassignment, "SELECT DISTINCT `npi` FROM `medicare_reassignment` WHERE `npi` IS NOT NULL"),
+                (QualityActivity.MipsScore, "SELECT DISTINCT `npi` FROM `cc_mips` WHERE `npi` IS NOT NULL"),
+                (QualityActivity.FacilityAffiliation, "SELECT DISTINCT `npi` FROM `cc_facility_affiliation`"),
+                // Payments in the newest two program years (a practising clinician often misses one).
+                (QualityActivity.IndustryPayments,
+                    "SELECT DISTINCT `npi` FROM `open_payments_year` WHERE `program_year` >= (SELECT MAX(`program_year`) - 1 FROM `open_payments_year`)"),
                 (QualityActivity.CertifiedFacility, "SELECT DISTINCT `npi` FROM `cms_facility_npi`"),
+                (QualityActivity.EquipmentBilling, "SELECT `npi` FROM `medicare_dme_supplier`"),
+                (QualityActivity.OpioidTreatment, "SELECT `npi` FROM `cms_otp_provider`"),
                 (QualityActivity.CurrentLicense, $"SELECT DISTINCT l.`npi` FROM `provider_state_license` l WHERE {currentLicense}"),
             ];
             var statuses = new { dates.asOf, inactive = InactiveStatus, active = ActiveStatus };
@@ -117,6 +246,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 await RunAsync($"INSERT INTO `{flags}` (`npi`, `bits`) SELECT x.`npi`, {(int)bit} FROM ({select}) x " +
                                $"ON DUPLICATE KEY UPDATE `bits` = `bits` | {(int)bit}", statuses);
             }
+
+            await MatchBusinessesAsync(connection, activity, flags, businesses, ct);
 
             static int I(QualityReason r) => (int)r;
             var counts = await TableSwap.ReplaceAsync(connection, ["provider_quality", "quality_search"], minRowRatio, async () =>

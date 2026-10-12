@@ -61,6 +61,15 @@ public enum QualityReason
 
     /// <summary>The primary practice address is in a residential building (for information: often a home office).</summary>
     HomeAddress = 2048,
+
+    /// <summary>
+    /// A Medicare-certified facility with the organization's name at its address was terminated (CMS Provider of Services; not an
+    /// ownership change), and the organization holds no current certified facility.
+    /// </summary>
+    FacilityClosed = 4096,
+
+    /// <summary>Overture Maps lists a business with the organization's name at its address as permanently closed, and none as open.</summary>
+    ListedClosed = 8192,
 }
 
 /// <summary>Signs that the provider currently practises (<c>provider_quality.activity</c>); stored bits, never renumber them.</summary>
@@ -76,6 +85,12 @@ public enum QualityActivity
     IndustryPayments = 32,
     CertifiedFacility = 64,
     CurrentLicense = 128,
+    GroupReassignment = 256,
+    MipsScore = 512,
+    FacilityAffiliation = 1024,
+    MapListing = 2048,
+    EquipmentBilling = 4096,
+    OpioidTreatment = 8192,
 }
 
 /// <summary>One line of a record-quality explanation: <c>good</c>, <c>warn</c>, <c>bad</c> or <c>info</c>, and the text.</summary>
@@ -112,13 +127,17 @@ public static class RecordQuality
     /// <summary>A Care Compare practice this close to an NPPES practice location (ZIP centres) agrees with the record.</summary>
     public const int CareCompareMiles = 25;
 
+    /// <summary>A sign that the practice closed: with no sign of current practice, the record is stale; otherwise it needs a check.</summary>
+    public const QualityReason Closed = QualityReason.FacilityClosed | QualityReason.ListedClosed;
+
     /// <summary>Any one of these makes a record "check".</summary>
     public const QualityReason CheckAny = QualityReason.NotMapped | QualityReason.PoBox | QualityReason.NoPhone | QualityReason.CareCompareAddress |
-                                          QualityReason.CareCompareSpecialty | QualityReason.LicenseLapsed;
+                                          QualityReason.CareCompareSpecialty | QualityReason.LicenseLapsed | Closed;
 
     public static QualityLabel Classify(QualityReason r) =>
         (r & (QualityReason.NotUpdated10Years | QualityReason.NoActivity)) == (QualityReason.NotUpdated10Years | QualityReason.NoActivity)
         || (r & QualityReason.Deceased) != 0
+        || ((r & Closed) != 0 && (r & QualityReason.NoActivity) != 0)
             ? QualityLabel.Stale
             : (r & (QualityReason.NotUpdated5Years | QualityReason.NoActivity)) == (QualityReason.NotUpdated5Years | QualityReason.NoActivity)
               || (r & CheckAny) != 0
@@ -132,7 +151,8 @@ public static class RecordQuality
         var stale = I(QualityReason.NotUpdated10Years | QualityReason.NoActivity);
         var check = I(QualityReason.NotUpdated5Years | QualityReason.NoActivity);
         return string.Create(CultureInfo.InvariantCulture,
-            $"CASE WHEN ({reasons} & {stale}) = {stale} OR ({reasons} & {I(QualityReason.Deceased)}) <> 0 THEN {(int)QualityLabel.Stale} " +
+            $"CASE WHEN ({reasons} & {stale}) = {stale} OR ({reasons} & {I(QualityReason.Deceased)}) <> 0 " +
+            $"OR (({reasons} & {I(Closed)}) <> 0 AND ({reasons} & {I(QualityReason.NoActivity)}) <> 0) THEN {(int)QualityLabel.Stale} " +
             $"WHEN ({reasons} & {check}) = {check} OR ({reasons} & {I(CheckAny)}) <> 0 THEN {(int)QualityLabel.Check} " +
             $"ELSE {(int)QualityLabel.Current} END");
     }
@@ -180,6 +200,8 @@ public static class RecordQuality
     private static readonly (QualityReason Reason, string Text)[] Short =
     [
         (QualityReason.Deceased, "Listed as deceased by a state board"),
+        (QualityReason.FacilityClosed, "Medicare-certified facility closed"),
+        (QualityReason.ListedClosed, "Listed as permanently closed"),
         (QualityReason.NotUpdated10Years, $"Not updated in {StaleYears}+ years"),
         (QualityReason.NotUpdated5Years, $"Not updated in {CheckYears}+ years"),
         (QualityReason.NoActivity, "No sign of current practice"),
@@ -206,9 +228,15 @@ public static class RecordQuality
         (QualityActivity.CareCompare, "listed in Medicare's Care Compare"),
         (QualityActivity.MedicareEnrollment, "enrolled in Medicare"),
         (QualityActivity.OrderRefer, "may order and refer for Medicare"),
-        (QualityActivity.IndustryPayments, "received industry payments in the newest Open Payments year"),
+        (QualityActivity.GroupReassignment, "bills Medicare through a group"),
+        (QualityActivity.MipsScore, "has a Medicare quality (MIPS) score"),
+        (QualityActivity.FacilityAffiliation, "works at a Medicare-certified facility"),
+        (QualityActivity.IndustryPayments, "received industry payments in the last two Open Payments years"),
         (QualityActivity.CertifiedFacility, "holds a Medicare-certified facility"),
+        (QualityActivity.EquipmentBilling, "billed Medicare for equipment and supplies"),
+        (QualityActivity.OpioidTreatment, "is a certified opioid treatment program"),
         (QualityActivity.CurrentLicense, "holds a current state license"),
+        (QualityActivity.MapListing, "is listed as an open business at its address (Overture Maps)"),
     ];
 
     /// <summary>The signs of current practice in words, e.g. ["billed Medicare", "enrolled in Medicare"].</summary>
@@ -230,6 +258,16 @@ public static class RecordQuality
             notes.Add(new("bad", "A state licensing record lists the provider as deceased"));
         }
 
+        if (Has(QualityReason.FacilityClosed))
+        {
+            notes.Add(new("bad", "A Medicare-certified facility with this name at this address was terminated (CMS Provider of Services), and no current one is on file"));
+        }
+
+        if (Has(QualityReason.ListedClosed))
+        {
+            notes.Add(new("bad", "Maps list a business with this name at this address as permanently closed (Overture Maps)"));
+        }
+
         var years = lastUpdate is { } u ? (today.DayNumber - u.DayNumber) / 365 : (int?)null;
         var since = lastUpdate?.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
         if (Has(QualityReason.NotUpdated5Years))
@@ -246,7 +284,7 @@ public static class RecordQuality
         {
             notes.Add(new(Has(QualityReason.NotUpdated5Years) ? "bad" : "info", isPerson
                 ? "No sign of current practice in the public data: no Medicare billing, enrollment or Care Compare listing, no industry payments, no current state license on file"
-                : "No sign of current operation in the public data: no Medicare enrollment or billing, no certified facility"));
+                : "No sign of current operation in the public data: no Medicare enrollment or billing, no certified facility, no open business listed at the address"));
         }
         else
         {

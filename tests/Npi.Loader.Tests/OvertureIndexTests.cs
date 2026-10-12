@@ -87,4 +87,21 @@ public class OvertureIndexTests
         Assert.Equal(PointSource.Address, index.Match("3 TINKER LN", "SETAUKET", "11733")?.Source);
         Assert.Equal(PointSource.PlaceName, index.Match("UNIVERSITY HOSPITAL", "STONY BROOK", "11794")?.Source);
     }
+
+    [Fact]
+    public void Businesses_listed_at_an_address_keep_their_operating_status()
+    {
+        var index = new OvertureIndex();
+        index.AddPlace("Sunrise Dental", "12 Main Street", "11701", null, 40.68, -73.41, 0.9, "permanently_closed", new DateOnly(2025, 3, 1));
+        index.AddPlace("SUNRISE DENTAL", "12 Main St", "11701", null, 40.68, -73.41, 0.8);                  // the same name twice
+        index.AddPlace("Main Street Pizza", "12 Main St Suite 2", "11701", null, 40.68, -73.41, 0.9, "open");
+        index.AddPlace("Elsewhere Clinic", "12 Main St", "11702", null, 40.69, -73.32, 0.9);               // another ZIP
+
+        var here = index.PlacesAt("12 MAIN ST", "11701");
+        Assert.Equal(["Sunrise Dental", "Main Street Pizza"], here.Select(p => p.Name));
+        Assert.Equal("permanently_closed", here[0].OperatingStatus);
+        Assert.Equal(new DateOnly(2025, 3, 1), here[0].Updated);
+        Assert.Empty(index.PlacesAt("14 MAIN ST", "11701"));
+        Assert.Empty(index.PlacesAt("A BUILDING NAME", "11701"));
+    }
 }

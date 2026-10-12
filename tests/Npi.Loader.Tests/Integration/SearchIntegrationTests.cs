@@ -886,6 +886,37 @@ public sealed class SearchIntegrationTests : IDisposable
                                                "1 CIVIC CTR, LOS ANGELES, CA 90012"), notes);
         Assert.Contains(new QualityNote("bad", "Medicare's Care Compare lists another profession (Nurse Practitioner)"), notes);
         Assert.Contains(new QualityNote("warn", "Not updated in NPPES for 7 years (last update January 2019)"), notes);
+
+        // More signs: E billed Medicare for equipment, B has a MIPS score. D (back at its street address) is listed on the map only as
+        // permanently closed, and a certified facility of its name at the address was terminated (an ownership change, 07, wouldn't count).
+        await db.ExecuteAsync(
+            """
+            UPDATE provider_location SET address1 = '5 Atlantic Ave' WHERE npi = @D;
+            INSERT INTO medicare_dme_supplier (npi, data_year, beneficiaries, claims) VALUES (@E, 2024, 20, 25);
+            INSERT INTO cc_mips (npi, program_year, source, final_score) VALUES (@B, 2024, 'individual', 90);
+            INSERT INTO address_place (addr_key, name, operating_status, updated, `release`)
+              SELECT addr_key, 'Smith Jones Dental', 'permanently_closed', '2025-03-01', '2026-09-23.1' FROM provider_location WHERE npi = @D;
+            INSERT INTO cms_pos_facility (ccn, name, category, address, city, state, zip5, active, termination_code, termination_date) VALUES
+              ('330777', 'SMITH JONES DENTAL CLINIC', '21', '5 ATLANTIC AVENUE', 'BROOKLYN', 'NY', '11201', 0, '01', '2025-03-01'),
+              ('330778', 'BAKER CLINIC', '21', '10 COURT ST', 'BROOKLYN', 'NY', '11201', 0, '07', '2025-03-01');
+            """, new { B, D, E });
+        await quality.BuildAsync(_ct);
+        rows = (await db.QueryAsync<(string, sbyte, int, short)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
+            .ToDictionary(r => r.Item1, r => (Label: (QualityLabel)r.Item2, Reasons: (QualityReason)r.Item3, Activity: (QualityActivity)r.Item4));
+        Assert.Equal((QualityLabel.Stale, QualityReason.NoActivity | QualityReason.NotMapped | QualityReason.NoPhone | QualityReason.FacilityClosed
+            | QualityReason.ListedClosed, QualityActivity.None), rows[D]);
+        Assert.Equal(QualityActivity.CareCompare | QualityActivity.MipsScore, rows[B].Activity);
+        Assert.Equal(QualityActivity.CareCompare | QualityActivity.EquipmentBilling, rows[E].Activity);
+        Assert.Equal(["Medicare-certified facility closed", "Listed as permanently closed"],
+            RecordQuality.ShortReasons(rows[D].Reasons).Where(t => t.Contains("closed", StringComparison.Ordinal)));
+
+        // A certified facility still active at the address (a hospital whose old unit closed): no closure there.
+        await db.ExecuteAsync(
+            "INSERT INTO cms_pos_facility (ccn, name, category, address, city, state, zip5, active) " +
+            "VALUES ('330999', 'BROOKLYN GENERAL HOSPITAL', '01', '5 Atlantic Ave', 'BROOKLYN', 'NY', '11201', 1)");
+        await quality.BuildAsync(_ct);
+        var reasons = (QualityReason)await db.ScalarAsync<int>("SELECT reasons FROM provider_quality WHERE npi = @D", new { D });
+        Assert.Equal(QualityReason.ListedClosed, reasons & (QualityReason.FacilityClosed | QualityReason.ListedClosed));
     }
 
     /// <summary>The Source Cooperative listing of the FEMA USA Structures files and the two fixture files.</summary>

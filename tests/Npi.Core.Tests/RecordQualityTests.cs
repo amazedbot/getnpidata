@@ -21,13 +21,17 @@ public class RecordQualityTests
     [InlineData(QualityReason.PoBox, QualityLabel.Check)]
     [InlineData(QualityReason.NotMapped, QualityLabel.Check)]
     [InlineData(QualityReason.NoPhone, QualityLabel.Check)]
+    [InlineData(QualityReason.FacilityClosed, QualityLabel.Check)]                  // closed, but still active elsewhere
+    [InlineData(QualityReason.ListedClosed, QualityLabel.Check)]
+    [InlineData(QualityReason.ListedClosed | QualityReason.NoActivity, QualityLabel.Stale)]
+    [InlineData(QualityReason.FacilityClosed | QualityReason.NoActivity, QualityLabel.Stale)]
     [InlineData(QualityReason.Reactivated | QualityReason.HomeAddress, QualityLabel.Current)] // for information only
     public void Labels_follow_the_rules(QualityReason reasons, QualityLabel expected) => Assert.Equal(expected, RecordQuality.Classify(reasons));
 
     [Fact]
     public void The_SQL_rule_uses_the_same_bits()
     {
-        Assert.Equal("CASE WHEN (r & 6) = 6 OR (r & 512) <> 0 THEN 3 WHEN (r & 5) = 5 OR (r & 504) <> 0 THEN 2 ELSE 1 END", RecordQuality.LabelSql("r"));
+        Assert.Equal("CASE WHEN (r & 6) = 6 OR (r & 512) <> 0 OR ((r & 12288) <> 0 AND (r & 4) <> 0) THEN 3 WHEN (r & 5) = 5 OR (r & 12792) <> 0 THEN 2 ELSE 1 END", RecordQuality.LabelSql("r"));
     }
 
     [Fact]

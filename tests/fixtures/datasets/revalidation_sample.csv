@@ -1,0 +1,4 @@
+"Enrollment ID","National Provider Identifier","First Name","Last Name","Organization Name","Enrollment State Code","Enrollment Type","Provider Type Text","Enrollment Specialty","Revalidation Due Date","Adjusted Due Date","Individual Total Reassign To","Receiving Benefits Reassignment"
+I20031104000581,1000000004,Jose,O'Brien,,NY,3,Non-DME Part B,Chiropractic,07/31/2023,,,1
+I20031104000582,1000000004,Jose,O'Brien,,NJ,3,Non-DME Part B,Chiropractic,11/30/2027,12/31/2027,,
+O20031104000583,1000000038,,,"SMITH, JONES & CO, LLC",NY,2,Non-DME Part B,Dentist,,,,

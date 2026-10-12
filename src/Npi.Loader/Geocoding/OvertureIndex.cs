@@ -16,6 +16,9 @@ public static class PointSource
 /// <summary>Where an address was placed, and what it matched (the address point or the place name).</summary>
 public sealed record PointMatch(string Source, double Lat, double Lon, string Matched);
 
+/// <summary>A business Overture lists at an address: its name, operating status (open, permanently_closed …) and last source update.</summary>
+public sealed record ListedPlace(string Name, string? OperatingStatus, DateOnly? Updated);
+
 /// <summary>
 /// The Overture address points and places of one area, indexed for matching practice addresses (CLAUDE.md §7 Stage 5.5
 /// item 10): (1) an address point with the same house number, street and ZIP (or city); (2) the address of a place,
@@ -33,6 +36,8 @@ public sealed class OvertureIndex
     private readonly Dictionary<(string, string, string), (double Lat, double Lon)> _pointsByCity = [];
     private readonly Dictionary<(string, string, string), List<(double Lat, double Lon, string Name)>> _placesByZip = [];
     private readonly Dictionary<(string, string, string), List<(double Lat, double Lon, string Name)>> _placesByCity = [];
+    // Every named place by street address, with its status, for the record-quality label (docs/PRODUCT_PLAN.md step 3.1).
+    private readonly Dictionary<(string, string, string), List<ListedPlace>> _listedByZip = [];
     // Places by ZIP, and by city for places without a ZIP: name matching only compares places in the address's ZIP (or city).
     private readonly Dictionary<string, List<(IReadOnlySet<string> Tokens, double Lat, double Lon, double Confidence, string Name)>> _namesByZip = [];
     private readonly Dictionary<string, List<(IReadOnlySet<string> Tokens, double Lat, double Lon, double Confidence, string Name)>> _namesByCity = [];
@@ -100,12 +105,18 @@ public sealed class OvertureIndex
         }
     }
 
-    public void AddPlace(string? name, string? freeformAddress, string? zip, string? city, double lat, double lon, double confidence)
+    public void AddPlace(string? name, string? freeformAddress, string? zip, string? city, double lat, double lon, double confidence,
+        string? operatingStatus = null, DateOnly? updated = null)
     {
         var z = Zip5(zip) ?? "";
         var c = city?.Trim().ToUpperInvariant() ?? "";
         if (AddressNormalizer.Split(freeformAddress) is var (number, street) && (_wantedStreets is null || _wantedStreets.Contains((number, street))))
         {
+            if (z.Length > 0 && !string.IsNullOrWhiteSpace(name))
+            {
+                Add(_listedByZip, (number, street, z), new ListedPlace(name.Trim(), operatingStatus, updated));
+            }
+
             var entry = (lat, lon, name ?? "");
             if (z.Length > 0)
             {
@@ -133,6 +144,12 @@ public sealed class OvertureIndex
             }
         }
     }
+
+    /// <summary>The businesses listed at a practice street address (same house number, street and ZIP); empty when none.</summary>
+    public IReadOnlyList<ListedPlace> PlacesAt(string? address1, string zip5) =>
+        AddressNormalizer.Split(address1) is var (number, street) && _listedByZip.TryGetValue((number, street, zip5), out var places)
+            ? places.DistinctBy(p => p.Name.ToUpperInvariant()).ToList()
+            : [];
 
     /// <summary>The best placement of a practice address in this area, or null.</summary>
     public PointMatch? Match(string? address1, string? city, string zip5)

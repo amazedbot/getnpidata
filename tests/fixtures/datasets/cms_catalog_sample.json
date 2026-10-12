@@ -337,6 +337,118 @@
      "mediaType": "text/csv"
     }
    ]
+  },
+  {
+   "title": "Federally Qualified Health Center Enrollments : 2026-07-01",
+   "modified": "2026-08-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-07-17"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/FQHC_Enrollments_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Rural Health Clinic Enrollments : 2026-07-01",
+   "modified": "2026-08-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-07-17"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/RHC_Enrollments_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Opioid Treatment Program Providers : 2026-10-01",
+   "modified": "2026-08-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-10-03"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/OPIOID_TREATMENT_PROGRAM_PROVIDERS_10052026.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Revalidation Due Date List : 2026-10-01",
+   "modified": "2026-08-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-10-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/revalidation_base.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Durable Medical Equipment, Devices & Supplies - by Supplier : 2024-01-01",
+   "modified": "2026-08-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/mup_dme_ry26_p05_v10_dy24_supr.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Provider of Services File - Quality Improvement and Evaluation System : 2026-04-01",
+   "modified": "2026-08-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-06-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospital_and_other.DATA.Q2_2026.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Provider of Services File - Internet Quality Improvement and Evaluation System : 2026-04-01",
+   "modified": "2026-08-01",
+   "temporal": [
+    {
+     "startDate": "2000-01-01",
+     "endDate": "2026-06-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/POS_iQIES.DATA.Q2_2026.csv",
+     "mediaType": "text/csv"
+    }
+   ]
   }
  ]
 }
