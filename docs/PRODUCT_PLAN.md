@@ -353,7 +353,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
     - a "new in my territory" digest.
   - **Data:** nothing new.
   - **Worked when:** teams keep territories, and alerts and exports go into their CRM.
-- **Company and product profiles redesign:**
+- **Company and product profiles redesign:** **Done 2026-10-12 (pulled forward by the owner):** a Companies & products main page (`/companies-and-products`: totals, payments by year, top companies and products, search across both, CSV of every company and every product); company and product pages in the P09/P10 layout with a raw-data download each.
   - **Goal:** the same summary-first layout for the Open Payments companies and the products.
   - **Scope:**
     - a summary card ("Paid $X to Y providers in 2025; top products; recalls; integrity agreement");

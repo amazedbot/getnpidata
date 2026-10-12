@@ -38,6 +38,7 @@ builder.Services.AddSingleton(_ => new AreaProfileService(connectionString));
 builder.Services.AddSingleton(_ => new MapService(connectionString));
 builder.Services.AddSingleton(sp => new CareFinder(connectionString, sp.GetRequiredService<SearchService>()));
 builder.Services.AddSingleton(_ => new CompanyService(connectionString));
+builder.Services.AddSingleton(sp => new IndustryService(connectionString, sp.GetRequiredService<CompanyService>(), sp.GetRequiredService<ProductService>()));
 builder.Services.AddSingleton(_ => new ProductService(connectionString));
 builder.Services.AddSingleton(sp => new SearchVocabularyCatalog(connectionString, sp.GetRequiredService<TaxonomyCatalog>()));
 builder.Services.AddSingleton(sp => new SuggestService(connectionString, sp.GetRequiredService<SearchVocabularyCatalog>()));
@@ -133,6 +134,30 @@ app.MapGet("/provider/{npi}/raw.csv", async (string npi, HttpContext http, Searc
 });
 
 // Group practice and facility profiles (step 1.5): the record as JSON, and every clinician as CSV (the summary columns).
+// Companies & products (docs/PRODUCT_PLAN.md Phase 9, owner 2026-10-12): every company or product as CSV, and each one's full record.
+app.MapGet("/companies.csv", IndustryEndpoints.CompaniesCsvAsync);
+app.MapGet("/products.csv", IndustryEndpoints.ProductsCsvAsync);
+app.MapGet("/company/{id}/raw.json", async (string id, HttpContext http, CompanyService companies, CancellationToken ct) =>
+{
+    if (await companies.GetAsync(id, ct) is not { } company)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"company_{company.Id}.json\"";
+    return Results.Json(company);
+});
+app.MapGet("/product/{slug}/raw.json", async (string slug, HttpContext http, ProductService products, CancellationToken ct) =>
+{
+    if (await products.GetAsync(slug, ct) is not { } product)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"product_{product.Slug}.json\"";
+    return Results.Json(product);
+});
+
 app.MapGet("/group/{pacId}/raw.json", async (string pacId, HttpContext http, OrganizationService organizations, CancellationToken ct) =>
 {
     if (await organizations.GetGroupAsync(pacId, 1, ct) is not { } group)

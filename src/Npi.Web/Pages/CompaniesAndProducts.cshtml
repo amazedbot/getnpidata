@@ -1,0 +1,164 @@
+@page "/companies-and-products"
+@using System.Globalization
+@model CompaniesAndProductsModel
+@{
+    ViewData["Title"] = "Companies & products";
+    var o = Model.Overview;
+    var years = o.FirstYear is null ? "" : $"{o.FirstYear}–{o.LastYear}";
+}
+
+<div class="profile industry">
+    <div>
+        <h1>Companies &amp; products</h1>
+        <p class="lede">Drug, device and supply makers report every payment they make to doctors, other prescribers and teaching hospitals (CMS Open Payments, the Sunshine Act). See who pays, for which products, and what FDA, SEC and HHS-OIG records say about them.</p>
+    </div>
+
+    <form method="get" action="/companies-and-products" class="industry-search" role="search">
+        <label for="q" class="visually-hidden">A company, drug or device</label>
+        <input id="q" name="q" type="search" value="@Model.Q" maxlength="@Npi.Core.Search.CompanyService.MaxNameLength" placeholder="A company, drug or device, e.g. Pfizer or Eliquis" />
+        <button type="submit">Search</button>
+    </form>
+    @if (Model.Error is not null)
+    {
+        <p class="error" role="alert">@Model.Error</p>
+    }
+
+    @if (Model.CompanyMatches is { } cm && Model.ProductMatches is { } pm)
+    {
+        <div class="profile-row top-align">
+            <section class="card grow-card" aria-labelledby="cm-h">
+                <h2 id="cm-h">Companies matching “@Model.Q”</h2>
+                @if (cm.TotalCount == 0)
+                {
+                    <p class="muted">No company name contains it.</p>
+                }
+                else
+                {
+                    <ul class="plain-list">
+                        @foreach (var c in cm.Items)
+                        {
+                            <li><a href="/company/@Uri.EscapeDataString(c.Id)">@c.Name</a> <span class="muted">· @Format.ShortMoney(c.Payments)@(c.Providers is { } n ? $" to {Format.Number(n)} providers" : "")</span></li>
+                        }
+                    </ul>
+                    @if (cm.TotalCount > cm.Items.Count){<p><a href="/companies?name=@Uri.EscapeDataString(Model.Q!)">All @Format.Number(cm.TotalCount) matching companies →</a></p>}
+                }
+            </section>
+            <section class="card grow-card" aria-labelledby="pm-h">
+                <h2 id="pm-h">Products matching “@Model.Q”</h2>
+                @if (pm.TotalCount == 0)
+                {
+                    <p class="muted">No product name contains it.</p>
+                }
+                else
+                {
+                    <ul class="plain-list">
+                        @foreach (var p in pm.Items)
+                        {
+                            <li><a href="/product/@Uri.EscapeDataString(p.Slug)">@p.Name</a> <span class="muted">· @p.Kind · @Format.ShortMoney(p.Amount) in @p.Year</span></li>
+                        }
+                    </ul>
+                    @if (pm.TotalCount > pm.Items.Count){<p><a href="/products?name=@Uri.EscapeDataString(Model.Q!)">All @Format.Number(pm.TotalCount) matching products →</a></p>}
+                }
+            </section>
+        </div>
+    }
+
+    <div class="stat-row">
+        <a class="stat" href="/companies">
+            <span class="label">Companies reporting</span>
+            <strong>@Format.Number(o.Companies)</strong>
+            <span class="small">drug, device and supply makers and purchasing groups</span>
+        </a>
+        <div class="stat">
+            <span class="label">Paid, @years</span>
+            <strong>@Format.ShortMoney(o.Paid)</strong>
+            <span class="small">general and research payments</span>
+        </div>
+        <a class="stat" href="/products">
+            <span class="label">Products named, @o.ProductYear</span>
+            <strong>@Format.Number(o.Products)</strong>
+            <span class="small">@string.Join(" · ", o.ProductKinds.Select(k => $"{Format.Number(k.Products)} {k.Kind.ToLowerInvariant()}"))</span>
+        </a>
+        <div class="stat">
+            <span class="label">Providers paid, @o.ProductYear</span>
+            <strong>@Format.Number(o.ProvidersPaid)</strong>
+            <span class="small">NPIs with general payments that year</span>
+        </div>
+    </div>
+
+    <div class="profile-row top-align">
+        <section class="card grow-card" aria-labelledby="yr-h">
+            <h2 id="yr-h">Payments by year</h2>
+            <partial name="_YearBars" model="Model.Bars" />
+            <p class="src">General and research payments by every reporting company, CMS Open Payments program years @years.</p>
+        </section>
+        <section class="card side-card" aria-labelledby="dl-h">
+            <h2 id="dl-h">Download the data</h2>
+            <p>Every company or every product as a spreadsheet (CSV), with a link to each page:</p>
+            <p class="area-actions">
+                <a class="button" href="/companies.csv" download>All @Format.Number(o.Companies) companies (CSV)</a>
+                <a class="button secondary" href="/products.csv" download>All @Format.Number(o.Products) products (CSV)</a>
+            </p>
+            <p class="src">Each company and product page also has its full record as raw data (JSON). Programs can use <a href="/developers">the API</a>: <code>/api/v1/companies.csv</code>, <code>/api/v1/products.csv</code>.</p>
+        </section>
+    </div>
+
+    <div class="profile-row top-align">
+        <section class="card grow-card" aria-labelledby="tc-h">
+            <div class="card-head">
+                <h2 id="tc-h">Companies that paid the most</h2>
+                <a href="/companies">All @Format.Number(o.Companies) companies →</a>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">The @o.TopCompanies.Count companies with the largest general and research payments, @years</caption>
+                    <thead><tr><th scope="col">Company</th><th scope="col">Paid, @years</th><th scope="col">Providers</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in o.TopCompanies)
+                        {
+                            <tr>
+                                <td><a href="/company/@Uri.EscapeDataString(c.Id)">@c.Name</a></td>
+                                <td class="nowrap">@Format.ShortMoney(c.Payments)</td>
+                                <td>@(c.Providers is { } n ? Format.Number(n) : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <section class="card grow-card" aria-labelledby="tp-h">
+            <div class="card-head">
+                <h2 id="tp-h">Products named most, @o.ProductYear</h2>
+                <a href="/products">All @Format.Number(o.Products) products →</a>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">The @o.TopProducts.Count products named in the largest general payments, @o.ProductYear</caption>
+                    <thead><tr><th scope="col">Product</th><th scope="col">Type</th><th scope="col">Payments naming it</th><th scope="col">Providers</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in o.TopProducts)
+                        {
+                            <tr>
+                                <td><a href="/product/@Uri.EscapeDataString(p.Slug)">@p.Name</a></td>
+                                <td>@p.Kind</td>
+                                <td class="nowrap">@Format.ShortMoney(p.Amount)</td>
+                                <td>@Format.Number(p.Providers)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="chips">
+                @foreach (var k in o.ProductKinds.Where(k => Npi.Core.Search.ProductService.Kinds.Contains(k.Kind)))
+                {
+                    <a class="chip" href="/products?kind=@Uri.EscapeDataString(k.Kind)">@k.Kind · @Format.Number(k.Products)</a>
+                }
+            </p>
+        </section>
+    </div>
+
+    <p class="src">
+        A payment from a company isn't evidence of wrongdoing; companies must report even small ones, such as a meal. A payment can name up to five products
+        and counts for each, so product amounts can't be added up. Source: <a href="https://openpaymentsdata.cms.gov/">CMS Open Payments</a>.
+    </p>
+</div>

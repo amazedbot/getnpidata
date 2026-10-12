@@ -29,6 +29,7 @@
         ]),
         ("Companies and products", [
             ("GET", "/companies?name= · /companies/{id}", "Companies that pay providers (Open Payments), with FDA, SEC and OIG records"),
+            ("GET", "/companies.csv · /products.csv", "Every company or every product as CSV, with a link to each page"),
             ("GET", "/products?name= · /products/{slug}", "Drugs and devices named in those payments, with FDA and Medicare data"),
             ("GET", "/products/{slug}/prescribers · .csv", "Paid providers who prescribe it (Medicare Part D)"),
         ]),

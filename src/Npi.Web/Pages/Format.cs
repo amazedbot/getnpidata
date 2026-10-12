@@ -10,6 +10,37 @@ public static class Format
     public static string Amount(double value, int? records = null) => value <= 0 ? "—"
         : records is > 0 ? $"{Money(value)} ({records.Value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)})" : Money(value);
 
+    /// <summary>Dollars in short form for headlines and charts: $5.12B, $812M, $1.9M, $950K, $640.</summary>
+    public static string ShortMoney(double value)
+    {
+        var c = System.Globalization.CultureInfo.InvariantCulture;
+        var a = Math.Abs(value);
+        return a >= 1e9 ? "$" + (value / 1e9).ToString(a >= 1e10 ? "0.0" : "0.00", c) + "B"
+            : a >= 1e6 ? "$" + (value / 1e6).ToString(a >= 1e8 ? "0" : a >= 1e7 ? "0.0" : "0.00", c) + "M"
+            : a >= 1e4 ? "$" + (value / 1e3).ToString("0", c) + "K"
+            : Money(value);
+    }
+
+    /// <summary>A count in short form: 4.42M, 332,888.</summary>
+    public static string ShortNumber(long value) =>
+        value >= 1_000_000 ? (value / 1e6).ToString(value >= 10_000_000 ? "0.0" : "0.00", System.Globalization.CultureInfo.InvariantCulture) + "M" : Number(value);
+
+    /// <summary>
+    /// An Open Payments "nature of payment" in short words for lists ("Speaking and faculty fees"); the official wording stays in the
+    /// title attribute and the raw data.
+    /// </summary>
+    public static string Nature(string nature) => nature switch
+    {
+        _ when nature.StartsWith("Compensation for services other than consulting", StringComparison.OrdinalIgnoreCase) => "Speaking and faculty fees",
+        _ when nature.StartsWith("Compensation for serving as faculty or as a speaker for an accredited", StringComparison.OrdinalIgnoreCase) => "Speaking at accredited education",
+        _ when nature.StartsWith("Compensation for serving as faculty or as a speaker for a non-accredited", StringComparison.OrdinalIgnoreCase) => "Speaking at other education",
+        _ when nature.StartsWith("Compensation for serving as faculty", StringComparison.OrdinalIgnoreCase) => "Speaking and faculty fees",
+        _ when nature.StartsWith("Current or prospective ownership", StringComparison.OrdinalIgnoreCase) => "Ownership or investment",
+        "Consulting Fee" => "Consulting",
+        "Royalty or License" => "Royalties and licenses",
+        _ => nature.Length > 1 ? char.ToUpperInvariant(nature[0]) + nature[1..].ToLowerInvariant() : nature,
+    };
+
     /// <summary>A count with thousands separators.</summary>
     public static string Number(long value) => value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
 
