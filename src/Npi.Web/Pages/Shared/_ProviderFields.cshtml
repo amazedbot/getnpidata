@@ -133,6 +133,18 @@
         <span class="field-error">@Model.Error(nameof(SearchFilter.AddressType))</span>
     </div>
     <div class="field">
+        <label for="quality">Record quality</label>
+        <select id="quality" name="quality" aria-describedby="quality-help">
+            <option value="">Any</option>
+            @foreach (var (value, label) in RecordQuality.FilterOptions)
+            {
+                <option value="@value" selected="@(Model.Filter.Quality == value)">@label</option>
+            }
+        </select>
+        <span id="quality-help" class="muted small">Stale: not updated in 10+ years and no sign of current practice.</span>
+        <span class="field-error">@Model.Error(nameof(SearchFilter.Quality))</span>
+    </div>
+    <div class="field">
         <label for="medicareActive">Billed Medicare</label>
         <select id="medicareActive" name="medicareActive">
             <option value="">Any</option>

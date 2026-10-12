@@ -83,6 +83,9 @@ public sealed class ProviderSearch
     /// <summary>commercial, residential or unknown: a practice location in that kind of building. Needs another filter.</summary>
     public string? AddressType { get; set; }
 
+    /// <summary>Record quality: notStale (hide stale records), current, check or stale. Needs another filter.</summary>
+    public string? Quality { get; set; }
+
     /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>
     public bool? MedicareActive { get; set; }
 
@@ -148,6 +151,7 @@ public sealed class ProviderSearch
         AddBool("medicareActive", MedicareActive);
         Add("shortage", Shortage);
         Add("addressType", AddressType);
+        Add("quality", Quality);
         AddInt("newWithinDays", NewWithinDays);
         AddInt("updatedWithinDays", UpdatedWithinDays);
         Add("sort", Sort);

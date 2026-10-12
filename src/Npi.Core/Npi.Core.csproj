@@ -14,6 +14,7 @@
     <!-- Plain specialty categories (SpecialtyCategories). -->
     <EmbeddedResource Include="Search\specialty_categories.csv" LogicalName="Npi.Core.specialty_categories.csv" />
     <EmbeddedResource Include="Search\specialty_codes.csv" LogicalName="Npi.Core.specialty_codes.csv" />
+    <EmbeddedResource Include="Search\care_compare_specialties.csv" LogicalName="Npi.Core.care_compare_specialties.csv" />
   </ItemGroup>
 
   <ItemGroup>

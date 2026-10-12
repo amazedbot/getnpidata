@@ -2,7 +2,7 @@
 
 Status: **approved by the owner on 2026-10-11**, with the decisions recorded in §6. CLAUDE.md carries the new direction.
 The work goes one phase (and one step) at a time; each step is committed, summarized, and waits for the owner's "go".
-Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care), 1.9 (developer page, Application Insights, privacy notice, accessibility and speed). **Phase 1 is complete.** Next: **Phase 3, data quality signals and change history** (owner, 2026-10-12); Phase 2 waits until a feature needs hosting.
+Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care), 1.9 (developer page, Application Insights, privacy notice, accessibility and speed). **Phase 1 is complete.** Next: **Phase 3, data quality signals and change history** (owner, 2026-10-12); Phase 2 waits until a feature needs hosting. Phase 3 done: 3.1 (record-quality label).
 
 **Vision.** getnpidata is the affordable answer layer on top of free government data. It goes deeper than free lookup
 tools and costs a small fraction of what enterprise vendors charge. It answers questions instead of dumping data.
@@ -235,7 +235,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
     - a phone on file;
     - deactivation or reactivation history.
 
-    Shown as Current / Check / Stale with the reasons.
+    Shown as Current / Check / Stale with the reasons. **Done 2026-10-12 (step 3.1):** `provider_quality`, rebuilt after each load; on profiles, result badges, Verify NPIs (tabs and pills), CSV/Excel and the API, and a `quality` filter. Rules in CLAUDE.md §7 Stage 5.5 "Record quality"; the spot check of 50 stale records is step 3.5.
   - **The change recorder widened:** secondary locations, phone, every taxonomy (not just the primary), organization name, licenses (where a state publishes them), exclusions and opt-outs as they start and end.
   - **Change pages:** "Changes in [county] this month", "New practices", "Closed or moved".
 - **Data:**

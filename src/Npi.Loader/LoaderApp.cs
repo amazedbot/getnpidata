@@ -137,6 +137,21 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
 
+        // Record quality (docs/PRODUCT_PLAN.md step 3.1): relabelled after the projection, the map and the datasets it reads.
+        var quality = new QualityBuilder(database, log, options.MinRowRatio);
+        if (projectionOk && await quality.IsStaleAsync(ct))
+        {
+            try
+            {
+                await quality.BuildAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Labelling the record quality failed");
+                projectionOk = false;
+            }
+        }
+
         log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; datasets {Datasets}; projection {Projection}; map {Map}",
             plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", datasetsOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED",
             mapOk ? "current" : "FAILED");
@@ -245,6 +260,15 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         }
 
         await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
+    }
+
+    /// <summary>The <c>quality</c> command: relabel every record current, check or stale now.</summary>
+    public async Task<int> QualityAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         return 0;
     }
 

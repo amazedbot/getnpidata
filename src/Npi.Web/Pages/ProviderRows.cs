@@ -21,9 +21,20 @@ public sealed record ProviderRows(IReadOnlyList<ProviderSummary> Items, string C
             yield return new Badge("Medicare opt-out", "warn", "Has an active Medicare opt-out affidavit");
         }
 
+        // Record quality (docs/PRODUCT_PLAN.md step 3.1): the reasons on hover.
+        if (p.Quality is { Label: QualityLabel.Stale } stale)
+        {
+            yield return new Badge("Stale record", "warn", "Record quality: " + string.Join("; ", stale.ReasonTexts));
+        }
+
         if (p.EnumerationDate is { } enumerated && enumerated >= DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-90))
         {
             yield return new Badge("New", "", "NPI issued " + enumerated.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+
+        if (p.Quality is { Label: QualityLabel.Check } check)
+        {
+            yield return new Badge("Check record", "", "Record quality: " + string.Join("; ", check.ReasonTexts));
         }
 
         if (p.Flags.AcceptsMedicareAssignment)

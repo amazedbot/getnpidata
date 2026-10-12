@@ -214,6 +214,11 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
 
     public bool OptedOut => Provider.Compliance.OptOut is { Active: true };
 
+    /// <summary>The record-quality explanation (docs/PRODUCT_PLAN.md step 3.1); empty when the record isn't labelled yet.</summary>
+    public IReadOnlyList<QualityNote> QualityNotes => Provider.Quality is { } q
+        ? RecordQuality.Explain(q, Provider.LastUpdateDate, DateOnly.FromDateTime(DateTime.UtcNow), IsPerson, Provider.QualityCareCompare)
+        : [];
+
     public IEnumerable<StatusPill> Status
     {
         get
@@ -247,6 +252,17 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
             if (Provider.CareCompare is { OffersTelehealth: true })
             {
                 yield return new StatusPill("Telehealth", "plain");
+            }
+
+            if (Provider.Quality is { } quality)
+            {
+                var reasons = quality.ReasonTexts.Where(r => r is not ("NPI reactivated" or "Home address")).ToList();
+                yield return quality.Label switch
+                {
+                    QualityLabel.Stale => new StatusPill("Record looks stale", "alert", string.Join("; ", reasons)),
+                    QualityLabel.Check => new StatusPill("Record needs a check", "warn", string.Join("; ", reasons)),
+                    _ => new StatusPill("Record looks current", "ok", "No conflicts or gaps found in the record (see Record quality)"),
+                };
             }
 
             if (Provider.LastUpdateDate is { } updated)
@@ -286,6 +302,11 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
             }
 
             yield return ("standing", "Standing");
+            if (Provider.Quality is not null)
+            {
+                yield return ("record-quality", "Record quality");
+            }
+
             if (Provider.MedicareServices is not null || Provider.MedicarePrescribing is not null)
             {
                 yield return ("medicare", "Medicare");

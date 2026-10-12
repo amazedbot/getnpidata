@@ -12,6 +12,7 @@ public enum LoaderCommand
     Project,
     Credentials,
     AddressTypes,
+    Quality,
     Areas,
     Geocode,
     Overture,
@@ -34,6 +35,7 @@ public static class LoaderCommandLine
         ["project"] = LoaderCommand.Project,
         ["credentials"] = LoaderCommand.Credentials,
         ["address-types"] = LoaderCommand.AddressTypes,
+        ["quality"] = LoaderCommand.Quality,
         ["areas"] = LoaderCommand.Areas,
         ["geocode"] = LoaderCommand.Geocode,
         ["overture"] = LoaderCommand.Overture,
@@ -53,6 +55,7 @@ public static class LoaderCommandLine
           project          Rebuild the search projection tables (and the standardized credentials)
           credentials      Rebuild the standardized credential tables
           address-types    Relabel the practice addresses (commercial, residential) from the FEMA buildings
+          quality          Relabel every record current, check or stale (record quality)
           areas            Recount the providers per area (US, states, counties) and specialty for the area pages
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses
