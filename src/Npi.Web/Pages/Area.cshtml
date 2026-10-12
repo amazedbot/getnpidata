@@ -63,14 +63,6 @@
             <strong>@a.NewProviders.ToString("N0", CultureInfo.InvariantCulture)</strong>
             <span class="small">NPIs issued in the 90 days to @(a.NewSince?.AddDays(AreaProfileService.NewDays).ToString("MMMM d", CultureInfo.InvariantCulture) ?? "the last update")</span>
         </a>
-        @if (a.Type != "us")
-        {
-            <div class="stat">
-                <span class="label">Changes recorded</span>
-                <strong>@a.ChangeCount.ToString("N0", CultureInfo.InvariantCulture)</strong>
-                <span class="small">names, specialties, addresses and new NPIs since tracking began (Oct 2026)</span>
-            </div>
-        }
     </div>
 
     <p class="area-actions">
