@@ -917,6 +917,39 @@ public sealed class SearchIntegrationTests : IDisposable
         await quality.BuildAsync(_ct);
         var reasons = (QualityReason)await db.ScalarAsync<int>("SELECT reasons FROM provider_quality WHERE npi = @D", new { D });
         Assert.Equal(QualityReason.ListedClosed, reasons & (QualityReason.FacilityClosed | QualityReason.ListedClosed));
+
+        // Only state licenses changed: the queued NPIs are relabelled and nobody else. A gets a current license (no longer stale);
+        // B's MIPS score goes, but B isn't queued, so it keeps its label until a full build.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO provider_state_license (npi, state, kind, source, license_number, status, expiration_date)
+              VALUES (@A, 'NY', 'license', 'ny_test', '123', 'ACTIVE', '2028-01-31');
+            INSERT INTO quality_pending (npi) VALUES (@A);
+            DELETE FROM cc_mips WHERE npi = @B;
+            INSERT INTO reference_data (source, version, source_url, rows_loaded, loaded_at, checked_at) VALUES ('state_licenses', 'v2', '', 1, @now, @now) AS new
+              ON DUPLICATE KEY UPDATE loaded_at = new.loaded_at;
+            UPDATE reference_data SET loaded_at = @before WHERE source = 'provider_quality';
+            UPDATE data_version SET projected_at = @older;
+            UPDATE reference_data SET loaded_at = @older WHERE source NOT IN ('provider_quality', 'state_licenses');
+            """, new { A, B, now = DateTime.UtcNow, before = DateTime.UtcNow.AddMinutes(-1), older = DateTime.UtcNow.AddMinutes(-2) });
+        Assert.True(await quality.IsStaleAsync(_ct));
+        Assert.Equal(4L, await quality.BuildAsync(_ct));
+        Assert.False(await quality.IsStaleAsync(_ct));
+        var a = (await db.QueryAsync<(sbyte, int, short)>("SELECT label, reasons, activity FROM provider_quality WHERE npi = @A", new { A })).Single();
+        Assert.Equal(QualityActivity.CurrentLicense, (QualityActivity)a.Item3);
+        Assert.NotEqual(QualityLabel.Stale, (QualityLabel)a.Item1);
+        Assert.Equal(RecordQuality.Classify((QualityReason)a.Item2), (QualityLabel)a.Item1);
+        Assert.Equal(QualityActivity.CareCompare | QualityActivity.MipsScore,
+            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM quality_pending"));
+        // The search rows follow A's new label: none left under the old one.
+        Assert.Equal([a.Item1], await db.QueryAsync<sbyte>("SELECT DISTINCT label FROM quality_search WHERE npi = @A", new { A }));
+        Assert.DoesNotContain(A, await Npis(search, new SearchFilter { State = "NY", Quality = "stale" }));
+
+        // Nothing queued: a full build (B loses its MIPS sign).
+        await quality.BuildAsync(_ct);
+        Assert.Equal(QualityActivity.CareCompare,
+            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
     }
 
     /// <summary>The Source Cooperative listing of the FEMA USA Structures files and the two fixture files.</summary>

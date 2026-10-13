@@ -260,11 +260,11 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         }
 
         await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
-        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: false);
         return 0;
     }
 
-    /// <summary>The <c>quality</c> command: relabel every record current, check or stale now.</summary>
+    /// <summary>The <c>quality</c> command: relabel the records whose state licenses changed, or every record when nothing is queued or another input changed.</summary>
     public async Task<int> QualityAsync(CancellationToken ct)
     {
         await EnsureMigratedAsync(ct);
