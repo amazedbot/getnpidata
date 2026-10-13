@@ -176,8 +176,6 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
         {
             var columns = (await Database.GetColumnsAsync(connection, table, ct)).Select(c => c.Name)
                 .Where(c => !Bookkeeping.Contains(c) && (c.Equals("NPI", StringComparison.OrdinalIgnoreCase) || ProjectionBuilder.ReadsColumn(c))).ToList();
-            string Hash(string alias) =>
-                $"MD5(CONCAT_WS(CHAR(31), {string.Join(", ", columns.Select(c => $"IFNULL({alias}.{SqlIdentifier.Quote(c)}, CHAR(0))"))}))";
             var t = SqlIdentifier.Quote(table);
             var st = SqlIdentifier.Quote(table + "_staging");
             if (table == "npidata")
@@ -197,29 +195,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             }
 
             // Child rows: one hash per NPI over its rows' hashes in sorted order (row order and ids don't matter).
-            string PerNpi(string source) =>
-                $"SELECT c.`NPI` AS `npi`, MD5(GROUP_CONCAT({Hash("c")} ORDER BY {Hash("c")} SEPARATOR ',')) AS `h` FROM {source} c GROUP BY c.`NPI`";
-            try
-            {
-                await RunAsync($"CREATE TEMPORARY TABLE `monthly_child_new` (PRIMARY KEY (`npi`)) {PerNpi(st)}");
-                await RunAsync($"CREATE TEMPORARY TABLE `monthly_child_old` (PRIMARY KEY (`npi`)) {PerNpi(t)}");
-                // Two statements: MySQL can't open a temporary table twice in one.
-                await RunAsync(
-                    """
-                    INSERT IGNORE INTO `projection_pending` (`npi`)
-                    SELECT a.`npi` FROM `monthly_child_new` a LEFT JOIN `monthly_child_old` b ON b.`npi` = a.`npi` WHERE NOT (a.`h` <=> b.`h`)
-                    """);
-                await RunAsync(
-                    """
-                    INSERT IGNORE INTO `projection_pending` (`npi`)
-                    SELECT b.`npi` FROM `monthly_child_old` b LEFT JOIN `monthly_child_new` a ON a.`npi` = b.`npi` WHERE a.`npi` IS NULL
-                    """);
-            }
-            finally
-            {
-                await connection.ExecuteAsync(new CommandDefinition("DROP TEMPORARY TABLE IF EXISTS `monthly_child_new`, `monthly_child_old`",
-                    cancellationToken: CancellationToken.None));
-            }
+            await NpiRowDiff.QueueAsync(connection, table + "_staging", table, "NPI", "projection_pending", ct, columns);
         }
     }
 
