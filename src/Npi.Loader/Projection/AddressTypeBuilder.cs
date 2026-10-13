@@ -21,6 +21,10 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
 {
     public const string Source = "address_type";
 
+    /// <summary>SQL: 1 when a location's address names a suite, floor, building or room (a sign of a business), else 0.</summary>
+    public static string SuiteSql(string location) =>
+        $"UPPER(CONCAT_WS(' ', {location}.`address1`, {location}.`address2`)) REGEXP '\\b(STE|SUITE|FL|FLR|FLOOR|BLDG|BUILDING|RM|ROOM)\\b'";
+
     // Each address's label from its providers, FEMA building and Overture point; {scope} narrows the locations read.
     private static string LabelSql(string target, string scope) => $$"""
         INSERT INTO `{{target}}` (`addr_key`, `building_type`, `basis`)
@@ -51,7 +55,7 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
             s.`suite` OR COALESCE(ap.`source` IN ('place', 'place_name'), 0) OR s.`providers` >= 5 OR (s.`org` AND s.`providers` >= 3) AS `business`
           FROM (
             SELECT l.`addr_key`,
-              MAX(UPPER(CONCAT_WS(' ', l.`address1`, l.`address2`)) REGEXP '\\b(STE|SUITE|FL|FLR|FLOOR|BLDG|BUILDING|RM|ROOM)\\b') AS `suite`,
+              MAX({{SuiteSql("l")}}) AS `suite`,
               COUNT(DISTINCT l.`npi`) AS `providers`,
               MAX(p.`entity_type` = 2) AS `org`
             FROM `provider_location` l JOIN `provider` p ON p.`npi` = l.`npi`
@@ -145,7 +149,8 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
     private const string Addresses = "address_types_addresses";
     private const string Npis = "address_types_npis";
     private const string Labels = "address_types_labels";
-    private static readonly string[] Scratch = [Addresses, Npis, Labels];
+    private const string Relabelled = "address_types_relabelled";
+    private static readonly string[] Scratch = [Addresses, Npis, Labels, Relabelled];
 
     /// <summary>
     /// Relabels the queued addresses (those the queued NPIs left or moved to) and replaces the building_search rows of every
@@ -166,8 +171,18 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
         // provider_location has no index on addr_key, but on zip5, which is part of it.
         var atAddresses = $" AND l.`zip5` IN (SELECT `zip5` FROM `{Addresses}`) AND l.`addr_key` IN (SELECT `addr_key` FROM `{Addresses}`)";
         await RunAsync(LabelSql(Labels, atAddresses));
+        // Search rows to redo: the batch's, and those of everyone at an address whose label changed (not everyone at the
+        // queued addresses: a hospital's thousands of providers keep their rows when its label stays).
         await RunAsync($"CREATE TABLE `{Npis}` (PRIMARY KEY (`npi`)) ENGINE=InnoDB SELECT `npi` FROM `{batch}`");
-        await RunAsync($"INSERT IGNORE INTO `{Npis}` (`npi`) SELECT DISTINCT l.`npi` FROM `provider_location` l WHERE l.`addr_key` IS NOT NULL{atAddresses}");
+        await RunAsync(
+            $"""
+            CREATE TABLE `{Relabelled}` (PRIMARY KEY (`npi`)) ENGINE=InnoDB
+            SELECT DISTINCT l.`npi` FROM `provider_location` l
+            JOIN `{Addresses}` a ON a.`addr_key` = l.`addr_key`
+            LEFT JOIN `address_type` o ON o.`addr_key` = a.`addr_key` LEFT JOIN `{Labels}` n ON n.`addr_key` = a.`addr_key`
+            WHERE l.`zip5` IN (SELECT `zip5` FROM `{Addresses}`) AND NOT (o.`building_type` <=> n.`building_type`)
+            """);
+        await RunAsync($"INSERT IGNORE INTO `{Npis}` (`npi`) SELECT `npi` FROM `{Relabelled}`");
         var addresses = await Database.CountAsync(connection, Addresses, ct);
 
         await using var tx = await connection.BeginTransactionAsync(ct);
@@ -182,14 +197,7 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
               ON s.`building_type` = k.`building_type` AND s.`state` = k.`state` AND s.`city` = k.`city` AND s.`zip5` = k.`zip5` AND s.`npi` = k.`npi`
             """, tx);
         // A changed label can change the record quality reason "home address" of everyone there.
-        await RunAsync(
-            $"""
-            INSERT IGNORE INTO `{QualityBuilder.Pending}` (`npi`)
-            SELECT DISTINCT l.`npi` FROM `provider_location` l
-            JOIN `{Addresses}` a ON a.`addr_key` = l.`addr_key`
-            LEFT JOIN `address_type` o ON o.`addr_key` = a.`addr_key` LEFT JOIN `{Labels}` n ON n.`addr_key` = a.`addr_key`
-            WHERE l.`zip5` IN (SELECT `zip5` FROM `{Addresses}`) AND NOT (o.`building_type` <=> n.`building_type`)
-            """, tx);
+        await RunAsync($"INSERT IGNORE INTO `{QualityBuilder.Pending}` (`npi`) SELECT `npi` FROM `{Relabelled}`", tx);
         await RunAsync($"DELETE t FROM `address_type` t JOIN `{Addresses}` a ON a.`addr_key` = t.`addr_key`", tx);
         await RunAsync($"INSERT INTO `address_type` SELECT * FROM `{Labels}`", tx);
         await RunAsync(

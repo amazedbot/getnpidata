@@ -30,16 +30,6 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
     /// <summary>"New" providers: NPIs issued in this many days before the data's as-of date.</summary>
     public const int NewDays = 90;
 
-    // New providers: in total, per subcategory, per whole category ({0} = the code → category table).
-    private static readonly (string TaxonomyJoin, string Category, string Subcategory, string Group)[] NewLevels =
-    [
-        ("", "''", "''", ""),
-        ("JOIN `provider_taxonomy` tx ON tx.`npi` = n.`npi` JOIN `{0}` m ON m.`code` = tx.`taxonomy_code`",
-            "m.`category`", "m.`subcategory`", ", m.`category`, m.`subcategory`"),
-        ("JOIN `provider_taxonomy` tx ON tx.`npi` = n.`npi` JOIN `{0}` m ON m.`code` = tx.`taxonomy_code`",
-            "m.`category`", "''", ", m.`category`"),
-    ];
-
     // Reloads that change what every count means: the codes' categories (NUCC) and the ZIPs' counties (HUD).
     private static readonly string[] Inputs = ["nucc", "hud_zip_county"];
 
@@ -140,8 +130,10 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
                 }
             }
 
-            await CountNewAsync(connection, "area_provider_count_staging", "specialty_code_category_staging", null, ct);
+            await PrepareNewAsync(connection, "specialty_code_category_staging", ct);
+            await CountNewAsync(connection, "area_provider_count_staging", null, ct);
         }, ct);
+        await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{NewRows}`", ct);
 
         var now = DateTime.UtcNow;
         await Database.ExecuteAsync(connection,
@@ -157,36 +149,51 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
         return counts["area_provider_count"];
     }
 
-    // Of the providers counted, those whose NPI was issued in the 90 days before the data's as-of date: few, so from the newest NPIs out.
-    private static async Task CountNewAsync(MySqlConnection connection, string target, string categories, MySqlTransaction? tx, CancellationToken ct)
+    // Of the providers counted, those whose NPI was issued in the 90 days before the data's as-of date (~180,000): their area
+    // rows are worked out once into a scratch table (outside any transaction: it is DDL), then counted per area and level.
+    // Joining them to their locations, counties and categories once per level took ~8 min; once in all, about a minute.
+    private const string NewRows = "areas_new_providers";
+
+    private static async Task PrepareNewAsync(MySqlConnection connection, string categories, CancellationToken ct)
     {
-        foreach (var (type, join, id) in Areas)
+        await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{NewRows}`", ct);
+        await Database.ExecuteAsync(connection, ScratchTableSql(NewRows), ct);
+        static string Recent(string alias) =>
+            $"JOIN `provider` n ON n.`npi` = {alias}.`npi` WHERE n.`enumeration_date` >= (SELECT DATE_SUB(COALESCE(MAX(`as_of_date`), CURDATE()), INTERVAL {NewDays} DAY) FROM `data_version`)";
+        foreach (var sql in ContributionSql(NewRows,
+                     $"(SELECT l.`npi`, l.`state`, l.`zip5` FROM `provider_location` l {Recent("l")})",
+                     $"(SELECT t.`npi`, t.`taxonomy_code` FROM `provider_taxonomy` t {Recent("t")})",
+                     categories))
         {
-            foreach (var (taxonomyJoin, category, subcategory, group) in NewLevels)
-            {
-                await connection.ExecuteAsync(new CommandDefinition(
-                    $"""
-                    INSERT INTO `{target}` (`area_type`, `area_id`, `category`, `subcategory`, `providers`, `new_providers`)
-                    SELECT * FROM (
-                      SELECT '{type}' AS t, {id} AS a, {category} AS c, {subcategory} AS sc, 0 AS p, COUNT(DISTINCT n.`npi`) AS n
-                      FROM `provider` n
-                      JOIN `provider_location` s ON s.`npi` = n.`npi` {join} {string.Format(System.Globalization.CultureInfo.InvariantCulture, taxonomyJoin, categories)}
-                      WHERE n.`enumeration_date` >= (SELECT DATE_SUB(COALESCE(MAX(`as_of_date`), CURDATE()), INTERVAL {NewDays} DAY) FROM `data_version`)
-                        AND s.`state` IS NOT NULL AND CHAR_LENGTH({id}) <= 5
-                      GROUP BY {id}{group}) x
-                    ON DUPLICATE KEY UPDATE `new_providers` = x.n
-                    """, transaction: tx, commandTimeout: 0, cancellationToken: ct));
-            }
+            await connection.ExecuteAsync(new CommandDefinition(sql, commandTimeout: 0, cancellationToken: ct));
         }
     }
 
+    private static Task<int> CountNewAsync(MySqlConnection connection, string target, MySqlTransaction? tx, CancellationToken ct) =>
+        connection.ExecuteAsync(new CommandDefinition(
+            $"""
+            INSERT INTO `{target}` (`area_type`, `area_id`, `category`, `subcategory`, `providers`, `new_providers`)
+            SELECT * FROM (
+              SELECT `area_type`, `area_id`, `category`, `subcategory`, 0 AS p, COUNT(*) AS n FROM `{NewRows}`
+              GROUP BY `area_type`, `area_id`, `category`, `subcategory`) x
+            ON DUPLICATE KEY UPDATE `new_providers` = x.n
+            """, transaction: tx, commandTimeout: 0, cancellationToken: ct));
+
+    private static string ScratchTableSql(string table) =>
+        $"""
+        CREATE TABLE `{table}` (
+          `area_type` VARCHAR(10) NOT NULL, `area_id` VARCHAR(40) NOT NULL, `category` VARCHAR(80) NOT NULL, `subcategory` VARCHAR(80) NOT NULL,
+          `npi` CHAR(10) NOT NULL, PRIMARY KEY (`area_type`, `area_id`, `category`, `subcategory`, `npi`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        """;
+
     private const string Old = "areas_old";
     private const string New = "areas_new";
-    private static readonly string[] Scratch = [Old, New];
+    private static readonly string[] Scratch = [Old, New, NewRows];
 
     // Every (area, category, subcategory) a provider counts in, from its locations l (npi, state, zip5) and taxonomy codes t
     // (npi, taxonomy_code), as the full count does: in total from the locations, per category from location × taxonomy.
-    private static IEnumerable<string> ContributionSql(string target, string locations, string taxonomies)
+    private static IEnumerable<string> ContributionSql(string target, string locations, string taxonomies, string categories = "specialty_code_category")
     {
         foreach (var (type, join, id) in Areas)
         {
@@ -201,7 +208,7 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
                     INSERT IGNORE INTO `{target}` (`area_type`, `area_id`, `category`, `subcategory`, `npi`)
                     SELECT '{type}', {id}, m.`category`, {level}, s.`npi`
                     FROM (SELECT l.`npi`, l.`state`, l.`zip5`, t.`taxonomy_code` FROM {locations} l JOIN {taxonomies} t ON t.`npi` = l.`npi`) s {join}
-                    JOIN `specialty_code_category` m ON m.`code` = s.`taxonomy_code`
+                    JOIN `{categories}` m ON m.`code` = s.`taxonomy_code`
                     WHERE s.`state` IS NOT NULL AND CHAR_LENGTH({id}) <= 5
                     """;
             }
@@ -230,16 +237,10 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
 
         Task<int> RunAsync(string sql, MySqlTransaction? tx = null) =>
             connection.ExecuteAsync(new CommandDefinition(sql, transaction: tx, commandTimeout: 0, cancellationToken: ct));
-        foreach (var table in Scratch)
+        foreach (var table in new[] { Old, New })
         {
             await RunAsync($"DROP TABLE IF EXISTS `{table}`");
-            await RunAsync(
-                $"""
-                CREATE TABLE `{table}` (
-                  `area_type` VARCHAR(10) NOT NULL, `area_id` VARCHAR(40) NOT NULL, `category` VARCHAR(80) NOT NULL, `subcategory` VARCHAR(80) NOT NULL,
-                  `npi` CHAR(10) NOT NULL, PRIMARY KEY (`area_type`, `area_id`, `category`, `subcategory`, `npi`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                """);
+            await RunAsync(ScratchTableSql(table));
         }
 
         foreach (var sql in ContributionSql(Old, BuilderPending.OldLocations(batch), BuilderPending.OldTaxonomies(batch)))
@@ -254,6 +255,7 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
             await RunAsync(sql);
         }
 
+        await PrepareNewAsync(connection, "specialty_code_category", ct);
         await using var tx = await connection.BeginTransactionAsync(ct);
         var changed = await RunAsync(
             $"""
@@ -275,7 +277,7 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
               AND NOT EXISTS (SELECT 1 FROM `provider_taxonomy` t WHERE t.`taxonomy_code` = m.`code`)
             """, tx);
         await RunAsync("UPDATE `area_provider_count` SET `new_providers` = 0 WHERE `new_providers` <> 0", tx);
-        await CountNewAsync(connection, "area_provider_count", "specialty_code_category", tx, ct);
+        await CountNewAsync(connection, "area_provider_count", tx, ct);
         await BuilderPending.DoneAsync(connection, BuilderPending.Areas, tx, ct);
         await connection.ExecuteAsync(new CommandDefinition("UPDATE `reference_data` SET `checked_at` = UTC_TIMESTAMP() WHERE `source` = @source",
             new { source = Source }, tx, cancellationToken: ct));

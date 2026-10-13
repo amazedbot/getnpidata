@@ -24,15 +24,18 @@ public static class BuilderPending
     /// <summary>The <c>reference_data</c> source whose <c>loaded_at</c> is the last full projection build.</summary>
     public const string ProjectionSource = "projection";
 
-    /// <summary>SQL: when the projection was last built in full (before migration 091: its last build of any kind).</summary>
+    /// <summary>
+    /// SQL: when the projection was last built in full. Without a record (no full build since migration 091), never: the
+    /// builders' own last full builds stand. data_version.projected_at is no stand-in, since every incremental build moves it.
+    /// </summary>
     public const string FullProjectedAt =
-        "COALESCE((SELECT `loaded_at` FROM `reference_data` WHERE `source` = 'projection'), (SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1970-01-01')";
+        "COALESCE((SELECT `loaded_at` FROM `reference_data` WHERE `source` = 'projection'), '1970-01-01')";
 
     private const string Marker = "-1"; // builder_old_location.is_primary of the row that marks an NPI as snapshotted
 
     /// <summary>
-    /// Inside the projection's transaction, before the batch's rows are replaced: keeps the old locations and taxonomy codes of
-    /// the batch's NPIs not snapshotted yet, and queues their old addresses for the address types.
+    /// Inside the projection's transaction, before the batch's rows are replaced: keeps the old locations (with their address
+    /// label inputs) and taxonomy codes of the batch's NPIs not snapshotted yet.
     /// </summary>
     internal static async Task SnapshotAsync(MySqlConnection connection, string batch, MySqlTransaction tx, CancellationToken ct)
     {
@@ -40,18 +43,18 @@ public static class BuilderPending
         var fresh = $"JOIN `{batch}` b ON b.`npi` = x.`npi` WHERE NOT EXISTS (SELECT 1 FROM `builder_old_location` o WHERE o.`npi` = x.`npi` AND o.`is_primary` = {Marker})";
         await RunAsync(
             $"""
-            INSERT INTO `builder_old_location` (`npi`, `addr_key`, `state`, `city`, `zip5`, `is_primary`)
-            SELECT x.`npi`, x.`addr_key`, IFNULL(x.`state`, ''), IFNULL(x.`city`, ''), IFNULL(x.`zip5`, ''), x.`is_primary` FROM `provider_location` x {fresh}
+            INSERT INTO `builder_old_location` (`npi`, `addr_key`, `state`, `city`, `zip5`, `is_primary`, `label_input`)
+            SELECT x.`npi`, x.`addr_key`, IFNULL(x.`state`, ''), IFNULL(x.`city`, ''), IFNULL(x.`zip5`, ''), x.`is_primary`, {LabelInput("x", "p")}
+            FROM `provider_location` x JOIN `provider` p ON p.`npi` = x.`npi` {fresh}
             """);
         await RunAsync($"INSERT IGNORE INTO `builder_old_taxonomy` (`npi`, `taxonomy_code`) SELECT x.`npi`, x.`taxonomy_code` FROM `provider_taxonomy` x {fresh}");
         await RunAsync($"INSERT INTO `builder_old_location` (`npi`, `is_primary`) SELECT x.`npi`, {Marker} FROM `{batch}` x {fresh.Replace($"JOIN `{batch}` b ON b.`npi` = x.`npi` ", "", StringComparison.Ordinal)}");
-        await QueueAddressesAsync(connection, batch, tx, ct);
     }
 
-    /// <summary>Inside the projection's transaction, after the batch's rows were replaced: queues the NPIs and their new addresses.</summary>
+    /// <summary>Inside the projection's transaction, after the batch's rows were replaced: queues the NPIs and the addresses whose label inputs changed.</summary>
     internal static async Task QueueAsync(MySqlConnection connection, string batch, MySqlTransaction tx, CancellationToken ct)
     {
-        await QueueAddressesAsync(connection, batch, tx, ct);
+        await QueueAddressesAsync(connection, tx, ct);
         foreach (var builder in Builders)
         {
             await connection.ExecuteAsync(new CommandDefinition(
@@ -62,11 +65,29 @@ public static class BuilderPending
             $"INSERT IGNORE INTO `{QualityBuilder.Pending}` (`npi`) SELECT `npi` FROM `{batch}`", transaction: tx, cancellationToken: ct));
     }
 
-    private static Task<int> QueueAddressesAsync(MySqlConnection connection, string batch, MySqlTransaction tx, CancellationToken ct) =>
+    // SQL: a location's address label inputs (migration 092): 1 = a suite or floor in the address, 2 = the provider is an organization.
+    private static string LabelInput(string location, string provider) =>
+        $"({AddressTypeBuilder.SuiteSql(location)}) + 2 * ({provider}.`entity_type` = 2)";
+
+    // The addresses where an (NPI, address, label inputs) row appeared or went between the snapshots and now, for every
+    // snapshotted NPI (the batch, a temporary table, can't be read twice in one statement; the earlier queued NPIs only
+    // repeat addresses already queued). An NPI that kept its addresses queues none: its addresses' labels can't have changed.
+    private static Task<int> QueueAddressesAsync(MySqlConnection connection, MySqlTransaction tx, CancellationToken ct) =>
         connection.ExecuteAsync(new CommandDefinition(
             $"""
             INSERT IGNORE INTO `address_pending` (`addr_key`, `zip5`)
-            SELECT DISTINCT l.`addr_key`, l.`zip5` FROM `provider_location` l JOIN `{batch}` b ON b.`npi` = l.`npi` WHERE l.`addr_key` IS NOT NULL
+            SELECT g.`addr_key`, MIN(g.`zip5`) FROM (
+              SELECT d.`addr_key`, MIN(d.`zip5`) AS `zip5`
+              FROM (SELECT o.`npi`, o.`addr_key`, o.`zip5`, o.`label_input`, -1 AS `side` FROM `builder_old_location` o
+                    WHERE o.`is_primary` <> {Marker} AND o.`addr_key` IS NOT NULL
+                    UNION ALL
+                    SELECT l.`npi`, l.`addr_key`, l.`zip5`, {LabelInput("l", "p")}, 1 FROM `provider_location` l
+                    JOIN `provider` p ON p.`npi` = l.`npi`
+                    JOIN (SELECT DISTINCT `npi` FROM `builder_old_location` WHERE `is_primary` = {Marker}) m ON m.`npi` = l.`npi`
+                    WHERE l.`addr_key` IS NOT NULL) d
+              GROUP BY d.`npi`, d.`addr_key`, d.`label_input`
+              HAVING SUM(d.`side`) <> 0) g
+            GROUP BY g.`addr_key`
             """, transaction: tx, commandTimeout: 0, cancellationToken: ct));
 
     /// <summary>After a full projection every builder rebuilds in full: the queue and the snapshots are moot.</summary>
