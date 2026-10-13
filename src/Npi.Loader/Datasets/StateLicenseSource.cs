@@ -227,6 +227,10 @@ public sealed class StateLicenseSource : DatasetSource
         new RhodeIslandDataset(),
         new VermontDataset(),
         new WestVirginiaDataset(),
+        // Alabama, Michigan and California: files the owner downloads (StateLicenseDroppedFiles.cs).
+        new AlabamaDataset(),
+        new MichiganDataset(),
+        new CaliforniaDataset(),
     ];
 
     public override string Name => "state_licenses";

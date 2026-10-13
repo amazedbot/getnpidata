@@ -32,7 +32,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         "DECEASED|REVOK|SURRENDER|VOID|CANC|TERMINAT|INACTIVE|NOT ACTIVE|EXPIRED|LAPSED|NOT RENEWED|RELINQUISH|SUPERSEDED|CLOSED|DEACTIVATED|SUSPEND|DELINQUENT|^TEXAS RETIRED|^RETIRED$";
 
     // A status that means a usable license when the state gives no expiration date.
-    internal const string ActiveStatus = "^(ACTIVE|CLEAR|APPROVED|PERMIT ISSUED|PROBATION|MILITARY ACTIVE|RETIRED ACTIVE|A$)";
+    internal const string ActiveStatus = "^(ACTIVE|CURRENT|CLEAR|APPROVED|PERMIT ISSUED|PROBATION|MILITARY ACTIVE|RETIRED ACTIVE|A$)";
 
     // A PO box in the street line ("PO BOX 12", "P.O. Box", "POST OFFICE BOX").
     internal const string PoBox = "(^|[^A-Z])(P[ .]*O[ .]*BOX|POST OFFICE BOX)([^A-Z]|$)";

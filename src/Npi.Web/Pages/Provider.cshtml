@@ -235,7 +235,7 @@
             @if (p.StateLicenses.Count == 0)
             {
                 <p>No record matching this provider's @string.Join(", ", coveredLicenses.Select(t => t.LicenseState).Distinct()) license was found in the state's published data
-                    (for New York, that means no public Board for Professional Medical Conduct action).</p>
+                    (for New York, that means no public Board for Professional Medical Conduct action; a state that lists current licenses only may not list a lapsed one).</p>
             }
             @foreach (var lic in p.StateLicenses)
             {
@@ -254,7 +254,7 @@
                     <dd><a href="@lic.SourceUrl">@lic.SourceName</a>@if (lic.VerifyUrl is not null){<text> · </text><a href="@lic.VerifyUrl">verify this license</a>}</dd>
                 </dl>
             }
-            <p class="src">From state licensing boards (@string.Join(", ", StateLicenseSources.States); New York publishes board actions only, Maryland current licenses only, the Florida complaints list recent cases only), matched to this NPI by
+            <p class="src">From state licensing boards (@string.Join(", ", StateLicenseSources.States); New York publishes board actions only; Alabama, Maryland, Michigan, Rhode Island and West Virginia current licenses only; the Florida complaints list recent cases only), matched to this NPI by
                 license state, number and last name. Always confirm with the state board before relying on it.</p>
         }
         <p class="src">Specialties and license numbers from NPPES (NUCC taxonomy).</p>
