@@ -42,7 +42,7 @@ public class StateLicenseFilterTests
                 "\"License #\",\"First Name\",\"Last Name\",\"Middle Name\",\"License Status\",\"Expiration Date\",\"Discipline\",\n" +
                 "\"D0012345\",\"RAJ\",\"PATEL\",\"\",\"A\",\"09/30/2027\",\"N\",\n" +
                 "\"D0099999\",\"ANN\",\"OTHER\",\"\",\"A\",\"09/30/2027\",\"N\",\n" +
-                "\"D0054321\",\"JOSÉ\",\"O'NEIL, JR\",\"\",\"A\",\"09/30/2027\",\"Y\",\n", Encoding.Latin1);
+                "\"D0054321\",\"JOSÉ\",\"O'NEIL, JR\",\"\",\"A\",\"09/30/2027\",\"Y\",\n", Encoding.Latin1, TestContext.Current.CancellationToken);
             var keys = new LicenseKeys();
             keys.Add("12345", "12345");
             keys.Add("54321", "54321");
@@ -52,7 +52,7 @@ public class StateLicenseFilterTests
                 "\"License #\",\"First Name\",\"Last Name\",\"Middle Name\",\"License Status\",\"Expiration Date\",\"Discipline\",\"\"\n" +
                 "\"D0012345\",\"RAJ\",\"PATEL\",\"\",\"A\",\"09/30/2027\",\"N\",\"\"\n" +
                 "\"D0054321\",\"JOSÉ\",\"O'NEIL, JR\",\"\",\"A\",\"09/30/2027\",\"Y\",\"\"\n",
-                await File.ReadAllTextAsync(target, Encoding.Latin1));
+                await File.ReadAllTextAsync(target, Encoding.Latin1, TestContext.Current.CancellationToken));
         }
         finally
         {

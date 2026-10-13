@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 using Dapper;
 using MySqlConnector;
 using Npi.Core.Search;
-using Npi.Loader.Db;
 
 namespace Npi.Loader.Datasets;
 
