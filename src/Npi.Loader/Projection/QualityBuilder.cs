@@ -13,11 +13,18 @@ namespace Npi.Loader.Projection;
 /// Labels every active provider's record current, check or stale (docs/PRODUCT_PLAN.md step 3.1; migration 083) by the rules of
 /// <see cref="RecordQuality"/>: the age of the NPPES record, signs of current practice in the other datasets, the primary practice
 /// address (mapped, PO box, home), the phone, whether Care Compare agrees on address and profession, the state license records and
-/// NPI reactivation. Rebuilt after each projection and whenever one of its inputs reloads.
+/// NPI reactivation. Rebuilt after each projection and whenever one of its inputs reloads; when only state licenses changed,
+/// only the NPIs whose license rows changed (queued in <c>quality_pending</c> by the state license load) are relabelled.
 /// </summary>
 public sealed class QualityBuilder(Database database, ILogger log, double minRowRatio)
 {
     public const string Source = "provider_quality";
+
+    /// <summary>NPIs whose state license rows changed since the labels were built (migration 088).</summary>
+    public const string Pending = "quality_pending";
+
+    // The only input whose changes are queued per NPI; any other input or a new projection relabels everyone.
+    private const string QueuedInput = "state_licenses";
 
     /// <summary>The <c>reference_data</c> sources the label reads; a newer load of any of them makes it stale.</summary>
     public static readonly IReadOnlyList<string> Inputs =
@@ -43,8 +50,10 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     /// Provider of Services file at the same street address (<see cref="QualityReason.FacilityClosed"/>, unless the organization holds a
     /// current certified facility, and only when its NPI predates the termination). Ownership changes (code 07) aren't closures.
     /// </summary>
-    private async Task MatchBusinessesAsync(MySqlConnection connection, string activity, string flags, string businesses, CancellationToken ct)
+    private async Task MatchBusinessesAsync(MySqlConnection connection, string activity, string flags, string businesses, bool onlyPending,
+        CancellationToken ct)
     {
+        var scope = onlyPending ? $" AND p.`npi` IN (SELECT `npi` FROM `{Pending}`)" : "";
         var open = new HashSet<string>(StringComparer.Ordinal);
         var closed = new HashSet<string>(StringComparer.Ordinal);
         var words = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
@@ -65,7 +74,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                            JOIN `address_place` ap ON ap.`addr_key` = l.`addr_key`
                            JOIN `provider_org_name` o ON o.`npi` = p.`npi`
                            WHERE p.`entity_type` = 2
-                           """).WithCancellation(ct))
+                           """ + scope).WithCancellation(ct))
         {
             if (BusinessNames.Same(Words(row.OrgName), Words(row.PlaceName)))
             {
@@ -113,7 +122,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                            FROM `provider_location` l JOIN `provider` p ON p.`npi` = l.`npi` AND p.`entity_type` = 2
                            JOIN `provider_org_name` o ON o.`npi` = l.`npi`
                            WHERE l.`zip5` IN (SELECT DISTINCT f.`zip5` FROM `cms_pos_facility` f WHERE f.`active` = 0)
-                           """).WithCancellation(ct))
+                           """ + scope).WithCancellation(ct))
         {
             if (AddressNormalizer.Split(row.Address1) is var (number, street) && terminated.TryGetValue((row.Zip5, number, street), out var here)
                 && here.Any(f => (f.Date is null || row.Enumerated is null || row.Enumerated <= f.Date) && BusinessNames.Same(Words(row.OrgName), f.Words)))
@@ -167,11 +176,41 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             """, new { source = Source, inputs = Inputs }, cancellationToken: ct)) != 0;
     }
 
-    public async Task<long> BuildAsync(CancellationToken ct)
+    /// <summary>
+    /// True when the labels exist, NPIs are queued and nothing but the state licenses changed since they were built (no newer projection, no
+    /// other input reloaded), so relabelling the queued NPIs is enough.
+    /// </summary>
+    private static async Task<bool> OnlyPendingChangedAsync(MySqlConnection connection, CancellationToken ct) =>
+        await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+            """
+            SELECT EXISTS (SELECT 1 FROM `reference_data` WHERE `source` = @source)
+               AND EXISTS (SELECT 1 FROM `provider_quality`)
+               AND EXISTS (SELECT 1 FROM `quality_pending`)
+               AND (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source)
+                   >= GREATEST(COALESCE((SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1970-01-01'),
+                               COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @others), '1970-01-01'))
+            """, new { source = Source, others = Inputs.Where(i => i != QueuedInput).ToList() }, cancellationToken: ct)) != 0;
+
+    /// <param name="allowIncremental">
+    /// False to relabel everyone (after a projection); true relabels only the queued NPIs when nothing else changed.
+    /// </param>
+    public async Task<long> BuildAsync(CancellationToken ct, bool allowIncremental = true)
     {
         var watch = Stopwatch.StartNew();
         await using var connection = await database.OpenAsync(ct);
         Task RunAsync(string sql, object? param = null) => connection.ExecuteAsync(new CommandDefinition(sql, param, commandTimeout: 0, cancellationToken: ct));
+
+        var onlyPending = allowIncremental && await OnlyPendingChangedAsync(connection, ct);
+        var pendingCount = onlyPending
+            ? await connection.ExecuteScalarAsync<long>(new CommandDefinition($"SELECT COUNT(*) FROM `{Pending}`", cancellationToken: ct))
+            : 0;
+        if (onlyPending)
+        {
+            log.Information("Record quality: relabelling the {Count:N0} providers whose state licenses changed", pendingCount);
+        }
+
+        // Every source and the providers, limited to the queued NPIs when only they are relabelled.
+        var scope = onlyPending ? $" JOIN `{Pending}` s_ ON s_.`npi` = x.`npi`" : "";
 
         var asOf = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
             "SELECT `as_of_date` FROM `data_version` WHERE `id` = 1", cancellationToken: ct)) ?? DateTime.UtcNow.Date;
@@ -227,7 +266,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             var statuses = new { dates.asOf, inactive = InactiveStatus, active = ActiveStatus };
             foreach (var (bit, select) in signs)
             {
-                await RunAsync($"INSERT INTO `{activity}` (`npi`, `bits`) SELECT x.`npi`, {(int)bit} FROM ({select}) x " +
+                await RunAsync($"INSERT INTO `{activity}` (`npi`, `bits`) SELECT x.`npi`, {(int)bit} FROM ({select}) x{scope} " +
                                $"ON DUPLICATE KEY UPDATE `bits` = `bits` | {(int)bit}", statuses);
             }
 
@@ -243,16 +282,14 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             ];
             foreach (var (bit, select) in found)
             {
-                await RunAsync($"INSERT INTO `{flags}` (`npi`, `bits`) SELECT x.`npi`, {(int)bit} FROM ({select}) x " +
+                await RunAsync($"INSERT INTO `{flags}` (`npi`, `bits`) SELECT x.`npi`, {(int)bit} FROM ({select}) x{scope} " +
                                $"ON DUPLICATE KEY UPDATE `bits` = `bits` | {(int)bit}", statuses);
             }
 
-            await MatchBusinessesAsync(connection, activity, flags, businesses, ct);
+            await MatchBusinessesAsync(connection, activity, flags, businesses, onlyPending, ct);
 
             static int I(QualityReason r) => (int)r;
-            var counts = await TableSwap.ReplaceAsync(connection, ["provider_quality", "quality_search"], minRowRatio, async () =>
-            {
-                await RunAsync(
+            Task InsertLabelsAsync() => RunAsync(
                 $"""
                 INSERT INTO `provider_quality_staging` (`npi`, `label`, `reasons`, `activity`)
                 SELECT x.`npi`, {RecordQuality.LabelSql("x.`reasons`")}, x.`reasons`, x.`activity`
@@ -286,16 +323,35 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                   LEFT JOIN `provider_map` m ON m.`npi` = l.`npi` AND m.`addr_key` = l.`addr_key`
                   LEFT JOIN `address_type` bt ON bt.`addr_key` = l.`addr_key`
                   LEFT JOIN `cc_clinician` cc ON cc.`npi` = p.`npi`
+                  {(onlyPending ? $"WHERE p.`npi` IN (SELECT `npi` FROM `{Pending}`)" : "")}
                 ) x
                 """, new { dates.old5, dates.old10, poBox = PoBox, nearMeters = RecordQuality.CareCompareMiles * 1609.344 });
-                // Label × location, like building_search: the search's location conditions apply as they are.
-                await RunAsync(
-                    """
-                    INSERT INTO `quality_search_staging` (`label`, `state`, `city`, `zip5`, `npi`)
-                    SELECT DISTINCT q.`label`, IFNULL(l.`state`, ''), IFNULL(l.`city`, ''), IFNULL(l.`zip5`, ''), l.`npi`
-                    FROM `provider_location` l JOIN `provider_quality_staging` q ON q.`npi` = l.`npi`
-                    """);
-            }, ct);
+            // Label × location, like building_search: the search's location conditions apply as they are.
+            const string searchRows =
+                """
+                SELECT DISTINCT q.`label`, IFNULL(l.`state`, ''), IFNULL(l.`city`, ''), IFNULL(l.`zip5`, ''), l.`npi`
+                FROM `provider_location` l JOIN `provider_quality_staging` q ON q.`npi` = l.`npi`
+                """;
+
+            Dictionary<string, long> counts;
+            if (onlyPending)
+            {
+                await RunAsync("DROP TABLE IF EXISTS `provider_quality_staging`");
+                await RunAsync("CREATE TABLE `provider_quality_staging` LIKE `provider_quality`");
+                await InsertLabelsAsync();
+                await ReplacePendingAsync(connection, searchRows, ct);
+                counts = new() { ["provider_quality"] = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                    "SELECT COUNT(*) FROM `provider_quality`", cancellationToken: ct)) };
+            }
+            else
+            {
+                counts = new(await TableSwap.ReplaceAsync(connection, ["provider_quality", "quality_search"], minRowRatio, async () =>
+                {
+                    await InsertLabelsAsync();
+                    await RunAsync($"INSERT INTO `quality_search_staging` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
+                }, ct));
+                await RunAsync($"DELETE FROM `{Pending}`"); // everyone was relabelled
+            }
 
             var byLabel = (await connection.QueryAsync<(sbyte Label, long Rows)>(new CommandDefinition(
                 "SELECT `label`, COUNT(*) FROM `provider_quality` GROUP BY `label` ORDER BY `label`", cancellationToken: ct))).ToList();
@@ -310,16 +366,40 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                     source = Source, version = "as of " + asOf.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
                     rows = counts["provider_quality"], now,
                 });
-            log.Information("Record quality: {Rows:N0} providers ({Labels}) in {Seconds:N0}s", counts["provider_quality"],
+            log.Information("Record quality: {Rows:N0} providers{Scope} ({Labels}) in {Seconds:N0}s", counts["provider_quality"],
+                onlyPending ? $", {pendingCount:N0} relabelled" : "",
                 string.Join(", ", byLabel.Select(b => $"{RecordQuality.Name((QualityLabel)b.Label)} {b.Rows:N0}")), watch.Elapsed.TotalSeconds);
             return counts["provider_quality"];
         }
         finally
         {
-            foreach (var table in scratch)
+            foreach (var table in scratch.Append("provider_quality_staging"))
             {
                 await connection.ExecuteAsync(new CommandDefinition($"DROP TABLE IF EXISTS `{table}`", cancellationToken: CancellationToken.None));
             }
         }
+    }
+
+    /// <summary>
+    /// Replaces the queued NPIs' labels and search rows with the new ones in provider_quality_staging, in one transaction, and
+    /// empties the queue. Their old search rows are found by their old label and their (unchanged) practice locations.
+    /// </summary>
+    private static async Task ReplacePendingAsync(MySqlConnection connection, string searchRows, CancellationToken ct)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+        Task RunAsync(string sql) => connection.ExecuteAsync(new CommandDefinition(sql, transaction: transaction, commandTimeout: 0, cancellationToken: ct));
+
+        await RunAsync(
+            $"""
+            DELETE qs FROM `quality_search` qs
+            JOIN (SELECT DISTINCT q.`label`, IFNULL(l.`state`, '') AS `state`, IFNULL(l.`city`, '') AS `city`, IFNULL(l.`zip5`, '') AS `zip5`, l.`npi`
+                  FROM `{Pending}` s JOIN `provider_quality` q ON q.`npi` = s.`npi` JOIN `provider_location` l ON l.`npi` = s.`npi`) k
+              ON qs.`label` = k.`label` AND qs.`state` = k.`state` AND qs.`city` = k.`city` AND qs.`zip5` = k.`zip5` AND qs.`npi` = k.`npi`
+            """);
+        await RunAsync($"DELETE q FROM `provider_quality` q JOIN `{Pending}` s ON s.`npi` = q.`npi`");
+        await RunAsync("INSERT INTO `provider_quality` (`npi`, `label`, `reasons`, `activity`) SELECT `npi`, `label`, `reasons`, `activity` FROM `provider_quality_staging`");
+        await RunAsync($"INSERT INTO `quality_search` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
+        await RunAsync($"DELETE FROM `{Pending}`");
+        await transaction.CommitAsync(ct);
     }
 }

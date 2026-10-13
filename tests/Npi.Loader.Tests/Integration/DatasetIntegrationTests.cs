@@ -230,7 +230,20 @@ public sealed class DatasetIntegrationTests : IDisposable
             await db.QueryAsync<(string, string, string, DateTime?)>(
                 "SELECT npi, state, kind, action_date FROM provider_state_license ORDER BY npi, state, action_date"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'state_license_raw_staging'"));
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('state_license_raw_staging', 'provider_state_license_new')"));
+
+        // Each state's version is kept, and every matched NPI is queued for the record-quality label.
+        var states = await db.QueryAsync<string>("SELECT DISTINCT state FROM provider_state_license ORDER BY state");
+        Assert.Equal(states, await db.QueryAsync<string>("SELECT state FROM state_license_version WHERE rows_loaded > 0 ORDER BY state"));
+        Assert.Equal(await db.QueryAsync<string>("SELECT DISTINCT npi FROM provider_state_license ORDER BY npi"),
+            await db.QueryAsync<string>("SELECT npi FROM quality_pending ORDER BY npi"));
+
+        // Reloaded with the same files: every state is unchanged and skipped.
+        await db.ExecuteAsync("DELETE FROM quality_pending");
+        var loaded = await db.QueryAsync<(string, DateTime)>("SELECT state, loaded_at FROM state_license_version ORDER BY state");
+        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: true, only: "state_licenses", _ct));
+        Assert.Equal(loaded, await db.QueryAsync<(string, DateTime)>("SELECT state, loaded_at FROM state_license_version ORDER BY state"));
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM quality_pending"));
 
         // The provider page groups a license's rows and lists its actions, newest first.
         var details = new ProviderDetailService(db.ConnectionString);

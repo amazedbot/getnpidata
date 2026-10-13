@@ -81,6 +81,7 @@ Rules:
 | `085_practice_signals.sql` | Signs of current practice: opioid treatment programs, Medicare revalidation list, equipment suppliers that billed Medicare (Phase 3 step 3.1). |
 | `086_cms_pos_facility.sql` | CMS Provider of Services: every certified facility, active or terminated, for closures (Phase 3 step 3.1). |
 | `087_address_place.sql` | Businesses Overture Maps lists at each practice address, with operating status (Phase 3 step 3.1). |
+| `088_state_license_by_state.sql` | Per-state license versions, the queue of NPIs to relabel, an index for replacing one state's licenses. |
 
 ## 001_baseline.sql
 
