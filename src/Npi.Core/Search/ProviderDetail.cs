@@ -410,7 +410,7 @@ public sealed class ProviderDetailService(string connectionString)
             {
                 var license = g.FirstOrDefault(r => r.Kind == "license") ?? g.First();
                 var actions = g.Where(r => r.Action is not null || r.Kind == "action")
-                    .Select(r => new StateBoardAction(ToDate(r.ActionDate), r.Action, r.Kind == "action" || r.Source == "il_idfpr" ? r.Description : null))
+                    .Select(r => new StateBoardAction(ToDate(r.ActionDate), r.Action, r.Kind == "action" || r.Source is "il_idfpr" or "ca_mbc" ? r.Description : null))
                     .Distinct().ToList();
                 return new StateLicenseRecord(g.Key.State, g.Key.Source, g.Key.LicenseNumber, license.LicenseType,
                     license.Kind == "license" ? license.Status : null, ToDate(license.ExpirationDate), license.Kind == "license" ? license.Discipline : null,

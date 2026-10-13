@@ -20,11 +20,13 @@ public abstract record AssembledStateDataset(string State, string Source)
     public static readonly IReadOnlyList<CsvColumn> AssembledColumns =
     [
         new("License Number", "license_number"), new("Last Name", "last_name"), new("First Name", "first_name"), new("License Type", "license_type"),
-        new("Status", "status"), new("Expiration Date", "expiration_date", CsvValue.FlexibleDate), new("Action", "action"),
+        new("Status", "status"), new("Expiration Date", "expiration_date", CsvValue.FlexibleDate), new("Discipline", "discipline"),
+        new("Action Date", "action_date", CsvValue.FlexibleDate), new("Action", "action"), new("Description", "description"),
     ];
 
+    /// <summary>One license, or one action on it (a row per action, as Colorado publishes them; the provider page groups them).</summary>
     public sealed record Row(string? LicenseNumber, string? LastName, string? FirstName, string? LicenseType, string? Status, string? ExpirationDate,
-        string? Action = null);
+        string? Action = null, string? ActionDate = null, string? Description = null, string? Discipline = null);
 
     /// <summary>The rows, read from the board.</summary>
     public abstract IAsyncEnumerable<Row> RowsAsync(DatasetContext context, CancellationToken ct);
@@ -48,10 +50,33 @@ public abstract record AssembledStateDataset(string State, string Source)
         await foreach (var row in RowsAsync(context, ct))
         {
             await writer.WriteLineAsync(string.Join(",",
-                new[] { row.LicenseNumber, row.LastName, row.FirstName, row.LicenseType, row.Status, row.ExpirationDate, row.Action }.Select(Quote)));
+                new[]
+                {
+                    row.LicenseNumber, row.LastName, row.FirstName, row.LicenseType, row.Status, row.ExpirationDate, row.Discipline, row.ActionDate, row.Action,
+                    row.Description,
+                }.Select(Quote)));
         }
 
         return (target, true);
+    }
+
+    /// <summary>
+    /// Runs a request to a board's site again after a server error or a dropped connection (Vermont's feed answered one
+    /// of its ~260 requests with a 500): up to <paramref name="attempts"/> times, waiting 2, 4, 8 … seconds.
+    /// </summary>
+    protected static async Task<T> RetryAsync<T>(Func<Task<T>> request, CancellationToken ct, int attempts = 4)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await request();
+            }
+            catch (HttpRequestException e) when (attempt < attempts && e.StatusCode is null or >= System.Net.HttpStatusCode.InternalServerError)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct);
+            }
+        }
     }
 
     // Every field quoted; a double quote becomes a single quote and line breaks spaces, as NPPES does, so no escaping is needed.
@@ -81,11 +106,14 @@ public sealed record RhodeIslandDataset() : AssembledStateDataset("RI", "ri_doh"
     {
         foreach (var profession in Professions)
         {
-            using var form = new FormUrlEncodedContent([new("output", ""), new("prof", profession), new("licType", "")]);
-            using var response = await context.Http.PostAsync(DownloadUrl, form, ct);
-            response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync(ct);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var text = await RetryAsync(async () =>
+            {
+                using var form = new FormUrlEncodedContent([new("output", ""), new("prof", profession), new("licType", "")]);
+                using var response = await context.Http.PostAsync(DownloadUrl, form, ct);
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync(ct);
+            }, ct);
+            using var reader = new StringReader(text);
             using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture) { BadDataFound = null, MissingFieldFound = null });
             if (!await csv.ReadAsync() || !csv.ReadHeader())
             {
@@ -121,8 +149,8 @@ public sealed record VermontDataset() : AssembledStateDataset("VT", "vt_bmp")
     {
         for (var (start, total) = (0, int.MaxValue); start < total; start += PageSize)
         {
-            await using var stream = await context.Http.GetStreamAsync(new Uri($"{FeedUrl}?draw=1&start={start}&length={PageSize}"), ct);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            var url = new Uri($"{FeedUrl}?draw=1&start={start}&length={PageSize}");
+            using var doc = JsonDocument.Parse(await RetryAsync(() => context.Http.GetStringAsync(url, ct), ct));
             total = doc.RootElement.GetProperty("recordsTotal").GetInt32();
             var page = doc.RootElement.GetProperty("data");
             if (page.GetArrayLength() == 0)
@@ -163,7 +191,7 @@ public sealed partial record WestVirginiaDataset() : AssembledStateDataset("WV",
 
     private static async Task<IReadOnlyList<(string Id, string Title)>> RostersAsync(DatasetContext context, CancellationToken ct)
     {
-        var page = await context.Http.GetStringAsync(RostersPage, ct);
+        var page = await RetryAsync(() => context.Http.GetStringAsync(RostersPage, ct), ct);
         var rosters = RosterLink().Matches(page).Select(m => (m.Groups["id"].Value, m.Groups["title"].Value.Trim())).Distinct().ToList();
         return rosters.Count > 0 ? rosters : throw new InvalidDataException("The West Virginia Board of Medicine lists no rosters.");
     }

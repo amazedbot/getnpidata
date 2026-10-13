@@ -122,10 +122,19 @@ public static class StateLicenseSources
         ["ct_elicense"] = ("Connecticut eLicense credentials", "https://data.ct.gov/d/ngch-56tr"),
         ["md_bop"] = ("Maryland Board of Physicians practitioner lists", "https://www.mbp.state.md.us/"),
         ["fl_doh"] = ("Florida Department of Health, MQA licenses and administrative complaints", "https://mqa-internet.doh.state.fl.us/MQASearchServices/"),
+        ["ri_doh"] = ("Rhode Island Department of Health licensee lists", "https://health.ri.gov/licensing/licensee-lists"),
+        ["vt_bmp"] = ("Vermont Board of Medical Practice roster", "https://roster.medicallicensing.vermont.gov/"),
+        ["wv_bom"] = ("West Virginia Board of Medicine rosters", "https://wvbom.wv.gov/Rosters.asp"),
+        ["al_bme"] = ("Alabama Board of Medical Examiners roster", "https://dashboard.albme.gov/Verification/roster.aspx"),
+        ["mi_lara"] = ("Michigan LARA Bureau of Professional Licensing license lists", "https://www.michigan.gov/lara/bureau-list/bpl/License-Lists-and-Reports"),
+        ["ca_mbc"] = ("Medical Board of California physician and surgeon database", "https://www.mbc.ca.gov/"),
     };
 
-    /// <summary>The states covered: NY (board actions only), CT and MD (status and a discipline flag), TX, WA, IL, CO, DE, FL.</summary>
-    public static readonly IReadOnlyList<string> States = ["CO", "CT", "DE", "FL", "IL", "MD", "NY", "TX", "WA"];
+    /// <summary>
+    /// The states covered: NY (board actions only), CT and MD (status and a discipline flag), TX, WA, IL, CO, DE, FL, CA (with
+    /// board actions), RI, VT, and AL, MI and WV (active licenses only).
+    /// </summary>
+    public static readonly IReadOnlyList<string> States = ["AL", "CA", "CO", "CT", "DE", "FL", "IL", "MD", "MI", "NY", "RI", "TX", "VT", "WA", "WV"];
 
     public static string Name(string source) => Sources.TryGetValue(source, out var s) ? s.Name : source;
 

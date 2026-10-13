@@ -72,7 +72,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null),
-                  ("RI", Week), ("VT", Week), ("WV", "rosters 713 " + Week)]))],
+                  ("RI", Week), ("VT", Week), ("WV", "rosters 713 " + Week), ("AL", null), ("MI", null), ("CA", null)]))],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source NOT IN ('oig_cia', 'fema_structures', 'address_type') ORDER BY source"));
         Assert.StartsWith("3 agreements ", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'oig_cia'"));
         // FEMA structures (item 18): the listing's newest date and a hash of its files, and the geocoded addresses in steps of 50,000.
@@ -148,7 +148,9 @@ public sealed class DatasetIntegrationTests : IDisposable
               ('1000000020', 1, 'LEE', 'ANN', 'LEE, ANN'), ('1000000038', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA'), ('1000000046', 1, 'OTHER', 'PAT', 'OTHER, PAT'),
               ('1000000053', 1, 'BROWN', 'KIM', 'BROWN, KIM'), ('1000000061', 1, 'SINGH', 'JOSEPH', 'SINGH, JOSEPH'), ('1000000079', 1, 'PATEL', 'RAJ', 'PATEL, RAJ'),
               ('1000000087', 1, 'JONES', 'AMY', 'JONES, AMY'), ('1000000095', 1, 'ACOSTA', 'GILBERTO', 'ACOSTA, GILBERTO'),
-              ('1000000103', 1, 'WHITE', 'SAM', 'WHITE, SAM'), ('1000000111', 1, 'GREEN', 'LEE', 'GREEN, LEE'), ('1000000129', 1, 'BLACK', 'RON', 'BLACK, RON');
+              ('1000000103', 1, 'WHITE', 'SAM', 'WHITE, SAM'), ('1000000111', 1, 'GREEN', 'LEE', 'GREEN, LEE'), ('1000000129', 1, 'BLACK', 'RON', 'BLACK, RON'),
+              ('1000000137', 1, 'HILL', 'DANA', 'HILL, DANA'), ('1000000145', 1, 'STONE', 'AVA', 'STONE, AVA'),
+              ('1000000152', 1, 'GARRETT', 'MICHAEL', 'GARRETT, MICHAEL'), ('1000000160', 1, 'ADAMS', 'KATELYN', 'ADAMS, KATELYN');
             INSERT INTO provider_taxonomy (npi, slot, taxonomy_code, is_primary, license_no, license_state) VALUES
               ('1000000004', 1, '207Q00000X', 1, 'MD-174744', 'NY'), ('1000000012', 1, '207Q00000X', 1, 'N1234', 'TX'),
               ('1000000020', 1, '207Q00000X', 1, 'MD00012345', 'WA'), ('1000000020', 2, '207Q00000X', 0, '036.098765', 'IL'),
@@ -156,7 +158,9 @@ public sealed class DatasetIntegrationTests : IDisposable
               ('1000000053', 1, '207Q00000X', 1, '0024514', 'DE'), ('1000000061', 1, '207Q00000X', 1, '050192', 'CT'),
               ('1000000079', 1, '207Q00000X', 1, 'D12345', 'MD'), ('1000000087', 1, '363A00000X', 1, 'C1234', 'MD'),
               ('1000000095', 1, '207Q00000X', 1, 'ME80978', 'FL'), ('1000000103', 1, '207Q00000X', 1, 'MD05878', 'RI'),
-              ('1000000111', 1, '207Q00000X', 1, '10818', 'VT'), ('1000000129', 1, '207Q00000X', 1, '16132', 'WV');
+              ('1000000111', 1, '207Q00000X', 1, '10818', 'VT'), ('1000000129', 1, '207Q00000X', 1, '16132', 'WV'),
+              ('1000000137', 1, '207Q00000X', 1, 'A64406', 'CA'), ('1000000145', 1, '207Q00000X', 1, '35457', 'CA'),
+              ('1000000152', 1, '207Q00000X', 1, 'MD.801', 'AL'), ('1000000160', 1, '106H00000X', 1, '4151001126', 'MI');
             """);
         // Florida's files are dropped by the owner into the state files folder (PROF_ALL inside its zip).
         var florida = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "FL")).FullName;
@@ -166,6 +170,39 @@ public sealed class DatasetIntegrationTests : IDisposable
         }
 
         File.Copy(Fixtures.Path("datasets/state_fl_dxe004dd.txt"), Path.Combine(florida, "dxe004dd.txt"));
+
+        // Alabama's roster as the browser names it; Michigan's list downloaded twice (counted once); California's snapshots in one zip
+        // (the newest is read; Windows only, with the Access database driver).
+        var alabama = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "AL")).FullName;
+        File.Copy(Fixtures.Path("datasets/state_al_roster.csv"), Path.Combine(alabama, "roster-2026-10-12-001538.csv"));
+        var michigan = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "MI")).FullName;
+        var list = XlsxWriter.Write(
+        [
+            ["Last Name", "First Name", "Middle Name", "Suffix", "Facility Name", "Profession", "Type", "Specialities", "License No", "Status", "Issue Date", "Expiration"],
+            [null, null, null, null, "Sparkline Solutions LLC", "Personnel Agency", "Agency A", null, "6102003894", "Active", 46248.0, 47344.0],
+            ["Adams", "Katelyn", null, null, null, "Marriage and Family Therapy", "Marriage and Fam Ther Ed Ltd", null, "4151001126", "Active", 45246.0, 46342.0],
+        ]);
+        File.WriteAllBytes(Path.Combine(michigan, "BPL_EXT_LicPubList_REC_MUL_SSRS.xlsx"), list);
+        File.WriteAllBytes(Path.Combine(michigan, "BPL_EXT_LicPubList_REC_MUL_SSRS (1).xlsx"), list);
+        var california = OperatingSystem.IsWindows();
+        if (california)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "CA")).FullName;
+            using var snapshot = new MemoryStream();
+            using (var inner = new ZipArchive(snapshot, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                inner.CreateEntryFromFile(Fixtures.Path("datasets/state_ca_mbc.accdb"), "MBCPhysicianAndSurgeonInformation-PUBLIC.accdb");
+            }
+
+            using var outer = ZipFile.Open(Path.Combine(folder, "MBC Physician and Surgeon Access Database.zip"), ZipArchiveMode.Create);
+            foreach (var date in new[] { "20260922", "20260929" })
+            {
+                var entry = outer.CreateEntry($"MBC Physician and Surgeon Access Database/MBCPhysicianAndSurgeonInformation-PUBLIC-{date}.zip");
+                using var to = entry.Open();
+                to.Write(date == "20260929" ? snapshot.ToArray() : [0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // the older one: an empty zip
+            }
+        }
+
         Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: "state_licenses", _ct));
 
         // O'BRIEN = "OBrien" is not equal (the apostrophe), but the second row ("O'BRIEN") is; GARCIA's N1234 matches, and the
@@ -181,6 +218,14 @@ public sealed class DatasetIntegrationTests : IDisposable
                 ("1000000061", "CT", "license", null), ("1000000079", "MD", "license", null), ("1000000087", "MD", "license", null),
                 ("1000000095", "FL", "license", null), ("1000000095", "FL", "action", new DateTime(2026, 9, 25)),
                 ("1000000103", "RI", "license", null), ("1000000111", "VT", "license", null), ("1000000129", "WV", "license", null),
+                .. (california
+                    ? new[]
+                    {
+                        ("1000000137", "CA", "license", (DateTime?)null), ("1000000137", "CA", "license", new DateTime(2020, 4, 10)),
+                        ("1000000137", "CA", "license", new DateTime(2025, 5, 21)), ("1000000145", "CA", "license", null),
+                    }
+                    : []),
+                ("1000000152", "AL", "license", null), ("1000000160", "MI", "license", null),
             ],
             await db.QueryAsync<(string, string, string, DateTime?)>(
                 "SELECT npi, state, kind, action_date FROM provider_state_license ORDER BY npi, state, action_date"));
@@ -212,6 +257,21 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(("Physician", "INACTIVE - DECEASED", "Stipulation and Consent Order"), (vt.LicenseType, vt.Status, vt.Actions.Single().Action));
         var wv = Assert.Single((await details.GetAsync("1000000129", _ct))!.StateLicenses);
         Assert.Equal(("16132", "Medical Doctor: Sheet1", "Active", new DateOnly(2028, 6, 30)), (wv.LicenseNumber, wv.LicenseType, wv.Status, wv.ExpirationDate));
+
+        // Dropped files: AL's roster (a comma in the medical school; the public-actions flag), MI's list (Excel serial dates).
+        var al = Assert.Single((await details.GetAsync("1000000152", _ct))!.StateLicenses);
+        Assert.Equal(("801", "MD FULL UNRESTRICTED MD", "ACTIVE", "YES", new DateOnly(2027, 12, 31)), (al.LicenseNumber, al.LicenseType, al.Status, al.Discipline, al.ExpirationDate));
+        var mi = Assert.Single((await details.GetAsync("1000000160", _ct))!.StateLicenses);
+        Assert.Equal(("Marriage and Family Therapy: Marriage and Fam Ther Ed Ltd", "Active", new DateOnly(2026, 11, 16)), (mi.LicenseType, mi.Status, mi.ExpirationDate));
+        if (california)
+        {
+            // CA: the status from the board's codes, retired over Current; the public actions, newest first, with their details.
+            var hill = Assert.Single((await details.GetAsync("1000000137", _ct))!.StateLicenses);
+            Assert.Equal(("A64406", "Physician and surgeon (A)", "Current"), (hill.LicenseNumber, hill.LicenseType, hill.Status));
+            Assert.Equal(["Citation issued, fine $1,000", "PUBLIC REPRIMAND, WITH 'QUOTES', AND {BRACES}."], hill.Actions.Select(a => a.Action));
+            Assert.Equal("Case 8002016026076", hill.Actions[1].Description);
+            Assert.Equal("Retired", Assert.Single((await details.GetAsync("1000000145", _ct))!.StateLicenses).Status);
+        }
     }
 
     // The version of the lists the loader assembles (Rhode Island, Vermont, West Virginia): the ISO week.
