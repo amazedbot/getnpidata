@@ -25,7 +25,7 @@ merged. The live runs go one at a time.
 ## Next, in order
 
 1. **Speed items 4–5:** FEMA buildings matched only for new addresses, reading only their areas; Overture in `run` for new addresses only, a full pass only for a new Overture release.
-2. **Speed item 12:** bulk-load into tables without their indexes, add the indexes afterwards.
+2. **Speed items 12 and 14:** bulk-load into tables without their indexes, add the indexes afterwards; relax MySQL's disk-flush settings during big loads (approved 2026-10-13; a crash loses the last second of writes, which a reload repeats). If a setting needs changing by hand (the loader doesn't change server settings itself, CLAUDE.md §7 Stage 1.8), the exact steps go to the owner first.
 3. **Speed items 6, 7, 10, 13:**
    - 6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull;
    - 7: independent sources, states and the Vermont feed in parallel (2–4 at a time);
@@ -37,6 +37,7 @@ merged. The live runs go one at a time.
      - **Older Medicare years, 2013–2023** (Part B by provider and Part D prescribers by provider, data.cms.gov), shown as "last billed Medicare in [year]" and as a reason on the quality label.
    - **Step 3.2:** the change recorder widened: secondary locations, phone, every taxonomy, organization name, licenses, exclusions and opt-outs as they start and end.
    - **Step 3.3:** change pages ("Changes in [county] this month", "New practices", "Closed or moved") and monthly change counts on county pages.
+   - **Step 3.4, approved 2026-10-13:** history before October 2026 from the NBER archive of past NPPES monthly files, for trends, analytics and statistics (a large download, one file per period).
 5. **Small fixes, after the open branches merge:**
    - remove the unneeded `using` in `CredentialBuilder.cs`;
    - CLAUDE.md §5 lists `deploy/register-task.ps1`, which doesn't exist;
@@ -45,16 +46,17 @@ merged. The live runs go one at a time.
 ## Waiting for the owner
 
 **Decisions:**
-- **Speed item 14:** relax MySQL's disk-flush settings during big loads (faster; a crash loses the last second of writes, which a reload repeats).
-- **History before October 2026 (Phase 3 step 3.4, proposed):** the NBER archive of past NPPES monthly files, for trends and "changed since". A large download.
-- **VA addresses:** count the Stale records at VA facilities first (VA clinicians don't bill Medicare, so they show no sign of practice); then decide whether to add the VA facility list.
-- **Phase 2 (private test hosting on Azure):** only when a feature needs it, with the design and a cost estimate first.
 - **Phase 8, insurance networks (Stage 5.5 item 16):** pick the pilot state and approve the sources.
 - **Phase 4 sources:** SAM.gov exclusions, state Medicaid exclusion lists.
 
 **Actions only the owner can take:**
 - **New York license status:** submit the Office of the Professions' Bulk Verifications Request Form (weekly files of currently registered licensees, free). NY today has board actions only.
 - **Michigan license lists:** download the remaining lists (A–L, Nursing, Pharmacy) into `StateLicenseFilesFolder\MI`.
+
+## Not needed for now (owner, 2026-10-13)
+
+- **VA addresses and the VA facility list** (step 3.5 found 1 of 50 Stale records at a VA medical center).
+- **Phase 2, private test hosting on Azure:** still only when a feature needs it, with the design and a cost estimate first.
 
 ## Later phases (PRODUCT_PLAN.md §3)
 
