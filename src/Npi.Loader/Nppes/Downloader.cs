@@ -5,10 +5,12 @@ namespace Npi.Loader.Nppes;
 
 /// <summary>
 /// Downloads NPPES zips to the work folder (CLAUDE.md §7 Stage 1.3): streams to a temporary
-/// <c>.part</c> file, checks the length and that the zip opens, then renames. Retries with backoff.
+/// <c>.part</c> file (in parallel parts when large and the server allows it, <see cref="HttpFileFetch"/>), checks the length
+/// and that the zip opens, then renames. Retries with backoff.
 /// Never reports success for a failed download (legacy defect #4).
 /// </summary>
-public sealed class Downloader(HttpClient http, ILogger log, int attempts = 4, TimeSpan? firstRetryDelay = null)
+public sealed class Downloader(HttpClient http, ILogger log, int attempts = 4, TimeSpan? firstRetryDelay = null, int parts = 1,
+    long partMinBytes = Datasets.FileDownloader.DefaultPartMinBytes)
 {
     private readonly TimeSpan _firstRetryDelay = firstRetryDelay ?? TimeSpan.FromSeconds(30);
 
@@ -29,23 +31,7 @@ public sealed class Downloader(HttpClient http, ILogger log, int attempts = 4, T
             try
             {
                 var started = DateTime.UtcNow;
-                long bytes;
-                using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
-                {
-                    response.EnsureSuccessStatusCode();
-                    var expected = response.Content.Headers.ContentLength;
-                    await using (var source = await response.Content.ReadAsStreamAsync(ct))
-                    await using (var file = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20, useAsync: true))
-                    {
-                        await source.CopyToAsync(file, 1 << 20, ct);
-                        bytes = file.Length;
-                    }
-
-                    if (expected is not null && bytes != expected)
-                    {
-                        throw new IOException($"Download of {fileName} was truncated: got {bytes:N0} of {expected:N0} bytes.");
-                    }
-                }
+                var bytes = (await HttpFileFetch.ToFileAsync(http, url, part, earlier: null, parts, partMinBytes, ct)).Bytes;
 
                 if (!IsValidZip(part))
                 {

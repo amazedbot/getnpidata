@@ -82,7 +82,7 @@ public sealed partial class FemaStructureSource : DatasetSource
                               "columns = {'addr_key': 'VARCHAR', 'lat': 'DOUBLE', 'lon': 'DOUBLE'})");
                 Execute(duck, "CREATE TABLE inside (addr_key VARCHAR, occ_cls VARCHAR, prim_occ VARCHAR, sqft DOUBLE)");
                 Execute(duck, "CREATE TABLE near (addr_key VARCHAR, d DOUBLE, occ_cls VARCHAR, prim_occ VARCHAR, sqft DOUBLE)");
-                var downloader = new FileDownloader(context.Http, context.Log, context.Options.DownloadAttempts);
+                var downloader = context.Downloader();
                 foreach (var part in parts)
                 {
                     var file = await downloader.DownloadAsync(new Uri(context.Options.FemaStructuresBaseUrl + part.Key), Path.GetFileName(part.Key), folder, ct);

@@ -27,8 +27,11 @@ public sealed class DatasetContext(LoaderOptions options, Database database, Htt
 
     /// <summary>Downloads the release file into the work folder's <c>datasets</c> subfolder.</summary>
     public Task<string> DownloadAsync(DatasetRelease release, string fileName, CancellationToken ct) =>
-        new FileDownloader(Http, Log, Options.DownloadAttempts)
-            .DownloadAsync(release.Url, fileName, Path.Combine(Options.ResolvedWorkFolder, "datasets"), ct);
+        Downloader().DownloadAsync(release.Url, fileName, Path.Combine(Options.ResolvedWorkFolder, "datasets"), ct);
+
+    /// <summary>A downloader with the configured attempts and parallel parts.</summary>
+    public FileDownloader Downloader() =>
+        new(Http, Log, Options.DownloadAttempts, parts: Options.DownloadParts, partMinBytes: Options.DownloadPartMinBytes);
 }
 
 /// <summary>One external dataset joined to NPIs (CLAUDE.md §7 Stage 5.5). Its version is tracked in <c>reference_data</c>.</summary>
@@ -46,20 +49,22 @@ public abstract class DatasetSource
     /// <returns>The number of rows loaded.</returns>
     public abstract Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct);
 
-    /// <summary>Downloads the file, runs <paramref name="load"/> on it, and deletes it afterwards.</summary>
+    /// <summary>
+    /// Downloads the file, runs <paramref name="load"/> on it, and deletes it once loaded. A failed load keeps it, so the next
+    /// attempt downloads it again only if the publisher changed it (9 GB for Open Payments, 4 GB for Part D by drug).
+    /// </summary>
     protected static async Task<long> WithDownloadAsync(DatasetContext context, DatasetRelease release, string fileName,
         Func<MySqlConnection, string, Task<long>> load, CancellationToken ct)
     {
         var path = await context.DownloadAsync(release, fileName, ct);
-        try
+        long rows;
+        await using (var connection = await context.Database.OpenAsync(ct))
         {
-            await using var connection = await context.Database.OpenAsync(ct);
-            return await load(connection, path);
+            rows = await load(connection, path);
         }
-        finally
-        {
-            File.Delete(path);
-        }
+
+        FileDownloader.Delete(path);
+        return rows;
     }
 }
 
@@ -173,6 +178,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
 
         var started = DateTime.UtcNow;
         var rows = await source.LoadAsync(context, latest, ct);
+        DropOrphanSidecars(Path.Combine(options.ResolvedWorkFolder, "datasets"));
         await Database.ExecuteAsync(connection,
             """
             INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
@@ -182,5 +188,22 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
             """, ct, param: new { source = source.Name, version = latest.Version, url = latest.Url.ToString(), rows, now = _clock.GetUtcNow().UtcDateTime });
         log.Information("Dataset {Source} {Version}: {Rows:N0} rows loaded in {Seconds:N0}s", source.Name, latest.Version, rows,
             (DateTime.UtcNow - started).TotalSeconds);
+    }
+
+    // The validators of downloads a source deleted itself after loading them (FileDownloader.MetaPath).
+    private static void DropOrphanSidecars(string folder)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        foreach (var meta in Directory.EnumerateFiles(folder, "*.download.json", SearchOption.AllDirectories))
+        {
+            if (!File.Exists(meta[..^".download.json".Length]))
+            {
+                File.Delete(meta);
+            }
+        }
     }
 }
