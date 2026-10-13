@@ -17,7 +17,7 @@ merged. The live runs go one at a time.
 
 | # | Item | State |
 |---|---|---|
-| 2 | The steps after the projection (credentials, address types, area counts, map, quality) work from a queue of changed providers | PR #65 (on top of #64), CI green. Live check after item 1's |
+| 2 | The steps after the projection (credentials, address types, area counts, map, quality) work from a queue of changed providers | PR #65 (now on master). Live check running: the 10/05–10/11 weekly, an incremental projection, then each builder |
 | 3 | A dataset reload queues only the providers whose rows changed, for the quality label | Branch `incremental-quality-inputs` (on top of #65). Live check after item 2's, then its PR |
 | 8 | Downloads kept until loaded and reused when unchanged; large files in 4 parallel parts | Branch `download-reuse`. Live check after item 3's, then its PR |
 
@@ -38,7 +38,7 @@ merged. The live runs go one at a time.
    - **Step 3.3:** change pages ("Changes in [county] this month", "New practices", "Closed or moved") and monthly change counts on county pages.
    - **Step 3.4, approved 2026-10-13:** history before October 2026 from the NBER archive of past NPPES monthly files, for trends, analytics and statistics (a large download, one file per period).
 5. **Small fixes, after the open branches merge:**
-   - remove the unneeded `using` in `CredentialBuilder.cs`;
+   - remove the unneeded `using Npi.Loader.Db;` in `FdaProductSource.cs` (the one in `CredentialBuilder.cs` is used since item 2);
    - CLAUDE.md §5 lists `deploy/register-task.ps1`, which doesn't exist;
 
 ## Waiting for the owner
