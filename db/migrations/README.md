@@ -84,6 +84,8 @@ Rules:
 | `088_state_license_by_state.sql` | Per-state license versions, the queue of NPIs to relabel, an index for replacing one state's licenses. |
 | `089_projection_pending.sql` | The queue of NPIs whose NPPES data changed, so the projection rebuilds only them. |
 | `090_npidata_source_hash.sql` | `npidata.Source_Hash`: a hash of the projected columns written while a file loads, so a monthly finds changed NPIs fast. |
+| `091_builder_pending.sql` | Queues and old-row snapshots so the builders after an incremental projection update only its NPIs. |
+| `092_builder_old_location_label.sql` | `builder_old_location.label_input` (suite or floor, organization), so address type labels are redone only where an input changed. |
 
 ## 001_baseline.sql
 

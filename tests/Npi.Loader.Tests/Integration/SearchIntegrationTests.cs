@@ -282,11 +282,92 @@ public sealed class SearchIntegrationTests : IDisposable
         }
     }
 
-    // Every row of each projection table as text (all columns but AUTO_INCREMENT ids), sorted.
-    private static async Task<Dictionary<string, IReadOnlyList<string>>> ProjectionSnapshotAsync(TestDatabase db)
+    // The tables built on the projection, each updated incrementally after an incremental projection.
+    private static readonly string[] BuilderTables =
+    [
+        "credential_map", "provider_credential", "credential_list", "credential_search", "provider_map_credential", "address_type", "building_search",
+        "specialty_code_category", "area_provider_count", "provider_map", "provider_map_specialty", "provider_quality", "quality_search",
+    ];
+
+    [Fact]
+    public async Task The_builders_after_an_incremental_projection_equal_a_full_rebuild()
+    {
+        await using var db = await SeededAsync();
+        var census = new CensusGeocoder(new HttpClient(new FakeCensus()), "https://census.test/batch", "Public_AR_Current");
+        await new AddressGeocoder(db.Database, census, Logger.None, batchSize: 10, parallelism: 1) { Delays = [] }.GeocodePendingAsync(maxBatches: 0, _ct);
+        // A FEMA building under every address: A's house, the others offices.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO address_building (addr_key, matched, distance_m, occ_cls, prim_occ, sqft)
+            SELECT DISTINCT addr_key, 'inside', 0, IF(npi = @A, 'Residential', 'Commercial'), IF(npi = @A, 'Single Family Dwelling', 'Medical Office/Clinic'), 2000
+            FROM provider_location WHERE addr_key IS NOT NULL
+            """, new { A });
+
+        // Credentials held by fewer than 2 providers are rare ("Other"), so a new one crosses that limit.
+        CredentialBuilder Credentials() => new(db.Database, Logger.None, 0.95, minListed: 2);
+        async Task BuildAllAsync(bool full)
+        {
+            await Credentials().BuildAsync(_ct, full);
+            await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+            await new AddressTypeBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+            await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+            await new QualityBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, allowIncremental: !full);
+        }
+
+        await BuildAllAsync(full: true);
+        string[] sources = [CredentialBuilder.Source, MapBuilder.Source, AddressTypeBuilder.Source, AreaCountBuilder.Source, QualityBuilder.Source];
+        async Task<IReadOnlyList<string>> LoadedAtAsync() =>
+            await db.QueryAsync<string>("SELECT CONCAT(source, ' ', loaded_at) FROM reference_data WHERE source IN @sources ORDER BY source", new { sources });
+        var loadedAt = await LoadedAtAsync();
+        Assert.Equal(5, loadedAt.Count);
+
+        // A renamed, with another credential (new, so rare) and moved to E's address, updated on 10/10 (the as-of date moves);
+        // B now a dentist without its second office; C reactivated; D deactivated; F a new copy of E; E's address placed again.
+        const string F = "1000000053";
+        await db.ExecuteAsync(
+            """
+            SET SESSION innodb_strict_mode = OFF; -- npidata's 330 TEXT columns (CLAUDE.md §6.1)
+            UPDATE npidata SET Provider_Last_Name_Legal_Name = 'OBRIEN-SMITH', Provider_Credential_Text = 'D.C., LAC',
+              Provider_First_Line_Business_Practice_Location_Address = '200 Main St', Provider_Business_Practice_Location_Address_City_Name = 'FARMINGDALE',
+              Provider_Business_Practice_Location_Address_Postal_Code = '11735', Last_Update_Date = '10/10/2026' WHERE NPI = @A;
+            UPDATE npidata SET Healthcare_Provider_Taxonomy_Code_1 = @Dentist WHERE NPI = @B;
+            DELETE FROM practice_locations WHERE NPI = @B;
+            UPDATE npidata SET Is_Deactivated = 0, NPI_Reactivation_Date = '02/01/2026' WHERE NPI = @C;
+            UPDATE npidata SET Is_Deactivated = 1, NPI_Deactivation_Date = '10/01/2026' WHERE NPI = @D;
+            CREATE TEMPORARY TABLE f SELECT * FROM npidata WHERE NPI = @E;
+            UPDATE f SET NPI = @F;
+            INSERT INTO npidata SELECT * FROM f;
+            INSERT INTO projection_pending (npi) VALUES (@A), (@B), (@C), (@D), (@F);
+            INSERT INTO address_point (addr_key, source, lat, lon, matched, `release`, matched_at)
+            SELECT addr_key, 'address', 40.7331, -73.4452, '200 MAIN ST', '2026-09-23.1', UTC_TIMESTAMP() FROM provider_location WHERE npi = @E;
+            """, new { A, B, C, D, E, F, Dentist });
+
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 }.BuildAsync(_ct);
+        Assert.True(await Credentials().IsStaleAsync(_ct));
+        await BuildAllAsync(full: false);
+        Assert.Equal(loadedAt, await LoadedAtAsync()); // every builder took its incremental path
+        foreach (var table in new[] { "builder_pending", "builder_old_location", "builder_old_taxonomy", "address_pending", "quality_pending" })
+        {
+            Assert.Equal(0L, await db.ScalarAsync<long>($"SELECT COUNT(*) FROM {table}"));
+        }
+
+        Assert.Equal("Other", await db.ScalarAsync<string>("SELECT credential FROM provider_credential WHERE npi = @A AND ord = 100", new { A }));
+        var incremental = await ProjectionSnapshotAsync(db, BuilderTables);
+
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
+        await BuildAllAsync(full: true);
+        var full = await ProjectionSnapshotAsync(db, BuilderTables);
+        foreach (var table in BuilderTables)
+        {
+            Assert.Equal(full[table], incremental[table]);
+        }
+    }
+
+    // Every row of each projection table (or the given ones) as text (all columns but AUTO_INCREMENT ids), sorted.
+    private static async Task<Dictionary<string, IReadOnlyList<string>>> ProjectionSnapshotAsync(TestDatabase db, IEnumerable<string>? tables = null)
     {
         var snapshot = new Dictionary<string, IReadOnlyList<string>>();
-        foreach (var table in ProjectionBuilder.Tables)
+        foreach (var table in tables ?? ProjectionBuilder.Tables)
         {
             var columns = await db.QueryAsync<string>(
                 """
@@ -1033,7 +1114,7 @@ public sealed class SearchIntegrationTests : IDisposable
               ('330777', 'SMITH JONES DENTAL CLINIC', '21', '5 ATLANTIC AVENUE', 'BROOKLYN', 'NY', '11201', 0, '01', '2025-03-01'),
               ('330778', 'BAKER CLINIC', '21', '10 COURT ST', 'BROOKLYN', 'NY', '11201', 0, '07', '2025-03-01');
             """, new { B, D, E });
-        await quality.BuildAsync(_ct);
+        await quality.BuildAsync(_ct, allowIncremental: false);
         rows = (await db.QueryAsync<(string, sbyte, int, short)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
             .ToDictionary(r => r.Item1, r => (Label: (QualityLabel)r.Item2, Reasons: (QualityReason)r.Item3, Activity: (QualityActivity)r.Item4));
         Assert.Equal((QualityLabel.Stale, QualityReason.NoActivity | QualityReason.NotMapped | QualityReason.NoPhone | QualityReason.FacilityClosed
@@ -1047,7 +1128,7 @@ public sealed class SearchIntegrationTests : IDisposable
         await db.ExecuteAsync(
             "INSERT INTO cms_pos_facility (ccn, name, category, address, city, state, zip5, active) " +
             "VALUES ('330999', 'BROOKLYN GENERAL HOSPITAL', '01', '5 Atlantic Ave', 'BROOKLYN', 'NY', '11201', 1)");
-        await quality.BuildAsync(_ct);
+        await quality.BuildAsync(_ct, allowIncremental: false);
         var reasons = (QualityReason)await db.ScalarAsync<int>("SELECT reasons FROM provider_quality WHERE npi = @D", new { D });
         Assert.Equal(QualityReason.ListedClosed, reasons & (QualityReason.FacilityClosed | QualityReason.ListedClosed));
 
@@ -1079,8 +1160,12 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal([a.Item1], await db.QueryAsync<sbyte>("SELECT DISTINCT label FROM quality_search WHERE npi = @A", new { A }));
         Assert.DoesNotContain(A, await Npis(search, new SearchFilter { State = "NY", Quality = "stale" }));
 
-        // Nothing queued: a full build (B loses its MIPS sign).
+        // Nothing queued and nothing reloaded: nothing to do (B keeps its MIPS sign); a full build drops it.
+        Assert.False(await quality.IsStaleAsync(_ct));
         await quality.BuildAsync(_ct);
+        Assert.Equal(QualityActivity.CareCompare | QualityActivity.MipsScore,
+            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
+        await quality.BuildAsync(_ct, allowIncremental: false);
         Assert.Equal(QualityActivity.CareCompare,
             (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
     }

@@ -205,7 +205,8 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
 
         if (!options.SkipMapBuild)
         {
-            await new MapBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+            // Every state's points may have moved: a full build is quicker than replacing them provider by provider.
+            await new MapBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: area is null);
         }
 
         return ok ? 0 : 1;
@@ -255,15 +256,15 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     {
         await EnsureMigratedAsync(ct);
         await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
-        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
         var addressTypes = new AddressTypeBuilder(database, log, options.MinRowRatio);
         if (await addressTypes.IsStaleAsync(ct))
         {
-            await addressTypes.BuildAsync(ct);
+            await addressTypes.BuildAsync(ct, full);
         }
 
-        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
-        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: false);
+        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
+        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: !full);
         return 0;
     }
 
@@ -279,7 +280,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     public async Task<int> AreasAsync(CancellationToken ct)
     {
         await EnsureMigratedAsync(ct);
-        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
         return 0;
     }
 
@@ -287,7 +288,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     public async Task<int> CredentialsAsync(CancellationToken ct)
     {
         await EnsureMigratedAsync(ct);
-        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
         return 0;
     }
 
@@ -295,7 +296,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     public async Task<int> AddressTypesAsync(CancellationToken ct)
     {
         await EnsureMigratedAsync(ct);
-        await new AddressTypeBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new AddressTypeBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
         return 0;
     }
 

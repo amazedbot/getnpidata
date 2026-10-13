@@ -168,6 +168,9 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             Task<int> RunAsync(string sql, object? param = null) =>
                 connection.ExecuteAsync(new CommandDefinition(sql, param, tx, commandTimeout: 0, cancellationToken: ct));
 
+            // The tables built on the projection update only these NPIs: keep their rows as they are now, queue them afterwards.
+            await BuilderPending.SnapshotAsync(connection, Batch, tx, ct);
+
             // provider_search has no index starting with npi: its rows are found by their whole key, from the live
             // taxonomies and locations, so this goes first.
             await RunAsync(
@@ -190,6 +193,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             }
 
             var providers = await connection.ExecuteScalarAsync<long>(new CommandDefinition("SELECT COUNT(*) FROM `provider`", transaction: tx, cancellationToken: ct));
+            await BuilderPending.QueueAsync(connection, Batch, tx, ct);
             await RunAsync(DataVersionSql, new { now, providers });
             await RunAsync($"DELETE q FROM `{Pending}` q JOIN `{Batch}` b ON b.`npi` = q.`npi`");
             await tx.CommitAsync(ct);
@@ -259,8 +263,15 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             }
 
             await Database.ExecuteAsync(connection, DataVersionSql, ct, param: new { now, providers });
-            // Everyone was rebuilt, so the queue as it was at the start is done.
+            // Everyone was rebuilt, so the queue as it was at the start is done, and the tables built on the projection rebuild in full.
             await Database.ExecuteAsync(connection, $"DELETE q FROM `{Pending}` q JOIN `{Batch}` b ON b.`npi` = q.`npi`", ct);
+            await BuilderPending.ClearAllAsync(connection, ct);
+            await Database.ExecuteAsync(connection,
+                """
+                INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
+                VALUES (@source, 'full build', '', @providers, @now, @now) AS new
+                ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `loaded_at` = new.`loaded_at`, `checked_at` = new.`checked_at`
+                """, ct, param: new { source = BuilderPending.ProjectionSource, providers, now });
             log.Information("Projection built: {Providers:N0} providers in {Duration}", providers,
                 (DateTime.UtcNow - started).ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture));
             return providers;
