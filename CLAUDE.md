@@ -168,7 +168,8 @@ getnpidata/
 through VSTest, so `global.json` opts `dotnet test` into MTP. Consequences:
 - run tests with `dotnet test` or `dotnet test --solution getnpidata.sln`, not `dotnet test getnpidata.sln`;
 - a test project with zero tests fails (exit code 8);
-- no `Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio` packages are needed.
+- no `Microsoft.NET.Test.Sdk` or `xunit.runner.visualstudio` packages are needed;
+- `Npi.Loader.Tests` runs every test in parallel (`AssemblyInfo.cs`: `ParallelMode.All`), so a test must not share state with another (each has its own work folder and test database).
 
 **Libraries:**
 
@@ -505,7 +506,7 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 | Login | Privileges | Used by | User-secret |
 |---|---|---|---|
 | Loader login | All privileges on `workplace` + `SESSION_VARIABLES_ADMIN` | The loader and the scheduled task | Npi.Loader `ConnectionStrings:LocalMySql` |
-| Test login | All privileges on `npi_test` and `npi\_test\_%` | Integration tests (`NPI_TEST_MYSQL`): each test creates and drops its own `npi_test_it_<UTC time>_<random>` database; the start of a run drops any older than 2 h (left by a killed run). `npi_test`, the Stage 0 scratch copy, was dropped 2026-10-09 (owner's OK) | Npi.Loader `NpiTestMySql` |
+| Test login | All privileges on `npi_test` and `npi\_test\_%` | Integration tests (`NPI_TEST_MYSQL`): a pool of test databases kept between runs, `npi_test_it_pool_<schema hash>_<nn>` (one per test running at once, about 16) plus the migrated template `…_tpl`; a test claims one with a MySQL user lock and empties it first (`TestDatabase`). A new or changed migration changes the hash, and the next run drops the old pool. Per-test `npi_test_it_<UTC time>_<random>` databases (the earlier scheme) older than 2 h are dropped too. `npi_test`, the Stage 0 scratch copy, was dropped 2026-10-09 (owner's OK) | Npi.Loader `NpiTestMySql` |
 | Admin | root | Admin tasks only | Npi.Loader `LocalMySqlAdmin` |
 | Site login | `SELECT` on `workplace` only | The local site | Npi.Web `ConnectionStrings:RemoteMySql` |
 
