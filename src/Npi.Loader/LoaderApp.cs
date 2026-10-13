@@ -247,11 +247,14 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         }
     }
 
-    /// <summary>The <c>project</c> command: rebuild the search projection now.</summary>
-    public async Task<int> ProjectAsync(CancellationToken ct)
+    /// <summary>
+    /// The <c>project</c> command: rebuild the whole search projection now, or with <paramref name="full"/> false only the NPIs the
+    /// loads queued when they are few (as <c>run</c> does); then the tables built on it.
+    /// </summary>
+    public async Task<int> ProjectAsync(bool full, CancellationToken ct)
     {
         await EnsureMigratedAsync(ct);
-        await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
         await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         var addressTypes = new AddressTypeBuilder(database, log, options.MinRowRatio);
         if (await addressTypes.IsStaleAsync(ct))

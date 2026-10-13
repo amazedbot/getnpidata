@@ -67,7 +67,7 @@ try
         LoaderCommand.LoadFile => await app.LoadFileAsync(invocation.Arguments[0], cts.Token),
         LoaderCommand.Reference => await app.ReferenceAsync(cts.Token),
         LoaderCommand.Datasets => await app.DatasetsAsync(invocation.Arguments.Count > 0 ? invocation.Arguments[0] : null, cts.Token),
-        LoaderCommand.Project => await app.ProjectAsync(cts.Token),
+        LoaderCommand.Project => await app.ProjectAsync(full: invocation.Arguments.Count == 0, cts.Token),
         LoaderCommand.Credentials => await app.CredentialsAsync(cts.Token),
         LoaderCommand.AddressTypes => await app.AddressTypesAsync(cts.Token),
         LoaderCommand.Quality => await app.QualityAsync(cts.Token),

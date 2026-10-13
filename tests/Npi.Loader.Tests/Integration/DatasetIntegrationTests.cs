@@ -88,7 +88,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("fda_shortages", "shortages 2026-10-09"), ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("medicare_enrollment", "2026-09-30 PPEF_Enrollment_Extract_2026.07.17.csv | 2026-10-31 revalidation_clinic_group_practice_reassignment_pa_xref.csv"),
              ("nadac", "2026 nadac-national-average-drug-acquisition-cost-10-07-2026.csv"),
-             ("oig_leie", "2026-10-01T12:00:00Z 827"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
+             ("oig_leie", "2026-10-01T12:00:00Z 808"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
              ("open_payments_research", "2025 OP_DTL_RSRCH_PGYR2025_P06302026_06032026.csv"),

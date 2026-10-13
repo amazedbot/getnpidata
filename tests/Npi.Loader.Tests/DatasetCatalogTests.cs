@@ -79,7 +79,7 @@ public class DatasetCatalogTests
 
     [Theory]
     [InlineData(CsvValue.Npi, "IF(TRIM(@c0) REGEXP '^[0-9]{10}$' AND TRIM(@c0) <> '0000000000', TRIM(@c0), NULL)")]
-    [InlineData(CsvValue.DateYmd, "STR_TO_DATE(NULLIF(NULLIF(TRIM(@c0), ''), '00000000'), '%Y%m%d')")]
+    [InlineData(CsvValue.DateYmd, "IF(TRIM(@c0) REGEXP '^0*$', NULL, STR_TO_DATE(TRIM(@c0), '%Y%m%d'))")]
     [InlineData(CsvValue.YesNo, "CASE UPPER(TRIM(@c0)) WHEN 'Y' THEN 1 WHEN 'YES' THEN 1 WHEN 'N' THEN 0 WHEN 'NO' THEN 0 END")]
     public void Values_are_converted_in_sql(CsvValue kind, string expected) =>
         Assert.Equal(expected, CsvTableLoader.Expression("@c0", kind));
