@@ -13,8 +13,10 @@ namespace Npi.Loader.Projection;
 /// Labels every active provider's record current, check or stale (docs/PRODUCT_PLAN.md step 3.1; migration 083) by the rules of
 /// <see cref="RecordQuality"/>: the age of the NPPES record, signs of current practice in the other datasets, the primary practice
 /// address (mapped, PO box, home), the phone, whether Care Compare agrees on address and profession, the state license records and
-/// NPI reactivation. Rebuilt after each projection and whenever one of its inputs reloads; when only state licenses changed,
-/// only the NPIs whose license rows changed (queued in <c>quality_pending</c> by the state license load) are relabelled.
+/// NPI reactivation. Rebuilt after each full projection and whenever one of its inputs reloads in full. Otherwise only the NPIs
+/// queued in <c>quality_pending</c> are relabelled: those whose state license rows changed, those an incremental projection
+/// rebuilt, those at an address whose map point or building label changed (<see cref="BuilderPending"/>), and those whose
+/// record crossed the 5- or 10-year age limit because the data's as-of date moved.
 /// </summary>
 public sealed class QualityBuilder(Database database, ILogger log, double minRowRatio)
 {
@@ -23,7 +25,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     /// <summary>NPIs whose state license rows changed since the labels were built (migration 088).</summary>
     public const string Pending = "quality_pending";
 
-    // The only input whose changes are queued per NPI; any other input or a new projection relabels everyone.
+    // The only dataset whose changes are queued per NPI; any other input or a full projection relabels everyone. (The map and
+    // the address types queue the NPIs they update incrementally; their loaded_at moves only with a full build.)
     private const string QueuedInput = "state_licenses";
 
     /// <summary>The <c>reference_data</c> sources the label reads; a newer load of any of them makes it stale.</summary>
@@ -163,17 +166,42 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             open.Count, closed.Except(open).Count(), facilityClosed.Count);
     }
 
-    /// <summary>True when the projection, or one of the <see cref="Inputs"/>, was rebuilt since the labels were.</summary>
+    /// <summary>True when the projection (in full) or one of the <see cref="Inputs"/> was rebuilt since the labels were, or NPIs are queued.</summary>
     public async Task<bool> IsStaleAsync(CancellationToken ct)
     {
         await using var connection = await database.OpenAsync(ct);
         return await connection.ExecuteScalarAsync<long>(new CommandDefinition(
-            """
+            $"""
             SELECT NOT EXISTS (SELECT 1 FROM `reference_data` WHERE `source` = @source)
+                OR EXISTS (SELECT 1 FROM `{Pending}`)
                 OR (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source)
-                   < GREATEST(COALESCE((SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1970-01-01'),
+                   < GREATEST({BuilderPending.FullProjectedAt},
                               COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @inputs), '1970-01-01'))
             """, new { source = Source, inputs = Inputs }, cancellationToken: ct)) != 0;
+    }
+
+    /// <summary>
+    /// Queues the providers whose label can change only because the data's as-of date moved since the labels were built: those
+    /// whose last NPPES update crossed the 5- or 10-year limit in between.
+    /// </summary>
+    private static async Task QueueAgedAsync(MySqlConnection connection, DateTime asOf, CancellationToken ct)
+    {
+        var version = await connection.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT `version` FROM `reference_data` WHERE `source` = @source", new { source = Source }, cancellationToken: ct));
+        if (version is null || !version.StartsWith("as of ", StringComparison.Ordinal)
+            || !DateTime.TryParseExact(version[6..], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var before) || before == asOf)
+        {
+            return;
+        }
+
+        var (from, to) = before < asOf ? (before, asOf) : (asOf, before);
+        foreach (var years in new[] { RecordQuality.CheckYears, RecordQuality.StaleYears })
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                $"INSERT IGNORE INTO `{Pending}` (`npi`) SELECT `npi` FROM `provider` WHERE `last_update_date` >= @from AND `last_update_date` < @to",
+                new { from = from.AddYears(-years), to = to.AddYears(-years) }, commandTimeout: 0, cancellationToken: ct));
+        }
     }
 
     /// <summary>
@@ -182,23 +210,29 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     /// </summary>
     private static async Task<bool> OnlyPendingChangedAsync(MySqlConnection connection, CancellationToken ct) =>
         await connection.ExecuteScalarAsync<long>(new CommandDefinition(
-            """
+            $"""
             SELECT EXISTS (SELECT 1 FROM `reference_data` WHERE `source` = @source)
                AND EXISTS (SELECT 1 FROM `provider_quality`)
                AND EXISTS (SELECT 1 FROM `quality_pending`)
                AND (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source)
-                   >= GREATEST(COALESCE((SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1970-01-01'),
+                   >= GREATEST({BuilderPending.FullProjectedAt},
                                COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @others), '1970-01-01'))
             """, new { source = Source, others = Inputs.Where(i => i != QueuedInput).ToList() }, cancellationToken: ct)) != 0;
 
     /// <param name="allowIncremental">
-    /// False to relabel everyone (after a projection); true relabels only the queued NPIs when nothing else changed.
+    /// False to relabel everyone (the <c>project</c> command); true relabels only the queued NPIs when nothing else changed.
     /// </param>
     public async Task<long> BuildAsync(CancellationToken ct, bool allowIncremental = true)
     {
         var watch = Stopwatch.StartNew();
         await using var connection = await database.OpenAsync(ct);
         Task RunAsync(string sql, object? param = null) => connection.ExecuteAsync(new CommandDefinition(sql, param, commandTimeout: 0, cancellationToken: ct));
+
+        if (allowIncremental && await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
+                "SELECT `as_of_date` FROM `data_version` WHERE `id` = 1", cancellationToken: ct)) is { } currentAsOf)
+        {
+            await QueueAgedAsync(connection, currentAsOf, ct);
+        }
 
         var onlyPending = allowIncremental && await OnlyPendingChangedAsync(connection, ct);
         var pendingCount = onlyPending
@@ -351,6 +385,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                     await RunAsync($"INSERT INTO `quality_search_staging` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
                 }, ct));
                 await RunAsync($"DELETE FROM `{Pending}`"); // everyone was relabelled
+                await BuilderPending.CleanAsync(connection, null, ct);
             }
 
             var byLabel = (await connection.QueryAsync<(sbyte Label, long Rows)>(new CommandDefinition(
@@ -382,7 +417,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 
     /// <summary>
     /// Replaces the queued NPIs' labels and search rows with the new ones in provider_quality_staging, in one transaction, and
-    /// empties the queue. Their old search rows are found by their old label and their (unchanged) practice locations.
+    /// empties the queue. Their old search rows are found by their old label and their practice locations as the labels last
+    /// saw them (the projection's snapshot, else the current ones) and as they are now.
     /// </summary>
     private static async Task ReplacePendingAsync(MySqlConnection connection, string searchRows, CancellationToken ct)
     {
@@ -393,13 +429,17 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             $"""
             DELETE qs FROM `quality_search` qs
             JOIN (SELECT DISTINCT q.`label`, IFNULL(l.`state`, '') AS `state`, IFNULL(l.`city`, '') AS `city`, IFNULL(l.`zip5`, '') AS `zip5`, l.`npi`
-                  FROM `{Pending}` s JOIN `provider_quality` q ON q.`npi` = s.`npi` JOIN `provider_location` l ON l.`npi` = s.`npi`) k
+                  FROM `provider_quality` q
+                  JOIN (SELECT ol.`npi`, ol.`state`, ol.`city`, ol.`zip5` FROM {BuilderPending.OldLocations(Pending)} ol
+                        UNION SELECT x.`npi`, x.`state`, x.`city`, x.`zip5` FROM `provider_location` x JOIN `{Pending}` s ON s.`npi` = x.`npi`) l
+                    ON l.`npi` = q.`npi`) k
               ON qs.`label` = k.`label` AND qs.`state` = k.`state` AND qs.`city` = k.`city` AND qs.`zip5` = k.`zip5` AND qs.`npi` = k.`npi`
             """);
         await RunAsync($"DELETE q FROM `provider_quality` q JOIN `{Pending}` s ON s.`npi` = q.`npi`");
         await RunAsync("INSERT INTO `provider_quality` (`npi`, `label`, `reasons`, `activity`) SELECT `npi`, `label`, `reasons`, `activity` FROM `provider_quality_staging`");
         await RunAsync($"INSERT INTO `quality_search` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
         await RunAsync($"DELETE FROM `{Pending}`");
+        await BuilderPending.CleanAsync(connection, transaction, ct);
         await transaction.CommitAsync(ct);
     }
 }

@@ -124,7 +124,7 @@ public sealed partial class FemaStructureSource : DatasetSource
             context.Log.Information("FEMA structures: {Rows:N0} addresses ({Matches}) in {Minutes:N1} min", counts["address_building"],
                 string.Join(", ", byMatch.Select(m => $"{m.Matched} {m.Rows:N0}")), watch.Elapsed.TotalMinutes);
 
-            await new AddressTypeBuilder(context.Database, context.Log, context.Options.MinRowRatio).BuildAsync(ct);
+            await new AddressTypeBuilder(context.Database, context.Log, context.Options.MinRowRatio).BuildAsync(ct, full: true);
             return counts["address_building"];
         }
         finally
