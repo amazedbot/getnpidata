@@ -19,6 +19,11 @@ public sealed class LoaderOptions
 
     public int DownloadAttempts { get; set; } = 4;
 
+    /// <summary>A file of at least <see cref="DownloadPartMinBytes"/> is fetched in this many byte ranges at once, when the server allows it.</summary>
+    public int DownloadParts { get; set; } = 4;
+
+    public long DownloadPartMinBytes { get; set; } = Datasets.FileDownloader.DefaultPartMinBytes;
+
     /// <summary>NUCC taxonomy CSV page; the newest nucc_taxonomy_&lt;ver&gt;.csv link on it is loaded.</summary>
     public string NuccPageUrl { get; set; } = "https://www.nucc.org/index.php/code-sets-mainmenu-41/provider-taxonomy-mainmenu-40/csv-mainmenu-57";
 

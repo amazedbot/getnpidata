@@ -49,7 +49,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             log.Information("Skip {File}: {Reason}", skipped.FileName, skipped.Reason);
         }
 
-        var downloader = new Downloader(http, log, options.DownloadAttempts);
+        var downloader = new Downloader(http, log, options.DownloadAttempts, parts: options.DownloadParts, partMinBytes: options.DownloadPartMinBytes);
         var failures = 0;
         foreach (var planned in plan.Files)
         {

@@ -39,6 +39,7 @@ public sealed class MedicareEnrollmentSource : DatasetSource
         var (enrollment, reassignment) = await FindBothAsync(context, ct);
         var enrollmentPath = await context.DownloadAsync(enrollment, "cms_ppef_enrollment.csv", ct);
         string? reassignmentPath = null;
+        var loaded = false;
         const string raw = "medicare_enrollment_raw_staging";
         try
         {
@@ -69,6 +70,7 @@ public sealed class MedicareEnrollmentSource : DatasetSource
                             """, ct);
                         await CsvTableLoader.LoadAsync(connection, reassignmentPath, "medicare_reassignment_staging", ReassignmentColumns, ct, "latin1");
                     }, ct);
+                loaded = true;
                 return counts["medicare_enrollment"] + counts["medicare_reassignment"];
             }
             finally
@@ -78,10 +80,11 @@ public sealed class MedicareEnrollmentSource : DatasetSource
         }
         finally
         {
-            File.Delete(enrollmentPath);
-            if (reassignmentPath is not null)
+            // Kept after a failed load: the next attempt downloads them again only if they changed.
+            if (loaded)
             {
-                File.Delete(reassignmentPath);
+                FileDownloader.Delete(enrollmentPath);
+                FileDownloader.Delete(reassignmentPath!);
             }
         }
     }
