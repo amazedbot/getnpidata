@@ -25,7 +25,9 @@ journalists, public health planners and practice owners are served by the same p
 
 ---
 
-## 1. Audit of the current site (October 2026)
+## 1. Audit of the site before the redesign (2026-10-11)
+
+Kept as the record of why Phase 1 changed what it did. The pages described here have been replaced (§2.5).
 
 ### 1.1 Page by page
 
@@ -93,14 +95,15 @@ Navigation by task, the same on every page:
 
 | Menu | Goes to | Task |
 |---|---|---|
-| **Search & lists** (plus the search box on every page) | Results and the list builder: specialty + area + key filters → table → export; an exact NPI goes straight to its profile | T1, T2 |
-| **Verify NPIs** | Bulk check with an on-screen summary (today's `/lookup`) | T3 |
+| **Search & lists** (plus the search box on every page) | Results and the list builder: specialty + area + key filters → table → export; an exact NPI goes straight to its profile; a name finds people and organizations | T1, T2, T5 |
+| **Map** | Pins per practice address with the same filters | T2 |
+| **Verify NPIs** | Bulk check with an on-screen summary (`/verify`; `/lookup` still works) | T3 |
 | **Areas** | State → county pages | T4 |
-| **Organizations** | Search limited to organizations, hospitals and groups | T5 |
-| **API** | A developer page with examples, then Swagger | Developers |
-| **Find care** (a separate, plainer entry, also linked from the home page) | The patient path | Patients |
+| **Companies & products** | The Open Payments companies and products (`/companies-and-products`) | Sales, journalists |
+| **Developers & API** | A developer page with examples, then Swagger | Developers |
+| **Find care** (a separate, plainer entry, linked from the home page and the footer) | The patient path | Patients |
 
-The menu is a sidebar on desktop (a menu button on phones). Companies and products keep a sidebar entry ("Companies & products"); they get the new layout in Phase 1 and their deeper redesign in Phase 9. Their URLs stay.
+The menu is a sidebar on desktop (a menu button on phones), as built in step 1.2. Organizations have no menu entry of their own: the search box finds them by name, and organization, group and facility profiles link to each other (step 1.5). Companies and products got the new layout in Phase 1 and their full redesign on 2026-10-12 (pulled forward from Phase 9); their URLs stay.
 
 **URLs:** every current URL and API endpoint keeps working (CLAUDE.md constraint).
 
@@ -117,7 +120,7 @@ The menu is a sidebar on desktop (a menu button on phones). Companies and produc
 | Find care (patients) | `/find-care` | **new** |
 | Map | `/map` | restyled, simpler filters |
 | Developers | `/developers` → `/swagger` | **new** guide page |
-| Companies, products | unchanged | restyled only (Phase 9 redesigns them) |
+| Companies & products | `/companies-and-products` (**new** main page); `/companies`, `/products`, `/company/{id}`, `/product/{slug}` unchanged | redesigned 2026-10-12 |
 
 ### 2.2 Search experience
 
@@ -180,7 +183,7 @@ The menu is a sidebar on desktop (a menu button on phones). Companies and produc
 
 ### 2.5.1 Page-speed budget (set in step 1.2)
 
-- **CSS:** one stylesheet, at most 40 KB (12 KB now).
+- **CSS:** one stylesheet, at most 40 KB (39 KB on 2026-10-13, close to the budget).
 - **Scripts:** only small page scripts, deferred; third-party code only where a page needs it (Leaflet on the map page).
 - **Fonts:** no third-party font requests; brand fonts self-hosted (woff2, at most ~300 KB together) or system fonts.
 - **Server time:** pages answer in under 1 s warm (p95); checked with every step.
@@ -190,9 +193,9 @@ The menu is a sidebar on desktop (a menu button on phones). Companies and produc
 
 | Task | Already have | Missing (would be a new source; proposed, not added without the owner's OK) |
 |---|---|---|
-| T1 provider | NPPES (names, taxonomies, locations, phones, dates); standardized credentials; Care Compare (accepts Medicare, telehealth, school, graduation year, groups, hospital affiliations); OIG LEIE; opt-out; order/refer; state licenses (9 states then, 15 since 2026-10-13); MIPS; Medicare and Part D activity; Open Payments; change log (since 2026-10-09); FEMA building type | **Deactivation status:** we have it locally; the projection needs a small status table so it can be shown (approved, §6). Plain-language specialty descriptions are written for this site (no new data). Languages spoken, board certification and "accepting new patients" have no free, reliable source |
-| T2 list | Search with every filter, streamed CSV, map | Excel export (no new data). Ready-made column sets for CRM imports |
-| T3 verify | Bulk lookup, Luhn check, flags (exclusion, opt-out, order/refer, Medicare billing), last update date | The same deactivation-status decision. "Changed since" per NPI needs Phase 3's history (we only have changes since 2026-10-09) |
+| T1 provider | NPPES (names, taxonomies, locations, phones, dates); standardized credentials; Care Compare (accepts Medicare, telehealth, school, graduation year, groups, hospital affiliations); OIG LEIE; opt-out; order/refer; state licenses (9 states then, 15 since 2026-10-13); MIPS; Medicare and Part D activity; Open Payments; change log (since 2026-10-09); FEMA building type | **Deactivation status:** shown since step 1.4 (`provider_deactivated`). Plain-language specialty descriptions are written for this site (no new data). Languages spoken, board certification and "accepting new patients" have no free, reliable source |
+| T2 list | Search with every filter, streamed CSV, map | Excel export and column sets (done in step 1.3); CRM column maps are Phase 9 |
+| T3 verify | Bulk lookup, Luhn check, flags (exclusion, opt-out, order/refer, Medicare billing), last update date | Deactivation dates: done in step 1.7. "Changed since" per NPI needs Phase 3's history (we only have changes since 2026-10-09; step 3.4 adds the NBER archive) |
 | T4 area | County population (Census), HPSA shortage areas, provider counts from search, enumeration dates (new providers), change log | Per-capita benchmarks are computed from what we have (no new data). Population by ZIP or city (Census ACS by ZCTA) would be new. Trends before October 2026 would need historical NPPES files (Phase 3) |
 | T5 organization | NPPES organizations (LBN, other names, authorized official, parent/subparts, locations); Care Compare group membership (clinician ↔ group PAC ID); hospital affiliations (clinician ↔ CCN); hospital, nursing home, home health and hospice data with CCN ↔ NPI links | **Organization NPI ↔ group PAC ID** (to show "clinicians in this organization" from an organization's NPI page): the CMS *Medicare Fee-For-Service Public Provider Enrollment* file has it (**added in step 1.5**, owner's OK). **Health-system ownership** (which hospitals belong to which system): AHRQ Compendium of U.S. Health Systems, CMS hospital ownership files (proposal). **Bed counts and facility details**: CMS Provider of Services file (**loaded in step 3.1** for closed facilities; bed counts and details aren't shown yet) |
 
@@ -220,7 +223,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
 
 - **Goal:** a private, password-protected test copy on Azure for features that can't be tested locally (alerts, email, accounts). No public launch until every phase is complete (owner, 2026-10-11).
 - **Scope:** the site on Azure behind a password, deployed by GitHub Actions, and **the nightly load running in Azure on a schedule, not on the owner's PC** (owner, 2026-10-12): Azure downloads the source files, loads them, builds the projection and refreshes the datasets itself. The design (where the loader runs, a database large enough for the raw data, the DuckDB-based Overture and FEMA steps) and its cost estimate come first. The PC stays the development and test environment.
-- **When:** only when a feature needs it; the owner is asked first, with a cost estimate.
+- **When:** only when a feature needs it; the owner is asked first, with a cost estimate. Not needed yet (owner, 2026-10-13).
 - **Data:** nothing new.
 - **Worked when:** the test copy serves every page within the Phase 1 speed targets, the nightly load in Azure succeeds 7 days in a row, and the monthly cost matches the estimate.
 
@@ -256,13 +259,14 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
     - **VA facility locations:** would explain clinicians at VA addresses, who show no Medicare activity. **Not needed for now** (owner, 2026-10-13).
   - **Tested and not usable as sources (step 3.5):** web search and provider directories (their terms forbid reuse; the search refuses private individuals), state license lookup sites without bulk data (can't be scripted).
 - **Worked when:**
-  - every profile shows a quality label with reasons;
-  - county pages show monthly change counts;
-  - spot checks of 50 "Stale" records find real problems (wrong address, closed practice) in most of them.
+  - every profile shows a quality label with reasons (**met**, step 3.1);
+  - county pages show monthly change counts (step 3.3);
+  - spot checks of 50 "Stale" records find real problems (wrong address, closed practice) in most of them (**met for organizations**, 10 of 11; most individuals couldn't be verified with free sources, step 3.5).
 
 ### Phase 4: Bulk verification and compliance checks
 
 - **Goal:** credentialing, billing and staffing teams can verify a roster in one step and get a report they can file.
+- **Already on Verify NPIs (steps 1.7 and 3.1):** status with the deactivation date, OIG exclusion and Medicare opt-out dates, order/refer and Medicare billing, the record-quality label, CSV and Excel.
 - **Scope:**
   - **Verify NPIs, extended.** For each NPI:
     - status (active, deactivated with date, invalid);
@@ -393,7 +397,7 @@ tiers; pay-as-you-go verification; data licensing; custom area reports. Sponsore
 - **Pacing:** one phase at a time; within a phase, one step at a time. Each step is committed, summarized briefly, and waits for the owner's "go".
 - **New ideas:** new features and data sources are proposed, never added without asking. Every "Missing" item above is a proposal.
 - **Constraints:** existing URLs and API endpoints keep working, and pages stay fast and mobile-friendly.
-- **CLAUDE.md:** it's updated with the new direction once this plan is approved, in the same commit as the first step.
+- **Documents:** CLAUDE.md, this plan and [TODO.md](TODO.md) are kept current in the same commit as each decision or step.
 
 ## 6. Decisions (owner, 2026-10-11)
 
