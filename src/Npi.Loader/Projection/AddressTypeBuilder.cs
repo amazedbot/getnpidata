@@ -91,7 +91,7 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
     {
         var watch = Stopwatch.StartNew();
         await using var connection = await database.OpenAsync(ct);
-        if (await Database.CountAsync(connection, "address_building", ct) == 0)
+        if (!full && await Database.CountAsync(connection, "address_building", ct) == 0)
         {
             await BuilderPending.ClearAsync(connection, BuilderPending.AddressTypes, ct);
             await Database.ExecuteAsync(connection, "DELETE FROM `address_pending`", ct);

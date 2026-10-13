@@ -176,8 +176,10 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 OR EXISTS (SELECT 1 FROM `{Pending}`)
                 OR (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source)
                    < GREATEST({BuilderPending.FullProjectedAt},
-                              COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @inputs), '1970-01-01'))
-            """, new { source = Source, inputs = Inputs }, cancellationToken: ct)) != 0;
+                              COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @others), '1970-01-01'))
+                OR (SELECT `checked_at` FROM `reference_data` WHERE `source` = @source)
+                   < COALESCE((SELECT `loaded_at` FROM `reference_data` WHERE `source` = @queued), '1970-01-01')
+            """, new { source = Source, others = Inputs.Where(i => i != QueuedInput).ToList(), queued = QueuedInput }, cancellationToken: ct)) != 0;
     }
 
     /// <summary>
@@ -205,15 +207,14 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     }
 
     /// <summary>
-    /// True when the labels exist, NPIs are queued and nothing but the state licenses changed since they were built (no newer projection, no
-    /// other input reloaded), so relabelling the queued NPIs is enough.
+    /// True when the labels exist and nothing but the state licenses changed since they were built in full (no newer full
+    /// projection, no other input reloaded), so relabelling the queued NPIs (if any) is enough.
     /// </summary>
     private static async Task<bool> OnlyPendingChangedAsync(MySqlConnection connection, CancellationToken ct) =>
         await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             $"""
             SELECT EXISTS (SELECT 1 FROM `reference_data` WHERE `source` = @source)
                AND EXISTS (SELECT 1 FROM `provider_quality`)
-               AND EXISTS (SELECT 1 FROM `quality_pending`)
                AND (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source)
                    >= GREATEST({BuilderPending.FullProjectedAt},
                                COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @others), '1970-01-01'))
@@ -240,7 +241,18 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             : 0;
         if (onlyPending)
         {
-            log.Information("Record quality: relabelling the {Count:N0} providers whose state licenses changed", pendingCount);
+            log.Information("Record quality: relabelling the {Count:N0} queued providers", pendingCount);
+        }
+
+        if (onlyPending && pendingCount == 0)
+        {
+            await RunAsync(
+                """
+                UPDATE `reference_data` SET `checked_at` = UTC_TIMESTAMP(),
+                  `version` = COALESCE(CONCAT('as of ', (SELECT DATE_FORMAT(`as_of_date`, '%Y-%m-%d') FROM `data_version` WHERE `id` = 1)), `version`)
+                WHERE `source` = @source
+                """, new { source = Source });
+            return await Database.CountAsync(connection, "provider_quality", ct);
         }
 
         // Every source and the providers, limited to the queued NPIs when only they are relabelled.
@@ -395,9 +407,11 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 """
                 INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
                 VALUES (@source, @version, '', @rows, @now, @now) AS new
-                ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `loaded_at` = new.`loaded_at`, `checked_at` = new.`checked_at`
+                ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `checked_at` = new.`checked_at`,
+                  `loaded_at` = IF(@onlyPending, `reference_data`.`loaded_at`, new.`loaded_at`)
                 """, ct, param: new
                 {
+                    onlyPending,
                     source = Source, version = "as of " + asOf.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
                     rows = counts["provider_quality"], now,
                 });

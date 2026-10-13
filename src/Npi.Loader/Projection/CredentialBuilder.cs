@@ -141,14 +141,13 @@ public sealed class CredentialBuilder(Database database, ILogger log, double min
             {
                 try
                 {
-                    if (await BuildQueuedAsync(connection, map, watch, ct))
-                    {
-                        return;
-                    }
+                    await BuildQueuedAsync(connection, map, watch, ct);
+                    return;
                 }
                 finally
                 {
                     await BuilderPending.DropBatchAsync(connection, BuilderPending.Credentials);
+                    await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{More}`", CancellationToken.None);
                 }
             }
             else
@@ -160,13 +159,18 @@ public sealed class CredentialBuilder(Database database, ILogger log, double min
         await BuildAllAsync(connection, raws, map, watch, ct);
     }
 
+    // Providers outside the batch whose "Other" row changes because one of their credentials became rare or stopped being rare.
+    private const string More = "credentials_more";
+
     /// <summary>
     /// Replaces the queued NPIs' rows, with the stored known credentials (unchanged): raw values new to credential_map are
-    /// mapped, unused ones dropped. False (nothing changed) when the credentials too rare for the list would change.
+    /// mapped, unused ones dropped. When a credential crosses the list's limit, its other holders' "Other" rows follow.
     /// </summary>
-    private async Task<bool> BuildQueuedAsync(MySqlConnection connection, CredentialMap map, Stopwatch watch, CancellationToken ct)
+    private async Task BuildQueuedAsync(MySqlConnection connection, CredentialMap map, Stopwatch watch, CancellationToken ct)
     {
         var (batch, queued) = await BuilderPending.TakeAsync(connection, BuilderPending.Credentials, ct);
+        await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{More}`", ct);
+        await Database.ExecuteAsync(connection, $"CREATE TABLE `{More}` (`npi` CHAR(10) NOT NULL PRIMARY KEY) ENGINE=InnoDB", ct);
         var stored = (await connection.QueryAsync<string>(new CommandDefinition("SELECT DISTINCT `raw` FROM `credential_map`", cancellationToken: ct)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var added = map.ByRaw.Where(e => !stored.Contains(e.Key)).ToList();
@@ -215,39 +219,73 @@ public sealed class CredentialBuilder(Database database, ILogger log, double min
             "SELECT `credential`, COUNT(DISTINCT `npi`) FROM `provider_credential` WHERE `ord` <> @otherOrd GROUP BY `credential`",
             new { otherOrd = Credentials.OtherOrd }, tx, commandTimeout: 0, cancellationToken: ct))).ToList();
         var rareAfter = counts.Where(c => c.Providers < minListed).Select(c => c.Credential).ToHashSet(StringComparer.Ordinal);
-        if (!rareAfter.SetEquals(rareBefore))
+        var crossed = rareAfter.Except(rareBefore).Concat(rareBefore.Except(rareAfter)).ToList();
+        var other = new { otherOrd = Credentials.OtherOrd, other = Credentials.Other, minListed };
+
+        // The list without "Other" first: it tells which credentials are rare now.
+        await RunAsync("DELETE FROM `credential_list`");
+        await RunAsync("INSERT INTO `credential_list` (`credential`, `providers`) SELECT `credential`, COUNT(DISTINCT `npi`) FROM `provider_credential` WHERE `ord` <> @otherOrd GROUP BY `credential`",
+            other);
+        foreach (var chunk in crossed.Chunk(500))
         {
-            await tx.RollbackAsync(ct);
-            log.Information("Credentials: the credentials too rare for the list changed; rebuilding every provider");
-            return false;
+            await RunAsync(
+                $"""
+                INSERT IGNORE INTO `{More}` (`npi`)
+                SELECT c.`npi` FROM `provider_credential` c
+                WHERE c.`credential` IN @chunk AND NOT EXISTS (SELECT 1 FROM `{batch}` b WHERE b.`npi` = c.`npi`)
+                """, new { chunk });
+        }
+
+        // Their "Other" rows go; everyone in the batch or there who holds a rare credential gets one again.
+        await RunAsync(
+            $"""
+            DELETE s FROM `credential_search` s
+            JOIN (SELECT DISTINCT IFNULL(l.`state`, '') AS `state`, IFNULL(l.`city`, '') AS `city`, IFNULL(l.`zip5`, '') AS `zip5`, l.`npi`
+                  FROM `provider_location` l JOIN `{More}` x ON x.`npi` = l.`npi`) k
+              ON s.`credential` = @other AND s.`state` = k.`state` AND s.`city` = k.`city` AND s.`zip5` = k.`zip5` AND s.`npi` = k.`npi`
+            """, other);
+        await RunAsync(
+            $"""
+            DELETE s FROM `provider_map_credential` s
+            JOIN (SELECT DISTINCT {MapCell("m")} AS `cell`, m.`npi` FROM `provider_map` m JOIN `{More}` x ON x.`npi` = m.`npi`) k
+              ON s.`credential` = @other AND s.`cell` = k.`cell` AND s.`npi` = k.`npi`
+            """, other);
+        await RunAsync($"DELETE c FROM `provider_credential` c JOIN `{More}` x ON x.`npi` = c.`npi` WHERE c.`ord` = @otherOrd", other);
+        foreach (var npis in new[] { batch, More })
+        {
+            await RunAsync(
+                $"""
+                INSERT IGNORE INTO `provider_credential` (`npi`, `ord`, `credential`)
+                SELECT DISTINCT c.`npi`, @otherOrd, @other FROM `provider_credential` c JOIN `{npis}` b ON b.`npi` = c.`npi`
+                JOIN `credential_list` r ON r.`credential` = c.`credential` AND r.`providers` < @minListed
+                WHERE c.`ord` <> @otherOrd
+                """, other);
         }
 
         await RunAsync(
-            $"""
-            INSERT INTO `provider_credential` (`npi`, `ord`, `credential`)
-            SELECT DISTINCT c.`npi`, @otherOrd, @other FROM `provider_credential` c JOIN `{batch}` b ON b.`npi` = c.`npi`
-            JOIN `credential_list` r ON r.`credential` = c.`credential` AND r.`providers` < @minListed AND r.`credential` <> @other
-            """, new { otherOrd = Credentials.OtherOrd, other = Credentials.Other, minListed });
-        await RunAsync("DELETE FROM `credential_list`");
-        await RunAsync("INSERT INTO `credential_list` (`credential`, `providers`) SELECT `credential`, COUNT(DISTINCT `npi`) FROM `provider_credential` GROUP BY `credential`");
-        await RunAsync(
-            $"""
-            INSERT INTO `credential_search` (`credential`, `state`, `city`, `zip5`, `npi`)
-            SELECT DISTINCT c.`credential`, IFNULL(l.`state`, ''), IFNULL(l.`city`, ''), IFNULL(l.`zip5`, ''), c.`npi`
-            FROM `provider_credential` c JOIN `{batch}` b ON b.`npi` = c.`npi` JOIN `provider_location` l ON l.`npi` = c.`npi`
-            """);
-        await RunAsync(
-            $"""
-            INSERT INTO `provider_map_credential` (`credential`, `cell`, `npi`)
-            SELECT DISTINCT c.`credential`, {MapCell("m")}, m.`npi`
-            FROM `provider_credential` c JOIN `{batch}` b ON b.`npi` = c.`npi` JOIN `provider_map` m ON m.`npi` = c.`npi`
-            """);
+            "INSERT INTO `credential_list` (`credential`, `providers`) SELECT `credential`, COUNT(DISTINCT `npi`) FROM `provider_credential` WHERE `ord` = @otherOrd GROUP BY `credential`",
+            other);
+        foreach (var (npis, only) in new[] { (batch, ""), (More, " WHERE c.`ord` = @otherOrd") })
+        {
+            await RunAsync(
+                $"""
+                INSERT INTO `credential_search` (`credential`, `state`, `city`, `zip5`, `npi`)
+                SELECT DISTINCT c.`credential`, IFNULL(l.`state`, ''), IFNULL(l.`city`, ''), IFNULL(l.`zip5`, ''), c.`npi`
+                FROM `provider_credential` c JOIN `{npis}` b ON b.`npi` = c.`npi` JOIN `provider_location` l ON l.`npi` = c.`npi`{only}
+                """, other);
+            await RunAsync(
+                $"""
+                INSERT INTO `provider_map_credential` (`credential`, `cell`, `npi`)
+                SELECT DISTINCT c.`credential`, {MapCell("m")}, m.`npi`
+                FROM `provider_credential` c JOIN `{npis}` b ON b.`npi` = c.`npi` JOIN `provider_map` m ON m.`npi` = c.`npi`{only}
+                """, other);
+        }
+
         await BuilderPending.DoneAsync(connection, BuilderPending.Credentials, tx, ct);
         await RunAsync("UPDATE `reference_data` SET `checked_at` = UTC_TIMESTAMP() WHERE `source` = @source", new { source = Source });
         await tx.CommitAsync(ct);
-        log.Information("Credentials: {Queued:N0} queued providers updated ({Added:N0} new raw values, {Unused:N0} unused) in {Seconds:N0}s",
-            queued, added.Count, unused.Count, watch.Elapsed.TotalSeconds);
-        return true;
+        log.Information("Credentials: {Queued:N0} queued providers updated ({Added:N0} new raw values, {Unused:N0} unused; {Crossed:N0} credentials crossed the list's limit) in {Seconds:N0}s",
+            queued, added.Count, unused.Count, crossed.Count, watch.Elapsed.TotalSeconds);
     }
 
     // The 0.1° map cell of a point (MapBounds.Cells' formula, Npi.Core).
