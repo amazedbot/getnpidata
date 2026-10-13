@@ -67,7 +67,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
              ("open_payments_entities", "PBLCTN_RPTG_ORG_PRFL_SRCH_P06302026_06032026.csv | PBLCTN_RPTG_ORG_SMRY_P06302026_06032026.csv"),
              ("open_payments_research", "2025 OP_DTL_RSRCH_PGYR2025_P06302026_06032026.csv"),
-             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("part_d_prescribers", "2024-12-31 MUP_DPR_DY24_NPIBN.csv"), ("product_adverse_events", today), ("product_trials", today),
+             ("open_payments_years", "PBLCTN_PHYSN_NON_PHYSN_PRCTNR_SMRY_P06302026_06032026.csv"), ("part_d_prescribers", "2024-12-31 MUP_DPR_DY24_NPIBN.csv"), ("product_adverse_events", $"faers 2026-10-12 | maude 2026-10-12 | {today}"), ("product_trials", today),
              ("sec_companies", $"2026-10-09T06:00:00Z parents {SecCompanySource.ParentsHash()}"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
@@ -652,8 +652,8 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(
             ["HEAD https://oig.test/UPDATED.csv", "https://cms.test/data.json", "https://pdc.test/items/mj5m-pzi6", "https://pdc.test/items/27ea-46a8",
              "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py", "https://pdc.test/items/dgck-syfz", "https://pdc.test/items/6jpm-sxkc",
-             "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8", "https://fda.test/download.json"],
-            server.Requests); // HRSA, Census, Open Payments and most FDA files are checked weekly; FDA's shortage list daily
+             "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8", "https://fda.test/download.json", "https://fda.test/download.json"],
+            server.Requests); // HRSA, Census, Open Payments and most FDA files are checked weekly; FDA's shortage list and adverse event export dates daily
 
         // The datasets command forces a reload of one source.
         server.Requests.Clear();
@@ -701,6 +701,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 FemaStructuresListingUrl = "https://fema.test/list",
                 FemaStructuresBaseUrl = "https://fema.test/files/",
                 ApiRequestDelay = TimeSpan.Zero,
+                OpenFdaApiKey = "test-key", // adverse event counts asked several at a time
+                OpenFdaKeyedRequestInterval = TimeSpan.Zero,
             },
             db.Database, new HttpClient(server), Logger.None, clock: clock);
 

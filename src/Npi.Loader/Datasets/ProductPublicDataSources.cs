@@ -270,17 +270,25 @@ public abstract class ProductApiCacheSource : DatasetSource
         Task.FromResult(new DatasetRelease(DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), new Uri("https://open.fda.gov/")));
 
     /// <summary>The products to ask about (slug, kind, query name), stalest first, at most <paramref name="limit"/>.</summary>
-    protected static async Task<List<(string Slug, string Kind, string Query)>> CandidatesAsync(MySqlConnection connection, string candidatesSql, string cache,
+    protected static Task<List<(string Slug, string Kind, string Query)>> CandidatesAsync(MySqlConnection connection, string candidatesSql, string cache,
         TimeSpan maxAge, int limit, CancellationToken ct) =>
+        CandidatesAsync(connection, candidatesSql, cache, DateTime.UtcNow - maxAge, DateTime.UtcNow - maxAge, limit, ct);
+
+    /// <summary>
+    /// The products to ask about: never asked, asked under another name, or asked before <paramref name="drugsBefore"/> (drugs
+    /// and biologicals) or <paramref name="devicesBefore"/> (devices); stalest first, at most <paramref name="limit"/>.
+    /// </summary>
+    protected static async Task<List<(string Slug, string Kind, string Query)>> CandidatesAsync(MySqlConnection connection, string candidatesSql, string cache,
+        DateTime drugsBefore, DateTime devicesBefore, int limit, CancellationToken ct) =>
         (await connection.QueryAsync<(string Slug, string Kind, string Query)>(new CommandDefinition(
             $"""
             SELECT c.`slug`, c.`kind`, c.`query_name` FROM ({candidatesSql}) c
             LEFT JOIN `{cache}` x ON x.`slug` = c.`slug`
             WHERE c.`query_name` IS NOT NULL AND CHAR_LENGTH(c.`query_name`) >= 3
-              AND (x.`slug` IS NULL OR x.`fetched_at` < @before OR x.`query_name` <> c.`query_name`)
+              AND (x.`slug` IS NULL OR x.`fetched_at` < IF(c.`kind` = 'drug', @drugsBefore, @devicesBefore) OR x.`query_name` <> c.`query_name`)
             ORDER BY x.`fetched_at` IS NOT NULL, x.`fetched_at`, c.`amount` DESC
             LIMIT @limit
-            """, new { before = DateTime.UtcNow - maxAge, limit }, cancellationToken: ct))).ToList();
+            """, new { drugsBefore, devicesBefore, limit }, cancellationToken: ct))).ToList();
 
     /// <summary>
     /// GET a JSON answer; null when the API says there's nothing (404); throws <see cref="RateLimitedException"/> on 429 and
@@ -357,24 +365,110 @@ public abstract class ProductApiCacheSource : DatasetSource
 /// <summary>
 /// Adverse event report counts from openFDA (part 3): drugs and biologicals in FAERS by the product name as reported
 /// (<c>patient.drug.medicinalproduct</c>; FDA's brand annotation finds nothing), total and serious; devices in MAUDE by
-/// brand name, deaths, injuries and malfunctions. Without <see cref="LoaderOptions.OpenFdaApiKey"/> openFDA allows 1,000
-/// requests a day, so a run makes at most <see cref="LoaderOptions.OpenFdaRequestsPerRun"/>.
+/// brand name, deaths, injuries and malfunctions. A product is asked again only after openFDA exports new reports (FAERS
+/// and MAUDE each have an export date in download.json), so the version is those dates, plus the day while products are
+/// still waiting (never asked, renamed, or a run ended at its budget). Without <see cref="LoaderOptions.OpenFdaApiKey"/>
+/// openFDA allows 1,000 requests a day, so a run makes at most <see cref="LoaderOptions.OpenFdaRequestsPerRun"/>, one at a
+/// time; with the key, up to <see cref="LoaderOptions.OpenFdaParallelRequests"/> at once, one started every
+/// <see cref="LoaderOptions.OpenFdaKeyedRequestInterval"/> (openFDA allows 240 a minute per key).
 /// </summary>
 public sealed class ProductAdverseEventSource : ProductApiCacheSource
 {
     public override string Name => "product_adverse_events";
 
-    protected override TimeSpan MaxAge => TimeSpan.FromDays(7);
+    protected override TimeSpan MaxAge => TimeSpan.FromDays(7); // not used: openFDA's export dates decide
+
+    /// <summary>openFDA's export dates of the drug (FAERS) and device (MAUDE) adverse event reports.</summary>
+    private static async Task<(DateTime Drugs, DateTime Devices)> ExportDatesAsync(DatasetContext context, CancellationToken ct)
+    {
+        await using var stream = await context.Http.GetStreamAsync(new Uri(context.Options.FdaDownloadIndexUrl), ct);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        var results = doc.RootElement.GetProperty("results");
+        DateTime Date(string category) =>
+            DateTime.ParseExact(results.GetProperty(category).GetProperty("event").GetProperty("export_date").GetString()!, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return (Date("drug"), Date("device"));
+    }
+
+    public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
+    {
+        var (drugs, devices) = await ExportDatesAsync(context, ct);
+        await using var connection = await context.Database.OpenAsync(ct);
+        var waiting = (await CandidatesAsync(connection, Products, "product_adverse_events", drugs, devices, 1, ct)).Count > 0;
+        var version = FormattableString.Invariant($"faers {drugs:yyyy-MM-dd} | maude {devices:yyyy-MM-dd}");
+        return new DatasetRelease(waiting ? FormattableString.Invariant($"{version} | {DateTime.UtcNow:yyyy-MM-dd}") : version, new Uri("https://open.fda.gov/"));
+    }
 
     public override async Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct)
     {
         await using var connection = await context.Database.OpenAsync(ct);
-        var budget = string.IsNullOrWhiteSpace(context.Options.OpenFdaApiKey) ? context.Options.OpenFdaRequestsPerRun : context.Options.OpenFdaRequestsPerRunWithKey;
-        var key = string.IsNullOrWhiteSpace(context.Options.OpenFdaApiKey) ? "" : "&api_key=" + Uri.EscapeDataString(context.Options.OpenFdaApiKey);
+        var keyed = !string.IsNullOrWhiteSpace(context.Options.OpenFdaApiKey);
+        var budget = keyed ? context.Options.OpenFdaRequestsPerRunWithKey : context.Options.OpenFdaRequestsPerRun;
+        var key = keyed ? "&api_key=" + Uri.EscapeDataString(context.Options.OpenFdaApiKey) : "";
+        // The export dates FindLatestAsync put in the version ("faers yyyy-MM-dd | maude yyyy-MM-dd[ | day]"), so download.json isn't read again.
+        var parts = release.Version.Split(" | ");
+        var (drugsExported, devicesExported) = (Exported(parts[0], "faers "), Exported(parts[1], "maude "));
+        var candidates = await CandidatesAsync(connection, Products, "product_adverse_events", drugsExported, devicesExported, budget, ct);
+        var parallel = keyed ? Math.Max(1, context.Options.OpenFdaParallelRequests) : 1;
+        context.Log.Information("Adverse event counts: {Count:N0} products to ask (FAERS {Drugs:yyyy-MM-dd}, MAUDE {Devices:yyyy-MM-dd}), {Parallel} at a time",
+            candidates.Count, drugsExported, devicesExported, parallel);
+
+        using var pacer = new Pacer(keyed ? context.Options.OpenFdaKeyedRequestInterval : context.Options.ApiRequestDelay);
+        using var write = new SemaphoreSlim(1, 1);
         var done = 0L;
-        foreach (var (slug, kind, query) in await CandidatesAsync(connection, Products, "product_adverse_events", MaxAge, budget, ct))
+        try
         {
-            int? reports = null, serious = null, deaths = null, injuries = null, malfunctions = null;
+            await Parallel.ForEachAsync(candidates, new ParallelOptions { MaxDegreeOfParallelism = parallel, CancellationToken = ct },
+                async (candidate, token) =>
+                {
+                    var (slug, kind, query) = candidate;
+                    await pacer.WaitAsync(token);
+                    var counts = await AskAsync(context, kind, query, key, token);
+                    if (counts is null)
+                    {
+                        return; // kept failing: asked again on the next run
+                    }
+
+                    var (reports, serious, deaths, injuries, malfunctions) = counts.Value;
+                    await write.WaitAsync(ct);
+                    try
+                    {
+                        await connection.ExecuteAsync(new CommandDefinition(
+                            """
+                            INSERT INTO `product_adverse_events` (`slug`, `kind`, `query_name`, `reports`, `serious`, `deaths`, `injuries`, `malfunctions`, `fetched_at`)
+                            VALUES (@slug, @kind, @query, @reports, @serious, @deaths, @injuries, @malfunctions, UTC_TIMESTAMP())
+                            ON DUPLICATE KEY UPDATE `kind` = VALUES(`kind`), `query_name` = VALUES(`query_name`), `reports` = VALUES(`reports`), `serious` = VALUES(`serious`),
+                              `deaths` = VALUES(`deaths`), `injuries` = VALUES(`injuries`), `malfunctions` = VALUES(`malfunctions`), `fetched_at` = VALUES(`fetched_at`)
+                            """, new { slug, kind, query = CompanyRecords.Trim(query, 500), reports, serious, deaths, injuries, malfunctions }, cancellationToken: ct));
+                        done++;
+                    }
+                    finally
+                    {
+                        write.Release();
+                    }
+                });
+        }
+        catch (RateLimitedException)
+        {
+            // Parallel.ForEachAsync stops starting new products and lets the ones in flight finish first.
+            context.Log.Warning("openFDA rate limit reached after {Done:N0} products; the rest continue on the next run", done);
+        }
+
+        context.Log.Information("Adverse event counts: {Done:N0} products asked", done);
+        return done;
+    }
+
+    private static DateTime Exported(string part, string prefix) =>
+        DateTime.ParseExact(part[prefix.Length..], "yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// One product's counts: all null when openFDA refuses the name (stored as unknown), null when it kept failing; a rate
+    /// limit (429) is thrown and stops the run.
+    /// </summary>
+    private static async Task<(int? Reports, int? Serious, int? Deaths, int? Injuries, int? Malfunctions)?> AskAsync(DatasetContext context, string kind,
+        string query, string key, CancellationToken ct)
+    {
+        int? reports = null, serious = null, deaths = null, injuries = null, malfunctions = null;
+        {
             try
             {
                 if (kind == "drug")
@@ -394,11 +488,6 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
                     malfunctions = terms.GetValueOrDefault("Malfunction");
                 }
             }
-            catch (RateLimitedException)
-            {
-                context.Log.Warning("openFDA rate limit reached after {Done:N0} products; the rest continue on the next run", done);
-                break;
-            }
             catch (RejectedException)
             {
                 context.Log.Debug("openFDA refused the search for {Query}; stored as unknown", query);
@@ -406,22 +495,39 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
             catch (UnavailableException)
             {
                 context.Log.Warning("openFDA kept failing for {Query}; asked again on the next run", query);
-                continue;
+                return null;
             }
-
-            await connection.ExecuteAsync(new CommandDefinition(
-                """
-                INSERT INTO `product_adverse_events` (`slug`, `kind`, `query_name`, `reports`, `serious`, `deaths`, `injuries`, `malfunctions`, `fetched_at`)
-                VALUES (@slug, @kind, @query, @reports, @serious, @deaths, @injuries, @malfunctions, UTC_TIMESTAMP())
-                ON DUPLICATE KEY UPDATE `kind` = VALUES(`kind`), `query_name` = VALUES(`query_name`), `reports` = VALUES(`reports`), `serious` = VALUES(`serious`),
-                  `deaths` = VALUES(`deaths`), `injuries` = VALUES(`injuries`), `malfunctions` = VALUES(`malfunctions`), `fetched_at` = VALUES(`fetched_at`)
-                """, new { slug, kind, query = CompanyRecords.Trim(query, 500), reports, serious, deaths, injuries, malfunctions }, cancellationToken: ct));
-            done++;
-            await Task.Delay(context.Options.ApiRequestDelay, ct);
         }
 
-        context.Log.Information("Adverse event counts: {Done:N0} products asked", done);
-        return done;
+        return (reports, serious, deaths, injuries, malfunctions);
+    }
+
+    /// <summary>Lets callers start at most one request per <c>interval</c>, however many run at once.</summary>
+    private sealed class Pacer(TimeSpan interval) : IDisposable
+    {
+        private readonly SemaphoreSlim _gate = new(1, 1);
+        private DateTime _next = DateTime.MinValue;
+
+        public async Task WaitAsync(CancellationToken ct)
+        {
+            await _gate.WaitAsync(ct);
+            try
+            {
+                var wait = _next - DateTime.UtcNow;
+                if (wait > TimeSpan.Zero)
+                {
+                    await Task.Delay(wait, ct);
+                }
+
+                _next = DateTime.UtcNow + interval;
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        public void Dispose() => _gate.Dispose();
     }
 
     // count= answers: {"results": [{"term": "1", "count": 123}, …]}; none (404) → empty.
