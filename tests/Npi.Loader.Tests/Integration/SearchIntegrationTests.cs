@@ -222,6 +222,22 @@ public sealed class SearchIntegrationTests : IDisposable
         await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
         Assert.Equal(before, await db.ScalarAsync<long>("SELECT MAX(id) FROM provider_location"));
         Assert.Equal(full["provider"], (await ProjectionSnapshotAsync(db))["provider"]);
+
+        // An NPPES file loaded since that queued nothing (a monthly with no differences): still nothing rebuilt. A's raw name
+        // changes unqueued, so only a full build would show it.
+        await db.ExecuteAsync(
+            """
+            UPDATE npidata SET Provider_Last_Name_Legal_Name = 'UNQUEUED' WHERE NPI = @A;
+            INSERT INTO downlog (filename, kind, status, started_at, completed_at) VALUES ('same.zip', 'Monthly', 'Completed', @at, @at);
+            """, new { A, at = DateTime.UtcNow.AddMinutes(1) });
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        Assert.Equal(before, await db.ScalarAsync<long>("SELECT MAX(id) FROM provider_location"));
+        Assert.StartsWith("OBRIEN-SMITH", await db.ScalarAsync<string>("SELECT sort_name FROM provider WHERE npi = @A", new { A }), StringComparison.Ordinal);
+
+        // The same load from before the queue existed (migration 089 applied after it): a full build.
+        await db.ExecuteAsync("UPDATE schema_migrations SET applied_at = NOW() + INTERVAL 1 DAY WHERE version = 89");
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        Assert.StartsWith("UNQUEUED", await db.ScalarAsync<string>("SELECT sort_name FROM provider WHERE npi = @A", new { A }), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -103,14 +103,19 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
     }
 
     /// <summary>
-    /// True when an NPPES file was loaded after the projection was built but nothing is queued: a load from before the
-    /// queue existed (migration 089), which only a full build covers.
+    /// True when nothing is queued but an NPPES file finished loading after the projection was built and before the queue
+    /// existed (migration 089 applied): only a full build covers such a load. A load since then that changed nothing queues
+    /// nothing, and needs nothing rebuilt. downlog times are UTC; schema_migrations.applied_at is the server's local time.
     /// </summary>
     private static async Task<bool> UnqueuedLoadAsync(MySqlConnection connection, long queued, CancellationToken ct) =>
         queued == 0 && await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             """
-            SELECT COALESCE((SELECT MAX(`completed_at`) FROM `downlog` WHERE `status` = 'Completed'), '1000-01-01')
-                   > COALESCE((SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1000-01-01')
+            SELECT EXISTS (
+              SELECT 1 FROM `downlog`
+              WHERE `status` = 'Completed'
+                AND `completed_at` > COALESCE((SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1000-01-01')
+                AND `completed_at` < COALESCE((SELECT `applied_at` - INTERVAL TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) SECOND
+                                               FROM `schema_migrations` WHERE `version` = 89), '9999-12-31'))
             """, cancellationToken: ct)) != 0;
 
     private static async Task CreateStagingAsync(MySqlConnection connection, CancellationToken ct)
@@ -279,11 +284,14 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         {
             await Database.ExecuteAsync(connection, "DROP TEMPORARY TABLE IF EXISTS `changed_npi`", ct);
             await Database.ExecuteAsync(connection, changeSql[0], ct);
-            var rows = 0;
             foreach (var sql in changeSql.Skip(1))
             {
-                rows += await connection.ExecuteAsync(new CommandDefinition(sql, new { now }, cancellationToken: ct));
+                await connection.ExecuteAsync(new CommandDefinition(sql, new { now }, cancellationToken: ct));
             }
+
+            // Counted from the table: the drivers' affected-row counts came back 0 for these INSERT … SELECTs on full data.
+            var rows = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM `provider_change` WHERE `detected_at` = @now", new { now }, cancellationToken: ct));
 
             log.Information("Projection changes: {Rows:N0} recorded in {Seconds:N0}s", rows, (DateTime.UtcNow - started).TotalSeconds);
         }
