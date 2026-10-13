@@ -14,7 +14,7 @@ public enum CsvValue
     /// <summary>MM/DD/YYYY → DATE.</summary>
     DateMdy,
 
-    /// <summary>YYYYMMDD → DATE; empty or 00000000 → NULL.</summary>
+    /// <summary>YYYYMMDD → DATE; empty or all zeros (00000000, 0) → NULL.</summary>
     DateYmd,
 
     /// <summary>Y/YES → 1, N/NO → 0, anything else → NULL.</summary>
@@ -142,7 +142,7 @@ public static class CsvTableLoader
     {
         CsvValue.Text => $"NULLIF(TRIM({variable}), '')",
         CsvValue.DateMdy => $"STR_TO_DATE(NULLIF(TRIM({variable}), ''), '%m/%d/%Y')",
-        CsvValue.DateYmd => $"STR_TO_DATE(NULLIF(NULLIF(TRIM({variable}), ''), '00000000'), '%Y%m%d')",
+        CsvValue.DateYmd => $"IF(TRIM({variable}) REGEXP '^0*$', NULL, STR_TO_DATE(TRIM({variable}), '%Y%m%d'))",
         CsvValue.YesNo => $"CASE UPPER(TRIM({variable})) WHEN 'Y' THEN 1 WHEN 'YES' THEN 1 WHEN 'N' THEN 0 WHEN 'NO' THEN 0 END",
         CsvValue.Npi => $"IF(TRIM({variable}) REGEXP '^[0-9]{{10}}$' AND TRIM({variable}) <> '0000000000', TRIM({variable}), NULL)",
         CsvValue.Number => $"NULLIF(TRIM({variable}), '')",

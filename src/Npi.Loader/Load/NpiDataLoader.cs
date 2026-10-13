@@ -4,6 +4,7 @@ using MySqlConnector;
 using Npi.Core.Sql;
 using Npi.Loader.Db;
 using Npi.Loader.Nppes;
+using Npi.Loader.Projection;
 using Serilog;
 
 namespace Npi.Loader.Load;
@@ -55,7 +56,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
                 await Database.ExecuteAsync(connection, $"CREATE TABLE {SqlIdentifier.Quote(staging)} LIKE {SqlIdentifier.Quote(table)}", ct);
 
                 var started = DateTime.UtcNow;
-                var rows = await StagingLoader.LoadCsvAsync(connection, entry, staging, file.FileName, ct);
+                var rows = await StagingLoader.LoadCsvAsync(connection, entry, staging, file.FileName, ct, ProjectionBuilder.ReadsColumn);
                 total += rows;
                 await Database.ExecuteAsync(connection,
                     "INSERT INTO `extractlog` (`ZipFileName`, `ExtractFileName`, `rows_loaded`) VALUES (@zip, @entry, @rows)", ct,
@@ -123,13 +124,16 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
     }
 
     // Columns that say where or when a row was loaded, not what NPPES says: left out when comparing rows.
-    private static readonly HashSet<string> Bookkeeping = new(["ID", "Loaded_From", "Is_Deactivated"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> Bookkeeping = new(["ID", "Loaded_From", "Is_Deactivated", StagingLoader.SourceHash], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Monthly, before the swap: queues in <c>projection_pending</c> the NPIs whose data differ between the new file and the
     /// stored tables (a new or changed npidata row, an NPI no longer in the file, or different other names, practice
     /// locations or endpoints), so the projection rebuilds only them. After the weeklies, a monthly changes few NPIs.
-    /// Rows are compared by an MD5 over every column except the bookkeeping ones.
+    /// Only the columns the projection reads count (<see cref="ProjectionBuilder.ReadsColumn"/>), so changes in columns the
+    /// site never shows queue nothing (comparing every column, the October 2026 file differed in 4.6M NPIs, in columns such
+    /// as the EIN and certification date). npidata rows compare by <see cref="StagingLoader.SourceHash"/>, written while the
+    /// files load; child rows by an MD5 per NPI, computed here (those tables are small).
     /// </summary>
     private async Task QueueMonthlyChangesAsync(MySqlConnection connection, IReadOnlyList<string> tables, CancellationToken ct)
     {
@@ -158,7 +162,20 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             """);
         foreach (var table in tables)
         {
-            var columns = (await Database.GetColumnsAsync(connection, table, ct)).Select(c => c.Name).Where(c => !Bookkeeping.Contains(c)).ToList();
+            var tableStarted = DateTime.UtcNow;
+            var queued = await Database.CountAsync(connection, "projection_pending", ct);
+            await QueueTableChangesAsync(table);
+            log.Information("Monthly diff {Table}: {Rows:N0} NPIs in {Seconds:N0}s", table,
+                await Database.CountAsync(connection, "projection_pending", ct) - queued, (DateTime.UtcNow - tableStarted).TotalSeconds);
+        }
+
+        log.Information("Monthly: {Rows:N0} NPIs differ from the stored data ({Seconds:N0}s)",
+            await Database.CountAsync(connection, "projection_pending", ct) - before, (DateTime.UtcNow - started).TotalSeconds);
+
+        async Task QueueTableChangesAsync(string table)
+        {
+            var columns = (await Database.GetColumnsAsync(connection, table, ct)).Select(c => c.Name)
+                .Where(c => !Bookkeeping.Contains(c) && (c.Equals("NPI", StringComparison.OrdinalIgnoreCase) || ProjectionBuilder.ReadsColumn(c))).ToList();
             string Hash(string alias) =>
                 $"MD5(CONCAT_WS(CHAR(31), {string.Join(", ", columns.Select(c => $"IFNULL({alias}.{SqlIdentifier.Quote(c)}, CHAR(0))"))}))";
             var t = SqlIdentifier.Quote(table);
@@ -169,14 +186,14 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
                     $"""
                     INSERT IGNORE INTO `projection_pending` (`npi`)
                     SELECT s.`NPI` FROM {st} s LEFT JOIN {t} n ON n.`NPI` = s.`NPI`
-                    WHERE n.`NPI` IS NULL OR {Hash("s")} <> {Hash("n")}
+                    WHERE NOT (s.`{StagingLoader.SourceHash}` <=> n.`{StagingLoader.SourceHash}`) OR s.`{StagingLoader.SourceHash}` IS NULL
                     """);
                 await RunAsync(
                     $"""
                     INSERT IGNORE INTO `projection_pending` (`npi`)
                     SELECT n.`NPI` FROM {t} n LEFT JOIN {st} s ON s.`NPI` = n.`NPI` WHERE s.`NPI` IS NULL
                     """);
-                continue;
+                return;
             }
 
             // Child rows: one hash per NPI over its rows' hashes in sorted order (row order and ids don't matter).
@@ -204,9 +221,6 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
                     cancellationToken: CancellationToken.None));
             }
         }
-
-        log.Information("Monthly: {Rows:N0} NPIs differ from the stored data ({Seconds:N0}s)",
-            await Database.CountAsync(connection, "projection_pending", ct) - before, (DateTime.UtcNow - started).TotalSeconds);
     }
 
     /// <summary>

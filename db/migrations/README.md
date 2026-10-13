@@ -83,6 +83,7 @@ Rules:
 | `087_address_place.sql` | Businesses Overture Maps lists at each practice address, with operating status (Phase 3 step 3.1). |
 | `088_state_license_by_state.sql` | Per-state license versions, the queue of NPIs to relabel, an index for replacing one state's licenses. |
 | `089_projection_pending.sql` | The queue of NPIs whose NPPES data changed, so the projection rebuilds only them. |
+| `090_npidata_source_hash.sql` | `npidata.Source_Hash`: a hash of the projected columns written while a file loads, so a monthly finds changed NPIs fast. |
 
 ## 001_baseline.sql
 

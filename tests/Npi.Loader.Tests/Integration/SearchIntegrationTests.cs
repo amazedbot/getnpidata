@@ -224,6 +224,48 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(full["provider"], (await ProjectionSnapshotAsync(db))["provider"]);
     }
 
+    [Fact]
+    public async Task Columns_a_monthly_does_not_compare_never_change_the_projection()
+    {
+        await using var db = await SeededAsync();
+        var before = await ProjectionSnapshotAsync(db);
+
+        // Every NPPES column the monthly diff skips gets another value; a full rebuild must give the same projection.
+        foreach (var table in new[] { "npidata", "other_names", "practice_locations", "endpoints" })
+        {
+            var columns = await db.QueryAsync<(string Name, string Type)>(
+                """
+                SELECT column_name, data_type FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = @table AND extra NOT LIKE '%GENERATED%'
+                """, new { table });
+            var changes = columns
+                .Where(c => c.Name is not ("NPI" or "ID" or "Is_Deactivated") && !ProjectionBuilder.ReadsColumn(c.Name))
+                .Select(c => c.Type switch
+                {
+                    "char" or "varchar" or "text" or "mediumtext" or "longtext" => $"`{c.Name}` = 'Z'",
+                    "date" or "datetime" or "timestamp" => $"`{c.Name}` = '2001-01-01'",
+                    _ => null,
+                })
+                .OfType<string>().ToList();
+            if (table == "npidata")
+            {
+                Assert.True(changes.Count >= 20, $"only {changes.Count} unread npidata columns");
+            }
+
+            if (changes.Count > 0)
+            {
+                await db.ExecuteAsync($"UPDATE `{table}` SET {string.Join(", ", changes)}");
+            }
+        }
+
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
+        var after = await ProjectionSnapshotAsync(db);
+        foreach (var table in ProjectionBuilder.Tables)
+        {
+            Assert.Equal(before[table], after[table]);
+        }
+    }
+
     // Every row of each projection table as text (all columns but AUTO_INCREMENT ids), sorted.
     private static async Task<Dictionary<string, IReadOnlyList<string>>> ProjectionSnapshotAsync(TestDatabase db)
     {

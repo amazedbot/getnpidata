@@ -190,12 +190,14 @@ public sealed class LoaderIntegrationTests : IDisposable
         Assert.Equal([C], await db.QueryAsync<string>("SELECT npi FROM projection_pending")); // only C's flag and date changed
 
         // The next monthly lists C without a date (only the report has it): its flag and the report's date are carried over,
-        // so C isn't queued; A's changed name is.
+        // so C isn't queued; B's new certification date isn't shown anywhere, so B isn't either; A's changed name is.
         await db.ExecuteAsync("DELETE FROM projection_pending");
         var next = new NppesZipBuilder()
             .Provider(A, ("Provider_Last_Name_Legal_Name", "Alpha"), ("Last_Update_Date", "10/01/2026"))
-            .Provider(B, ("NPI_Deactivation_Date", "01/01/2020"), ("NPI_Reactivation_Date", "02/01/2021"), ("Last_Update_Date", "02/01/2021"))
+            .Provider(B, ("NPI_Deactivation_Date", "01/01/2020"), ("NPI_Reactivation_Date", "02/01/2021"), ("Last_Update_Date", "02/01/2021"),
+                ("Certification_Date", "10/01/2026"))
             .Provider(C, ("Last_Update_Date", "09/01/2026"));
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM npidata WHERE Source_Hash IS NULL")); // written by every load
         Assert.Equal(0, await LoadFileAsync(db, next.Write(_folder, "NPPES_Data_Dissemination_October_2026_V2.zip")));
         Assert.Equal([A], await db.QueryAsync<string>("SELECT npi FROM projection_pending"));
         Assert.Equal((1, "09/14/2026"), (await db.QueryAsync<(int, string)>("SELECT Is_Deactivated, NPI_Deactivation_Date FROM npidata WHERE NPI = @C", new { C })).Single());

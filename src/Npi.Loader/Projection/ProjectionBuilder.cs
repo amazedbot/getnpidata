@@ -45,6 +45,18 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
 
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
 
+    // Every statement that reads the NPPES tables (npidata, other_names, practice_locations, endpoints), as one text.
+    private static readonly Lazy<string> SourceText = new(() => string.Join(" ",
+        ProviderSql(""), TaxonomySql(""), PrimaryLocationSql(""), SecondaryLocationSql, OtherNameSql, ProfileSql, IdentifierSql(),
+        EndpointSql, DeactivatedSql("")));
+
+    /// <summary>
+    /// True when the projection reads this NPPES column, so a change in it changes the projection. A monthly compares only
+    /// these columns.
+    /// </summary>
+    public static bool ReadsColumn(string column) =>
+        SourceText.Value.Contains(SqlIdentifier.Quote(column), StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The largest queue, as a share of the providers, rebuilt NPI by NPI (tests raise it).</summary>
     public double IncrementalShare { get; init; } = IncrementalLimit;
 

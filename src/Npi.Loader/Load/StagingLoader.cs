@@ -18,9 +18,15 @@ public static class StagingLoader
     // it as the escape character disables escaping in practice. Covered by the backslash fixture test.
     internal const char NoEscape = '\u0001';
 
+    /// <summary>The column holding <see cref="LoadCsvAsync"/>'s row hash (npidata, migration 090).</summary>
+    public const string SourceHash = "Source_Hash";
+
+    /// <param name="hashed">When set and the table has <see cref="SourceHash"/>: the columns whose values, as in the file, are
+    /// hashed into it while the rows load (empty = NULL; columns in name order, so the file's column order doesn't matter).</param>
     /// <returns>The number of rows loaded.</returns>
     public static async Task<long> LoadCsvAsync(
-        MySqlConnection connection, ZipArchiveEntry entry, string table, string? loadedFrom, CancellationToken ct)
+        MySqlConnection connection, ZipArchiveEntry entry, string table, string? loadedFrom, CancellationToken ct,
+        Func<string, bool>? hashed = null)
     {
         CsvHeader header;
         await using (var headerStream = entry.Open())
@@ -51,6 +57,15 @@ public static class StagingLoader
             var variable = $"@c{i}";
             loader.Columns.Add(variable);
             loader.Expressions.Add($"{SqlIdentifier.Quote(columns[i])} = {ConvertExpression(variable, types[columns[i]])}");
+        }
+
+        if (hashed is not null && types.ContainsKey(SourceHash))
+        {
+            var values = columns.Select((c, i) => (Column: c, Variable: $"@c{i}"))
+                .Where(c => hashed(c.Column))
+                .OrderBy(c => c.Column, StringComparer.OrdinalIgnoreCase)
+                .Select(c => $"IFNULL(NULLIF({c.Variable}, ''), CHAR(0))");
+            loader.Expressions.Add($"{SqlIdentifier.Quote(SourceHash)} = UNHEX(MD5(CONCAT_WS(CHAR(31), {string.Join(", ", values)})))");
         }
 
         if (loadedFrom is not null && types.ContainsKey("Loaded_From"))
