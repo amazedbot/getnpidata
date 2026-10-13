@@ -15,13 +15,38 @@ public sealed class DatasetIntegrationTests : IDisposable
 
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
+    /// <summary>Every source loaded once from the fixtures, into its own database and work folder.</summary>
+    private sealed record SharedLoad(TestDatabase Db, FakeSources Server, string Folder);
+
+    /// <summary>
+    /// The load the tests that only read the loaded tables share (loading every source took ~20 s, and each of seven tests
+    /// did it). Kept for the whole run: its pool database is released when the test process ends, and its folder deleted.
+    /// When MySQL isn't configured, the skip it throws skips each of those tests.
+    /// </summary>
+    private static readonly Lazy<Task<SharedLoad>> Shared = new(async () =>
+    {
+        var db = await TestDatabase.CreateAsync();
+        var folder = Directory.CreateTempSubdirectory("npi-ds-shared-").FullName;
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException)
+            {
+                // a temp folder; Windows cleans it up eventually
+            }
+        };
+        var server = new FakeSources();
+        Assert.True(await Loader(db, server, new FakeClock(), folder).RefreshAsync(force: false, only: null, CancellationToken.None));
+        return new SharedLoad(db, server, folder);
+    });
+
     [Fact]
     public async Task Compliance_datasets_load_and_record_their_versions()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        var server = new FakeSources();
-
-        Assert.True(await Loader(db, server, new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+        var (db, server, folder) = await Shared.Value;
 
         // LEIE: quoted fields with commas and braces, CRLF lines, 0000000000 → NULL NPI, 00000000 → NULL date.
         Assert.Equal(4L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM oig_exclusion"));
@@ -81,14 +106,13 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +
             "OR table_name LIKE 'cc\\_%\\_old' OR table_name LIKE 'cms\\_%\\_old' OR table_name LIKE 'medicare\\_%\\_old' OR table_name LIKE 'county\\_%\\_old' OR table_name LIKE 'open\\_payments\\_%\\_old' OR table_name IN ('oig_exclusion_old', 'medicare_opt_out_old', 'medicare_order_referring_old'))"));
-        Assert.Empty(Directory.GetFiles(Path.Combine(_folder, "datasets"))); // downloads are deleted after loading
+        Assert.Empty(Directory.GetFiles(Path.Combine(folder, "datasets"))); // downloads are deleted after loading
     }
 
     [Fact]
     public async Task Care_compare_and_facility_datasets_load_and_summarize()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+        var db = (await Shared.Value).Db;
 
         // Medicare enrollment (step 1.5): the newest extract, Latin-1 read as such, one row per enrollment, no row without an NPI.
         Assert.Equal(
@@ -293,8 +317,7 @@ public sealed class DatasetIntegrationTests : IDisposable
     [Fact]
     public async Task Quality_and_outcome_datasets_load()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+        var db = (await Shared.Value).Db;
 
         // Hospital outcome counts; "Not Available" → NULL.
         Assert.Equal([("330045", (short?)8, (short?)1, (short?)0, (short?)7, (short?)3, (short?)1, (short?)11, (short?)1, (short?)2),
@@ -324,8 +347,7 @@ public sealed class DatasetIntegrationTests : IDisposable
     [Fact]
     public async Task Medicare_activity_loads_with_its_data_year_and_top_services()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+        var db = (await Shared.Value).Db;
 
         // The newest data year (2024, not 2023); suppressed counts stay NULL; long decimals load without warnings.
         Assert.Equal(((short)2024, 212, 1840.0, 31234.56789012, 0.9123), (await db.QueryAsync<(short, int, double, double, double)>(
@@ -350,8 +372,7 @@ public sealed class DatasetIntegrationTests : IDisposable
     [Fact]
     public async Task Shortage_areas_and_population_load_per_county()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+        var db = (await Shared.Value).Db;
 
         // Withdrawn HPSAs are left out; duplicate components count once; a blank score stays NULL.
         Assert.Equal(
@@ -369,8 +390,7 @@ public sealed class DatasetIntegrationTests : IDisposable
     [Fact]
     public async Task Open_payments_are_summarized_per_npi()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+        var db = (await Shared.Value).Db;
 
         // The NPI-less teaching hospital payment is left out; amounts sum exactly to the cent.
         Assert.Equal([("1000000012", (short)2025, 2563.35, 5, 4), ("1000000046", (short)2025, 35.5, 1, 1)],
@@ -386,8 +406,7 @@ public sealed class DatasetIntegrationTests : IDisposable
     [Fact]
     public async Task Open_payments_history_sums_profiles_per_year_and_keeps_the_top_companies()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: null, _ct));
+        var db = (await Shared.Value).Db;
 
         // Two CMS profiles of one NPI are summed per year; the "All" rows and the NPI-less row are left out.
         Assert.Equal(
@@ -678,12 +697,14 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(9L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM medicare_order_referring"));
     }
 
-    private DatasetLoader Loader(TestDatabase db, FakeSources server, FakeClock clock) =>
+    private DatasetLoader Loader(TestDatabase db, FakeSources server, FakeClock clock) => Loader(db, server, clock, _folder);
+
+    private static DatasetLoader Loader(TestDatabase db, FakeSources server, FakeClock clock, string folder) =>
         new(new LoaderOptions
             {
-                WorkFolder = _folder,
-                LogFolder = _folder,
-                StateLicenseFilesFolder = Path.Combine(_folder, "state-files"),
+                WorkFolder = folder,
+                LogFolder = folder,
+                StateLicenseFilesFolder = Path.Combine(folder, "state-files"),
                 DownloadAttempts = 1,
                 CmsCatalogUrl = "https://cms.test/data.json",
                 ProviderDataMetastoreUrl = "https://pdc.test/items/",

@@ -111,7 +111,8 @@ public sealed class LoaderIntegrationTests : IDisposable
             full.Provider($"10000001{i:D2}", ("Last_Update_Date", "09/01/2026"));
         }
 
-        Assert.Equal(0, await LoadFileAsync(db, full.Write(_folder, "NPPES_Data_Dissemination_September_2026_V2.zip")));
+        var firstExit = await LoadFileAsync(db, full.Write(_folder, "NPPES_Data_Dissemination_September_2026_V2.zip"));
+        Assert.True(firstExit == 0, "The first monthly failed: " + string.Join("; ", await db.QueryAsync<string>("SELECT CONCAT_WS(' ', filename, status, error) FROM downlog")));
         var tiny = new NppesZipBuilder().Provider(A, ("Last_Update_Date", "10/01/2026"));
 
         Assert.Equal(1, await LoadFileAsync(db, tiny.Write(_folder, "NPPES_Data_Dissemination_October_2026_V2.zip")));
