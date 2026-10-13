@@ -126,6 +126,4 @@ public sealed record SearchFilter
 
     /// <summary>Longest window for <see cref="NewWithinDays"/> and <see cref="UpdatedWithinDays"/> (10 years).</summary>
     public const int MaxWithinDays = 3650;
-
-    public bool HasLocationFilter => State is not null || CountyFips is not null || City is not null || Zip5 is not null || Shortage is not null;
 }
