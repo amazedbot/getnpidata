@@ -12,12 +12,11 @@ Last updated: 2026-10-13.
 
 ## In progress
 
-Loader speed work (PRODUCT_PLAN.md §7); item 1 is done (below). Each item is coded and tested, then proven by a live run on `workplace`, then
+Loader speed work (PRODUCT_PLAN.md §7); items 1 and 2 are done (below). Each item is coded and tested, then proven by a live run on `workplace`, then
 merged. The live runs go one at a time.
 
 | # | Item | State |
 |---|---|---|
-| 2 | The steps after the projection (credentials, address types, area counts, map, quality) work from a queue of changed providers | PR #65 (now on master). Live check running: the 10/05–10/11 weekly, an incremental projection, then each builder |
 | 3 | A dataset reload queues only the providers whose rows changed, for the quality label | Branch `incremental-quality-inputs` (on top of #65). Live check after item 2's, then its PR |
 | 8 | Downloads kept until loaded and reused when unchanged; large files in 4 parallel parts | Branch `download-reuse`. Live check after item 3's, then its PR |
 
@@ -93,6 +92,7 @@ merged. The live runs go one at a time.
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Item 2: the builders after the projection work from the queue~~ (2026-10-13, PR #65: everything after a weekly in about 10 min instead of about 2.5 h)
 - ~~Item 1: incremental projection; the monthly compared by a hash of the projected columns~~ (2026-10-13, PR #64: the same October monthly loaded twice found 9.85M then 0 changed NPIs; a load that changes nothing rebuilds nothing)
 - ~~Item 11, the openFDA part: the API key's rate; ask again only after new exports~~ (2026-10-13, PR #62)
 - ~~Item 15: MySQL tests in parallel on a pool of test databases (4.5 min → 35 s)~~ (2026-10-13, PR #63)
