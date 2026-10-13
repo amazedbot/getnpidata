@@ -7,8 +7,9 @@ namespace Npi.Loader.Datasets;
 
 /// <summary>
 /// State license records and board actions (CLAUDE.md §7 Stage 5.5 item 15), from state sources that publish them for
-/// reuse: open-data portals (Socrata), CSV files a board posts, and files the owner downloads from a board that needs a
-/// sign-in (put in <see cref="LoaderOptions.StateLicenseFilesFolder"/>, one subfolder per state). Every dataset is
+/// reuse: open-data portals (Socrata), CSV files a board posts, lists assembled from a board's download pages
+/// (<see cref="AssembledStateDataset"/>), and files the owner downloads from a board that needs a sign-in (put in
+/// <see cref="LoaderOptions.StateLicenseFilesFolder"/>, one subfolder per state). Every dataset is
 /// loaded into one scratch table (<c>state_license_raw</c>); the rows whose license matches an NPPES taxonomy license of a
 /// provider are kept in <c>provider_state_license</c>: same state, same number (all its digits, or its last run of
 /// digits, without leading zeros) and the same last name (or the last name as a whole word of a full name). Rows are
@@ -222,6 +223,10 @@ public sealed class StateLicenseSource : DatasetSource
             new("License Number", "license_number"), new("Respondent Name", "full_name"), new("Profession", "license_type"),
             new("Case Activity Type", "action"), new("Case Activity Date", "action_date", CsvValue.FlexibleDate), new("Case Number", "description"),
         ], Separator: '|'),
+        // Rhode Island, Vermont and West Virginia: lists the loader assembles from the boards' own downloads (StateLicenseBoards.cs).
+        new RhodeIslandDataset(),
+        new VermontDataset(),
+        new WestVirginiaDataset(),
     ];
 
     public override string Name => "state_licenses";

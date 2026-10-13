@@ -29,7 +29,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 
     // A state license status that means the license can't be used (the states' own wording; matched case-insensitively).
     internal const string InactiveStatus =
-        "DECEASED|REVOK|SURRENDER|VOID|CANC|TERMINAT|INACTIVE|NOT ACTIVE|EXPIRED|NOT RENEWED|RELINQUISH|SUPERSEDED|CLOSED|DEACTIVATED|SUSPEND|DELINQUENT|^TEXAS RETIRED|^RETIRED$";
+        "DECEASED|REVOK|SURRENDER|VOID|CANC|TERMINAT|INACTIVE|NOT ACTIVE|EXPIRED|LAPSED|NOT RENEWED|RELINQUISH|SUPERSEDED|CLOSED|DEACTIVATED|SUSPEND|DELINQUENT|^TEXAS RETIRED|^RETIRED$";
 
     // A status that means a usable license when the state gives no expiration date.
     internal const string ActiveStatus = "^(ACTIVE|CLEAR|APPROVED|PERMIT ISSUED|PROBATION|MILITARY ACTIVE|RETIRED ACTIVE|A$)";
