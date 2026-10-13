@@ -2,7 +2,7 @@
 
 Status: **approved by the owner on 2026-10-11**, with the decisions recorded in §6. CLAUDE.md carries the new direction.
 The work goes one phase (and one step) at a time; each step is committed, summarized, and waits for the owner's "go".
-Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care), 1.9 (developer page, Application Insights, privacy notice, accessibility and speed). **Phase 1 is complete.** From Phase 9, the company and product redesign is done (pulled forward, 2026-10-12). Now: **Phase 3, data quality signals and change history** (owner, 2026-10-12): 3.1 (record-quality label, then more signs of practice and closures) and 3.5 (spot check) done; 3.2 and 3.3 and two approved sources are next. Alongside it, the loader speed work (§7). Phase 2 waits until a feature needs hosting.
+Done: 1.1 (drawings approved 2026-10-11), 1.2 (site shell), 1.3 (search), 1.4 (clinician profile), 1.5 (organization, facility and group profiles), 1.6 (area pages), 1.7 (verify NPIs), 1.8 (find care), 1.9 (developer page, Application Insights, privacy notice, accessibility and speed). **Phase 1 is complete.** From Phase 9, the company and product redesign is done (pulled forward, 2026-10-12). Now: **Phase 3, data quality signals and change history** (owner, 2026-10-12): 3.1 (record-quality label, then more signs of practice and closures) and 3.5 (spot check) done; 3.2, 3.3, 3.4 (history, approved 2026-10-13) and two approved sources are next. Alongside it, the loader speed work (§7). Phase 2 waits until a feature needs hosting.
 
 **The working to-do list** (what is in progress, what is next, what waits for a decision, what is done) is [TODO.md](TODO.md). This document stays the full plan: the reasons, the scope and the data for each phase.
 
@@ -240,7 +240,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
     Shown as Current / Check / Stale with the reasons. **Done 2026-10-12 (step 3.1):** `provider_quality`, rebuilt after each load; on profiles, result badges, Verify NPIs (tabs and pills), CSV/Excel and the API, and a `quality` filter. Rules in CLAUDE.md §7 Stage 5.5 "Record quality"; the spot check of 50 stale records is step 3.5. **More signs (owner, 2026-10-12):** Open Payments in either of the last two years, Medicare reassignments, MIPS, facility affiliations, open business listings at the address (Overture), FQHC and rural clinic enrollments, opioid treatment programs, the Medicare revalidation list, equipment suppliers' Medicare billing; closures from Overture (permanently closed) and the Provider of Services file (terminated facilities).
   - **The change recorder widened (step 3.2):** secondary locations, phone, every taxonomy (not just the primary), organization name, licenses (where a state publishes them), exclusions and opt-outs as they start and end.
   - **Change pages (step 3.3):** "Changes in [county] this month", "New practices", "Closed or moved", and monthly change counts on county pages.
-  - **History before October 2026 (step 3.4, proposed):** see "Missing" below.
+  - **History before October 2026 (step 3.4). Approved 2026-10-13:** the NBER archive of past NPPES monthly files, for trends, analytics and statistics (see "Missing" below).
   - **Spot check (step 3.5). Done 2026-10-13.** 50 random Stale records (seeded, so the same sample can be drawn again; 39 individuals, 11 organizations, of 1,798,241 Stale), each checked against the live NPPES registry, web searches, older Medicare years, the NY and CA Medicaid lists and our state license data:
     - **Organizations: 10 of 11 had a real problem:** 5 closed or not found anywhere, 3 taken over or moved, 2 still open but at a wrong NPPES address; 1 couldn't be told.
     - **Individuals: 6 real problems** (4 expired licenses, a practice moved to another state, a 2008 military box address), 3 consistent with Stale (billed Medicare until 2013, 2016, 2020), 1 possible false alarm (a dietitian at a VA medical center: VA clinicians don't bill Medicare), **29 not verifiable** with free sources: mostly massage therapists, LPNs, aides, doulas, pharmacists and counselors, who never bill Medicare, so the old record is the only evidence. Web search won't look up private individuals, and state license lookup sites can't be scripted (New York blocks it).
@@ -251,9 +251,9 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
 - **Data:**
   - **Have:** weekly NPPES files, `provider_change` (since 2026-10-09), geocodes and building types, Care Compare with its addresses (`cc_clinician_location`, added in step 3.1), LEIE, opt-out, state licenses (15 states), Medicare enrollment, reassignment and revalidation, Overture business listings, the Provider of Services file.
   - **Missing:**
-    - **History before October 2026.** CMS publishes only the current monthly file. The NBER archive of past NPPES monthly files is free and would let us show trends back many years. It's a large download (one monthly file per period), so it needs the owner's OK.
+    - **History before October 2026.** CMS publishes only the current monthly file. The NBER archive of past NPPES monthly files is free and would let us show trends back many years. It's a large download (one monthly file per period). **Approved by the owner 2026-10-13** (step 3.4).
     - **New York license status:** NY publishes board actions only. Its Office of the Professions sends weekly bulk files of currently registered licensees on request (a form the owner submits, free) and says an API is being developed.
-    - **VA facility locations** (proposed): would explain clinicians at VA addresses, who show no Medicare activity. Count them first.
+    - **VA facility locations:** would explain clinicians at VA addresses, who show no Medicare activity. **Not needed for now** (owner, 2026-10-13).
   - **Tested and not usable as sources (step 3.5):** web search and provider directories (their terms forbid reuse; the search refuses private individuals), state license lookup sites without bulk data (can't be scripted).
 - **Worked when:**
   - every profile shows a quality label with reasons;
@@ -411,6 +411,7 @@ tiers; pay-as-you-go verification; data licensing; custom area reports. Sponsore
 - 2026-10-12: more signs of practice for the quality label (Open Payments in either of the last two years, reassignments, MIPS, facility affiliations, open business listings, FQHC and rural clinic enrollments, opioid treatment programs, the revalidation list, equipment suppliers) and closures (Overture, Provider of Services).
 - 2026-10-13: every load and rebuild is designed to be incremental; the loader speed work (§7) runs alongside Phase 3.
 - 2026-10-13: yes to the NY and CA Medicaid enrolled-provider lists and to the older Medicare years (Phase 3), to be built after the open speed items.
+- 2026-10-13: yes to speed item 14 (relaxed disk flushing during big loads; the owner is told of any setting to change by hand) and to the NBER archive of past NPPES files (step 3.4: trends, analytics, statistics). Not needed for now: the VA facility list and Phase 2 (private test hosting).
 - 2026-10-13: [TODO.md](TODO.md) is the working to-do list, kept up to date with each decision; this document stays the full plan.
 
 ## 7. Loader speed work (owner, 2026-10-13)
@@ -436,5 +437,5 @@ of 2026-10-13 proposed these items; the owner chose the order below. The state o
 | 13 | The map-by-credential table built once; independent builders side by side | less after item 2 |
 | 11 | API caches: the openFDA key (**done**, PR #62); ClinicalTrials.gov 3–5 requests at once (not scheduled) | the first fill in one run instead of ~10 days |
 | 9 | Stream zips instead of extracting them, where a loader still extracts (not scheduled) | disk and time |
-| 14 | Relax MySQL's disk flushing during big loads (**needs the owner's OK**: a crash loses the last second of writes) | faster big loads |
+| 14 | Relax MySQL's disk flushing during big loads (**approved 2026-10-13**: a crash loses the last second of writes, which a reload repeats; any setting changed by hand is explained to the owner first) | faster big loads |
 | 16 | Build the loader to its own folder so loader work never waits on stopping the site (not scheduled) | development only |
