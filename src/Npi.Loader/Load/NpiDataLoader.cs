@@ -65,6 +65,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
 
             if (file.Kind == NppesFileKind.Monthly)
             {
+                await QueueMonthlyChangesAsync(connection, targets.Select(t => t.Table).ToList(), ct);
                 await ReplaceAllAsync(connection, targets.Select(t => t.Table).ToList(), ct);
                 var flagged = await Deactivations.ApplyAsync(connection, scopeTable: null, ct);
                 log.Information("Deactivation flags refreshed: {Rows:N0} rows changed", flagged);
@@ -119,6 +120,93 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
         }
 
         return found;
+    }
+
+    // Columns that say where or when a row was loaded, not what NPPES says: left out when comparing rows.
+    private static readonly HashSet<string> Bookkeeping = new(["ID", "Loaded_From", "Is_Deactivated"], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Monthly, before the swap: queues in <c>projection_pending</c> the NPIs whose data differ between the new file and the
+    /// stored tables (a new or changed npidata row, an NPI no longer in the file, or different other names, practice
+    /// locations or endpoints), so the projection rebuilds only them. After the weeklies, a monthly changes few NPIs.
+    /// Rows are compared by an MD5 over every column except the bookkeeping ones.
+    /// </summary>
+    private async Task QueueMonthlyChangesAsync(MySqlConnection connection, IReadOnlyList<string> tables, CancellationToken ct)
+    {
+        if (await Database.CountAsync(connection, "npidata", ct) == 0)
+        {
+            return; // a first load: the projection is built in full
+        }
+
+        var started = DateTime.UtcNow;
+        Task<int> RunAsync(string sql) => connection.ExecuteAsync(new CommandDefinition(sql, commandTimeout: 0, cancellationToken: ct));
+        await RunAsync("SET SESSION group_concat_max_len = 67108864");
+        var before = await Database.CountAsync(connection, "projection_pending", ct);
+
+        // The flags and the deactivation dates filled from the report (Deactivations.ApplyAsync) are carried over first, as
+        // the flag pass after the swap would set them again: otherwise every deactivated NPI (~357,000) would look changed.
+        await RunAsync(
+            """
+            UPDATE `npidata_staging` s
+            JOIN `npidata` n ON n.`NPI` = s.`NPI`
+            LEFT JOIN `nppes_deactivated_npi_report` r ON r.`NPI` = n.`NPI`
+            SET s.`Is_Deactivated` = n.`Is_Deactivated`,
+                s.`NPI_Deactivation_Date` = IF(COALESCE(s.`NPI_Deactivation_Date`, '') = ''
+                                                 AND n.`NPI_Deactivation_Date` = DATE_FORMAT(r.`NPPES_Deactivation_Date`, '%m/%d/%Y'),
+                                               n.`NPI_Deactivation_Date`, s.`NPI_Deactivation_Date`)
+            WHERE n.`Is_Deactivated` = 1 OR r.`NPI` IS NOT NULL
+            """);
+        foreach (var table in tables)
+        {
+            var columns = (await Database.GetColumnsAsync(connection, table, ct)).Select(c => c.Name).Where(c => !Bookkeeping.Contains(c)).ToList();
+            string Hash(string alias) =>
+                $"MD5(CONCAT_WS(CHAR(31), {string.Join(", ", columns.Select(c => $"IFNULL({alias}.{SqlIdentifier.Quote(c)}, CHAR(0))"))}))";
+            var t = SqlIdentifier.Quote(table);
+            var st = SqlIdentifier.Quote(table + "_staging");
+            if (table == "npidata")
+            {
+                await RunAsync(
+                    $"""
+                    INSERT IGNORE INTO `projection_pending` (`npi`)
+                    SELECT s.`NPI` FROM {st} s LEFT JOIN {t} n ON n.`NPI` = s.`NPI`
+                    WHERE n.`NPI` IS NULL OR {Hash("s")} <> {Hash("n")}
+                    """);
+                await RunAsync(
+                    $"""
+                    INSERT IGNORE INTO `projection_pending` (`npi`)
+                    SELECT n.`NPI` FROM {t} n LEFT JOIN {st} s ON s.`NPI` = n.`NPI` WHERE s.`NPI` IS NULL
+                    """);
+                continue;
+            }
+
+            // Child rows: one hash per NPI over its rows' hashes in sorted order (row order and ids don't matter).
+            string PerNpi(string source) =>
+                $"SELECT c.`NPI` AS `npi`, MD5(GROUP_CONCAT({Hash("c")} ORDER BY {Hash("c")} SEPARATOR ',')) AS `h` FROM {source} c GROUP BY c.`NPI`";
+            try
+            {
+                await RunAsync($"CREATE TEMPORARY TABLE `monthly_child_new` (PRIMARY KEY (`npi`)) {PerNpi(st)}");
+                await RunAsync($"CREATE TEMPORARY TABLE `monthly_child_old` (PRIMARY KEY (`npi`)) {PerNpi(t)}");
+                // Two statements: MySQL can't open a temporary table twice in one.
+                await RunAsync(
+                    """
+                    INSERT IGNORE INTO `projection_pending` (`npi`)
+                    SELECT a.`npi` FROM `monthly_child_new` a LEFT JOIN `monthly_child_old` b ON b.`npi` = a.`npi` WHERE NOT (a.`h` <=> b.`h`)
+                    """);
+                await RunAsync(
+                    """
+                    INSERT IGNORE INTO `projection_pending` (`npi`)
+                    SELECT b.`npi` FROM `monthly_child_old` b LEFT JOIN `monthly_child_new` a ON a.`npi` = b.`npi` WHERE a.`npi` IS NULL
+                    """);
+            }
+            finally
+            {
+                await connection.ExecuteAsync(new CommandDefinition("DROP TEMPORARY TABLE IF EXISTS `monthly_child_new`, `monthly_child_old`",
+                    cancellationToken: CancellationToken.None));
+            }
+        }
+
+        log.Information("Monthly: {Rows:N0} NPIs differ from the stored data ({Seconds:N0}s)",
+            await Database.CountAsync(connection, "projection_pending", ct) - before, (DateTime.UtcNow - started).TotalSeconds);
     }
 
     /// <summary>
@@ -195,6 +283,9 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
         }
 
         var applied = await Database.CountAsync(connection, "npidata_staging", ct, tx);
+        // The projection rebuilds exactly these NPIs (with their child rows) next time.
+        await connection.ExecuteAsync(new CommandDefinition(
+            "INSERT IGNORE INTO `projection_pending` (`npi`) SELECT `NPI` FROM `npidata_staging`", transaction: tx, cancellationToken: ct));
         await connection.ExecuteAsync(new CommandDefinition(
             $"""
             INSERT INTO `npidata` ({columnList})

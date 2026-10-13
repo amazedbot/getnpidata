@@ -155,7 +155,7 @@ getnpidata/
     Npi.Web.Tests/     query-string binding, API behaviour (WebApplicationFactory, no database)
     Npi.Client.Tests/  the client against the in-memory API + client/server contract checks
     fixtures/          real V2 headers, NPI_Files.html, reference-data excerpts (byte-exact; see .gitattributes)
-  db/migrations/           numbered .sql files (001–088) + README, embedded in and applied by `Npi.Loader migrate`.
+  db/migrations/           numbered .sql files (001–089) + README, embedded in and applied by `Npi.Loader migrate`.
                            Applied migrations are checksummed: never edit one, add a new one instead.
   deploy/
     azure.md               Azure setup + deploy notes
@@ -241,6 +241,7 @@ Built by `Npi.Loader project` (migrations 011–016). Deactivated NPIs are **exc
 - **Change detection:** `row_hash` = MD5 over the provider's columns **and** all its taxonomy/location/other-name rows, ordered by content, so a change in a child row alone still changes the hash.
 - **Rebuilding on Azure:** `provider_search` derives from the published child tables, so Stage 6 can rebuild it on Azure instead of transferring it.
 - **Build process:** `project` builds all five tables in `*_staging`, checks ≥ 95% of the current provider count, and swaps them in with one RENAME. `run` rebuilds when `data_version.projected_at` is older than the newest completed downlog or reference load.
+- **Incremental (2026-10-13, migration 089):** the loads queue the NPIs whose raw data changed in `projection_pending`: a weekly's NPIs (after dropping its older rows), a monthly's differences (each NPI's npidata row and its other names, practice locations and endpoints compared by MD5 with the stored ones before the swap; the deactivation flags and report-filled dates are carried over first, so the ~357,000 deactivated NPIs don't look changed), and the NPIs whose deactivation flag or date changes (only those rows are written now). `run` and `project changed` then rebuild only the queued NPIs, with the same SQL into the staging tables, and replace their rows in the live tables in one transaction (`provider_search` rows found by their whole key; new AUTO_INCREMENT ids for the rebuilt rows); the change log compares the staging rows with the live ones. A first build, a queue over 10% of the providers (`IncrementalLimit`), an NPPES file loaded with nothing queued (before migration 089), or `project` without `changed` rebuilds everything. A reference reload (NUCC, HUD, Census) alone no longer rebuilds the projection: it only refreshes `data_version`. The tables built on the projection (credentials, address types, area counts, map, quality) are still rebuilt in full after it (§7 Stage 5.5).
 
 ### 6.3 Reference data sources
 

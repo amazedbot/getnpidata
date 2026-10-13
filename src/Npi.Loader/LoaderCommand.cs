@@ -52,7 +52,8 @@ public static class LoaderCommandLine
           load-file <zip>  Load one NPPES zip manually
           reference        Refresh NUCC / HUD / Census reference data
           datasets [name]  Reload the Stage 5.5 datasets (OIG, CMS, …), or just one
-          project          Rebuild the search projection tables (and the standardized credentials)
+          project [changed] Rebuild the search projection tables (and the tables built on them); with
+                           "changed", only the NPIs the loads queued, when they are few (as run does)
           credentials      Rebuild the standardized credential tables
           address-types    Relabel the practice addresses (commercial, residential) from the FEMA buildings
           quality          Relabel every record current, check or stale (record quality)
@@ -85,6 +86,17 @@ public static class LoaderCommandLine
         if (command == LoaderCommand.Datasets && rest.Length <= 1)
         {
             return new LoaderInvocation(command, rest);
+        }
+
+        if (command == LoaderCommand.Project && rest.Length == 1)
+        {
+            if (!string.Equals(rest[0], "changed", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Command 'project' takes only the word 'changed' (rebuild only the queued NPIs), or nothing for a full rebuild.";
+                return null;
+            }
+
+            return new LoaderInvocation(command, ["changed"]);
         }
 
         if (command == LoaderCommand.Overture && rest.Length == 1 && rest[0].Length == 2 && rest[0].All(char.IsAsciiLetter))

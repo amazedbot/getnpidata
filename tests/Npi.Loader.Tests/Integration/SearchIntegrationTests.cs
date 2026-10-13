@@ -132,15 +132,17 @@ public sealed class SearchIntegrationTests : IDisposable
         await db.ExecuteAsync("UPDATE practice_locations SET Provider_Secondary_Practice_Location_Address_Line_1 = '2 New Rd' WHERE NPI = @B", new { B });
         await db.ExecuteAsync("UPDATE endpoints SET Endpoint = 'obrien2@direct.example.org' WHERE NPI = @A", new { A });
         await db.ExecuteAsync("UPDATE npidata SET Authorized_Official_Title_or_Position = 'CEO' WHERE NPI = @D", new { D });
-        await builder.BuildAsync(_ct);
+        await builder.BuildAsync(_ct, full: true);
         var after = await db.QueryAsync<(string, byte[])>("SELECT npi, row_hash FROM provider ORDER BY npi");
 
         var changed = before.Zip(after).Where(p => !p.First.Item2.SequenceEqual(p.Second.Item2)).Select(p => p.First.Item1);
         Assert.Equal([A, B, D], changed);
     }
 
-    [Fact]
-    public async Task Each_projection_records_what_changed_since_the_last_one()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Each_projection_records_what_changed_since_the_last_one(bool incremental)
     {
         await using var db = await SeededAsync();
         Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_change")); // the first projection has nothing to compare with
@@ -150,7 +152,16 @@ public sealed class SearchIntegrationTests : IDisposable
         await db.ExecuteAsync("UPDATE npidata SET Provider_First_Line_Business_Practice_Location_Address = '210 Main St' WHERE NPI = @E", new { E });
         await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 0 WHERE NPI = @C", new { C });
         await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 1 WHERE NPI = @D", new { D });
-        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        if (incremental)
+        {
+            // As the loads would: the changed NPIs queued, only they rebuilt.
+            await db.ExecuteAsync("INSERT INTO projection_pending (npi) VALUES (@A), (@B), (@C), (@D), (@E)", new { A, B, C, D, E });
+            await new ProjectionBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 }.BuildAsync(_ct);
+        }
+        else
+        {
+            await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
+        }
 
         Assert.Equal(
             [
@@ -165,6 +176,70 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal([("credential", "M.D.", "MD"), ("specialty", "Chiropractor – Sports Physician", "Dentist")],
             b!.Changes.Select(c => (c.Type, c.OldValue, c.NewValue)).Order());
         Assert.Equal(DateOnly.FromDateTime(DateTime.UtcNow), b.Changes[0].RecordedOn);
+    }
+
+    [Fact]
+    public async Task An_incremental_projection_equals_a_full_rebuild()
+    {
+        await using var db = await SeededAsync();
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM projection_pending")); // the first build took C's queued flag
+        var lastId = await db.ScalarAsync<long>("SELECT MAX(id) FROM provider_location");
+
+        // A renamed, B with another secondary location and endpoint, C reactivated, D deactivated, a new NPI F (a copy of E
+        // with its own number); E unchanged and not queued.
+        const string F = "1000000053";
+        await db.ExecuteAsync(
+            """
+            SET SESSION innodb_strict_mode = OFF; -- npidata's 330 TEXT columns (CLAUDE.md §6.1)
+            UPDATE npidata SET Provider_Last_Name_Legal_Name = 'OBRIEN-SMITH' WHERE NPI = @A;
+            UPDATE practice_locations SET Provider_Secondary_Practice_Location_Address_Line_1 = '2 New Rd' WHERE NPI = @B;
+            INSERT INTO endpoints (NPI, Endpoint_Type, Endpoint) VALUES (@B, 'FHIR', 'https://b.example.org/fhir');
+            UPDATE npidata SET Is_Deactivated = 0, NPI_Reactivation_Date = '02/01/2026' WHERE NPI = @C;
+            UPDATE npidata SET Is_Deactivated = 1, NPI_Deactivation_Date = '10/01/2026' WHERE NPI = @D;
+            CREATE TEMPORARY TABLE f SELECT * FROM npidata WHERE NPI = @E;
+            UPDATE f SET NPI = @F;
+            INSERT INTO npidata SELECT * FROM f;
+            INSERT INTO projection_pending (npi) VALUES (@A), (@B), (@C), (@D), (@F);
+            """, new { A, B, C, D, E, F });
+
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 }.BuildAsync(_ct);
+        var incremental = await ProjectionSnapshotAsync(db);
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM projection_pending"));
+        // Only the queued NPIs' rows were replaced (new ids after the old ones); E's stayed.
+        Assert.True(await db.ScalarAsync<long>("SELECT MIN(id) FROM provider_location WHERE npi IN (@A, @B, @C, @F)", new { A, B, C, F }) > lastId);
+        Assert.True(await db.ScalarAsync<long>("SELECT MAX(id) FROM provider_location WHERE npi = @E", new { E }) <= lastId);
+        Assert.Equal([C, D], await db.QueryAsync<string>("SELECT npi FROM provider_change WHERE change_type IN ('added', 'deactivated') AND npi <> @F ORDER BY npi", new { F }));
+
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
+        var full = await ProjectionSnapshotAsync(db);
+        foreach (var table in ProjectionBuilder.Tables)
+        {
+            Assert.Equal(full[table], incremental[table]);
+        }
+
+        // Nothing queued and no NPPES file since: a build only refreshes data_version.
+        var before = await db.ScalarAsync<long>("SELECT MAX(id) FROM provider_location");
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        Assert.Equal(before, await db.ScalarAsync<long>("SELECT MAX(id) FROM provider_location"));
+        Assert.Equal(full["provider"], (await ProjectionSnapshotAsync(db))["provider"]);
+    }
+
+    // Every row of each projection table as text (all columns but AUTO_INCREMENT ids), sorted.
+    private static async Task<Dictionary<string, IReadOnlyList<string>>> ProjectionSnapshotAsync(TestDatabase db)
+    {
+        var snapshot = new Dictionary<string, IReadOnlyList<string>>();
+        foreach (var table in ProjectionBuilder.Tables)
+        {
+            var columns = await db.QueryAsync<string>(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = @table AND extra NOT LIKE '%auto_increment%' ORDER BY ordinal_position
+                """, new { table });
+            snapshot[table] = await db.QueryAsync<string>(
+                $"SELECT CONCAT_WS('|', {string.Join(", ", columns.Select(c => $"IFNULL(HEX(`{c}`), '-')"))}) AS r FROM `{table}` ORDER BY r");
+        }
+
+        return snapshot;
     }
 
     [Fact]
@@ -274,7 +349,7 @@ public sealed class SearchIntegrationTests : IDisposable
 
         // The table is part of the projection: a reactivated NPI leaves it at the next build.
         await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 0 WHERE NPI = @C", new { C });
-        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
         Assert.Equal((false, null as DateOnly?), await details.GetDeactivationAsync(C, _ct));
     }
 

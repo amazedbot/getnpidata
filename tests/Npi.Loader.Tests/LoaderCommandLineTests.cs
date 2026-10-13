@@ -50,6 +50,15 @@ public class LoaderCommandLineTests
     }
 
     [Fact]
+    public void Project_takes_an_optional_changed()
+    {
+        Assert.Empty(LoaderCommandLine.Parse(["project"], out _)!.Arguments);
+        Assert.Equal(["changed"], LoaderCommandLine.Parse(["project", "CHANGED"], out _)!.Arguments);
+        Assert.Null(LoaderCommandLine.Parse(["project", "all"], out var error));
+        Assert.Contains("changed", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Geocode_takes_an_optional_county_fips()
     {
         Assert.Equal([], LoaderCommandLine.Parse(["geocode"], out _)?.Arguments);
@@ -74,6 +83,7 @@ public class LoaderCommandLineTests
     [InlineData("load-file")]
     [InlineData("load-file", "a.zip", "b.zip")]
     [InlineData("run", "extra")]
+    [InlineData("project", "changed", "extra")]
     [InlineData("bogus")]
     public void Invalid_command_lines_are_rejected(params string[] args)
     {

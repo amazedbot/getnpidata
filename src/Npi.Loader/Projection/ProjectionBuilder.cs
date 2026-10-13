@@ -14,6 +14,12 @@ namespace Npi.Loader.Projection;
 /// and provider_endpoint, from npidata / practice_locations / other_names / endpoints.
 /// Deactivated NPIs are left out. Everything is built in *_staging tables and swapped in with one
 /// atomic RENAME, so searches never see a partial projection.
+/// <para>
+/// Incremental: the loads queue the NPIs whose raw data changed in <c>projection_pending</c> (a weekly's NPIs, a monthly's
+/// differences, changed deactivation flags). When there are few of them, only their rows are rebuilt, in the same staging
+/// tables with the same SQL, and replaced in the live tables in one transaction (readers see the old rows until it commits):
+/// a weekly's ~50,000 NPIs instead of all ~9.5M. A first build, a large queue, or <c>Npi.Loader project</c> rebuilds everything.
+/// </para>
 /// </summary>
 public sealed class ProjectionBuilder(Database database, ILogger log, double minRowRatio, TimeProvider? clock = null)
 {
@@ -23,11 +29,24 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         "provider_profile", "provider_identifier", "provider_endpoint", "provider_org_name", "provider_deactivated",
     ];
 
+    /// <summary>NPIs whose NPPES data changed since the projection was built (migration 089).</summary>
+    public const string Pending = "projection_pending";
+
+    /// <summary>Above this share of the providers, rebuilding everything is cheaper than replacing rows NPI by NPI.</summary>
+    public const double IncrementalLimit = 0.10;
+
+    // This build's NPIs: the queue as it was when the build started (a load may add more meanwhile).
+    private const string Batch = "projection_batch";
+    private static readonly string BatchScope = $"JOIN `{Batch}` b ON b.`npi` = n.`NPI`";
+
     private const int TaxonomySlots = 15;
     private const int IdentifierSlots = 50;
     private const string Active = "n.`Is_Deactivated` = 0 AND n.`Entity_Type_Code` IN ('1', '2')";
 
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+
+    /// <summary>The largest queue, as a share of the providers, rebuilt NPI by NPI (tests raise it).</summary>
+    public double IncrementalShare { get; init; } = IncrementalLimit;
 
     /// <summary>
     /// True when the projection is missing or older than the last completed NPPES load or NUCC/HUD/Census
@@ -46,35 +65,154 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             """, cancellationToken: ct));
     }
 
-    /// <returns>The number of providers in the new projection.</returns>
-    public async Task<long> BuildAsync(CancellationToken ct)
+    /// <param name="full">Rebuild every provider (the <c>project</c> command); otherwise only the queued NPIs when there are few.</param>
+    /// <returns>The number of providers in the projection afterwards.</returns>
+    public async Task<long> BuildAsync(CancellationToken ct, bool full = false)
     {
         await using var connection = await database.OpenAsync(ct);
         await Database.ExecuteAsync(connection, "SET SESSION group_concat_max_len = 16777216", ct);
+        await Database.ExecuteAsync(connection, $"DROP TEMPORARY TABLE IF EXISTS `{Batch}`", ct);
+        await Database.ExecuteAsync(connection, $"CREATE TEMPORARY TABLE `{Batch}` (PRIMARY KEY (`npi`)) SELECT `npi` FROM `{Pending}`", ct);
+        try
+        {
+            var queued = await Database.CountAsync(connection, Batch, ct);
+            var current = await Database.CountAsync(connection, "provider", ct);
+            if (full || current == 0 || queued > current * IncrementalShare || await UnqueuedLoadAsync(connection, queued, ct))
+            {
+                return await BuildAllAsync(connection, current, ct);
+            }
+
+            return await BuildQueuedAsync(connection, queued, ct);
+        }
+        finally
+        {
+            await Database.ExecuteAsync(connection, $"DROP TEMPORARY TABLE IF EXISTS `{Batch}`", CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// True when an NPPES file was loaded after the projection was built but nothing is queued: a load from before the
+    /// queue existed (migration 089), which only a full build covers.
+    /// </summary>
+    private static async Task<bool> UnqueuedLoadAsync(MySqlConnection connection, long queued, CancellationToken ct) =>
+        queued == 0 && await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+            """
+            SELECT COALESCE((SELECT MAX(`completed_at`) FROM `downlog` WHERE `status` = 'Completed'), '1000-01-01')
+                   > COALESCE((SELECT `projected_at` FROM `data_version` WHERE `id` = 1), '1000-01-01')
+            """, cancellationToken: ct)) != 0;
+
+    private static async Task CreateStagingAsync(MySqlConnection connection, CancellationToken ct)
+    {
+        foreach (var table in Tables)
+        {
+            await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS {Staging(table)}", ct);
+            await Database.ExecuteAsync(connection, $"CREATE TABLE {Staging(table)} LIKE {SqlIdentifier.Quote(table)}", ct);
+        }
+    }
+
+    // The staging tables, for every provider (scope "") or only the batch's NPIs.
+    private async Task FillStagingAsync(MySqlConnection connection, string scope, CancellationToken ct)
+    {
+        await StepAsync(connection, "provider", ProviderSql(scope), ct);
+        await StepAsync(connection, "provider_taxonomy", TaxonomySql(scope), ct);
+        await StepAsync(connection, "provider_location (primary)", PrimaryLocationSql(scope), ct);
+        await StepAsync(connection, "provider_location (secondary)", SecondaryLocationSql, ct);
+        await StepAsync(connection, "provider_other_name", OtherNameSql, ct);
+        await StepAsync(connection, "provider_org_name", OrgNameSql, ct);
+        await StepAsync(connection, "provider_search", SearchSql, ct);
+        await StepAsync(connection, "provider_profile", ProfileSql, ct);
+        await StepAsync(connection, "provider_identifier", IdentifierSql(), ct);
+        await StepAsync(connection, "provider_endpoint", EndpointSql, ct);
+        await StepAsync(connection, "row_hash", RowHashSql, ct);
+        await StepAsync(connection, "provider_deactivated", DeactivatedSql(scope), ct);
+    }
+
+    /// <summary>
+    /// Rebuilds only the batch's NPIs: their rows are built in the staging tables, compared with the live ones for the change
+    /// log, then the live rows of those NPIs are replaced in one transaction, with data_version and the queue.
+    /// </summary>
+    private async Task<long> BuildQueuedAsync(MySqlConnection connection, long queued, CancellationToken ct)
+    {
         var started = DateTime.UtcNow;
         try
         {
+            await CreateStagingAsync(connection, ct);
+            await FillStagingAsync(connection, BatchScope, ct);
+            var now = _clock.GetUtcNow().UtcDateTime;
+            await RecordChangesAsync(connection, now, Changes("provider_staging", "provider", "provider_location_staging", "provider_location", Batch), ct);
+
+            var columns = new Dictionary<string, string>();
             foreach (var table in Tables)
             {
-                await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS {Staging(table)}", ct);
-                await Database.ExecuteAsync(connection, $"CREATE TABLE {Staging(table)} LIKE {SqlIdentifier.Quote(table)}", ct);
+                columns[table] = await InsertableColumnsAsync(connection, table, ct);
             }
 
-            await StepAsync(connection, "provider", ProviderSql, ct);
-            await StepAsync(connection, "provider_taxonomy", TaxonomySql(), ct);
-            await StepAsync(connection, "provider_location (primary)", PrimaryLocationSql, ct);
-            await StepAsync(connection, "provider_location (secondary)", SecondaryLocationSql, ct);
-            await StepAsync(connection, "provider_other_name", OtherNameSql, ct);
-            await StepAsync(connection, "provider_org_name", OrgNameSql, ct);
-            await StepAsync(connection, "provider_search", SearchSql, ct);
-            await StepAsync(connection, "provider_profile", ProfileSql, ct);
-            await StepAsync(connection, "provider_identifier", IdentifierSql(), ct);
-            await StepAsync(connection, "provider_endpoint", EndpointSql, ct);
-            await StepAsync(connection, "row_hash", RowHashSql, ct);
-            await StepAsync(connection, "provider_deactivated", DeactivatedSql, ct);
+            await using var tx = await connection.BeginTransactionAsync(ct);
+            Task<int> RunAsync(string sql, object? param = null) =>
+                connection.ExecuteAsync(new CommandDefinition(sql, param, tx, commandTimeout: 0, cancellationToken: ct));
+
+            // provider_search has no index starting with npi: its rows are found by their whole key, from the live
+            // taxonomies and locations, so this goes first.
+            await RunAsync(
+                $"""
+                DELETE s FROM `provider_search` s
+                JOIN (SELECT DISTINCT t.`taxonomy_code`, IFNULL(l.`state`, '') AS `state`, IFNULL(l.`city`, '') AS `city`, IFNULL(l.`zip5`, '') AS `zip5`, t.`npi`
+                      FROM `{Batch}` b JOIN `provider_taxonomy` t ON t.`npi` = b.`npi` JOIN `provider_location` l ON l.`npi` = b.`npi`) k
+                  ON s.`taxonomy_code` = k.`taxonomy_code` AND s.`state` = k.`state` AND s.`city` = k.`city` AND s.`zip5` = k.`zip5` AND s.`npi` = k.`npi`
+                """);
+            var replaced = 0L;
+            foreach (var table in Tables)
+            {
+                var t = SqlIdentifier.Quote(table);
+                if (table != "provider_search")
+                {
+                    await RunAsync($"DELETE x FROM {t} x JOIN `{Batch}` b ON b.`npi` = x.`npi`");
+                }
+
+                replaced += await RunAsync($"INSERT INTO {t} ({columns[table]}) SELECT {columns[table]} FROM {Staging(table)}");
+            }
+
+            var providers = await connection.ExecuteScalarAsync<long>(new CommandDefinition("SELECT COUNT(*) FROM `provider`", transaction: tx, cancellationToken: ct));
+            await RunAsync(DataVersionSql, new { now, providers });
+            await RunAsync($"DELETE q FROM `{Pending}` q JOIN `{Batch}` b ON b.`npi` = q.`npi`");
+            await tx.CommitAsync(ct);
+            log.Information("Projection updated: {Queued:N0} NPIs rebuilt ({Rows:N0} rows), {Providers:N0} providers, in {Duration}", queued, replaced, providers,
+                (DateTime.UtcNow - started).ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture));
+            return providers;
+        }
+        finally
+        {
+            await DropStagingAsync(connection);
+        }
+    }
+
+    // A table's columns that can be inserted: not generated, not AUTO_INCREMENT (new ids are given).
+    private static async Task<string> InsertableColumnsAsync(MySqlConnection connection, string table, CancellationToken ct) =>
+        string.Join(", ", (await connection.QueryAsync<string>(new CommandDefinition(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = @table AND extra NOT LIKE '%GENERATED%' AND extra NOT LIKE '%auto_increment%'
+            ORDER BY ordinal_position
+            """, new { table }, cancellationToken: ct))).Select(SqlIdentifier.Quote));
+
+    private static async Task DropStagingAsync(MySqlConnection connection)
+    {
+        foreach (var table in Tables)
+        {
+            await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS {Staging(table)}", CancellationToken.None);
+        }
+    }
+
+    /// <summary>Rebuilds every provider in the staging tables and swaps them in with one RENAME.</summary>
+    private async Task<long> BuildAllAsync(MySqlConnection connection, long current, CancellationToken ct)
+    {
+        var started = DateTime.UtcNow;
+        try
+        {
+            await CreateStagingAsync(connection, ct);
+            await FillStagingAsync(connection, "", ct);
 
             var providers = await Database.CountAsync(connection, "provider_staging", ct);
-            var current = await Database.CountAsync(connection, "provider", ct);
             if (current > 0 && providers < current * minRowRatio)
             {
                 throw new InvalidDataException(
@@ -95,7 +233,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             var now = _clock.GetUtcNow().UtcDateTime;
             if (current > 0)
             {
-                await RecordChangesAsync(connection, now, ct);
+                await RecordChangesAsync(connection, now, Changes("provider", "provider_old", "provider_location", "provider_location_old", null), ct);
             }
 
             foreach (var table in Tables)
@@ -104,33 +242,33 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             }
 
             await Database.ExecuteAsync(connection, DataVersionSql, ct, param: new { now, providers });
+            // Everyone was rebuilt, so the queue as it was at the start is done.
+            await Database.ExecuteAsync(connection, $"DELETE q FROM `{Pending}` q JOIN `{Batch}` b ON b.`npi` = q.`npi`", ct);
             log.Information("Projection built: {Providers:N0} providers in {Duration}", providers,
                 (DateTime.UtcNow - started).ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture));
             return providers;
         }
         finally
         {
-            foreach (var table in Tables)
-            {
-                await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS {Staging(table)}", CancellationToken.None);
-            }
+            await DropStagingAsync(connection);
         }
     }
 
     /// <summary>
-    /// Change log (Stage 5.5 item 11): compares the new projection with the one it just replaced (the *_old tables)
-    /// and appends to provider_change. Only NPIs whose row_hash changed are compared field by field. A failure here
-    /// is logged, not thrown: the new projection is already live, and a missed entry is not worth failing the run.
+    /// Change log (Stage 5.5 item 11): compares the new projection with the old one (after a full build, the *_old tables
+    /// it just replaced; in an incremental build, the staging rows with the live ones, before they are replaced) and
+    /// appends to provider_change. Only NPIs whose row_hash changed are compared field by field. A failure here is logged,
+    /// not thrown: a missed entry is not worth failing the run.
     /// </summary>
-    private async Task RecordChangesAsync(MySqlConnection connection, DateTime now, CancellationToken ct)
+    private async Task RecordChangesAsync(MySqlConnection connection, DateTime now, string[] changeSql, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         try
         {
             await Database.ExecuteAsync(connection, "DROP TEMPORARY TABLE IF EXISTS `changed_npi`", ct);
-            await Database.ExecuteAsync(connection, ChangedNpiSql, ct);
+            await Database.ExecuteAsync(connection, changeSql[0], ct);
             var rows = 0;
-            foreach (var sql in ChangeSql)
+            foreach (var sql in changeSql.Skip(1))
             {
                 rows += await connection.ExecuteAsync(new CommandDefinition(sql, new { now }, cancellationToken: ct));
             }
@@ -147,57 +285,65 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         }
     }
 
-    private const string ChangedNpiSql = """
-        CREATE TEMPORARY TABLE `changed_npi` (PRIMARY KEY (`npi`))
-        SELECT n.`npi` FROM `provider` n JOIN `provider_old` o ON o.`npi` = n.`npi` WHERE NOT (n.`row_hash` <=> o.`row_hash`)
-        """;
-
     // The primary practice address as one line, as compared and recorded.
     private static string AddressLine(string alias) =>
         $"LEFT(CONCAT_WS(', ', {alias}.`address1`, {alias}.`city`, CONCAT_WS(' ', {alias}.`state`, {alias}.`zip5`)), 300)";
 
-    private static readonly string[] ChangeSql =
-    [
-        """
-        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
-        SELECT n.`npi`, @now, 'added', NULL, LEFT(n.`sort_name`, 300)
-        FROM `provider` n LEFT JOIN `provider_old` o ON o.`npi` = n.`npi` WHERE o.`npi` IS NULL
-        """,
-        // Gone from the projection: deactivated, or (rarely) no longer in the NPPES file.
-        """
-        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
-        SELECT o.`npi`, @now,
-          IF(EXISTS (SELECT 1 FROM `npidata` d WHERE d.`NPI` = o.`npi` AND d.`Is_Deactivated` = 1), 'deactivated', 'removed'),
-          LEFT(o.`sort_name`, 300), NULL
-        FROM `provider_old` o LEFT JOIN `provider` n ON n.`npi` = o.`npi` WHERE n.`npi` IS NULL
-        """,
-        """
-        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
-        SELECT c.`npi`, @now, 'name', LEFT(o.`sort_name`, 300), LEFT(n.`sort_name`, 300)
-        FROM `changed_npi` c JOIN `provider` n ON n.`npi` = c.`npi` JOIN `provider_old` o ON o.`npi` = c.`npi`
-        WHERE NOT (n.`sort_name` <=> o.`sort_name`)
-        """,
-        """
-        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
-        SELECT c.`npi`, @now, 'credential', o.`credential`, n.`credential`
-        FROM `changed_npi` c JOIN `provider` n ON n.`npi` = c.`npi` JOIN `provider_old` o ON o.`npi` = c.`npi`
-        WHERE NOT (n.`credential` <=> o.`credential`)
-        """,
-        """
-        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
-        SELECT c.`npi`, @now, 'specialty', o.`primary_taxonomy_code`, n.`primary_taxonomy_code`
-        FROM `changed_npi` c JOIN `provider` n ON n.`npi` = c.`npi` JOIN `provider_old` o ON o.`npi` = c.`npi`
-        WHERE NOT (n.`primary_taxonomy_code` <=> o.`primary_taxonomy_code`)
-        """,
-        $"""
-        INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
-        SELECT c.`npi`, @now, 'address', {AddressLine("ol")}, {AddressLine("nl")}
-        FROM `changed_npi` c
-        JOIN `provider_location` nl ON nl.`npi` = c.`npi` AND nl.`is_primary` = 1
-        JOIN `provider_location_old` ol ON ol.`npi` = c.`npi` AND ol.`is_primary` = 1
-        WHERE NOT ({AddressLine("nl")} <=> {AddressLine("ol")})
-        """,
-    ];
+    /// <summary>
+    /// The change log's statements: first the temporary <c>changed_npi</c> (NPIs in both whose row_hash differs), then the
+    /// provider_change inserts. <paramref name="batch"/> limits "removed" to the batch's NPIs in an incremental build (the
+    /// new tables hold only those NPIs, so every other live NPI would look removed).
+    /// </summary>
+    private static string[] Changes(string newProvider, string oldProvider, string newLocation, string oldLocation, string? batch)
+    {
+        var inBatch = batch is null ? "" : $"JOIN `{batch}` b ON b.`npi` = o.`npi`";
+        return
+        [
+            $"""
+            CREATE TEMPORARY TABLE `changed_npi` (PRIMARY KEY (`npi`))
+            SELECT n.`npi` FROM `{newProvider}` n JOIN `{oldProvider}` o ON o.`npi` = n.`npi` WHERE NOT (n.`row_hash` <=> o.`row_hash`)
+            """,
+            $"""
+            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            SELECT n.`npi`, @now, 'added', NULL, LEFT(n.`sort_name`, 300)
+            FROM `{newProvider}` n LEFT JOIN `{oldProvider}` o ON o.`npi` = n.`npi` WHERE o.`npi` IS NULL
+            """,
+            // Gone from the projection: deactivated, or (rarely) no longer in the NPPES file.
+            $"""
+            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            SELECT o.`npi`, @now,
+              IF(EXISTS (SELECT 1 FROM `npidata` d WHERE d.`NPI` = o.`npi` AND d.`Is_Deactivated` = 1), 'deactivated', 'removed'),
+              LEFT(o.`sort_name`, 300), NULL
+            FROM `{oldProvider}` o {inBatch} LEFT JOIN `{newProvider}` n ON n.`npi` = o.`npi` WHERE n.`npi` IS NULL
+            """,
+            $"""
+            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            SELECT c.`npi`, @now, 'name', LEFT(o.`sort_name`, 300), LEFT(n.`sort_name`, 300)
+            FROM `changed_npi` c JOIN `{newProvider}` n ON n.`npi` = c.`npi` JOIN `{oldProvider}` o ON o.`npi` = c.`npi`
+            WHERE NOT (n.`sort_name` <=> o.`sort_name`)
+            """,
+            $"""
+            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            SELECT c.`npi`, @now, 'credential', o.`credential`, n.`credential`
+            FROM `changed_npi` c JOIN `{newProvider}` n ON n.`npi` = c.`npi` JOIN `{oldProvider}` o ON o.`npi` = c.`npi`
+            WHERE NOT (n.`credential` <=> o.`credential`)
+            """,
+            $"""
+            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            SELECT c.`npi`, @now, 'specialty', o.`primary_taxonomy_code`, n.`primary_taxonomy_code`
+            FROM `changed_npi` c JOIN `{newProvider}` n ON n.`npi` = c.`npi` JOIN `{oldProvider}` o ON o.`npi` = c.`npi`
+            WHERE NOT (n.`primary_taxonomy_code` <=> o.`primary_taxonomy_code`)
+            """,
+            $"""
+            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            SELECT c.`npi`, @now, 'address', {AddressLine("ol")}, {AddressLine("nl")}
+            FROM `changed_npi` c
+            JOIN `{newLocation}` nl ON nl.`npi` = c.`npi` AND nl.`is_primary` = 1
+            JOIN `{oldLocation}` ol ON ol.`npi` = c.`npi` AND ol.`is_primary` = 1
+            WHERE NOT ({AddressLine("nl")} <=> {AddressLine("ol")})
+            """,
+        ];
+    }
 
     private async Task StepAsync(MySqlConnection connection, string what, string sql, CancellationToken ct)
     {
@@ -225,16 +371,17 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         $"IF({IsUsZip(postal, country)} AND CHAR_LENGTH(REGEXP_REPLACE({postal}, '[^0-9]', '')) = 9, RIGHT(REGEXP_REPLACE({postal}, '[^0-9]', ''), 4), NULL)";
 
     // Deactivated NPIs and their dates, for the site's "Deactivated on [date]" status (migration 077).
-    private static readonly string DeactivatedSql = $"""
+    private static string DeactivatedSql(string scope) => $"""
         INSERT INTO `provider_deactivated_staging` (`npi`, `deactivation_date`)
         SELECT n.`NPI`, {Date("n.`NPI_Deactivation_Date`")}
         FROM `npidata` n
+        {scope}
         WHERE n.`Is_Deactivated` = 1
         """;
 
-    private static readonly string ProviderSql = BuildProviderSql();
-
-    private static string BuildProviderSql()
+    // The tables built from npidata take a scope (a JOIN limiting n to the batch's NPIs, or ""); the others join
+    // provider_staging, so they follow it.
+    private static string ProviderSql(string scope)
     {
         var last = Text("n.`Provider_Last_Name_Legal_Name`");
         var first = Text("n.`Provider_First_Name`");
@@ -267,6 +414,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
               {Date("n.`Provider_Enumeration_Date`")},
               {Date("n.`Last_Update_Date`")}
             FROM `npidata` n
+            {scope}
             WHERE {Active}
             """;
     }
@@ -274,7 +422,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
     // One pass over npidata: each row is crossed with the slot numbers 1-15 and the slot's columns
     // picked with CASE, instead of 15 separate scans. CMS writes the literal text "NULL" in ~16,500
     // license state codes (Sep 2026); that, and only that column, is treated as empty.
-    private static string TaxonomySql()
+    private static string TaxonomySql(string scope)
     {
         string Pick(string prefix) => "CASE s.slot " + string.Join(" ", Enumerable.Range(1, TaxonomySlots)
             .Select(i => $"WHEN {i} THEN n.`{prefix}_{i}`")) + " END";
@@ -289,6 +437,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
                 {Text(Pick("Provider_License_Number"))} AS license_no,
                 NULLIF({Text(Pick("Provider_License_Number_State_Code"))}, 'NULL') AS license_state
               FROM `npidata` n
+              {scope}
               CROSS JOIN ({slots}) s
               WHERE {Active}
             ) x
@@ -296,7 +445,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             """;
     }
 
-    private static readonly string PrimaryLocationSql = $"""
+    private static string PrimaryLocationSql(string scope) => $"""
         INSERT INTO `provider_location_staging` (`npi`, `is_primary`, `address1`, `address2`, `city`, `state`, `zip5`, `zip4`, `postal_code`, `country_code`, `phone`)
         SELECT n.`NPI`, 1,
           {Text("n.`Provider_First_Line_Business_Practice_Location_Address`")},
@@ -309,6 +458,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
           {Text("n.`Provider_Business_Practice_Location_Address_Country_Code`")},
           {Text("n.`Provider_Business_Practice_Location_Address_Telephone_Number`")}
         FROM `npidata` n
+        {scope}
         WHERE {Active}
         """;
 
