@@ -25,9 +25,32 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     /// <summary>NPIs whose state license rows changed since the labels were built (migration 088).</summary>
     public const string Pending = "quality_pending";
 
-    // The only dataset whose changes are queued per NPI; any other input or a full projection relabels everyone. (The map and
-    // the address types queue the NPIs they update incrementally; their loaded_at moves only with a full build.)
-    private const string QueuedInput = "state_licenses";
+    /// <summary>
+    /// The tables read per NPI whose reloads queue the NPIs whose rows changed (<see cref="Datasets.TableSwap"/>), so that
+    /// reloading them relabels only those NPIs.
+    /// </summary>
+    public static readonly IReadOnlySet<string> QueuedTables = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "medicare_utilization", "medicare_part_d", "cc_clinician", "cc_clinician_location", "medicare_enrollment", "medicare_reassignment",
+        "medicare_revalidation", "medicare_order_referring", "cc_mips", "cc_facility_affiliation", "cms_facility_npi", "medicare_dme_supplier",
+        "cms_otp_provider",
+    };
+
+    // The inputs whose changes are queued per NPI: the sources of QueuedTables (every table of theirs that the label reads is
+    // queued) and the state licenses (per state). Any other input (Open Payments, whose newest two years shift together; the
+    // Provider of Services and Overture listings, matched by address; a full map or address type build) or a full projection
+    // relabels everyone; the map and the address types queue the NPIs they update incrementally.
+    private static readonly IReadOnlyList<string> QueuedInputs =
+    [
+        "state_licenses", "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring",
+        "cms_facility_enrollments", "cc_mips", "cc_facility_affiliations", "cms_otp_providers", "cms_revalidation", "cms_dme_suppliers",
+    ];
+
+    /// <summary>Above this share of the providers queued, relabelling everyone is quicker.</summary>
+    public const double IncrementalLimit = 0.10;
+
+    /// <summary>The largest queue, as a share of the providers, relabelled NPI by NPI (tests raise it).</summary>
+    public double IncrementalShare { get; init; } = IncrementalLimit;
 
     /// <summary>The <c>reference_data</c> sources the label reads; a newer load of any of them makes it stale.</summary>
     public static readonly IReadOnlyList<string> Inputs =
@@ -178,8 +201,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                    < GREATEST({BuilderPending.FullProjectedAt},
                               COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @others), '1970-01-01'))
                 OR (SELECT `checked_at` FROM `reference_data` WHERE `source` = @source)
-                   < COALESCE((SELECT `loaded_at` FROM `reference_data` WHERE `source` = @queued), '1970-01-01')
-            """, new { source = Source, others = Inputs.Where(i => i != QueuedInput).ToList(), queued = QueuedInput }, cancellationToken: ct)) != 0;
+                   < COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @queued), '1970-01-01')
+            """, new { source = Source, others = Inputs.Except(QueuedInputs).ToList(), queued = QueuedInputs }, cancellationToken: ct)) != 0;
     }
 
     /// <summary>
@@ -207,7 +230,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     }
 
     /// <summary>
-    /// True when the labels exist and nothing but the state licenses changed since they were built in full (no newer full
+    /// True when the labels exist and only inputs whose changes are queued changed since they were built in full (no newer full
     /// projection, no other input reloaded), so relabelling the queued NPIs (if any) is enough.
     /// </summary>
     private static async Task<bool> OnlyPendingChangedAsync(MySqlConnection connection, CancellationToken ct) =>
@@ -218,7 +241,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                AND (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source)
                    >= GREATEST({BuilderPending.FullProjectedAt},
                                COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data` WHERE `source` IN @others), '1970-01-01'))
-            """, new { source = Source, others = Inputs.Where(i => i != QueuedInput).ToList() }, cancellationToken: ct)) != 0;
+            """, new { source = Source, others = Inputs.Except(QueuedInputs).ToList() }, cancellationToken: ct)) != 0;
 
     /// <param name="allowIncremental">
     /// False to relabel everyone (the <c>project</c> command); true relabels only the queued NPIs when nothing else changed.
@@ -239,6 +262,11 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         var pendingCount = onlyPending
             ? await connection.ExecuteScalarAsync<long>(new CommandDefinition($"SELECT COUNT(*) FROM `{Pending}`", cancellationToken: ct))
             : 0;
+        if (onlyPending && pendingCount > await Database.CountAsync(connection, "provider", ct) * IncrementalShare)
+        {
+            log.Information("Record quality: {Count:N0} providers queued; relabelling everyone", pendingCount);
+            onlyPending = false;
+        }
         if (onlyPending)
         {
             log.Information("Record quality: relabelling the {Count:N0} queued providers", pendingCount);

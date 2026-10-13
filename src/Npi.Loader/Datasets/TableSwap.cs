@@ -6,7 +6,9 @@ namespace Npi.Loader.Datasets;
 
 /// <summary>
 /// Replaces whole tables the safe way (CLAUDE.md §6.3): fill <c>{table}_staging</c> copies, check each has at
-/// least <c>minRowRatio</c> of the current rows, then swap them all in with one atomic RENAME.
+/// least <c>minRowRatio</c> of the current rows, then swap them all in with one atomic RENAME. For a table the record quality
+/// reads per NPI (<see cref="Projection.QualityBuilder.QueuedTables"/>), the NPIs whose rows differ are queued for relabelling
+/// first, so a reload relabels only them.
 /// </summary>
 public static class TableSwap
 {
@@ -37,6 +39,15 @@ public static class TableSwap
                 }
 
                 counts[table] = incoming;
+            }
+
+            // Before the swap, so a failure leaves the current data (and an at most too long queue).
+            foreach (var table in tables.Where(Projection.QualityBuilder.QueuedTables.Contains))
+            {
+                if (await Database.CountAsync(connection, Projection.QualityBuilder.Source, ct) > 0)
+                {
+                    await NpiRowDiff.QueueAsync(connection, table + "_staging", table, "npi", Projection.QualityBuilder.Pending, ct);
+                }
             }
 
             foreach (var table in tables)

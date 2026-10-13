@@ -311,7 +311,7 @@ public sealed class SearchIntegrationTests : IDisposable
             await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
             await new AddressTypeBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
             await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
-            await new QualityBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, allowIncremental: !full);
+            await new QualityBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 }.BuildAsync(_ct, allowIncremental: !full);
         }
 
         await BuildAllAsync(full: true);
@@ -1048,7 +1048,7 @@ public sealed class SearchIntegrationTests : IDisposable
     {
         await using var db = await SeededAsync();
         await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct); // specialty_code_category
-        var quality = new QualityBuilder(db.Database, Logger.None, 0.95);
+        var quality = new QualityBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 };
         Assert.True(await quality.IsStaleAsync(_ct));
 
         // A: not updated since 2012, no sign of practice. B: Care Compare lists another profession, and practices only in Los Angeles
@@ -1168,6 +1168,45 @@ public sealed class SearchIntegrationTests : IDisposable
         await quality.BuildAsync(_ct, allowIncremental: false);
         Assert.Equal(QualityActivity.CareCompare,
             (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
+    }
+
+    [Fact]
+    public async Task A_dataset_reload_relabels_only_the_providers_whose_rows_changed()
+    {
+        await using var db = await SeededAsync();
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct); // specialty_code_category
+        await db.ExecuteAsync("INSERT INTO medicare_order_referring (npi, part_b) VALUES (@A, 1), (@B, 1)", new { A, B });
+        var quality = new QualityBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 };
+        await quality.BuildAsync(_ct, allowIncremental: false);
+        const string loadedAt = "SELECT CAST(loaded_at AS CHAR) FROM reference_data WHERE source = 'provider_quality'";
+        var before = await db.ScalarAsync<string>(loadedAt);
+
+        // The order-and-refer list reloads: A left it, E joined, B's row is the same (in another order, with another id).
+        await using (var connection = await db.Database.OpenAsync(_ct))
+        {
+            await Npi.Loader.Datasets.TableSwap.ReplaceAsync(connection, ["medicare_order_referring"], 0, () => Npi.Loader.Db.Database.ExecuteAsync(connection,
+                "INSERT INTO medicare_order_referring_staging (npi, part_b) VALUES (@E, 1), (@B, 1)", _ct, param: new { B, E }), _ct);
+        }
+
+        Assert.Equal([A, E], await db.QueryAsync<string>("SELECT npi FROM quality_pending ORDER BY npi"));
+        await db.ExecuteAsync(
+            """
+            INSERT INTO reference_data (source, version, source_url, rows_loaded, loaded_at, checked_at) VALUES ('cms_order_referring', 'v2', '', 2, @now, @now) AS new
+              ON DUPLICATE KEY UPDATE loaded_at = new.loaded_at
+            """, new { now = DateTime.UtcNow });
+        Assert.True(await quality.IsStaleAsync(_ct));
+        await quality.BuildAsync(_ct);
+        Assert.Equal(before, await db.ScalarAsync<string>(loadedAt)); // relabelled the queue only
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM quality_pending"));
+        Assert.False(await quality.IsStaleAsync(_ct));
+        var incremental = await ProjectionSnapshotAsync(db, ["provider_quality", "quality_search"]);
+
+        await quality.BuildAsync(_ct, allowIncremental: false);
+        var full = await ProjectionSnapshotAsync(db, ["provider_quality", "quality_search"]);
+        Assert.Equal(full["provider_quality"], incremental["provider_quality"]);
+        Assert.Equal(full["quality_search"], incremental["quality_search"]);
+        Assert.Equal(QualityActivity.OrderRefer,
+            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @E", new { E }) & QualityActivity.OrderRefer);
     }
 
     /// <summary>The Source Cooperative listing of the FEMA USA Structures files and the two fixture files.</summary>

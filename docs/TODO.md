@@ -12,12 +12,11 @@ Last updated: 2026-10-13.
 
 ## In progress
 
-Loader speed work (PRODUCT_PLAN.md §7); items 1 and 2 are done (below). Each item is coded and tested, then proven by a live run on `workplace`, then
+Loader speed work (PRODUCT_PLAN.md §7); items 1–3 are done (below). Each item is coded and tested, then proven by a live run on `workplace`, then
 merged. The live runs go one at a time.
 
 | # | Item | State |
 |---|---|---|
-| 3 | A dataset reload queues only the providers whose rows changed, for the quality label | Branch `incremental-quality-inputs` (on top of #65). Live check after item 2's, then its PR |
 | 8 | Downloads kept until loaded and reused when unchanged; large files in 4 parallel parts | Branch `download-reuse`. Live check after item 3's, then its PR |
 
 ## Next, in order
@@ -92,6 +91,7 @@ merged. The live runs go one at a time.
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Item 3: dataset reloads queue only the providers whose rows changed, for the quality label~~ (2026-10-13, PR #70: 35,260 relabelled in 1:55 instead of 9.5M in 25 min)
 - ~~Item 2: the builders after the projection work from the queue~~ (2026-10-13, PR #65: everything after a weekly in about 10 min instead of about 2.5 h)
 - ~~Item 1: incremental projection; the monthly compared by a hash of the projected columns~~ (2026-10-13, PR #64: the same October monthly loaded twice found 9.85M then 0 changed NPIs; a load that changes nothing rebuilds nothing)
 - ~~Item 11, the openFDA part: the API key's rate; ask again only after new exports~~ (2026-10-13, PR #62)
@@ -99,3 +99,4 @@ merged. The live runs go one at a time.
 - ~~Cleanup: unused code and test warnings~~ (2026-10-13, PR #66)
 
 Stages 0–5 and Stage 5.5 items 1–15 and 17–19 are done; their history is in CLAUDE.md §12.
+| 2026-10-13 | Speed item 3 | **Dataset reloads queue changed providers** for the quality label (`NpiRowDiff` in `TableSwap`, no migration). On `workplace`: `cms_order_referring` (a new CMS release, 2,059,772 rows, 86 s) and `cc_mips` (same release, 520,011 rows, 25 s) force-reloaded, then `quality`: 35,260 providers relabelled in 1:55 (about 32,600 of them left queued by item 2's map step in its check script, the rest order-and-refer changes; MIPS queued none) instead of a full relabel of 9.5M (25 min). Labels: Current 6,018,360, Check 1,677,697, Stale 1,798,198. Tests: Loader 218 (with MySQL). |
