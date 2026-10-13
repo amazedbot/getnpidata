@@ -71,7 +71,8 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("sec_companies", $"2026-10-09T06:00:00Z parents {SecCompanySource.ParentsHash()}"),
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
-                  ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null)]))],
+                  ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null),
+                  ("RI", Week), ("VT", Week), ("WV", "rosters 713 " + Week)]))],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source NOT IN ('oig_cia', 'fema_structures', 'address_type') ORDER BY source"));
         Assert.StartsWith("3 agreements ", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'oig_cia'"));
         // FEMA structures (item 18): the listing's newest date and a hash of its files, and the geocoded addresses in steps of 50,000.
@@ -146,14 +147,16 @@ public sealed class DatasetIntegrationTests : IDisposable
               ('1000000004', 1, 'O''BRIEN', 'JOSE', 'O''BRIEN, JOSE'), ('1000000012', 1, 'GARCIA', 'MARIA', 'GARCIA, MARIA'),
               ('1000000020', 1, 'LEE', 'ANN', 'LEE, ANN'), ('1000000038', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA'), ('1000000046', 1, 'OTHER', 'PAT', 'OTHER, PAT'),
               ('1000000053', 1, 'BROWN', 'KIM', 'BROWN, KIM'), ('1000000061', 1, 'SINGH', 'JOSEPH', 'SINGH, JOSEPH'), ('1000000079', 1, 'PATEL', 'RAJ', 'PATEL, RAJ'),
-              ('1000000087', 1, 'JONES', 'AMY', 'JONES, AMY'), ('1000000095', 1, 'ACOSTA', 'GILBERTO', 'ACOSTA, GILBERTO');
+              ('1000000087', 1, 'JONES', 'AMY', 'JONES, AMY'), ('1000000095', 1, 'ACOSTA', 'GILBERTO', 'ACOSTA, GILBERTO'),
+              ('1000000103', 1, 'WHITE', 'SAM', 'WHITE, SAM'), ('1000000111', 1, 'GREEN', 'LEE', 'GREEN, LEE'), ('1000000129', 1, 'BLACK', 'RON', 'BLACK, RON');
             INSERT INTO provider_taxonomy (npi, slot, taxonomy_code, is_primary, license_no, license_state) VALUES
               ('1000000004', 1, '207Q00000X', 1, 'MD-174744', 'NY'), ('1000000012', 1, '207Q00000X', 1, 'N1234', 'TX'),
               ('1000000020', 1, '207Q00000X', 1, 'MD00012345', 'WA'), ('1000000020', 2, '207Q00000X', 0, '036.098765', 'IL'),
               ('1000000038', 1, '207Q00000X', 1, 'DR.0042345', 'CO'), ('1000000046', 1, '207Q00000X', 1, '1234', 'TX'),
               ('1000000053', 1, '207Q00000X', 1, '0024514', 'DE'), ('1000000061', 1, '207Q00000X', 1, '050192', 'CT'),
               ('1000000079', 1, '207Q00000X', 1, 'D12345', 'MD'), ('1000000087', 1, '363A00000X', 1, 'C1234', 'MD'),
-              ('1000000095', 1, '207Q00000X', 1, 'ME80978', 'FL');
+              ('1000000095', 1, '207Q00000X', 1, 'ME80978', 'FL'), ('1000000103', 1, '207Q00000X', 1, 'MD05878', 'RI'),
+              ('1000000111', 1, '207Q00000X', 1, '10818', 'VT'), ('1000000129', 1, '207Q00000X', 1, '16132', 'WV');
             """);
         // Florida's files are dropped by the owner into the state files folder (PROF_ALL inside its zip).
         var florida = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "FL")).FullName;
@@ -177,6 +180,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 ("1000000053", "DE", "license", null), ("1000000053", "DE", "action", new DateTime(2025, 3, 4)),
                 ("1000000061", "CT", "license", null), ("1000000079", "MD", "license", null), ("1000000087", "MD", "license", null),
                 ("1000000095", "FL", "license", null), ("1000000095", "FL", "action", new DateTime(2026, 9, 25)),
+                ("1000000103", "RI", "license", null), ("1000000111", "VT", "license", null), ("1000000129", "WV", "license", null),
             ],
             await db.QueryAsync<(string, string, string, DateTime?)>(
                 "SELECT npi, state, kind, action_date FROM provider_state_license ORDER BY npi, state, action_date"));
@@ -199,7 +203,19 @@ public sealed class DatasetIntegrationTests : IDisposable
         var ct = Assert.Single((await details.GetAsync("1000000061", _ct))!.StateLicenses);
         Assert.Equal(("Physician/Surgeon", "ACTIVE"), (ct.LicenseType, ct.Status));
         Assert.Equal(("D0012345", "A", "N"), (await details.GetAsync("1000000079", _ct))!.StateLicenses.Select(l => (l.LicenseNumber, l.Status, l.Discipline)).Single());
+
+        // Lists assembled from the boards' pages: RI's physician download (a { } and a comma in the address), VT's feed ("042." dropped
+        // from the type; the action column), WV's roster workbook (active only; the type names the roster and the sheet).
+        var ri = Assert.Single((await details.GetAsync("1000000103", _ct))!.StateLicenses);
+        Assert.Equal(("MD05878", "Allopathic Physician (MD)", "Active Probation", new DateOnly(2028, 6, 30)), (ri.LicenseNumber, ri.LicenseType, ri.Status, ri.ExpirationDate));
+        var vt = Assert.Single((await details.GetAsync("1000000111", _ct))!.StateLicenses);
+        Assert.Equal(("Physician", "INACTIVE - DECEASED", "Stipulation and Consent Order"), (vt.LicenseType, vt.Status, vt.Actions.Single().Action));
+        var wv = Assert.Single((await details.GetAsync("1000000129", _ct))!.StateLicenses);
+        Assert.Equal(("16132", "Medical Doctor: Sheet1", "Active", new DateOnly(2028, 6, 30)), (wv.LicenseNumber, wv.LicenseType, wv.Status, wv.ExpirationDate));
     }
+
+    // The version of the lists the loader assembles (Rhode Island, Vermont, West Virginia): the ISO week.
+    private static string Week => $"week {System.Globalization.ISOWeek.GetYear(DateTime.UtcNow)}-{System.Globalization.ISOWeek.GetWeekOfYear(DateTime.UtcNow):00}";
 
     [Fact]
     public async Task Quality_and_outcome_datasets_load()
@@ -707,8 +723,42 @@ public sealed class DatasetIntegrationTests : IDisposable
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes1) });
             }
 
+            // Rhode Island: one POST per profession (only Physician has rows here); Vermont's feed (one page); West Virginia's rosters.
+            if (url == RhodeIslandDataset.DownloadUrl.AbsoluteUri)
+            {
+                var form = request.Content!.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                var physicians = File.ReadAllText(Fixtures.Path("datasets/state_ri_physician.csv"));
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(form.Contains("prof=Physician&", StringComparison.Ordinal) ? physicians : physicians[..(physicians.IndexOf('\n') + 1)]),
+                });
+            }
+
+            if (url.StartsWith(VermontDataset.FeedUrl + "?", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(url.Contains("start=0&", StringComparison.Ordinal)
+                        ? File.ReadAllText(Fixtures.Path("datasets/state_vt_feed.json"))
+                        : """{"draw":1,"recordsTotal":2,"recordsFiltered":2,"data":[]}"""),
+                });
+            }
+
+            if (url == "https://wvbom.wv.gov/download_resource.asp?id=713")
+            {
+                var roster = XlsxWriter.Write(
+                [
+                    ["MEDICAL DOCTORS (MDs) WHO HOLD AN ACTIVE STATUS LICENSE", null, null, null, null, null],
+                    ["First Name", "Middle Name", "Last Name", "Suffix", "License Number", "License Expiration Date"],
+                    ["Ron", null, "Black", null, "16132", "6/30/2028"],
+                    [null, null, null, null, null, null],
+                ]);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(roster) });
+            }
+
             string? fixture = url switch
             {
+                "https://wvbom.wv.gov/Rosters.asp" => "datasets/state_wv_rosters.html",
                 "https://oig.test/UPDATED.csv" when LeieAvailable => "datasets/leie_sample.csv",
                 "https://cms.test/data.json" => "datasets/cms_catalog_sample.json",
                 "https://cms.test/files/DSD_PTD_DY24.csv" => "datasets/cms_part_d_spending_sample.csv",
