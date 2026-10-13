@@ -40,6 +40,14 @@
       "file": "https://fda.test/drug-shortages-0001-of-0001.json.zip"
      }
     ]
+   },
+   "event": {
+    "export_date": "2026-10-12",
+    "partitions": [
+     {
+      "file": "https://fda.test/drug-event-0001-of-0001.json.zip"
+     }
+    ]
    }
   },
   "device": {
@@ -72,6 +80,14 @@
     "partitions": [
      {
       "file": "https://fda.test/device-pma-0001-of-0001.json.zip"
+     }
+    ]
+   },
+   "event": {
+    "export_date": "2026-10-12",
+    "partitions": [
+     {
+      "file": "https://fda.test/device-event-0001-of-0001.json.zip"
      }
     ]
    }

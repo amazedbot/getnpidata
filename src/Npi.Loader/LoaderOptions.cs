@@ -88,6 +88,12 @@ public sealed class LoaderOptions
     /// <summary>openFDA requests per run with a key.</summary>
     public int OpenFdaRequestsPerRunWithKey { get; set; } = 20_000;
 
+    /// <summary>With the key: one openFDA request started every this often (about 230 a minute; openFDA allows 240).</summary>
+    public TimeSpan OpenFdaKeyedRequestInterval { get; set; } = TimeSpan.FromMilliseconds(260);
+
+    /// <summary>With the key: openFDA requests in flight at once.</summary>
+    public int OpenFdaParallelRequests { get; set; } = 4;
+
     /// <summary>ClinicalTrials.gov's study API.</summary>
     public string ClinicalTrialsApiUrl { get; set; } = "https://clinicaltrials.gov/api/v2/studies";
 
