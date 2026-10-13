@@ -12,12 +12,7 @@ Last updated: 2026-10-13.
 
 ## In progress
 
-Loader speed work (PRODUCT_PLAN.md §7); items 1–3 are done (below). Each item is coded and tested, then proven by a live run on `workplace`, then
-merged. The live runs go one at a time.
-
-| # | Item | State |
-|---|---|---|
-| 8 | Downloads kept until loaded and reused when unchanged; large files in 4 parallel parts | Branch `download-reuse`. Live check after item 3's, then its PR |
+Nothing. Speed items 1, 2, 3 and 8 are done (below); the next item waits for the owner's "go".
 
 ## Next, in order
 
@@ -91,6 +86,7 @@ merged. The live runs go one at a time.
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Item 8: downloads kept until loaded, reused when unchanged, large files in parallel parts~~ (2026-10-13, PR #71)
 - ~~Item 3: dataset reloads queue only the providers whose rows changed, for the quality label~~ (2026-10-13, PR #70: 35,260 relabelled in 1:55 instead of 9.5M in 25 min)
 - ~~Item 2: the builders after the projection work from the queue~~ (2026-10-13, PR #65: everything after a weekly in about 10 min instead of about 2.5 h)
 - ~~Item 1: incremental projection; the monthly compared by a hash of the projected columns~~ (2026-10-13, PR #64: the same October monthly loaded twice found 9.85M then 0 changed NPIs; a load that changes nothing rebuilds nothing)
