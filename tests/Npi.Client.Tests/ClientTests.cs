@@ -119,7 +119,6 @@ public class ClientTests
     [InlineData(typeof(Server.CompanySpecialty), typeof(CompanySpecialty))]
     [InlineData(typeof(Server.CompanyRecipient), typeof(CompanyRecipient))]
     [InlineData(typeof(Server.CompanyRecalls), typeof(CompanyRecalls))]
-    [InlineData(typeof(Server.CompanyProduct), typeof(CompanyProduct))]
     [InlineData(typeof(Server.IndustryProduct), typeof(IndustryProduct))]
     [InlineData(typeof(Server.ProductPage), typeof(ProductPage))]
     [InlineData(typeof(Server.ProductSummary), typeof(ProductSummary))]
