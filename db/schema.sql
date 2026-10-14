@@ -1697,7 +1697,7 @@ CREATE TABLE `provider_change` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `npi` char(10) NOT NULL,
   `detected_at` datetime NOT NULL,
-  `change_type` varchar(12) NOT NULL,
+  `change_type` varchar(20) NOT NULL,
   `old_value` varchar(300) DEFAULT NULL,
   `new_value` varchar(300) DEFAULT NULL,
   PRIMARY KEY (`id`),

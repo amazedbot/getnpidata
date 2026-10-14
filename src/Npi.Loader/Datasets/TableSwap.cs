@@ -58,6 +58,15 @@ public static class TableSwap
                 }
             }
 
+            // The change log (Phase 3 step 3.2): what this reload starts, ends or changes, unless it is the first load.
+            foreach (var table in tables.Where(DatasetChanges.RecordedTables.Contains))
+            {
+                if (await Database.CountAsync(connection, table, ct) > 0)
+                {
+                    await DatasetChanges.RecordTableAsync(connection, table, DateTime.UtcNow, log ?? Serilog.Core.Logger.None, ct);
+                }
+            }
+
             foreach (var table in tables)
             {
                 await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS {SqlIdentifier.Quote(table + "_old")}", ct);

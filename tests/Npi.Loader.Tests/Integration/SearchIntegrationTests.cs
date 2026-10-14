@@ -147,8 +147,10 @@ public sealed class SearchIntegrationTests : IDisposable
         await using var db = await SeededAsync();
         Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_change")); // the first projection has nothing to compare with
 
-        await db.ExecuteAsync("UPDATE npidata SET Provider_Last_Name_Legal_Name = 'OBRIEN-SMITH' WHERE NPI = @A", new { A });
+        await db.ExecuteAsync("UPDATE npidata SET Provider_Last_Name_Legal_Name = 'OBRIEN-SMITH', Provider_Business_Practice_Location_Address_Telephone_Number = '6315550000' WHERE NPI = @A", new { A });
+        await db.ExecuteAsync("INSERT INTO other_names (NPI, Provider_Other_Organization_Name, Provider_Other_Organization_Name_Type_Code) VALUES (@A, 'OBRIEN CLINIC', '3')", new { A });
         await db.ExecuteAsync("UPDATE npidata SET Provider_Credential_Text = 'MD', Healthcare_Provider_Taxonomy_Code_1 = @Dentist WHERE NPI = @B", new { B, Dentist });
+        await db.ExecuteAsync("UPDATE practice_locations SET Provider_Secondary_Practice_Location_Address_Line_1 = '2 New Rd' WHERE NPI = @B", new { B });
         await db.ExecuteAsync("UPDATE npidata SET Provider_First_Line_Business_Practice_Location_Address = '210 Main St' WHERE NPI = @E", new { E });
         await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 0 WHERE NPI = @C", new { C });
         await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 1 WHERE NPI = @D", new { D });
@@ -165,7 +167,10 @@ public sealed class SearchIntegrationTests : IDisposable
 
         Assert.Equal(
             [
-                (A, "name", "O'BRIEN, JOSÉ Q", "OBRIEN-SMITH, JOSÉ Q"), (B, "credential", "M.D.", "MD"), (B, "specialty", ChiroSports, Dentist),
+                (A, "name", "O'BRIEN, JOSÉ Q", "OBRIEN-SMITH, JOSÉ Q"), (A, "other_name_added", null, "OBRIEN CLINIC"), (A, "phone", null, "6315550000"),
+                (B, "credential", "M.D.", "MD"),
+                (B, "location_added", null, "2 New Rd, FARMINGDALE, NY 11735"), (B, "location_removed", "300 Conklin St, FARMINGDALE, NY 11735", null),
+                (B, "specialty", ChiroSports, Dentist), (B, "taxonomy_added", null, Dentist), (B, "taxonomy_removed", ChiroSports, null),
                 (C, "added", null, "CARTER"), (D, "deactivated", "SMITH, JONES & CO, LLC", null),
                 (E, "address", "200 Main St, FARMINGDALE, NY 11735", "210 Main St, FARMINGDALE, NY 11735"),
             ],
@@ -173,7 +178,12 @@ public sealed class SearchIntegrationTests : IDisposable
                 "SELECT npi, change_type, old_value, new_value FROM provider_change ORDER BY npi, change_type"));
 
         var b = await new ProviderDetailService(db.ConnectionString).GetAsync(B, _ct);
-        Assert.Equal([("credential", "M.D.", "MD"), ("specialty", "Chiropractor – Sports Physician", "Dentist")],
+        Assert.Equal(
+            [
+                ("credential", "M.D.", "MD"), ("location_added", null, "2 New Rd, FARMINGDALE, NY 11735"),
+                ("location_removed", "300 Conklin St, FARMINGDALE, NY 11735", null), ("specialty", "Chiropractor – Sports Physician", "Dentist"),
+                ("taxonomy_added", null, "Dentist"), ("taxonomy_removed", "Chiropractor – Sports Physician", null),
+            ],
             b!.Changes.Select(c => (c.Type, c.OldValue, c.NewValue)).Order());
         Assert.Equal(DateOnly.FromDateTime(DateTime.UtcNow), b.Changes[0].RecordedOn);
     }

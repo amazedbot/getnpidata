@@ -382,16 +382,16 @@ public sealed class ProviderDetailService(string connectionString)
 
         var facilities = await FacilitiesAsync(connection, "FROM cms_facility_npi f", "f.npi = @npi", new { npi }, ct);
 
-        // Specialty changes are stored as taxonomy codes and shown by name. Added/removed rows are for feeds, not this page.
+        // Specialty changes are stored as taxonomy codes and shown by name. Added/removed/deactivated rows are for feeds, not this page.
         var changes = await connection.QueryAsync<ChangeRow>(new CommandDefinition(
-            """
+            $"""
             SELECT c.detected_at AS DetectedAt, c.change_type AS ChangeType,
-                   IF(c.change_type = 'specialty', COALESCE(CONCAT_WS(' – ', o.Classification, o.Specialization), c.old_value), c.old_value) AS OldValue,
-                   IF(c.change_type = 'specialty', COALESCE(CONCAT_WS(' – ', n.Classification, n.Specialization), c.new_value), c.new_value) AS NewValue
+                   COALESCE(NULLIF(CONCAT_WS(' – ', o.Classification, o.Specialization), ''), c.old_value) AS OldValue,
+                   COALESCE(NULLIF(CONCAT_WS(' – ', n.Classification, n.Specialization), ''), c.new_value) AS NewValue
             FROM provider_change c
-            LEFT JOIN taxonomy_codes o ON c.change_type = 'specialty' AND o.Taxonomy_Code = c.old_value
-            LEFT JOIN taxonomy_codes n ON c.change_type = 'specialty' AND n.Taxonomy_Code = c.new_value
-            WHERE c.npi = @npi AND c.change_type IN ('name', 'credential', 'specialty', 'address')
+            LEFT JOIN taxonomy_codes o ON c.change_type IN ({ChangeTypes.TaxonomySqlList}) AND o.Taxonomy_Code = c.old_value
+            LEFT JOIN taxonomy_codes n ON c.change_type IN ({ChangeTypes.TaxonomySqlList}) AND n.Taxonomy_Code = c.new_value
+            WHERE c.npi = @npi AND c.change_type IN ({ChangeTypes.ProfileSqlList})
             ORDER BY c.detected_at DESC, c.id DESC LIMIT 100
             """, new { npi }, cancellationToken: ct));
 

@@ -156,7 +156,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             await CreateStagingAsync(connection, ct);
             await FillStagingAsync(connection, BatchScope, ct);
             var now = _clock.GetUtcNow().UtcDateTime;
-            await RecordChangesAsync(connection, now, Changes("provider_staging", "provider", "provider_location_staging", "provider_location", Batch), ct);
+            await RecordChangesAsync(connection, now, Changes(newSuffix: "_staging", oldSuffix: "", Batch), ct);
 
             var columns = new Dictionary<string, string>();
             foreach (var table in Tables)
@@ -256,7 +256,7 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
             var now = _clock.GetUtcNow().UtcDateTime;
             if (current > 0)
             {
-                await RecordChangesAsync(connection, now, Changes("provider", "provider_old", "provider_location", "provider_location_old", null), ct);
+                await RecordChangesAsync(connection, now, Changes(newSuffix: "", oldSuffix: "_old", null), ct);
             }
 
             foreach (var table in Tables)
@@ -324,57 +324,91 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
 
     /// <summary>
     /// The change log's statements: first the temporary <c>changed_npi</c> (NPIs in both whose row_hash differs), then the
-    /// provider_change inserts. <paramref name="batch"/> limits "removed" to the batch's NPIs in an incremental build (the
+    /// provider_change inserts. The new tables are the projection tables with <paramref name="newSuffix"/>, the old ones with
+    /// <paramref name="oldSuffix"/>. <paramref name="batch"/> limits "removed" to the batch's NPIs in an incremental build (the
     /// new tables hold only those NPIs, so every other live NPI would look removed).
+    /// <para>
+    /// Recorded (Stage 5.5 item 11, widened in Phase 3 step 3.2): NPIs added and gone; name (the organization name for an
+    /// organization), credential, primary specialty, primary practice address and phone; secondary practice locations
+    /// added and dropped (an address that only moved between primary and secondary isn't one); every taxonomy added and
+    /// dropped; other names added and dropped. Licenses, exclusions and opt-outs are recorded when their datasets reload
+    /// (DatasetChanges).
+    /// </para>
     /// </summary>
-    private static string[] Changes(string newProvider, string oldProvider, string newLocation, string oldLocation, string? batch)
+    private static string[] Changes(string newSuffix, string oldSuffix, string? batch)
     {
+        string N(string table) => SqlIdentifier.Quote(table + newSuffix);
+        string O(string table) => SqlIdentifier.Quote(table + oldSuffix);
+        const string insert = "INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)";
         var inBatch = batch is null ? "" : $"JOIN `{batch}` b ON b.`npi` = o.`npi`";
+        var both = $"FROM `changed_npi` c JOIN {N("provider")} n ON n.`npi` = c.`npi` JOIN {O("provider")} o ON o.`npi` = c.`npi`";
+
+        // Values of one kind per changed NPI that are in the first table and not in the second.
+        string OnlyIn(string kind, string first, string second, string value, string filter, bool added) => $"""
+            {insert}
+            SELECT DISTINCT c.`npi`, @now, '{kind}', {(added ? "NULL" : "x.v")}, {(added ? "x.v" : "NULL")}
+            FROM `changed_npi` c
+            JOIN (SELECT a.`npi`, {value.Replace("@", "a.", StringComparison.Ordinal)} AS v FROM {first} a WHERE {filter.Replace("@", "a.", StringComparison.Ordinal)}) x ON x.`npi` = c.`npi`
+            WHERE x.v IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {second} y WHERE y.`npi` = c.`npi` AND {value.Replace("@", "y.", StringComparison.Ordinal)} <=> x.v)
+            """;
+        var address = AddressLine("@").Replace("@.", "@", StringComparison.Ordinal);
+        const string secondary = "@`is_primary` = 0";
+
         return
         [
             $"""
             CREATE TEMPORARY TABLE `changed_npi` (PRIMARY KEY (`npi`))
-            SELECT n.`npi` FROM `{newProvider}` n JOIN `{oldProvider}` o ON o.`npi` = n.`npi` WHERE NOT (n.`row_hash` <=> o.`row_hash`)
+            SELECT n.`npi` FROM {N("provider")} n JOIN {O("provider")} o ON o.`npi` = n.`npi` WHERE NOT (n.`row_hash` <=> o.`row_hash`)
             """,
             $"""
-            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            {insert}
             SELECT n.`npi`, @now, 'added', NULL, LEFT(n.`sort_name`, 300)
-            FROM `{newProvider}` n LEFT JOIN `{oldProvider}` o ON o.`npi` = n.`npi` WHERE o.`npi` IS NULL
+            FROM {N("provider")} n LEFT JOIN {O("provider")} o ON o.`npi` = n.`npi` WHERE o.`npi` IS NULL
             """,
             // Gone from the projection: deactivated, or (rarely) no longer in the NPPES file.
             $"""
-            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            {insert}
             SELECT o.`npi`, @now,
               IF(EXISTS (SELECT 1 FROM `npidata` d WHERE d.`NPI` = o.`npi` AND d.`Is_Deactivated` = 1), 'deactivated', 'removed'),
               LEFT(o.`sort_name`, 300), NULL
-            FROM `{oldProvider}` o {inBatch} LEFT JOIN `{newProvider}` n ON n.`npi` = o.`npi` WHERE n.`npi` IS NULL
+            FROM {O("provider")} o {inBatch} LEFT JOIN {N("provider")} n ON n.`npi` = o.`npi` WHERE n.`npi` IS NULL
             """,
             $"""
-            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            {insert}
             SELECT c.`npi`, @now, 'name', LEFT(o.`sort_name`, 300), LEFT(n.`sort_name`, 300)
-            FROM `changed_npi` c JOIN `{newProvider}` n ON n.`npi` = c.`npi` JOIN `{oldProvider}` o ON o.`npi` = c.`npi`
-            WHERE NOT (n.`sort_name` <=> o.`sort_name`)
+            {both} WHERE NOT (n.`sort_name` <=> o.`sort_name`)
             """,
             $"""
-            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            {insert}
             SELECT c.`npi`, @now, 'credential', o.`credential`, n.`credential`
-            FROM `changed_npi` c JOIN `{newProvider}` n ON n.`npi` = c.`npi` JOIN `{oldProvider}` o ON o.`npi` = c.`npi`
-            WHERE NOT (n.`credential` <=> o.`credential`)
+            {both} WHERE NOT (n.`credential` <=> o.`credential`)
             """,
             $"""
-            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            {insert}
             SELECT c.`npi`, @now, 'specialty', o.`primary_taxonomy_code`, n.`primary_taxonomy_code`
-            FROM `changed_npi` c JOIN `{newProvider}` n ON n.`npi` = c.`npi` JOIN `{oldProvider}` o ON o.`npi` = c.`npi`
-            WHERE NOT (n.`primary_taxonomy_code` <=> o.`primary_taxonomy_code`)
+            {both} WHERE NOT (n.`primary_taxonomy_code` <=> o.`primary_taxonomy_code`)
             """,
             $"""
-            INSERT INTO `provider_change` (`npi`, `detected_at`, `change_type`, `old_value`, `new_value`)
+            {insert}
+            SELECT c.`npi`, @now, 'phone', o.`phone`, n.`phone`
+            {both} WHERE NOT (n.`phone` <=> o.`phone`)
+            """,
+            $"""
+            {insert}
             SELECT c.`npi`, @now, 'address', {AddressLine("ol")}, {AddressLine("nl")}
             FROM `changed_npi` c
-            JOIN `{newLocation}` nl ON nl.`npi` = c.`npi` AND nl.`is_primary` = 1
-            JOIN `{oldLocation}` ol ON ol.`npi` = c.`npi` AND ol.`is_primary` = 1
+            JOIN {N("provider_location")} nl ON nl.`npi` = c.`npi` AND nl.`is_primary` = 1
+            JOIN {O("provider_location")} ol ON ol.`npi` = c.`npi` AND ol.`is_primary` = 1
             WHERE NOT ({AddressLine("nl")} <=> {AddressLine("ol")})
             """,
+            // A secondary location is new when its address isn't any of the old locations (primary included), and gone when
+            // it isn't any of the new ones: a move between primary and secondary is neither.
+            OnlyIn("location_added", N("provider_location"), O("provider_location"), address, secondary, added: true),
+            OnlyIn("location_removed", O("provider_location"), N("provider_location"), address, secondary, added: false),
+            OnlyIn("taxonomy_added", N("provider_taxonomy"), O("provider_taxonomy"), "@`taxonomy_code`", "TRUE", added: true),
+            OnlyIn("taxonomy_removed", O("provider_taxonomy"), N("provider_taxonomy"), "@`taxonomy_code`", "TRUE", added: false),
+            OnlyIn("other_name_added", N("provider_other_name"), O("provider_other_name"), "LEFT(@`name`, 300)", "TRUE", added: true),
+            OnlyIn("other_name_removed", O("provider_other_name"), N("provider_other_name"), "LEFT(@`name`, 300)", "TRUE", added: false),
         ];
     }
 
