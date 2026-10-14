@@ -22,8 +22,10 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
     public const string Source = "address_type";
 
     /// <summary>SQL: 1 when a location's address names a suite, floor, building or room (a sign of a business), else 0.</summary>
+    // Verbatim: MySQL must receive '\\b' (a word boundary); a plain C# string sends '\b', a backspace, and nothing matched
+    // (2026-10-13 to 10-14, found when a full relabel moved 106k addresses out of commercial).
     public static string SuiteSql(string location) =>
-        $"UPPER(CONCAT_WS(' ', {location}.`address1`, {location}.`address2`)) REGEXP '\\b(STE|SUITE|FL|FLR|FLOOR|BLDG|BUILDING|RM|ROOM)\\b'";
+        $@"UPPER(CONCAT_WS(' ', {location}.`address1`, {location}.`address2`)) REGEXP '\\b(STE|SUITE|FL|FLR|FLOOR|BLDG|BUILDING|RM|ROOM)\\b'";
 
     // Each address's label from its providers, FEMA building and Overture point; {scope} narrows the locations read.
     private static string LabelSql(string target, string scope) => $$"""
