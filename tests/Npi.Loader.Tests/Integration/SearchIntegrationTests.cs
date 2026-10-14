@@ -1249,6 +1249,7 @@ public sealed class SearchIntegrationTests : IDisposable
             """
             UPDATE provider_location SET address1 = '5 Atlantic Ave' WHERE npi = @D;
             INSERT INTO medicare_dme_supplier (npi, data_year, beneficiaries, claims) VALUES (@E, 2024, 20, 25);
+            INSERT INTO state_medicaid (npi, state, enrolled_since, provider_type) VALUES (@E, 'NY', '2007-10-26', 'PHYSICIAN');
             INSERT INTO cc_mips (npi, program_year, source, final_score) VALUES (@B, 2024, 'individual', 90);
             INSERT INTO address_place (addr_key, name, operating_status, updated, `release`)
               SELECT addr_key, 'Smith Jones Dental', 'permanently_closed', '2025-03-01', '2026-09-23.1' FROM provider_location WHERE npi = @D;
@@ -1262,7 +1263,7 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal((QualityLabel.Stale, QualityReason.NoActivity | QualityReason.NotMapped | QualityReason.NoPhone | QualityReason.FacilityClosed
             | QualityReason.ListedClosed, QualityActivity.None), rows[D]);
         Assert.Equal(QualityActivity.CareCompare | QualityActivity.MipsScore, rows[B].Activity);
-        Assert.Equal(QualityActivity.CareCompare | QualityActivity.EquipmentBilling, rows[E].Activity);
+        Assert.Equal(QualityActivity.CareCompare | QualityActivity.EquipmentBilling | QualityActivity.MedicaidEnrollment, rows[E].Activity);
         Assert.Equal(["Medicare-certified facility closed", "Listed as permanently closed"],
             RecordQuality.ShortReasons(rows[D].Reasons).Where(t => t.Contains("closed", StringComparison.Ordinal)));
 

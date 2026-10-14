@@ -81,6 +81,9 @@ public sealed class LoaderOptions
     /// <summary>data.medicaid.gov metastore; the newest "NADAC (National Average Drug Acquisition Cost) &lt;year&gt;" file is loaded (item 19, part 3).</summary>
     public string MedicaidCatalogUrl { get; set; } = "https://data.medicaid.gov/api/1/metastore/schemas/dataset/items?show-reference-ids=false";
 
+    /// <summary>data.chhs.ca.gov's CKAN package of the enrolled Medi-Cal fee-for-service providers (state Medicaid lists, Phase 3).</summary>
+    public string MediCalPackageUrl { get; set; } = "https://data.chhs.ca.gov/api/3/action/package_show?id=profile-of-enrolled-medi-cal-fee-for-service-ffs-providers";
+
     /// <summary>openFDA's API (adverse event counts).</summary>
     public string OpenFdaApiUrl { get; set; } = "https://api.fda.gov/";
 

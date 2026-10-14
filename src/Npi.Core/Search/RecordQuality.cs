@@ -91,6 +91,7 @@ public enum QualityActivity
     MapListing = 2048,
     EquipmentBilling = 4096,
     OpioidTreatment = 8192,
+    MedicaidEnrollment = 16384,
 }
 
 /// <summary>One line of a record-quality explanation: <c>good</c>, <c>warn</c>, <c>bad</c> or <c>info</c>, and the text.</summary>
@@ -114,7 +115,7 @@ public sealed record ProviderQuality(QualityLabel Label, [property: JsonIgnore] 
 /// The record-quality rules (docs/PRODUCT_PLAN.md step 3.1), shared by the loader (which stores the label) and the site (which
 /// explains it). <b>Stale:</b> not updated in NPPES for <see cref="StaleYears"/>+ years and no sign of current practice in the public
 /// data (Medicare billing or prescribing, a Care Compare listing, Medicare enrollment or order-and-refer eligibility, industry
-/// payments, a certified facility, a current state license), or a state record listing the provider as deceased. <b>Check:</b> not
+/// payments, a certified facility, a current state license, a state Medicaid enrollment), or a state record listing the provider as deceased. <b>Check:</b> not
 /// updated for <see cref="CheckYears"/>+ years with no sign of practice, or a conflict or gap: Care Compare lists another address or
 /// profession, a lapsed state license, an address that couldn't be mapped or is a PO box, no phone. <b>Current:</b> everything else.
 /// A reactivated NPI and a home address are shown but don't change the label.
@@ -235,6 +236,7 @@ public static class RecordQuality
         (QualityActivity.CertifiedFacility, "holds a Medicare-certified facility"),
         (QualityActivity.EquipmentBilling, "billed Medicare for equipment and supplies"),
         (QualityActivity.OpioidTreatment, "is a certified opioid treatment program"),
+        (QualityActivity.MedicaidEnrollment, "enrolled in a state Medicaid program"),
         (QualityActivity.CurrentLicense, "holds a current state license"),
         (QualityActivity.MapListing, "is listed as an open business at its address (Overture Maps)"),
     ];

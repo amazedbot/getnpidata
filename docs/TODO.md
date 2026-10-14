@@ -22,7 +22,6 @@ Nothing. Speed items 1, 2, 3, 4, 5, 8, 10 and 12 are done (below); the next item
    - 13: build the map-by-credential table once; run credentials, address types and area counts side by side.
 2. **Phase 3, the rest** (data quality signals and change history):
    - **New data, approved 2026-10-13 (not built yet):**
-     - **State Medicaid enrolled-provider lists**, New York (health.data.ny.gov `keti-qx5t`) and California (data.chhs.ca.gov, Medi-Cal fee-for-service providers), as a sign of current practice. Measured: 34,797 Stale and 25,850 Check records in these two states are enrolled with no other sign. Other states as they are found to publish a list.
      - **Older Medicare years, 2013–2023** (Part B by provider and Part D prescribers by provider, data.cms.gov), shown as "last billed Medicare in [year]" and as a reason on the quality label.
    - **Step 3.3:** change pages ("Changes in [county] this month", "New practices", "Closed or moved") and monthly change counts on county pages.
    - **Step 3.4, approved 2026-10-13:** history before October 2026 from the NBER archive of past NPPES monthly files, for trends, analytics and statistics (a large download, one file per period).
@@ -80,6 +79,7 @@ Nothing. Speed items 1, 2, 3, 4, 5, 8, 10 and 12 are done (below); the next item
 
 **Speed work:**
 - ~~Small fixes: an unneeded `using` in `FdaProductSource.cs` removed; CLAUDE.md no longer listed `deploy/register-task.ps1`~~ (2026-10-14)
+- ~~Phase 3: the NY and CA Medicaid enrolled-provider lists~~ (2026-10-14: 544,718 enrollments, a sign of current practice and a line on the profile; Stale −36,249, Check −23,433, Current +59,682)
 - ~~Phase 3 step 3.2: the change recorder widened~~ (2026-10-14: phone, secondary locations, every taxonomy, other names; licenses, board actions, exclusions and opt-outs as they start, end or change; 3,991 license changes recorded on the first reload)
 - ~~A fresh clone runs: doctor, sample, Docker MySQL, scripts, README setup, Linux check~~ (2026-10-14, owner's request; Linux job 8 min, all green)
 - ~~Migrations in topic folders, `db/schema.sql`~~ (2026-10-14, owner's request)

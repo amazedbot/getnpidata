@@ -156,7 +156,17 @@ public sealed record MipsScore(int Year, string? Source, string? Organization, d
     double? ImprovementActivities, double? Cost);
 
 /// <summary>Compliance facts for the detail page and API.</summary>
-public sealed record ProviderCompliance(IReadOnlyList<OigExclusion> Exclusions, MedicareOptOut? OptOut, MedicareOrderReferring? OrderReferring);
+public sealed record ProviderCompliance(IReadOnlyList<OigExclusion> Exclusions, MedicareOptOut? OptOut, MedicareOrderReferring? OrderReferring)
+{
+    /// <summary>State Medicaid programs listing the provider as enrolled (New York and California publish their lists).</summary>
+    public IReadOnlyList<StateMedicaidEnrollment> Medicaid { get; init; } = [];
+}
+
+/// <summary>
+/// An enrollment in a state's Medicaid program (docs/PRODUCT_PLAN.md Phase 3): the state, the earliest enrollment date listed and
+/// the kind of provider in the state's wording.
+/// </summary>
+public sealed record StateMedicaidEnrollment(string State, DateOnly? EnrolledSince, string? ProviderType);
 
 /// <summary>
 /// SQL fragments for the dataset flags, shared by the search filters and the result badges so they can't
