@@ -42,7 +42,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
         await using var connection = await database.OpenAsync(ct);
 
         // CREATE TABLE npidata_staging LIKE npidata fails InnoDB's worst-case row-size check in strict
-        // mode, although every real row fits (see db/migrations/002_npidata_v2.sql).
+        // mode, although every real row fits (see db/migrations/nppes/002_npidata_v2.sql).
         await Database.ExecuteAsync(connection, "SET SESSION innodb_strict_mode = OFF", ct);
 
         try
