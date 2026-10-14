@@ -23,13 +23,12 @@ public sealed class DeferredIndexesTests
         await using var connection = await db.Database.OpenAsync(_ct);
         var dropped = await DeferredIndexes.DropAsync(connection, tables.Select(t => t + "_staging"), _ct);
 
-        Assert.Equal([("provider_staging", 8), ("provider_map_staging", 1)], dropped.Select(d => (d.Table, d.Indexes.Count)));
-        Assert.StartsWith("SPATIAL KEY", Assert.Single(dropped[1].Indexes), StringComparison.Ordinal);
+        Assert.Equal([("provider_staging", 8)], dropped.Select(d => (d.Table, d.Indexes.Count)));
         var during = await IndexLinesAsync(db, tables);
-        // Kept: the full-text index (cheaper to fill than to add) and the one starting with npi (later fill steps join by NPI).
+        // Kept: the full-text and spatial indexes (cheaper to fill than to add) and those starting with npi (later fill steps join by NPI).
         Assert.Equal(before["provider_org_name"], during["provider_org_name"]);
+        Assert.Equal(before["provider_map"], during["provider_map"]);
         Assert.Empty(during["provider"]);
-        Assert.Empty(during["provider_map"]);
 
         await db.ExecuteAsync("INSERT INTO provider_org_name_staging (npi, name) VALUES ('1000000004', 'NORTH SHORE MEDICAL')");
         await DeferredIndexes.RestoreAsync(connection, dropped, Logger.None, _ct);

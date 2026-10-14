@@ -12,11 +12,11 @@ Last updated: 2026-10-14.
 
 ## In progress
 
-Nothing. Speed items 1, 2, 3, 4, 5 and 8 are done (below); the next item waits for the owner's "go".
+Nothing. Speed items 1, 2, 3, 4, 5, 8 and 12 are done (below); the next item waits for the owner's "go".
 
 ## Next, in order
 
-1. **Speed items 12 and 14:** bulk-load into tables without their indexes, add the indexes afterwards; relax MySQL's disk-flush settings during big loads (approved 2026-10-13; a crash loses the last second of writes, which a reload repeats). If a setting needs changing by hand (the loader doesn't change server settings itself, CLAUDE.md §7 Stage 1.8), the exact steps go to the owner first.
+1. **Speed item 14:** relax MySQL's disk-flush settings during big loads (approved 2026-10-13; a crash loses the last second of writes, which a reload repeats). If a setting needs changing by hand (the loader doesn't change server settings itself, CLAUDE.md §7 Stage 1.8), the exact steps go to the owner first.
 2. **Speed items 6, 7, 10, 13:**
    - 6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull;
    - 7: independent sources, states and the Vermont feed in parallel (2–4 at a time);
@@ -85,6 +85,7 @@ Nothing. Speed items 1, 2, 3, 4, 5 and 8 are done (below); the next item waits f
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Item 12: staging tables filled without their plain secondary indexes, added in one statement afterwards~~ (2026-10-14: full projection 63 → ~51 min, area counts 1,163 → 634 s, credentials and address types ~1 min less each; FULLTEXT and SPATIAL kept, they cost more added afterwards)
 - ~~Fix: the suite-or-floor sign of the address type label~~ (2026-10-14: broken by item 2, PR #65, which sent MySQL a backspace instead of a word boundary; found when a full relabel moved ~106k addresses out of commercial; relabelled: commercial 1,847,645, residential 1,142,330, unknown 321,614)
 - ~~Item 5: Overture in `run` for new addresses only, a full pass for a new release~~ (2026-10-14, PR #73: 6,399 new addresses, 4,951 placed, in 18.7 min instead of a 50–70 min pass of every state)
 - ~~Item 4: FEMA buildings for new and moved addresses only, the files read in place~~ (2026-10-14, PR #72: 5,724 new addresses in 5.6 min instead of a 17 min full load with a 21 GB download)
