@@ -1158,6 +1158,24 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task A_suite_or_floor_in_the_address_is_found_as_a_whole_word()
+    {
+        // The word boundaries must reach MySQL as \\b: a plain C# string sent a backspace and nothing matched (2026-10-13).
+        await using var db = await TestDatabase.CreateAsync();
+        var suites = await db.QueryAsync<long>(
+            $"""
+            SELECT {AddressTypeBuilder.SuiteSql("l")} FROM (
+              SELECT 1 AS n, '100 Main St Ste 200' AS address1, NULL AS address2 UNION ALL
+              SELECT 2, '5 Main St', 'Floor 3' UNION ALL
+              SELECT 3, '1 Broadway', 'Suite 12B' UNION ALL
+              SELECT 4, '1 Stevens Rd', NULL UNION ALL
+              SELECT 5, '9 Florence Ave', 'Rear') l
+            ORDER BY l.n
+            """);
+        Assert.Equal([1L, 1L, 1L, 0L, 0L], suites.ToArray());
+    }
+
+    [Fact]
     public async Task Records_are_labelled_current_check_or_stale()
     {
         await using var db = await SeededAsync();

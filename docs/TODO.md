@@ -85,6 +85,7 @@ Nothing. Speed items 1, 2, 3, 4, 5 and 8 are done (below); the next item waits f
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Fix: the suite-or-floor sign of the address type label~~ (2026-10-14: broken by item 2, PR #65, which sent MySQL a backspace instead of a word boundary; found when a full relabel moved ~106k addresses out of commercial; relabelled: commercial 1,847,645, residential 1,142,330, unknown 321,614)
 - ~~Item 5: Overture in `run` for new addresses only, a full pass for a new release~~ (2026-10-14, PR #73: 6,399 new addresses, 4,951 placed, in 18.7 min instead of a 50–70 min pass of every state)
 - ~~Item 4: FEMA buildings for new and moved addresses only, the files read in place~~ (2026-10-14, PR #72: 5,724 new addresses in 5.6 min instead of a 17 min full load with a 21 GB download)
 - ~~Item 8: downloads kept until loaded, reused when unchanged, large files in parallel parts~~ (2026-10-13, PR #71)
