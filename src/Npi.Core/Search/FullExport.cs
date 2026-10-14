@@ -8,8 +8,8 @@ namespace Npi.Core.Search;
 /// The ready-made file of every active provider (owner, 2026-10-14): the summary CSV (<see cref="ProviderCsv"/>, the columns
 /// of /export.csv), sorted by NPI and gzipped, with a small JSON file describing it. The loader rebuilds it after a load
 /// changed its data (<c>run</c>, or the <c>export</c> command); the site serves it for an export with no filter, instead of
-/// streaming 9.5M providers through the search (about 35 minutes). Built from several NPI ranges at once, each its own gzip
-/// member; gzip members joined end to end are one valid file.
+/// streaming 9.5M providers through the search (about 35 minutes). Built from several NPI ranges at once, then gzipped as
+/// one stream.
 /// </summary>
 public static class FullExport
 {
@@ -43,21 +43,23 @@ public static class FullExport
         new(Path.Combine(folder, FileName), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16, FileOptions.Asynchronous);
 
     /// <summary>
-    /// Writes every active provider into <paramref name="folder"/>, reading <paramref name="parts"/> NPI ranges at once, then
-    /// replaces the previous file. Returns its description.
+    /// Writes every active provider into <paramref name="folder"/>, reading <paramref name="parts"/> NPI ranges at once into
+    /// plain CSV parts, then compresses them in order into one gzip stream and replaces the previous file. One stream, not a gzip
+    /// member per part: browsers unpack only the first member of a gzip response (the header row alone, 2026-10-14).
+    /// Returns its description.
     /// </summary>
     public static async Task<Info> WriteAsync(SearchService search, string folder, DateOnly? asOf, int parts, CancellationToken ct)
     {
         Directory.CreateDirectory(folder);
         parts = Math.Clamp(parts, 1, 64);
         var stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-        var partPaths = Enumerable.Range(0, parts + 1).Select(i => Path.Combine(folder, $".building-{stamp}-{i:D2}.gz")).ToArray();
+        var partPaths = Enumerable.Range(0, parts + 1).Select(i => Path.Combine(folder, $".building-{stamp}-{i:D2}.csv")).ToArray();
         var target = Path.Combine(folder, FileName);
         var building = Path.Combine(folder, $".building-{stamp}.csv.gz");
         try
         {
             // Part 0: the BOM and the header row. Parts 1…n: the NPIs 1000000000-1999999999 in equal ranges.
-            await using (var header = Gzip(partPaths[0]))
+            await using (var header = Create(partPaths[0]))
             {
                 await ProviderCsv.WriteAsync(AsyncEnumerable.Empty<ProviderSummary>(), header, ct);
             }
@@ -65,15 +67,13 @@ public static class FullExport
             var counts = await Task.WhenAll(Enumerable.Range(0, parts).Select(async i =>
             {
                 var (from, to) = Range(i, parts);
-                await using var output = Gzip(partPaths[i + 1]);
+                await using var output = Create(partPaths[i + 1]);
                 return await ProviderCsv.WriteAsync(search.AllInNpiRangeAsync(from, to, ct), output, ct, header: false);
             }));
 
-            await using (var joined = new FileStream(building, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, FileOptions.Asynchronous))
+            await using (var joined = new GZipStream(Create(building), CompressionLevel.Optimal))
             {
-                // A range without providers is left out: its writer was still flushed, which leaves a gzip member without its end
-                // (15 bytes) that makes the joined file unreadable.
-                foreach (var part in partPaths.Where((_, i) => i == 0 || counts[i - 1] > 0))
+                foreach (var part in partPaths)
                 {
                     await using var read = new FileStream(part, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous);
                     await read.CopyToAsync(joined, ct);
@@ -113,6 +113,6 @@ public static class FullExport
         return (from.ToString(CultureInfo.InvariantCulture), to.ToString(CultureInfo.InvariantCulture));
     }
 
-    private static GZipStream Gzip(string path) =>
-        new(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, FileOptions.Asynchronous), CompressionLevel.Optimal);
+    private static FileStream Create(string path) =>
+        new(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, FileOptions.Asynchronous);
 }
