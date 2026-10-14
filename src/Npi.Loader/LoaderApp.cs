@@ -137,6 +137,20 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
 
+        // Stage 5.5 item 18: the FEMA buildings of the addresses mapped or moved since the last match, read in place, and their labels.
+        if (projectionOk && mapOk)
+        {
+            try
+            {
+                await FemaStructureSource.MatchNewAsync(options, database, http, log, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Matching new practice addresses to FEMA buildings failed");
+                datasetsOk = false;
+            }
+        }
+
         // Record quality (docs/PRODUCT_PLAN.md step 3.1): relabelled after the projection, the map and the datasets it reads.
         var quality = new QualityBuilder(database, log, options.MinRowRatio);
         if (projectionOk && await quality.IsStaleAsync(ct))

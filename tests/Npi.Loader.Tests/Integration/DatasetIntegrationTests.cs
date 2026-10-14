@@ -98,10 +98,10 @@ public sealed class DatasetIntegrationTests : IDisposable
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null),
                   ("RI", Week), ("VT", Week), ("WV", "rosters 713 " + Week), ("AL", null), ("MI", null), ("CA", null)]))],
-            await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source NOT IN ('oig_cia', 'fema_structures', 'address_type') ORDER BY source"));
+            await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source NOT IN ('oig_cia', 'fema_structures', 'address_building', 'address_type') ORDER BY source"));
         Assert.StartsWith("3 agreements ", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'oig_cia'"));
-        // FEMA structures (item 18): the listing's newest date and a hash of its files, and the geocoded addresses in steps of 50,000.
-        Assert.Matches("^USA Structures 2024-12-06 [0-9a-f]{12}; 0\\+ addresses$", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'fema_structures'"));
+        // FEMA structures (item 18): the listing's newest date and a hash of its files (new addresses don't reload it, speed item 4).
+        Assert.Matches("^USA Structures 2024-12-06 [0-9a-f]{12}$", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'fema_structures'"));
         Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM reference_data WHERE source = 'address_type'")); // labelled after the load
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND (table_name LIKE '%\\_staging' " +

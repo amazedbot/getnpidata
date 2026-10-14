@@ -432,7 +432,7 @@ of 2026-10-13 proposed these items; the owner chose the order below. The state o
 | 2 | The steps after the projection work from a queue of changed providers | ~75 min → a few minutes; with item 1, a weekly run of ~10 min |
 | 3 | A dataset reload queues only the providers whose rows changed (the quality label's inputs) | a full relabel → only the changed providers |
 | 8 | Downloads kept until a load succeeds, reused when the server says unchanged, large files in parallel parts | no repeated 9 GB / 4 GB downloads after a failure |
-| 4 | FEMA buildings: match only new addresses, read only their areas | ~17 min + 21 GB → seconds |
+| 4 | FEMA buildings: match only new and moved addresses, reading the files in place (**done** 2026-10-14) | ~17 min + 21 GB download → ~6 min, no download (measured: 5,724 addresses) |
 | 5 | Overture in `run`, new addresses only; a full pass only for a new release | new addresses placed at the building without a manual 50–70 min run |
 | 12 | Bulk-load into tables without indexes, add them afterwards | big loads 1.5–3× faster |
 | 6 | Socrata delta pulls (TX, WA, IL, CO, CT, DE), a full pull every few weeks | changed rows only |

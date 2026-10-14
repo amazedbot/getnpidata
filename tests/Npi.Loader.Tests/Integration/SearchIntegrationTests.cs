@@ -1003,7 +1003,6 @@ public sealed class SearchIntegrationTests : IDisposable
         var source = new Npi.Loader.Datasets.FemaStructureSource();
         var release = await source.FindLatestAsync(context, _ct);
         Assert.StartsWith("USA Structures 2024-12-06 ", release.Version, StringComparison.Ordinal);
-        Assert.EndsWith("; 0+ addresses", release.Version, StringComparison.Ordinal); // 5 geocoded addresses, in steps of 50,000
 
         // A, D and E have points (B's two addresses are only at their ZIP centroids, so they aren't looked up).
         Assert.Equal(3L, await source.LoadAsync(context, release, _ct));
@@ -1041,6 +1040,40 @@ public sealed class SearchIntegrationTests : IDisposable
         var area = await search.SearchAreaAsync(new SearchFilter { AddressType = "residential" }, MapBounds.Parse("-74.1,40.5,-73.3,40.9")!, _ct);
         Assert.Equal([A], area.Items.Select(i => i.Provider.Npi));
         Assert.Equal("residential", area.Items[0].Provider.AddressType);
+
+        // Speed item 4: between releases only new or moved addresses are looked up, in the files in place. Nothing is due
+        // until the map changes.
+        var full = await ProjectionSnapshotAsync(db, ["address_building", "address_type", "building_search"]);
+        var files = Path.Combine(_folder, "fema-files", "usa-structures", "geoparquet");
+        Directory.CreateDirectory(files);
+        foreach (var part in new[] { "fema_part1.parquet", "fema_part2.parquet" })
+        {
+            File.Copy(Fixtures.Path("datasets/" + part), Path.Combine(files, part));
+        }
+
+        options.FemaStructuresReadBaseUrl = Path.Combine(_folder, "fema-files") + Path.DirectorySeparatorChar;
+        var http = new HttpClient(new FakeFema());
+        Assert.Equal(0L, await Npi.Loader.Datasets.FemaStructureSource.MatchNewAsync(options, db.Database, http, Logger.None, _ct));
+
+        // E's address is new (no building yet, labelled unknown meanwhile), A's point moved since its match, and an address
+        // that is no longer on the map keeps a row.
+        await db.ExecuteAsync(
+            """
+            DELETE b FROM address_building b JOIN provider_location l ON l.addr_key = b.addr_key WHERE l.npi = @E;
+            UPDATE address_building b JOIN provider_location l ON l.addr_key = b.addr_key SET b.lat = b.lat + 0.01 WHERE l.npi = @A;
+            INSERT INTO address_building (addr_key, matched, lat, lon) VALUES (REPEAT('f', 32), 'none', 40.0, -73.0);
+            """, new { A, E });
+        await labels.BuildAsync(_ct, full: true);
+        Assert.Equal("unknown", await db.ScalarAsync<string>(
+            "SELECT t.building_type FROM address_type t JOIN provider_location l ON l.addr_key = t.addr_key WHERE l.npi = @E", new { E }));
+        await db.ExecuteAsync("UPDATE reference_data SET checked_at = checked_at + INTERVAL 1 MINUTE WHERE source = 'provider_map'");
+        Assert.Equal(2L, await Npi.Loader.Datasets.FemaStructureSource.MatchNewAsync(options, db.Database, http, Logger.None, _ct));
+        var incremental = await ProjectionSnapshotAsync(db, ["address_building", "address_type", "building_search"]);
+        Assert.Equal(full["address_building"], incremental["address_building"]);
+        Assert.Equal(full["address_type"], incremental["address_type"]);
+        Assert.Equal(full["building_search"], incremental["building_search"]);
+        Assert.Equal(0L, await Npi.Loader.Datasets.FemaStructureSource.MatchNewAsync(options, db.Database, http, Logger.None, _ct)); // done until the map changes again
+        Assert.Equal(0, await db.ScalarAsync<int>("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'fema\\_%'"));
     }
 
     [Fact]

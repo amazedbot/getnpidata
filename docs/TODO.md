@@ -8,15 +8,15 @@ with the date and pull request, and stay in the list. New items are added only w
 proposals that wait for a yes are under "Waiting for the owner". Work goes one item at a time, and each waits for the
 owner's "go" (PRODUCT_PLAN.md §5).
 
-Last updated: 2026-10-13.
+Last updated: 2026-10-14.
 
 ## In progress
 
-Nothing. Speed items 1, 2, 3 and 8 are done (below); the next item waits for the owner's "go".
+Nothing. Speed items 1, 2, 3, 4 and 8 are done (below); the next item waits for the owner's "go".
 
 ## Next, in order
 
-1. **Speed items 4–5:** FEMA buildings matched only for new addresses, reading only their areas; Overture in `run` for new addresses only, a full pass only for a new Overture release.
+1. **Speed item 5:** Overture in `run` for new addresses only, a full pass only for a new Overture release.
 2. **Speed items 12 and 14:** bulk-load into tables without their indexes, add the indexes afterwards; relax MySQL's disk-flush settings during big loads (approved 2026-10-13; a crash loses the last second of writes, which a reload repeats). If a setting needs changing by hand (the loader doesn't change server settings itself, CLAUDE.md §7 Stage 1.8), the exact steps go to the owner first.
 3. **Speed items 6, 7, 10, 13:**
    - 6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull;
