@@ -441,5 +441,5 @@ of 2026-10-13 proposed these items; the owner chose the order below. The state o
 | 13 | The map-by-credential table built once; independent builders side by side | less after item 2 |
 | 11 | API caches: the openFDA key (**done**, PR #62); ClinicalTrials.gov 3–5 requests at once (not scheduled) | the first fill in one run instead of ~10 days |
 | 9 | Stream zips instead of extracting them, where a loader still extracts (not scheduled) | disk and time |
-| 14 | Relax MySQL's disk flushing during big loads (**approved 2026-10-13**: a crash loses the last second of writes, which a reload repeats; any setting changed by hand is explained to the owner first) | faster big loads |
+| 14 | Relax MySQL's disk flushing during big loads (**skipped** 2026-10-14 after measuring: a commit flush ~0.6 ms and the big loads are single statements; a bigger index-build buffer didn't help; approved 2026-10-13: a crash loses the last second of writes, which a reload repeats; any setting changed by hand is explained to the owner first) | faster big loads |
 | 16 | Build the loader to its own folder so loader work never waits on stopping the site (not scheduled) | development only |
