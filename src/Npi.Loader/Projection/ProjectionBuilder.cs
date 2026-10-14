@@ -231,7 +231,9 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         try
         {
             await CreateStagingAsync(connection, ct);
+            var deferred = await DeferredIndexes.DropAsync(connection, Tables.Select(t => t + "_staging"), ct);
             await FillStagingAsync(connection, "", ct);
+            await DeferredIndexes.RestoreAsync(connection, deferred, log, ct);
 
             var providers = await Database.CountAsync(connection, "provider_staging", ct);
             if (current > 0 && providers < current * minRowRatio)

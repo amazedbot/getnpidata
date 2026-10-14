@@ -342,7 +342,7 @@ public sealed class CredentialBuilder(Database database, ILogger log, double min
                 FROM `provider_credential_staging` c JOIN `provider_location` l ON l.`npi` = c.`npi`
                 """, ct);
             await Database.ExecuteAsync(connection, MapCredentialSql("provider_map_credential_staging", "provider_credential_staging", "provider_map"), ct);
-        }, ct);
+        }, ct, deferIndexes: true, log: log);
 
         var now = DateTime.UtcNow;
         await Database.ExecuteAsync(connection,

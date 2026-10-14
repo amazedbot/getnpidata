@@ -69,7 +69,7 @@ public sealed class MedicareEnrollmentSource : DatasetSource
                             GROUP BY `npi`, `enrollment_id`
                             """, ct);
                         await CsvTableLoader.LoadAsync(connection, reassignmentPath, "medicare_reassignment_staging", ReassignmentColumns, ct, "latin1");
-                    }, ct);
+                    }, ct, deferIndexes: true, log: context.Log);
                 loaded = true;
                 return counts["medicare_enrollment"] + counts["medicare_reassignment"];
             }

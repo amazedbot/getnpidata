@@ -130,7 +130,7 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
                 SELECT DISTINCT t.`building_type`, IFNULL(l.`state`, ''), IFNULL(l.`city`, ''), IFNULL(l.`zip5`, ''), l.`npi`
                 FROM `provider_location` l JOIN `address_type_staging` t ON t.`addr_key` = l.`addr_key`
                 """, ct);
-        }, ct);
+        }, ct, deferIndexes: true, log: log);
 
         var byType = (await connection.QueryAsync<(string Type, long Rows)>(new CommandDefinition(
             "SELECT `building_type`, COUNT(*) FROM `address_type` GROUP BY `building_type` ORDER BY 2 DESC", cancellationToken: ct))).ToList();

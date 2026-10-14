@@ -434,7 +434,7 @@ of 2026-10-13 proposed these items; the owner chose the order below. The state o
 | 8 | Downloads kept until a load succeeds, reused when the server says unchanged, large files in parallel parts | no repeated 9 GB / 4 GB downloads after a failure |
 | 4 | FEMA buildings: match only new and moved addresses, reading the files in place (**done** 2026-10-14) | ~17 min + 21 GB download → ~6 min, no download (measured: 5,724 addresses) |
 | 5 | Overture in `run`, new addresses only; a full pass only for a new release (**done** 2026-10-14) | new addresses placed at the building without a manual 50–70 min run (measured: 6,399 new addresses, 77% placed, 18.7 min the first time; ~10 min expected with a box per region) |
-| 12 | Bulk-load into tables without indexes, add them afterwards | big loads 1.5–3× faster |
+| 12 | Bulk-load into tables without indexes, add them afterwards (**done** 2026-10-14; full-text and spatial indexes kept, they cost more added afterwards) | big loads 1.5–3× faster (measured: full projection 63 → ~51 min, area counts 19 → 11 min; credentials, address types ~1 min less; quality, Part D, map unchanged) |
 | 6 | Socrata delta pulls (TX, WA, IL, CO, CT, DE), a full pull every few weeks | changed rows only |
 | 7 | Independent sources, states and the Vermont feed in parallel (2–4 at a time) | downloads overlap loads |
 | 10 | Deactivation flags by difference | 9.8M rows → a few thousand |

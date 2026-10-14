@@ -423,7 +423,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 {
                     await InsertLabelsAsync();
                     await RunAsync($"INSERT INTO `quality_search_staging` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
-                }, ct));
+                }, ct, deferIndexes: true, log: log));
                 await RunAsync($"DELETE FROM `{Pending}`"); // everyone was relabelled
                 await BuilderPending.CleanAsync(connection, null, ct);
             }
