@@ -376,7 +376,8 @@ because the development HTTPS certificate is trusted only for localhost.
 | `src/Npi.Web` | ASP.NET Core site (Razor Pages) and the `/api/v1` REST API, in one app |
 | `src/Npi.Client` | Typed .NET client for the API (netstandard2.0) |
 | `tests/` | xUnit v3 tests for each project, plus hand-made fixtures with tricky values (commas, quotes, braces, backslashes, Unicode) |
-| `db/migrations` | Numbered, idempotent SQL migrations, applied by `Npi.Loader migrate` ([details](db/migrations/README.md)) |
+| `db/migrations` | Numbered SQL migrations in topic folders, applied by `Npi.Loader migrate` ([details](db/migrations/README.md)) |
+| `db/schema.sql` | Every table as the migrations leave it, in one file, for reading |
 | `deploy/` | [Azure setup and deployment](deploy/azure.md), local MySQL setup script |
 | `CLAUDE.md` | Design decisions, as-built notes and progress log |
 

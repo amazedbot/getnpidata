@@ -1,95 +1,36 @@
 # Database migrations
 
-Numbered `.sql` files (`001_baseline.sql`, `002_…`), embedded in `Npi.Loader` and applied in
-order by `Npi.Loader migrate` against `LocalMySql`. Applied versions are recorded in
-`schema_migrations` (version, name, SHA-256, applied_at); each file runs once. The Azure database
-gets only the projection and reference tables (CLAUDE.md §6); which migrations run remotely is
-settled in Stage 6.
+Numbered `.sql` files (`001_baseline.sql`, `002_…`), grouped by topic in the folders below, embedded in `Npi.Loader` and
+applied by `Npi.Loader migrate` in **number order across all folders**. Applied versions are recorded in
+`schema_migrations` (version, name, SHA-256, applied_at); each file runs once. The loader reads only a file's number,
+name and contents, so a file may move between folders; its name and contents never change once applied.
+
+[`../schema.sql`](../schema.sql) shows every table as the migrations leave it, in one file, for reading. It is generated
+from a freshly migrated database and checked by the MySQL tests (`SchemaFileTests`): after adding a migration, run them
+with `NPI_UPDATE_SCHEMA=1` and commit the new file.
 
 Rules:
 
-- **One DDL statement per file** where possible. MySQL DDL is not transactional, but a single
-  `ALTER TABLE` is atomic in MySQL 8, so a failed migration leaves nothing half-applied and can
-  simply be re-run.
-- Never edit a migration that has been applied anywhere (the runner refuses when the checksum
-  changed); add a new one.
+- **One DDL statement per file** where possible. MySQL DDL is not transactional, but a single `ALTER TABLE` is atomic in
+  MySQL 8, so a failed migration leaves nothing half-applied and can simply be re-run.
+- Never edit a migration that has been applied anywhere (the runner refuses when the checksum changed); add a new one,
+  with the next free number, in the folder of its topic.
 - New tables: utf8mb4 and InnoDB.
 
-| File | What |
+| Folder | What |
 |---|---|
-| `001_baseline.sql` | The owner's 2026-10-07 schema, verbatim (see below). Idempotent. |
-| `002_npidata_v2.sql` | `npidata` → utf8mb4, all non-key columns TEXT, old secondary indexes dropped, `Is_Deactivated` + `Loaded_From` added. Runs with `innodb_strict_mode=OFF` (the worst-case row-size check fails even for all-TEXT; real rows fit, see the file). Rebuilds the table (several minutes). |
-| `003_downlog_status.sql` | `downlog` bookkeeping: kind, file_date, status (existing rows → `Legacy`), timings, rows, error; `filename` UNIQUE. |
-| `004_extractlog_rows.sql` | `extractlog.rows_loaded`. |
-| `005_deactivated_report_utf8mb4.sql` | `nppes_deactivated_npi_report` → utf8mb4. |
-| `006_taxonomy_codes_utf8mb4.sql` | `taxonomy_codes` → utf8mb4, Specialization widened to 150, `Nucc_Version`, index (Classification, Specialization). |
-| `007_zip_county.sql` | HUD ZIP → county crosswalk table. |
-| `008_county.sql` | County names (Gazetteer, 2020 codes fallback). |
-| `009_zip_centroid.sql` | ZCTA centroids for radius search. |
-| `010_reference_data.sql` | Loaded version of each reference source. |
-| `011_provider.sql` … `014_provider_other_name.sql` | Search projection: provider, provider_taxonomy, provider_location, provider_other_name. |
-| `015_data_version.sql` | What the projection was built from ("Data as of"). |
-| `016_provider_search.sql` | (taxonomy_code, state, city, zip5, npi) accelerator for specialty + location searches. |
-| `017_endpoints.sql` | Raw NPPES `endpoint_pfile` (Stage 5.5 item 1). |
-| `018_provider_profile.sql` … `020_provider_endpoint.sql` | Projection: registration details (mailing address, authorized official, parent org), other identifiers, endpoints. |
-| `021_reference_data_widen.sql` | `reference_data.version` 200, `source_url` 1000 (dataset file names and URLs are long). |
-| `022_oig_exclusion.sql` … `024_medicare_order_referring.sql` | Compliance: OIG LEIE, Medicare opt-out, order & referring (item 2). |
-| `025_cc_dac_raw.sql` … `028_cc_facility_affiliation.sql` | Care Compare: raw DAC template, clinicians, group practices, facility affiliations (item 3). |
-| `029_cms_hospital.sql` … `031_cms_facility_npi.sql` | Facilities: hospitals, nursing homes, CCN ↔ NPI from the enrollments (item 4). |
-| `032_provider_location_covering.sql` | Replaces `provider_location (npi)` with a covering (npi, state, zip5, city) index. |
-| `033_medicare_utilization.sql` … `036_medicare_part_d.sql` | Medicare Part B totals, raw by-service template, top 5 services, Part D (item 5). |
-| `037_hrsa_shortage_raw.sql` … `040_county_population_raw.sql` | Area insights: HPSA raw template, county shortage areas, county population + raw template (item 7). |
-| `041_open_payments_raw.sql` … `044_open_payments_payer.sql` | Open Payments: raw template, per-NPI summary, by nature of payment, top 3 payers (item 6). |
-| `045_provider_location_addr_key.sql` | VIRTUAL street-address key on `provider_location` (item 10, map search); metadata-only change. |
-| `046_address_geocode.sql` | Census geocoder results per street address (a cache; rows only added). |
-| `047_provider_map.sql` | One map point per provider and street address, with a SPATIAL index. |
-| `048_provider_map_specialty.sql` | Specialty × 0.1° grid cell → NPI, for specialty map searches. |
-| `049_address_point.sql` | Building-level locations from Overture Maps (address points, place addresses, place names). |
-| `050_provider_map_source.sql` | `provider_map.source`: how each point was placed (instant ADD COLUMN with a default). |
-| `051_credentials.sql` | Standardized credentials (item 12): raw → standard map, provider credentials, the dropdown list. |
-| `052_credential_search.sql` | Credential × practice location, for fast credential + location searches. |
-| `053_provider_map_credential.sql` | Credential × map grid cell → NPI, for credential map searches. |
-| `054_provider_dates.sql` | Indexes on `provider` enumeration and last-update dates, for the new / recently updated filters (item 11). |
-| `055_provider_change.sql` | `provider_change`: the change log each projection appends to (item 11). |
-| `056_provider_phonetic.sql` | Soundex keys of last/first names as indexed virtual columns on `provider`, for similar-name search (item 9). |
-| `057_provider_org_name.sql` | `provider_org_name`: organization legal + other names with a FULLTEXT index, for word-anywhere search (item 9); filled once from the current projection. |
-| `058_open_payments_year.sql` | Open Payments per NPI and program year: general, research, research as principal investigator, ownership (item 13). |
-| `059_open_payments_company.sql` | The top 5 companies per NPI over all program years, by payment type (item 13). |
-| `060_cc_mips.sql` | Clinician MIPS scores (individual, group, APM entity), item 14. |
-| `061_cms_hospital_quality.sql` | Hospital outcome measure counts (better/worse than national) and the HCAHPS summary star rating, item 14. |
-| `062_cms_home_health_hospice.sql` | Home health agencies and hospices with their star ratings, item 14. |
-| `063_state_license.sql` | State license records and board actions (NY, TX, WA, IL, CO open data) matched to NPIs, item 15. |
-| `064_state_license_raw_keys.sql` | A last-digits license key, full names and an id on the state license template (more states, item 15). |
-| `065_open_payments_companies.sql` | Company pages (item 17): companies, their payments per year, natures, products, specialties and top providers; company IDs on the per-NPI payer tables. |
-| `066_company_records.sql` | FDA recalls, SEC registrants and OIG integrity agreements for the company pages, matched by name key (item 17 extras). |
-| `067_company_parent.sql` | The hand-made list of subsidiaries and their public parent companies (SEC CIK), item 17. |
-| `068_open_payments_products.sql` | Product pages (item 19, part 1): every product named in the newest year's general and research payments, its companies, kinds of payment, specialties, top providers and studies; each provider's top products. |
-| `069_fda_products.sql` | What a product is (item 19, part 2): FDA's NDC directory, Drugs@FDA approvals, the labels and GUDID device records of the products named in Open Payments, 510(k)/PMA decisions; `op_product.ndc_key`. |
-| `070_fda_ndc_lookups.sql` | Brand-name and application indexes on the NDC directory (product pages, item 19 part 2). |
-| `071_product_public_data.sql` | Product pages, part 3 (item 19): CMS spending by drug, NADAC prices, FDA shortages, the adverse event and ClinicalTrials.gov caches; FULLTEXT on FDA recall descriptions. |
-| `072_nadac_classification.sql` | NADAC classification widened for B-ANDA / B-BIO (item 19, part 3). |
-| `073_product_prescribing.sql` | Product pages, part 4 (item 19): every (drug product, NPI) payment pair, and Medicare Part D prescribing per brand and NPI. |
-| `074_product_prescribing_cache.sql` | The prescribing overlap precomputed per product (item 19, part 4). |
-| `075_address_building.sql` | Practice address type (item 18): the FEMA USA Structures building under each practice address, and the label per address (commercial, residential, care, unknown). |
-| `076_building_search.sql` | Practice building × location (item 18), so a building type in a state or county is one index range. |
-| `077_provider_deactivated.sql` | Every deactivated NPI with its date, for the "Deactivated on [date]" status page (redesign step 1.4). |
-| `078_medicare_enrollment.sql` | Medicare enrollment (PPEF) and group reassignments (redesign step 1.5). |
-| `079_area_counts.sql`, `080_area_new_providers.sql` | Provider counts per area and specialty for the area pages (redesign step 1.6). |
-| `081_cc_dac_raw_address.sql`, `082_cc_clinician_location.sql` | Care Compare practice addresses per clinician and ZIP code, for the record-quality check (Phase 3 step 3.1). |
-| `083_provider_quality.sql` | Record quality per provider: current / check / stale, with the reasons and signs of practice (Phase 3 step 3.1). |
-| `084_quality_search.sql` | Record quality × practice location, so a label in a state or county is one index range (Phase 3 step 3.1). |
-| `085_practice_signals.sql` | Signs of current practice: opioid treatment programs, Medicare revalidation list, equipment suppliers that billed Medicare (Phase 3 step 3.1). |
-| `086_cms_pos_facility.sql` | CMS Provider of Services: every certified facility, active or terminated, for closures (Phase 3 step 3.1). |
-| `087_address_place.sql` | Businesses Overture Maps lists at each practice address, with operating status (Phase 3 step 3.1). |
-| `088_state_license_by_state.sql` | Per-state license versions, the queue of NPIs to relabel, an index for replacing one state's licenses. |
-| `089_projection_pending.sql` | The queue of NPIs whose NPPES data changed, so the projection rebuilds only them. |
-| `090_npidata_source_hash.sql` | `npidata.Source_Hash`: a hash of the projected columns written while a file loads, so a monthly finds changed NPIs fast. |
-| `091_builder_pending.sql` | Queues and old-row snapshots so the builders after an incremental projection update only its NPIs. |
-| `092_builder_old_location_label.sql` | `builder_old_location.label_input` (suite or floor, organization), so address type labels are redone only where an input changed. |
-| `093_address_building_point.sql` | `address_building.lat`/`lon`: the point each address was matched from, so only new or moved addresses are looked up in the FEMA files. |
-| `094_overture_checked.sql` | `overture_checked`: every address an Overture pass looked at and its release, so `run` places only new addresses between releases. |
+| [`nppes/`](nppes/README.md) | NPPES raw data and load bookkeeping: 8 files (001, 002, 003, 004 …) |
+| [`reference/`](reference/README.md) | Reference data: 6 files (006, 007, 008, 009 …) |
+| [`search/`](search/README.md) | Search projection and search features: 18 files (011, 012, 013, 014 …) |
+| [`map/`](map/README.md) | Map, geocoding and buildings: 11 files (046, 047, 048, 049 …) |
+| [`cms/`](cms/README.md) | CMS and OIG datasets: 22 files (022, 023, 024, 025 …) |
+| [`areas/`](areas/README.md) | Area facts: 6 files (037, 038, 039, 040 …) |
+| [`industry/`](industry/README.md) | Open Payments, companies and products: 16 files (041, 042, 043, 044 …) |
+| [`state-licenses/`](state-licenses/README.md) | State licenses: 3 files (063, 064, 088) |
+| [`quality/`](quality/README.md) | Record quality: 2 files (083, 084) |
+| [`incremental/`](incremental/README.md) | Incremental loading queues: 3 files (089, 091, 092) |
 
-## 001_baseline.sql
+## nppes/001_baseline.sql
 
 A faithful copy of the owner's `workplace` schema (MySQL 8.0.37) taken on 2026-10-07 from the
 per-table mysqldump backup `workplace.zip`. Only three things changed: `CREATE TABLE` became

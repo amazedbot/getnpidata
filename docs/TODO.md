@@ -83,6 +83,7 @@ Nothing. Speed items 1, 2, 3, 4, 5, 8, 10 and 12 are done (below); the next item
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Migrations in topic folders, `db/schema.sql`~~ (2026-10-14, owner's request)
 - ~~Item 10: deactivation flags by difference~~ (2026-10-14: after a monthly under 1 s instead of 55–61 s, after a report a few seconds instead of ~57 s; the NPIs queued in the monthly's existing diff pass, which took no longer)
 - ~~Item 14: relax MySQL's disk flushing~~ skipped (owner, 2026-10-14). Measured first in throwaway test databases: a commit flush costs ~0.6 ms (20,000 one-row commits 12.8 s, one commit 0.24 s), and the big loads are single statements, so `innodb_flush_log_at_trx_commit = 2` would save little; a bigger `innodb_ddl_buffer_size` (64–256 MB, 4 or 8 threads) didn't speed index builds (provider 184–217 s vs 199 s); turning off doublewrite (~560 GB extra writes in 4 days) would risk corrupt tables on a power cut, so it wasn't proposed
 - ~~Item 12: staging tables filled without their plain secondary indexes, added in one statement afterwards~~ (2026-10-14: full projection 63 → ~51 min, area counts 1,163 → 634 s, credentials and address types ~1 min less each; FULLTEXT and SPATIAL kept, they cost more added afterwards)
