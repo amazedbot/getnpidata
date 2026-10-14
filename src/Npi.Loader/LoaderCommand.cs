@@ -17,6 +17,8 @@ public enum LoaderCommand
     Geocode,
     Overture,
     Publish,
+    Doctor,
+    Sample,
 }
 
 /// <summary>A parsed command line: the command plus its positional arguments.</summary>
@@ -40,6 +42,8 @@ public static class LoaderCommandLine
         ["geocode"] = LoaderCommand.Geocode,
         ["overture"] = LoaderCommand.Overture,
         ["publish"] = LoaderCommand.Publish,
+        ["doctor"] = LoaderCommand.Doctor,
+        ["sample"] = LoaderCommand.Sample,
     };
 
     public const string Usage = """
@@ -47,6 +51,8 @@ public static class LoaderCommandLine
 
         Commands:
           run              Download and load everything new (default)
+          doctor           Check this computer's setup (MySQL, logins, folders, network, settings) and say what to fix
+          sample           Quick try: load only the newest weekly file (~50,000 providers) and build the site's tables
           migrate          Apply database migrations
           discover         List the NPPES files that run would process (dry run)
           load-file <zip>  Load one NPPES zip manually

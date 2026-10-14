@@ -12,7 +12,10 @@
 
 # IDE and user files
 .vs/
-.vscode/
+.vscode/*
+# Shared VS Code setup: the C# Dev Kit and the solution to open.
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 *.user
 *.suo
@@ -31,3 +34,9 @@ appsettings.*.Local.json
 *.zip
 *.xlsx
 !tests/fixtures/**
+
+# Published copies the scripts run (scripts/site.ps1, scripts/loader.ps1), so builds never collide with a running site
+.run/
+
+# docker compose passwords (copy .env.example)
+.env

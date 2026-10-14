@@ -88,7 +88,7 @@ public sealed partial class MigrationRunner(Database database, ILogger log)
         return pending.Count;
     }
 
-    private static async Task<IReadOnlyList<Migration>> GetPendingAsync(MySqlConnection connection, CancellationToken ct)
+    internal static async Task<IReadOnlyList<Migration>> GetPendingAsync(MySqlConnection connection, CancellationToken ct)
     {
         await Database.ExecuteAsync(connection, CreateTrackingTable, ct);
         var applied = (await connection.QueryAsync<(int Version, string Sha256)>(

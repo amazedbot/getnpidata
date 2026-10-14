@@ -170,8 +170,16 @@ getnpidata/
                            edit one, add a new one (next number, in its topic's folder) and regenerate schema.sql.
   deploy/
     azure.md               Azure setup + deploy notes
-    setup-local-mysql.ps1  configures a local MySQL 8.4 for the loader
-  .github/workflows/ci.yml build + test on every PR and push to master
+    setup-local-mysql.ps1  configures a local MySQL 8.4 for the loader (Windows)
+    docker/init/           the login script the MySQL container runs once (docker-compose.yml)
+  docker-compose.yml       MySQL 8.4 set up for the loader on any OS; passwords in the git-ignored .env (.env.example)
+  scripts/                 PowerShell (5.1 and 7): setup-secrets.ps1 (-Docker | -CreateLogins), loader.ps1 <command>,
+                           site.ps1 [-Port], test.ps1 [-UpdateSchema]; the loader and site run from published copies in
+                           the git-ignored .run/, so building never collides with a running site
+  .vscode/                 extensions.json (C# Dev Kit) and settings.json (the solution), shared
+  .github/workflows/ci.yml           build + test on every PR and push to master
+  .github/workflows/fresh-clone.yml  README's setup on a clean Linux machine (Docker MySQL, scripts, doctor, every test
+                                     with MySQL, sample load, the site answering), when the parts it covers change
 ```
 
 **Tests** use **xUnit v3** on **Microsoft.Testing.Platform** (MTP). The .NET 10 SDK no longer runs xunit.v3 4.x
@@ -194,7 +202,8 @@ through VSTest, so `global.json` opts `dotnet test` into MTP. Consequences:
 
 **Config & secrets:**
 - **Where things go.** `appsettings.json` holds non-secret defaults. Secrets go in user-secrets (loader and dev), environment variables or the git-ignored `appsettings.Local.json`; in production, in App Service → Configuration. **Never commit a real password, token or API key.**
-- **Names.** Connection strings are `LocalMySql` (loader) and `RemoteMySql` (site). Settings: `WorkFolder` (default `%ProgramData%\getnpidata\work`), `LogFolder` (default `%ProgramData%\getnpidata\logs`), `HudApiToken`, and `Api:*` for the site (§7 Stage 5).
+- **Names.** Connection strings are `LocalMySql` (loader) and `RemoteMySql` (site). Settings: `WorkFolder` (default `%ProgramData%\getnpidata\work` on Windows, `~/.local/share/getnpidata/work` elsewhere: `LoaderOptions.DefaultRoot`), `LogFolder` (`…\logs`), `HudApiToken` (optional since 2026-10-14: without it HUD is skipped with a warning), and `Api:*` for the site (§7 Stage 5).
+- **A fresh clone** (owner, 2026-10-14: anyone should be able to run what the owner runs): README "Running it yourself" — Docker or a Windows MySQL, `scripts/setup-secrets.ps1`, `scripts/loader.ps1 doctor`, `migrate`, `sample` or `run`, `scripts/site.ps1`. The analysis rules are pinned (`AnalysisLevel` 10.0-recommended) so a newer SDK can't break the build with new warnings.
 - **The HUD token** has been issued to the owner. If it's missing, ask the owner to run `dotnet user-secrets --project src/Npi.Loader set "HudApiToken" "<token>"`, and never paste it into a tracked file.
 
 ---
@@ -281,7 +290,7 @@ Work stage by stage, one branch per stage (§10). At the end of each stage, upda
 Old copies, unrelated projects and stale files were removed. The `src/` + `tests/` skeleton, CI and `deploy/azure.md` were created. The owner's backup was restored as `npi_test`, and its schema became `db/migrations/001_baseline.sql`.
 
 ### Stage 1 — C# loader (done)
-Commands (`Npi.Loader <command>`): `run` (default), `migrate`, `discover`, `load-file <zip>`, `reference`, `project`; since Stage 5.5 also `datasets`, `credentials`, `address-types`, `quality`, `areas`, `geocode` and `overture` (§7 Stage 5.5). `publish` belongs to the old Stage 6 design and exits 1 "not implemented".
+Commands (`Npi.Loader <command>`): `run` (default), `migrate`, `discover`, `load-file <zip>`, `reference`, `project`; since Stage 5.5 also `datasets`, `credentials`, `address-types`, `quality`, `areas`, `geocode` and `overture` (§7 Stage 5.5); since 2026-10-14 `doctor` (checks this computer's setup and says what to fix; changes nothing) and `sample` (the newest weekly file only, the reference data and the tables built from them, for a quick try; the weekly is recorded as `Sample`, not Completed, so a later `run` loads the monthly and then that weekly again). `publish` belongs to the old Stage 6 design and exits 1 "not implemented".
 
 1. **Discover:** `HttpClient` GET of `NPI_Files.html`. Hrefs are classified by regex, V2 only:
    - `^NPPES_Data_Dissemination_(?<month>[A-Za-z]+)_(?<year>\d{4})_V2\.zip$` → monthly
@@ -501,6 +510,9 @@ come first. Code comments cite these item numbers:
 ## 8. Commands and environment
 
 ```powershell
+scripts/loader.ps1 doctor                           # what this computer still needs (MySQL, logins, folders, settings)
+scripts/site.ps1 -Port 5080                         # the site, from a published copy in .run/site (the owner's LAN site)
+scripts/test.ps1                                    # every test, the MySQL ones with the NpiTestMySql user-secret
 dotnet build getnpidata.sln
 dotnet test                                         # MySQL integration tests run only when NPI_TEST_MYSQL is set
 dotnet run --project src/Npi.Loader -- discover
@@ -528,7 +540,7 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 **Working from a Claude Code session on the loader PC:**
 - Claude's shells may see a private `%APPDATA%`, so they can't read or write the owner's user-secrets. Scripts that need the secrets run in the owner's Terminal panel. They read `secrets.json` there, write any MySQL client option file to a temp path, and delete it afterwards.
 - Windows PowerShell 5.1 redirection (`*>`) writes UTF-16, so decode before grepping.
-- A running site locks `src/Npi.Web/bin`. Stop it before building the solution, or build to another `OutDir`.
+- A site started with `dotnet run` locks `src/Npi.Web/bin`, so building the solution fails while it runs; `scripts/site.ps1` serves a published copy from `.run/site` instead (the LAN site on 5080 runs that way since 2026-10-14).
 
 ---
 
@@ -631,6 +643,7 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 | 2026-10-14 | Speed item 4 | **FEMA buildings for new addresses only** (migration 093). On `workplace`: 093 (the point of each of the 3,174,738 rows, from the map) 140 s. `run`: **5,724 new addresses looked up in the FEMA files in place and 1,920 no longer mapped removed in 5.6 min** (was a 17 min full load with a 21 GB download, every 50,000 geocoded addresses); a dry run of the same addresses found 80 inside a building and 4,364 within 30 m (new addresses are Census street estimates until Overture places them, speed item 5). Then 5,724 addresses relabelled for 6,005 providers in 170 s and 4,226 records relabelled in 98 s; label totals unchanged. A second `run`: nothing due (the map hadn't changed). Reading in place was measured first: one point 4 s; a spatial-box join without DuckDB's spatial join took over 10 min. Tests: Loader 224 (with MySQL). |
 | 2026-10-14 | Speed item 5 | **Overture in `run` for new addresses only** (migration 094, 15 s on `workplace`: 3,307,206 addresses recorded as looked at by the 10/12 full pass). `run`: **6,399 new addresses (from the October monthly and weekly), 4,951 placed (77%: 4,155 by address point, 783 by place address, 13 by place name), 2,508 with a listed business, in 18.7 min** (a full pass is 50–70 min); then address types 2.5 min, the map 1 min (5,239 providers moved to their building), FEMA 5.9 min (4,951 moved points matched in place), address types again 2.2 min, record quality 1.9 min (5,239 relabelled: Current +319, Check −320); the whole run 34 min. A second `run`: nothing due, 2 min. That first pass read 13.6 min, because Guam put one box around the globe and no part of the places file could be skipped (measured: places in the mainland box 1.7 min, unboxed 5 min; addresses 5–6 min either way, set by the network); the new addresses are now split into a box per region, so the next weekly should read in about 8 min. Tests: Loader 226 (with MySQL). |
 | 2026-10-14 | Fix | **Suite-or-floor sign of the address type label** (no migration). Item 2 (PR #65) moved the check into `AddressTypeBuilder.SuiteSql` as a plain C# string, so MySQL got `'\b'` read as a backspace instead of a word boundary and no address with STE, SUITE, FL, BLDG … counted as a business sign; incremental relabels since 10-13 hid it, a full rebuild for speed item 12 showed it (commercial 1,846,469 → 1,740,514). Verbatim string again, with a test running the expression in MySQL. **Relabelled on `workplace`:** address types 535 s (commercial 1,847,645, residential 1,142,330, unknown 321,614), record quality 1,436 s (Current 6,018,679, Check 1,677,377, Stale 1,798,199). Tests: Loader 227 (with MySQL). |
+| 2026-10-14 | — | **A fresh clone runs** (owner: a friend's clone wouldn't build or load; he opened the solution in VS Code without the .NET 10 SDK and without following the README). New: `doctor`, `sample`, Linux/macOS folder defaults, an optional HUD token, `docker-compose.yml` (MySQL 8.4 + the three logins), `scripts/` (setup-secrets, loader, site, test), `AnalysisLevel` pinned, `.vscode/`, the README setup rewritten, and `fresh-clone.yml`. **Linux (GitHub Actions, Ubuntu 24.04, MySQL 8.4.11 in Docker), 8 min:** doctor (4 warnings before migrating, as expected), 95 migrations, all 628 tests with MySQL, `sample` from the real 10/05–10/11 weekly (49,658 rows in 4 s; 31,954 providers; 32,091 addresses geocoded, 91% matched, one Census 502 retried), doctor again (2 warnings: no HUD token, 77 GB disk), then the site and API answering (search, profile, CSV, map, companies). A full load wasn't tried there: the runner has 77 GB of disk, under the ~100 GB doctor asks for. Windows: 628 tests with MySQL through `scripts/test.ps1`; doctor on the owner's PC all OK; the LAN site on 5080 now runs from `scripts/site.ps1`. `db/schema.sql` now comes from the untouched template (a reused test database had one table's indexes in another order). |
 | 2026-10-14 | — | **Migrations in topic folders** (owner: 95 files in one folder were hard to follow). `db/migrations/<topic>/` (nppes, reference, search, map, cms, areas, industry, state-licenses, quality, incremental), each with a README listing its files; names, numbers and contents unchanged, so the checksums are too (`migrate` on `workplace`: up to date). `db/schema.sql` (152 tables, generated from a freshly migrated test database) shows the whole schema in one file; `SchemaFileTests` fails when it's out of date (`NPI_UPDATE_SCHEMA=1` rewrites it). Tests: Loader 230 (with MySQL). |
 | 2026-10-14 | Speed item 10 | **Deactivation flags by difference** (migration 095, 0.1 s on `workplace`). The October monthly loaded again: its diff queued 186 NPIs for the flags in the pass that already compares the rows (npidata 321 s, was 324 s: the two date comparisons cost nothing), and **the flags took under 1 s after the swap instead of 55–61 s** (every npidata row); the newest report loaded again in 11 s in all, its flags a few seconds (were ~57 s); 0 flags changed either time, as a full recompute shows. The 186 NPIs were those the 10/05–10/11 weekly had updated after the monthly, so the weekly was loaded again (19 s) and `run` rebuilt them (labels and counts unchanged). Tests: Loader 229 (with MySQL), including a full recompute after every load changing nothing, a reactivation-date-only change and a load stopped before its flags. |
 | 2026-10-14 | Speed item 12 | **Secondary indexes built after loading** (no migration). Measured on `workplace` with every index deferred, full builds before → after: projection 63:05 → 54:25 (provider 735 → 270 s + 200 s index build, locations 490 → 336 s + 77 s, search rows 382 → 284 s + 44 s, taxonomy 280 → 217 s + 33 s, row_hash 968 → 801 s; org names 83 → 43 s but 200 s for the FULLTEXT afterwards, so FULLTEXT is now kept, ~3 min less again), credentials 465 → 437 s, address types 633 → 560 s, area counts 1,163 → 634 s, Medicare enrollment 319 → 311 s; record quality (1,459 → 1,458 s) and Part D (771–833 → 805 s) unchanged; the map 1,413 → 1,483 s (its SPATIAL index built afterwards took 789 s), so SPATIAL is kept and the map defers nothing. The full rebuild also exposed the suite-regex bug (fixed in PR #74). Tests: Loader 228 (with MySQL). |

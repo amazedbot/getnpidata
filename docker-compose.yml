@@ -1,0 +1,37 @@
+# MySQL 8.4 set up the way the loader needs it (CLAUDE.md §8), for any OS with Docker:
+#   copy .env.example to .env and set the passwords, then: docker compose up -d
+# The data lives in the named volume npi-mysql (a full load is ~35 GB); docker compose down keeps it, down -v deletes it.
+# Then: scripts/setup-secrets.ps1 -Docker   (stores the connection strings for the loader, the site and the tests)
+name: getnpidata
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"   # this computer only
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set it in .env}
+      MYSQL_DATABASE: ${NPI_DATABASE:-npi}
+      MYSQL_USER: npi_loader                   # gets every privilege on the database; the init script adds the rest
+      MYSQL_PASSWORD: ${NPI_LOADER_PASSWORD:?set it in .env}
+      NPI_WEB_PASSWORD: ${NPI_WEB_PASSWORD:?set it in .env}
+      NPI_TEST_PASSWORD: ${NPI_TEST_PASSWORD:?set it in .env}
+    command:
+      - --local-infile=ON                      # the loader bulk-loads with LOAD DATA LOCAL
+      - --disable-log-bin                      # one local server, no replication: no binary log
+      - --mysqlx=OFF
+      - --innodb-buffer-pool-size=${MYSQL_BUFFER_POOL:-4G}
+      - --innodb-redo-log-capacity=4G
+      - --max-allowed-packet=256M
+    volumes:
+      - npi-mysql:/var/lib/mysql
+      - ./deploy/docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  npi-mysql:

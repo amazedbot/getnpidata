@@ -100,6 +100,19 @@ internal sealed class TestDatabase : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The migrated template itself, which no test writes to: for reading the schema exactly as the migrations leave it (a
+    /// pool database a test swapped tables in lists the same indexes in another order).
+    /// </summary>
+    public static async Task<Database> TemplateAsync()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(EnvironmentVariable);
+        Assert.SkipWhen(string.IsNullOrWhiteSpace(connectionString), $"{EnvironmentVariable} is not set; skipping MySQL integration test.");
+        var server = new MySqlConnectionStringBuilder(connectionString) { Database = "" }.ConnectionString;
+        var template = await TemplateAsync(server);
+        return new Database(new MySqlConnectionStringBuilder(server) { Database = template.Name }.ConnectionString);
+    }
+
     private static string PoolName(string suffix) => $"{PoolPrefix}{SchemaHash}_{suffix}";
 
     internal static string NewName(DateTime utcNow) =>

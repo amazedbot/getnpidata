@@ -93,11 +93,12 @@ public sealed class ReferenceIntegrationTests
     }
 
     [Fact]
-    public async Task A_missing_hud_token_fails_only_hud()
+    public async Task A_missing_hud_token_skips_only_hud()
     {
         await using var db = await TestDatabase.CreateAsync();
 
-        Assert.False(await Loader(db, new FakeSources(), token: "").RefreshAllAsync(force: false, _ct));
+        // Optional (a fresh clone has none): HUD is skipped with a warning, and the rest loads.
+        Assert.True(await Loader(db, new FakeSources(), token: "").RefreshAllAsync(force: false, _ct));
 
         Assert.Equal(["census_gazetteer", "nucc"], await db.QueryAsync<string>("SELECT source FROM reference_data ORDER BY source"));
         Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM zip_county"));

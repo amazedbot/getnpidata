@@ -111,8 +111,10 @@ public sealed class ReferenceLoader(LoaderOptions options, Database database, Ht
     {
         if (string.IsNullOrWhiteSpace(options.HudApiToken))
         {
-            throw new InvalidOperationException(
-                "HudApiToken is not set. Set it with: dotnet user-secrets --project src/Npi.Loader set \"HudApiToken\" \"<token>\"");
+            // Optional: without it there is no ZIP-county crosswalk, so county search and the area pages stay empty.
+            log.Warning("HudApiToken is not set: the HUD ZIP-county crosswalk is skipped, so county search and the area pages stay empty. " +
+                "Get a free token at https://www.huduser.gov/portal/dataset/uspszip-api.html, then: dotnet user-secrets --project src/Npi.Loader set \"HudApiToken\" \"<token>\"");
+            return;
         }
 
         // HUD publishes quarterly and the only way to see the version is to download everything

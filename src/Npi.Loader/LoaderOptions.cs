@@ -3,10 +3,10 @@ namespace Npi.Loader;
 /// <summary>Loader settings (CLAUDE.md §5). Secrets come from user-secrets or environment variables.</summary>
 public sealed class LoaderOptions
 {
-    /// <summary>Downloads and temporary files. Default: %ProgramData%\getnpidata\work.</summary>
+    /// <summary>Downloads and temporary files. Default: <see cref="DefaultRoot"/>/work.</summary>
     public string WorkFolder { get; set; } = "";
 
-    /// <summary>Rolling log files. Default: %ProgramData%\getnpidata\logs.</summary>
+    /// <summary>Rolling log files. Default: <see cref="DefaultRoot"/>/logs.</summary>
     public string LogFolder { get; set; } = "";
 
     /// <summary>Keep the most recently loaded zip in the work folder (older ones are deleted).</summary>
@@ -155,7 +155,7 @@ public sealed class LoaderOptions
 
     /// <summary>
     /// State license files the owner downloads from boards that require a sign-in, one subfolder per state (FL), Stage 5.5
-    /// item 15. Default: %ProgramData%\getnpidata\state-files.
+    /// item 15. Default: <see cref="DefaultRoot"/>/state-files.
     /// </summary>
     public string StateLicenseFilesFolder { get; set; } = "";
 
@@ -165,8 +165,20 @@ public sealed class LoaderOptions
 
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");
 
+    /// <summary>
+    /// Where the work, log and state-file folders go unless configured: %ProgramData%\getnpidata on Windows; elsewhere
+    /// $XDG_DATA_HOME/getnpidata, else ~/.local/share/getnpidata (the shared data folder there, /usr/share, isn't writable).
+    /// </summary>
+    public static string DefaultRoot => DefaultRootFor(OperatingSystem.IsWindows(), Environment.GetEnvironmentVariable("XDG_DATA_HOME"),
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    internal static string DefaultRootFor(bool windows, string? xdgDataHome, string programData, string home) =>
+        windows ? Path.Combine(programData, "getnpidata")
+        : !string.IsNullOrWhiteSpace(xdgDataHome) ? Path.Combine(xdgDataHome, "getnpidata")
+        : Path.Combine(home, ".local", "share", "getnpidata");
+
     private static string Resolve(string configured, string leaf) =>
         string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "getnpidata", leaf)
+            ? Path.Combine(DefaultRoot, leaf)
             : Environment.ExpandEnvironmentVariables(configured);
 }
