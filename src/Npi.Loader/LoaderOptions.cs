@@ -138,6 +138,12 @@ public sealed class LoaderOptions
     /// <summary>Prefix of the listed keys' download URLs.</summary>
     public string FemaStructuresBaseUrl { get; set; } = "https://data.source.coop/wherobots/";
 
+    /// <summary>
+    /// Where DuckDB reads the listed files in place when only new addresses are matched (speed item 4); null = the same as
+    /// <see cref="FemaStructuresBaseUrl"/>. A local folder works too (the tests).
+    /// </summary>
+    public string? FemaStructuresReadBaseUrl { get; set; }
+
     /// <summary>Overture places below this confidence (0–1) are ignored.</summary>
     public double OverturePlaceMinConfidence { get; set; } = 0.6;
 
