@@ -104,4 +104,13 @@ public class OvertureIndexTests
         Assert.Empty(index.PlacesAt("14 MAIN ST", "11701"));
         Assert.Empty(index.PlacesAt("A BUILDING NAME", "11701"));
     }
+
+    [Fact]
+    public void New_addresses_are_read_in_one_box_per_region_not_one_around_the_globe()
+    {
+        // Two in New York, one in Maine, one in Honolulu, one in Guam.
+        var boxes = Npi.Loader.Geocoding.OvertureMatcher.Boxes([(40.7, -73.9), (40.9, -73.2), (43.7, -70.3), (21.3, -157.8), (13.5, 144.8)]);
+        Assert.Equal([(13.5, 144.8, 13.5, 144.8), (21.3, -157.8, 21.3, -157.8), (40.7, -73.9, 43.7, -70.3)], boxes.Order().ToList());
+        Assert.Empty(Npi.Loader.Geocoding.OvertureMatcher.Boxes([]));
+    }
 }

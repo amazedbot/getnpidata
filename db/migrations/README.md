@@ -87,6 +87,7 @@ Rules:
 | `091_builder_pending.sql` | Queues and old-row snapshots so the builders after an incremental projection update only its NPIs. |
 | `092_builder_old_location_label.sql` | `builder_old_location.label_input` (suite or floor, organization), so address type labels are redone only where an input changed. |
 | `093_address_building_point.sql` | `address_building.lat`/`lon`: the point each address was matched from, so only new or moved addresses are looked up in the FEMA files. |
+| `094_overture_checked.sql` | `overture_checked`: every address an Overture pass looked at and its release, so `run` places only new addresses between releases. |
 
 ## 001_baseline.sql
 

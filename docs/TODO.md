@@ -12,25 +12,24 @@ Last updated: 2026-10-14.
 
 ## In progress
 
-Nothing. Speed items 1, 2, 3, 4 and 8 are done (below); the next item waits for the owner's "go".
+Nothing. Speed items 1, 2, 3, 4, 5 and 8 are done (below); the next item waits for the owner's "go".
 
 ## Next, in order
 
-1. **Speed item 5:** Overture in `run` for new addresses only, a full pass only for a new Overture release.
-2. **Speed items 12 and 14:** bulk-load into tables without their indexes, add the indexes afterwards; relax MySQL's disk-flush settings during big loads (approved 2026-10-13; a crash loses the last second of writes, which a reload repeats). If a setting needs changing by hand (the loader doesn't change server settings itself, CLAUDE.md §7 Stage 1.8), the exact steps go to the owner first.
-3. **Speed items 6, 7, 10, 13:**
+1. **Speed items 12 and 14:** bulk-load into tables without their indexes, add the indexes afterwards; relax MySQL's disk-flush settings during big loads (approved 2026-10-13; a crash loses the last second of writes, which a reload repeats). If a setting needs changing by hand (the loader doesn't change server settings itself, CLAUDE.md §7 Stage 1.8), the exact steps go to the owner first.
+2. **Speed items 6, 7, 10, 13:**
    - 6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull;
    - 7: independent sources, states and the Vermont feed in parallel (2–4 at a time);
    - 10: deactivation flags by difference instead of recomputing all 9.8M;
    - 13: build the map-by-credential table once; run credentials, address types and area counts side by side.
-4. **Phase 3, the rest** (data quality signals and change history):
+3. **Phase 3, the rest** (data quality signals and change history):
    - **New data, approved 2026-10-13 (not built yet):**
      - **State Medicaid enrolled-provider lists**, New York (health.data.ny.gov `keti-qx5t`) and California (data.chhs.ca.gov, Medi-Cal fee-for-service providers), as a sign of current practice. Measured: 34,797 Stale and 25,850 Check records in these two states are enrolled with no other sign. Other states as they are found to publish a list.
      - **Older Medicare years, 2013–2023** (Part B by provider and Part D prescribers by provider, data.cms.gov), shown as "last billed Medicare in [year]" and as a reason on the quality label.
    - **Step 3.2:** the change recorder widened: secondary locations, phone, every taxonomy, organization name, licenses, exclusions and opt-outs as they start and end.
    - **Step 3.3:** change pages ("Changes in [county] this month", "New practices", "Closed or moved") and monthly change counts on county pages.
    - **Step 3.4, approved 2026-10-13:** history before October 2026 from the NBER archive of past NPPES monthly files, for trends, analytics and statistics (a large download, one file per period).
-5. **Small fixes, after the open branches merge:**
+4. **Small fixes, after the open branches merge:**
    - remove the unneeded `using Npi.Loader.Db;` in `FdaProductSource.cs` (the one in `CredentialBuilder.cs` is used since item 2);
    - CLAUDE.md §5 lists `deploy/register-task.ps1`, which doesn't exist;
 
@@ -86,6 +85,7 @@ Nothing. Speed items 1, 2, 3, 4 and 8 are done (below); the next item waits for 
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Item 5: Overture in `run` for new addresses only, a full pass for a new release~~ (2026-10-14, PR #73: 6,399 new addresses, 4,951 placed, in 18.7 min instead of a 50–70 min pass of every state)
 - ~~Item 4: FEMA buildings for new and moved addresses only, the files read in place~~ (2026-10-14, PR #72: 5,724 new addresses in 5.6 min instead of a 17 min full load with a 21 GB download)
 - ~~Item 8: downloads kept until loaded, reused when unchanged, large files in parallel parts~~ (2026-10-13, PR #71)
 - ~~Item 3: dataset reloads queue only the providers whose rows changed, for the quality label~~ (2026-10-13, PR #70: 35,260 relabelled in 1:55 instead of 9.5M in 25 min)
