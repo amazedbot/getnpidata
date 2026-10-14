@@ -152,12 +152,24 @@ public sealed class DeactivationLoader(Database database, ILogger log, double mi
             await StagingLoader.WithWarningsAsFailures(connection, entries[0].Name, () => loader.LoadAsync(ct));
         }
 
+        // Before the swap, the NPIs the new report adds, drops or redates: only their flags can change (speed item 10).
+        await Database.ExecuteAsync(connection,
+            """
+            INSERT IGNORE INTO `deactivation_pending` (`NPI`)
+            SELECT s.`NPI` FROM `nppes_deactivated_npi_report_staging` s LEFT JOIN `nppes_deactivated_npi_report` r ON r.`NPI` = s.`NPI`
+            WHERE NOT (s.`NPPES_Deactivation_Date` <=> r.`NPPES_Deactivation_Date`)
+            UNION ALL
+            SELECT r.`NPI` FROM `nppes_deactivated_npi_report` r LEFT JOIN `nppes_deactivated_npi_report_staging` s ON s.`NPI` = r.`NPI`
+            WHERE s.`NPI` IS NULL
+            """, ct);
+
         await Database.ExecuteAsync(connection, "DROP TABLE IF EXISTS `nppes_deactivated_npi_report_old`", ct);
         await Database.ExecuteAsync(connection,
             "RENAME TABLE `nppes_deactivated_npi_report` TO `nppes_deactivated_npi_report_old`, `nppes_deactivated_npi_report_staging` TO `nppes_deactivated_npi_report`", ct);
         await Database.ExecuteAsync(connection, "DROP TABLE `nppes_deactivated_npi_report_old`", ct);
 
-        var flagged = await Deactivations.ApplyAsync(connection, scopeTable: null, ct);
+        // A first report recomputes every row: NPIs it lists may be in npidata without a date of their own.
+        var flagged = await Deactivations.ApplyPendingAsync(connection, all: current == 0, ct);
         log.Information("Deactivation flags refreshed: {Rows:N0} rows changed", flagged);
         await Database.ExecuteAsync(connection,
             "INSERT INTO `extractlog` (`ZipFileName`, `ExtractFileName`, `rows_loaded`) VALUES (@zip, @entry, @rows)", ct,

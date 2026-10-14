@@ -19,10 +19,32 @@ public static class Deactivations
         $"CONCAT(SUBSTRING({column}, 7, 4), SUBSTRING({column}, 1, 2), SUBSTRING({column}, 4, 2))";
 
     /// <summary>
+    /// The most NPIs in <c>deactivation_pending</c> recomputed one by one; more (a first monthly after migration 095, say)
+    /// recompute every row, which reads npidata once (~1 min).
+    /// </summary>
+    public const int PendingLimit = 500_000;
+
+    /// <summary>
+    /// After a monthly or deactivation report swap: recomputes the NPIs queued in <c>deactivation_pending</c> (speed item
+    /// 10; migration 095), or every row when <paramref name="all"/> or the queue is long, then empties the queue.
+    /// </summary>
+    /// <returns>Rows whose flag or deactivation date changed.</returns>
+    public static async Task<int> ApplyPendingAsync(MySqlConnection connection, bool all, CancellationToken ct)
+    {
+        var pending = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+            $"SELECT COUNT(*) FROM (SELECT 1 FROM `deactivation_pending` LIMIT {PendingLimit + 1}) p", cancellationToken: ct));
+        var changed = all || pending > PendingLimit ? await ApplyAsync(connection, scopeTable: null, ct)
+            : pending > 0 ? await ApplyAsync(connection, scopeTable: "deactivation_pending", ct)
+            : 0;
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM `deactivation_pending`", commandTimeout: 0, cancellationToken: ct));
+        return changed;
+    }
+
+    /// <summary>
     /// Recomputes the flag (and fills an empty deactivation date from the report). Only the rows whose flag or date
     /// changes are written, and their NPIs are queued in <c>projection_pending</c> for the projection.
     /// </summary>
-    /// <param name="scopeTable">Only update NPIs present in this table (a weekly staging table), or all when null.</param>
+    /// <param name="scopeTable">Only update NPIs present in this table (a weekly staging table, deactivation_pending), or all when null.</param>
     /// <returns>Rows whose flag or deactivation date changed.</returns>
     public static async Task<int> ApplyAsync(MySqlConnection connection, string? scopeTable, CancellationToken ct, MySqlTransaction? tx = null)
     {
