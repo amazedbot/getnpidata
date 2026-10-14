@@ -1389,6 +1389,20 @@ public sealed class ProviderCompliance
     public MedicareOptOut? OptOut { get; set; }
 
     public MedicareOrderReferring? OrderReferring { get; set; }
+
+    /// <summary>State Medicaid programs listing the provider as enrolled (New York and California publish their lists).</summary>
+    public IReadOnlyList<StateMedicaidEnrollment> Medicaid { get; set; } = [];
+}
+
+/// <summary>An enrollment in a state's Medicaid program.</summary>
+public sealed class StateMedicaidEnrollment
+{
+    public string State { get; set; } = "";
+
+    public DateTime? EnrolledSince { get; set; }
+
+    /// <summary>The kind of provider, in the state's wording (e.g. "PHYSICIAN", "Thoracic Surgery").</summary>
+    public string? ProviderType { get; set; }
 }
 
 /// <summary>An entry on the HHS-OIG List of Excluded Individuals/Entities.</summary>

@@ -179,6 +179,8 @@ public sealed class ProviderDetailService(string connectionString)
 
     private sealed record QualityRow(sbyte Label, int Reasons, short Activity);
 
+    private sealed record MedicaidRow(string State, DateTime? EnrolledSince, string? ProviderType);
+
     private sealed record ChangeRow(DateTime DetectedAt, string ChangeType, string? OldValue, string? NewValue);
 
     private sealed record EndpointRow(string? EndpointType, string? EndpointTypeDescription, string Endpoint, string? EndpointDescription,
@@ -425,6 +427,10 @@ public sealed class ProviderDetailService(string connectionString)
             FROM cc_mips WHERE npi = @npi ORDER BY program_year DESC, final_score DESC, id LIMIT 5
             """, new { npi }, cancellationToken: ct));
 
+        var medicaid = await connection.QueryAsync<MedicaidRow>(new CommandDefinition(
+            "SELECT state AS State, enrolled_since AS EnrolledSince, provider_type AS ProviderType FROM state_medicaid WHERE npi = @npi ORDER BY state",
+            new { npi }, cancellationToken: ct));
+
         var quality = await connection.QuerySingleOrDefaultAsync<QualityRow>(new CommandDefinition(
             "SELECT label AS Label, reasons AS Reasons, activity AS Activity FROM provider_quality WHERE npi = @npi", new { npi }, cancellationToken: ct));
         List<QualityCareCompareLocation> ccLocations = clinician is null ? [] : (await connection.QueryAsync<QualityCareCompareLocation>(new CommandDefinition(
@@ -456,7 +462,10 @@ public sealed class ProviderDetailService(string connectionString)
                 optOut is null ? null : new MedicareOptOut(optOut.Specialty, ToDate(optOut.EffectiveDate), ToDate(optOut.EndDate),
                     ToDate(optOut.EndDate) is not { } end || end >= today, optOut.CanOrderRefer is null ? null : optOut.CanOrderRefer != 0),
                 orderRefer is null ? null : new MedicareOrderReferring(orderRefer.PartB == 1, orderRefer.Dme == 1, orderRefer.Hha == 1,
-                    orderRefer.Pmd == 1, orderRefer.Hospice == 1)),
+                    orderRefer.Pmd == 1, orderRefer.Hospice == 1))
+            {
+                Medicaid = medicaid.Select(m => new StateMedicaidEnrollment(m.State, ToDate(m.EnrolledSince), m.ProviderType)).ToList(),
+            },
             CareCompare = careCompare,
             IndustryPayments = industry,
             PaymentHistory = paymentYears.Count == 0 && paymentCompanies.Count == 0 ? null : new IndustryPaymentHistory(

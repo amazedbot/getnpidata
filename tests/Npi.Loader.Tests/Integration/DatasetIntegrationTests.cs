@@ -97,7 +97,8 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("state_licenses", StateLicenseSource.CombineVersions(
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null),
-                  ("RI", Week), ("VT", Week), ("WV", "rosters 713 " + Week), ("AL", null), ("MI", null), ("CA", null)]))],
+                  ("RI", Week), ("VT", Week), ("WV", "rosters 713 " + Week), ("AL", null), ("MI", null), ("CA", null)])),
+             ("state_medicaid", "NY 2026-10-02T20:04:24Z | CA 2026-10-12T20:02:55.387406")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source NOT IN ('oig_cia', 'fema_structures', 'address_building', 'address_type') ORDER BY source"));
         Assert.StartsWith("3 agreements ", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'oig_cia'"));
         // FEMA structures (item 18): the listing's newest date and a hash of its files (new addresses don't reload it, speed item 4).
@@ -121,6 +122,13 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal([("9000000001", "1000000004", "Reassignment", "Smith, Jones & Co, Llc"), ("9000000001", "1000000012", "Physician Assistant", "Smith, Jones & Co, Llc")],
             await db.QueryAsync<(string, string, string, string)>("SELECT group_pac_id, npi, record_type, group_name FROM medicare_reassignment ORDER BY npi"));
         Assert.Contains("PPEF_Enrollment_Extract_2026.07.17.csv", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'medicare_enrollment'"));
+
+        // State Medicaid lists (Phase 3): New York's grouped export and California's file, one row per NPI and state (the earliest
+        // enrollment; California's specialty, else its provider type), no row without an NPI.
+        Assert.Equal(
+            [("1000000004", "NY", new DateTime(1979, 2, 1), "PHYSICIAN"), ("1000000012", "CA", new DateTime(2002, 4, 1), "Family Nurse Practitioner"),
+             ("1000000012", "NY", new DateTime(2007, 10, 26), "NURSE PRACTITIONER"), ("1000000038", "CA", new DateTime(2019, 12, 5), "CLINICS")],
+            await db.QueryAsync<(string, string, DateTime, string)>("SELECT npi, state, enrolled_since, provider_type FROM state_medicaid ORDER BY npi, state"));
 
         // Three DAC rows for 1000000004 (two groups, two addresses) become one clinician row: accepts assignment
         // because one enrollment says Y, telehealth because one practice offers it.
@@ -717,6 +725,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 SecUserAgent = "getnpidata-tests ci@example.test",
                 OigCiaUrl = "https://oig.test/browse-cias/",
                 MedicaidCatalogUrl = "https://medicaid.test/items",
+                MediCalPackageUrl = "https://chhs.test/package_show",
                 OpenFdaApiUrl = "https://openfda.test/",
                 ClinicalTrialsApiUrl = "https://ct.test/api/v2/studies",
                 FemaStructuresListingUrl = "https://fema.test/list",
@@ -862,6 +871,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://cms.test/files/DSD_MCD_DY24.csv" => "datasets/cms_medicaid_spending_sample.csv",
                 "https://cms.test/files/MUP_DPR_DY24_NPIBN.csv" => "datasets/part_d_by_provider_and_drug_sample.csv",
                 "https://medicaid.test/items" => "datasets/medicaid_catalog_sample.json",
+                "https://chhs.test/package_show" => "datasets/medi_cal_package_sample.json",
+                "https://chhs.test/medi-cal-ffs-provider-listing.csv" => "datasets/medi_cal_sample.csv",
                 "https://medicaid.test/nadac-national-average-drug-acquisition-cost-10-07-2026.csv" => "datasets/nadac_sample.csv",
                 "https://cms.test/files/OptOut_August2026.csv" => "datasets/optout_sample.csv",
                 "https://cms.test/files/OrderReferring_20261008.csv" => "datasets/orderref_sample.csv",

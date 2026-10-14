@@ -33,7 +33,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     {
         "medicare_utilization", "medicare_part_d", "cc_clinician", "cc_clinician_location", "medicare_enrollment", "medicare_reassignment",
         "medicare_revalidation", "medicare_order_referring", "cc_mips", "cc_facility_affiliation", "cms_facility_npi", "medicare_dme_supplier",
-        "cms_otp_provider",
+        "cms_otp_provider", "state_medicaid",
     };
 
     // The inputs whose changes are queued per NPI: the sources of QueuedTables (every table of theirs that the label reads is
@@ -44,6 +44,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     [
         "state_licenses", "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring",
         "cms_facility_enrollments", "cc_mips", "cc_facility_affiliations", "cms_otp_providers", "cms_revalidation", "cms_dme_suppliers",
+        "state_medicaid",
     ];
 
     /// <summary>Above this share of the providers queued, relabelling everyone is quicker.</summary>
@@ -57,7 +58,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     [
         "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring", "open_payments_years",
         "cms_facility_enrollments", "state_licenses", "provider_map", "address_type", "cc_mips", "cc_facility_affiliations", "cms_otp_providers",
-        "cms_revalidation", "cms_dme_suppliers", "cms_provider_of_services", "overture",
+        "cms_revalidation", "cms_dme_suppliers", "cms_provider_of_services", "overture", "state_medicaid",
     ];
 
     // A state license status that means the license can't be used (the states' own wording; matched case-insensitively).
@@ -335,6 +336,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 (QualityActivity.CertifiedFacility, "SELECT DISTINCT `npi` FROM `cms_facility_npi`"),
                 (QualityActivity.EquipmentBilling, "SELECT `npi` FROM `medicare_dme_supplier`"),
                 (QualityActivity.OpioidTreatment, "SELECT `npi` FROM `cms_otp_provider`"),
+                (QualityActivity.MedicaidEnrollment, "SELECT DISTINCT `npi` FROM `state_medicaid`"),
                 (QualityActivity.CurrentLicense, $"SELECT DISTINCT l.`npi` FROM `provider_state_license` l WHERE {currentLicense}"),
             ];
             var statuses = new { dates.asOf, inactive = InactiveStatus, active = ActiveStatus };

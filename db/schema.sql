@@ -1979,6 +1979,14 @@ CREATE TABLE `state_license_version` (
   PRIMARY KEY (`state`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `state_medicaid` (
+  `npi` char(10) NOT NULL,
+  `state` char(2) NOT NULL,
+  `enrolled_since` date DEFAULT NULL,
+  `provider_type` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`npi`,`state`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `statelookup` (
   `State` char(2) NOT NULL DEFAULT '',
   `StateName` varchar(32) DEFAULT NULL,
