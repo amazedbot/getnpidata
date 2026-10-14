@@ -116,6 +116,10 @@ public sealed class SearchIntegrationTests : IDisposable
 
             var text = System.Text.Encoding.UTF8.GetString(bytes.ToArray()); // keeps the BOM
 
+            // One gzip member, not several joined: browsers unpack only the first. The trailer's size is then the whole file's.
+            var stored = await File.ReadAllBytesAsync(Path.Combine(folder, FullExport.FileName), _ct);
+            Assert.Equal((uint)bytes.Length, BitConverter.ToUInt32(stored, stored.Length - 4));
+
             Assert.StartsWith("﻿" + string.Join(",", ProviderCsv.Header), text, StringComparison.Ordinal); // one BOM and header
             var expected = new MemoryStream();
             var all = new List<ProviderSummary>();
