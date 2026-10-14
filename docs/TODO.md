@@ -16,13 +16,12 @@ Nothing. Speed items 1, 2, 3, 4, 5, 8 and 12 are done (below); the next item wai
 
 ## Next, in order
 
-1. **Speed item 14:** relax MySQL's disk-flush settings during big loads (approved 2026-10-13; a crash loses the last second of writes, which a reload repeats). If a setting needs changing by hand (the loader doesn't change server settings itself, CLAUDE.md §7 Stage 1.8), the exact steps go to the owner first.
-2. **Speed items 6, 7, 10, 13:**
+1. **Speed items 6, 7, 10, 13:**
    - 6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull;
    - 7: independent sources, states and the Vermont feed in parallel (2–4 at a time);
    - 10: deactivation flags by difference instead of recomputing all 9.8M;
    - 13: build the map-by-credential table once; run credentials, address types and area counts side by side.
-3. **Phase 3, the rest** (data quality signals and change history):
+2. **Phase 3, the rest** (data quality signals and change history):
    - **New data, approved 2026-10-13 (not built yet):**
      - **State Medicaid enrolled-provider lists**, New York (health.data.ny.gov `keti-qx5t`) and California (data.chhs.ca.gov, Medi-Cal fee-for-service providers), as a sign of current practice. Measured: 34,797 Stale and 25,850 Check records in these two states are enrolled with no other sign. Other states as they are found to publish a list.
      - **Older Medicare years, 2013–2023** (Part B by provider and Part D prescribers by provider, data.cms.gov), shown as "last billed Medicare in [year]" and as a reason on the quality label.
@@ -85,6 +84,7 @@ Nothing. Speed items 1, 2, 3, 4, 5, 8 and 12 are done (below); the next item wai
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Item 14: relax MySQL's disk flushing~~ skipped (owner, 2026-10-14). Measured first in throwaway test databases: a commit flush costs ~0.6 ms (20,000 one-row commits 12.8 s, one commit 0.24 s), and the big loads are single statements, so `innodb_flush_log_at_trx_commit = 2` would save little; a bigger `innodb_ddl_buffer_size` (64–256 MB, 4 or 8 threads) didn't speed index builds (provider 184–217 s vs 199 s); turning off doublewrite (~560 GB extra writes in 4 days) would risk corrupt tables on a power cut, so it wasn't proposed
 - ~~Item 12: staging tables filled without their plain secondary indexes, added in one statement afterwards~~ (2026-10-14: full projection 63 → ~51 min, area counts 1,163 → 634 s, credentials and address types ~1 min less each; FULLTEXT and SPATIAL kept, they cost more added afterwards)
 - ~~Fix: the suite-or-floor sign of the address type label~~ (2026-10-14: broken by item 2, PR #65, which sent MySQL a backspace instead of a word boundary; found when a full relabel moved ~106k addresses out of commercial; relabelled: commercial 1,847,645, residential 1,142,330, unknown 321,614)
 - ~~Item 5: Overture in `run` for new addresses only, a full pass for a new release~~ (2026-10-14, PR #73: 6,399 new addresses, 4,951 placed, in 18.7 min instead of a 50–70 min pass of every state)
