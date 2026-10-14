@@ -19,6 +19,7 @@ public enum LoaderCommand
     Publish,
     Doctor,
     Sample,
+    Export,
 }
 
 /// <summary>A parsed command line: the command plus its positional arguments.</summary>
@@ -44,6 +45,7 @@ public static class LoaderCommandLine
         ["publish"] = LoaderCommand.Publish,
         ["doctor"] = LoaderCommand.Doctor,
         ["sample"] = LoaderCommand.Sample,
+        ["export"] = LoaderCommand.Export,
     };
 
     public const string Usage = """
@@ -63,6 +65,8 @@ public static class LoaderCommandLine
           credentials      Rebuild the standardized credential tables
           address-types    Relabel the practice addresses (commercial, residential) from the FEMA buildings
           quality          Relabel every record current, check or stale (record quality)
+          export           Write the ready-made file of every active provider (run does it after a load
+                           changed its data); the site serves it for an export with no filter
           areas            Recount the providers per area (US, states, counties) and specialty for the area pages
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses

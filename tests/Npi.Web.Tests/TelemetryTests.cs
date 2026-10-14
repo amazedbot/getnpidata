@@ -57,6 +57,6 @@ public class TelemetryTests
         using var client = factory.CreateClient();
         var response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
         Assert.NotEqual(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/providers", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/providers?npi=1", TestContext.Current.CancellationToken)).StatusCode);
     }
 }

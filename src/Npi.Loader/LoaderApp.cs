@@ -182,6 +182,22 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             }
         }
 
+        // The ready-made file of every active provider (owner, 2026-10-14), when the load changed its data. A failure keeps the
+        // previous file; the site keeps serving it.
+        var export = new FullExportBuilder(database, log, options);
+        if (projectionOk && await export.IsStaleAsync(ct))
+        {
+            try
+            {
+                await export.BuildAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Writing the full export file failed");
+                projectionOk = false;
+            }
+        }
+
         log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; datasets {Datasets}; projection {Projection}; map {Map}",
             plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", datasetsOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED",
             mapOk ? "current" : "FAILED");
@@ -222,6 +238,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: false);
+        await new FullExportBuilder(database, log, options).BuildAsync(ct);
         log.Information("Sample loaded from {File}. A full load: Npi.Loader run (it loads the monthly file, then this weekly again)", weekly.File.FileName);
         return referenceOk && mapOk ? 0 : 1;
     }
@@ -334,6 +351,14 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
 
         await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: !full);
+        return 0;
+    }
+
+    /// <summary>The <c>export</c> command: write the ready-made file of every active provider now.</summary>
+    public async Task<int> ExportAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new FullExportBuilder(database, log, options).BuildAsync(ct);
         return 0;
     }
 

@@ -39,12 +39,12 @@ public static class ApiEndpoints
         api.MapGet("/providers", SearchAsync)
             .WithName("SearchProviders").WithTags("Providers").WithSearchParameters()
             .WithSummary("Search providers")
-            .WithDescription("One page of matching providers with the total count. At least one filter is required; deactivated NPIs are never returned.");
+            .WithDescription("One page of matching providers with the total count. Every filter is optional (none lists every active provider); deactivated NPIs are never returned.");
 
         api.MapGet("/providers.csv", CsvExport.HandleAsync)
             .WithName("ExportProvidersCsv").WithTags("Providers").WithSearchParameters()
             .WithSummary("Download every match as CSV")
-            .WithDescription("Same filters as /providers (paging ignored), streamed with no row cap. UTF-8 with BOM.")
+            .WithDescription("Same filters as /providers (paging ignored), streamed with no row cap. UTF-8 with BOM. With no filter: every active provider, sorted by NPI, from a file rebuilt after each load (sent gzipped when the client accepts it).")
             .Produces(StatusCodes.Status200OK, contentType: "text/csv").ProducesValidationProblem();
 
         api.MapPost("/providers/lookup", LookupAsync)

@@ -5,11 +5,13 @@ namespace Npi.Core.Tests;
 public class SearchQueryTests
 {
     [Fact]
-    public void A_search_needs_at_least_one_filter()
+    public void A_search_without_filters_lists_everyone()
     {
-        var ex = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter()));
+        var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter()), null, null);
 
-        Assert.Contains("filter", ex.Errors.Keys);
+        Assert.True(query.IsUnfiltered);
+        Assert.True(query.MayBeBroad); // a page walks the name index
+        Assert.Equal("SELECT COALESCE((SELECT provider_count FROM data_version WHERE id = 1), (SELECT COUNT(*) FROM provider))", query.CountSql);
     }
 
     [Theory]
@@ -126,10 +128,9 @@ public class SearchQueryTests
     }
 
     [Fact]
-    public void Practice_building_needs_another_filter_and_a_known_type()
+    public void Practice_building_is_a_known_type()
     {
-        var alone = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { AddressType = "residential" }));
-        Assert.Equal([nameof(SearchFilter.AddressType)], alone.Errors.Keys);
+        Assert.Equal("residential", SearchValidation.Normalize(new SearchFilter { AddressType = "residential" }).AddressType); // alone too
 
         var unknown = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { State = "NY", AddressType = "castle" }));
         Assert.Contains(nameof(SearchFilter.AddressType), Assert.Throws<SearchValidationException>(() =>
@@ -286,9 +287,9 @@ public class SearchQueryTests
         Assert.Contains("FORCE INDEX FOR ORDER BY (ix_provider_enumeration)", year.IndexOrderPageSql, StringComparison.Ordinal);
         Assert.EndsWith("ORDER BY p.enumeration_date DESC, p.npi DESC LIMIT @take OFFSET @skip", year.IndexOrderPageSql, StringComparison.Ordinal);
         // The map drives only from shorter windows.
-        Assert.True(new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 90 }, requireFilter: false), null, null, areaSearch: true).HasSelectiveDriver);
+        Assert.True(new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 90 }), null, null, areaSearch: true).HasSelectiveDriver);
         Assert.False(recent.MayBeBroad); // with a state, no count first
-        Assert.False(new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 365 }, requireFilter: false), null, null, areaSearch: true).HasSelectiveDriver);
+        Assert.False(new SearchQuery(SearchValidation.Normalize(new SearchFilter { NewWithinDays = 365 }), null, null, areaSearch: true).HasSelectiveDriver);
 
         // A county's locations are few: they drive, and the date is checked per candidate.
         Assert.Contains("FROM (SELECT DISTINCT l.npi FROM provider_location l",

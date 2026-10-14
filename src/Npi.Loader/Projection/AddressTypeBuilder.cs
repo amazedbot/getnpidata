@@ -143,6 +143,7 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
             """, ct, param: new { source = Source, version = now.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture), rows = counts["address_type"], now });
         await BuilderPending.ClearAsync(connection, BuilderPending.AddressTypes, ct);
         await Database.ExecuteAsync(connection, "DELETE FROM `address_pending`", ct);
+        await CountProvidersAsync(connection, ct);
         log.Information("Practice address types: {Rows:N0} addresses ({Types}) in {Seconds:N0}s", counts["address_type"],
             string.Join(", ", byType.Select(t => $"{t.Type} {t.Rows:N0}")), watch.Elapsed.TotalSeconds);
         return counts["address_type"];
@@ -213,8 +214,22 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
         await connection.ExecuteAsync(new CommandDefinition("UPDATE `reference_data` SET `checked_at` = UTC_TIMESTAMP() WHERE `source` = @source",
             new { source = Source }, tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
+        await CountProvidersAsync(connection, ct);
         log.Information("Practice address types: {Addresses:N0} addresses relabelled for {Queued:N0} queued providers in {Seconds:N0}s",
             addresses, queued, watch.Elapsed.TotalSeconds);
         return addresses;
     }
+
+    /// <summary>
+    /// The providers per building type nationwide (<c>search_total</c>, migration 098), so a nationwide list of one type counts
+    /// instantly (~28 s to count).
+    /// </summary>
+    private static async Task CountProvidersAsync(MySqlConnection connection, CancellationToken ct) =>
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO `search_total` (`name`, `total`, `counted_at`)
+            SELECT * FROM (SELECT CONCAT('building:', `building_type`) AS `name`, COUNT(DISTINCT `npi`) AS `total`, UTC_TIMESTAMP() AS `at`
+                           FROM `building_search` GROUP BY `building_type`) x
+            ON DUPLICATE KEY UPDATE `total` = x.`total`, `counted_at` = x.`at`
+            """, commandTimeout: 0, cancellationToken: ct));
 }

@@ -52,8 +52,7 @@ public class RecordQualityTests
         Assert.Null(RecordQuality.FilterValue("fresh"));
         Assert.Equal("notStale", SearchValidation.Normalize(new SearchFilter { State = "NY", Quality = " notstale " }).Quality);
 
-        var alone = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { Quality = "stale" }));
-        Assert.Equal([nameof(SearchFilter.Quality)], alone.Errors.Keys);
+        Assert.Equal("stale", SearchValidation.Normalize(new SearchFilter { Quality = "stale" }).Quality); // alone too
         Assert.Contains(nameof(SearchFilter.Quality),
             Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { State = "NY", Quality = "fresh" })).Errors.Keys);
     }

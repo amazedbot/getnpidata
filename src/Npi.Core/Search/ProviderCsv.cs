@@ -11,18 +11,23 @@ public static class ProviderCsv
 
     /// <param name="columns">The columns to write (<see cref="ProviderColumns"/>); null = the summary columns.</param>
     /// <returns>The number of providers written.</returns>
+    /// <param name="header">Write the BOM and the header row (false for the later parts of the full export file).</param>
     public static async Task<long> WriteAsync(IAsyncEnumerable<ProviderSummary> rows, Stream output, CancellationToken ct,
-        IReadOnlyList<ProviderColumn>? columns = null)
+        IReadOnlyList<ProviderColumn>? columns = null, bool header = true)
     {
         columns ??= ProviderColumns.SummaryColumns;
-        await using var writer = new StreamWriter(output, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), 1 << 16, leaveOpen: true);
+        await using var writer = new StreamWriter(output, new UTF8Encoding(encoderShouldEmitUTF8Identifier: header), 1 << 16, leaveOpen: true);
         await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
-        foreach (var c in columns)
+        if (header)
         {
-            csv.WriteField(c.Header);
+            foreach (var c in columns)
+            {
+                csv.WriteField(c.Header);
+            }
+
+            await csv.NextRecordAsync();
         }
 
-        await csv.NextRecordAsync();
         long count = 0;
         await foreach (var r in rows.WithCancellation(ct))
         {

@@ -89,6 +89,51 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task No_filter_lists_everyone_and_the_full_export_file_holds_them_by_npi()
+    {
+        await using var db = await SeededAsync();
+        var search = Search(db);
+
+        var everyone = await search.SearchAsync(new SearchFilter { PageSize = 2 }, _ct);
+        var count = await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider");
+        Assert.Equal(count, everyone.TotalCount);
+        Assert.Equal(["BAKER, AL", "NUÑEZ, ELENA"], everyone.Items.Select(i => i.Name)); // by name, like any list
+        Assert.Equal(count, (await search.SearchAsync(new SearchFilter { Quality = null, AddressType = null }, _ct)).TotalCount);
+
+        // The ready-made file: every active provider by NPI, from several ranges (A … E fall in different ones), one gzip file.
+        var folder = Directory.CreateTempSubdirectory("npi-export-").FullName;
+        try
+        {
+            var info = await FullExport.WriteAsync(search, folder, new DateOnly(2026, 10, 11), parts: 4, _ct);
+            Assert.Equal(count, info.Rows);
+            Assert.Equal(info, FullExport.Read(folder));
+            var bytes = new MemoryStream();
+            await using (var file = FullExport.Open(folder))
+            await using (var unpacked = new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Decompress))
+            {
+                await unpacked.CopyToAsync(bytes, _ct);
+            }
+
+            var text = System.Text.Encoding.UTF8.GetString(bytes.ToArray()); // keeps the BOM
+
+            Assert.StartsWith("﻿" + string.Join(",", ProviderCsv.Header), text, StringComparison.Ordinal); // one BOM and header
+            var expected = new MemoryStream();
+            var all = new List<ProviderSummary>();
+            await foreach (var item in search.SearchAllAsync(new SearchFilter { Sort = "npi" }, _ct))
+            {
+                all.Add(item);
+            }
+
+            await ProviderCsv.WriteAsync(all.ToAsyncEnumerable(), expected, _ct);
+            Assert.Equal(System.Text.Encoding.UTF8.GetString(expected.ToArray()), text); // the same rows as the live export by NPI
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Paging_sorting_and_the_full_export_agree()
     {
         await using var db = await SeededAsync();
