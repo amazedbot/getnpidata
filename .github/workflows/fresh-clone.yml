@@ -1,15 +1,13 @@
 name: Fresh clone (Linux)
 
 # Follows README "Running it yourself" on a clean Linux machine: MySQL in Docker, the scripts, doctor, every test with
-# MySQL, a sample load from the real public files, and the site answering. Runs when the parts it covers change, and on
-# demand (Actions → Fresh clone → Run workflow). It downloads from CMS, NUCC and the Census Bureau.
+# MySQL, a sample load from the real public files, and the site answering. It downloads from CMS, NUCC and the Census
+# Bureau (and geocodes ~32,000 addresses), so it runs only when the setup itself changes, once a week to catch drift (a new
+# SDK or MySQL image), and on demand (Actions → Fresh clone → Run workflow). Code changes are checked by ci.yml, which
+# runs every test with MySQL too.
 on:
   pull_request:
     paths:
-      - "src/Npi.Loader/**"
-      - "src/Npi.Web/**"
-      - "src/Npi.Core/**"
-      - "db/**"
       - "scripts/**"
       - "docker-compose.yml"
       - ".env.example"
@@ -17,20 +15,8 @@ on:
       - "global.json"
       - "Directory.*.props"
       - ".github/workflows/fresh-clone.yml"
-  push:
-    branches: [master]
-    paths:
-      - "src/Npi.Loader/**"
-      - "src/Npi.Web/**"
-      - "src/Npi.Core/**"
-      - "db/**"
-      - "scripts/**"
-      - "docker-compose.yml"
-      - ".env.example"
-      - "deploy/docker/**"
-      - "global.json"
-      - "Directory.*.props"
-      - ".github/workflows/fresh-clone.yml"
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
   workflow_dispatch:
 
 permissions:
