@@ -19,3 +19,4 @@ Applied in number order together with the other folders (see [../README.md](../R
 | `056_provider_phonetic.sql` | Soundex keys of last/first names as indexed virtual columns on `provider`, for similar-name search (item 9). |
 | `057_provider_org_name.sql` | `provider_org_name`: organization legal + other names with a FULLTEXT index, for word-anywhere search (item 9); filled once from the current projection. |
 | `077_provider_deactivated.sql` | Every deactivated NPI with its date, for the "Deactivated on [date]" status page (redesign step 1.4). |
+| `096_provider_change_kinds.sql` | `provider_change.change_type` widened to 20 characters for the kinds step 3.2 adds (phone, locations, taxonomies, other names, licenses, exclusions, opt-outs). |

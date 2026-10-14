@@ -50,7 +50,7 @@ public sealed class LeieSource : DatasetSource
         WithDownloadAsync(context, release, "oig_leie.csv", async (connection, path) =>
         {
             var counts = await TableSwap.ReplaceAsync(connection, ["oig_exclusion"], context.Options.MinRowRatio,
-                () => CsvTableLoader.LoadAsync(connection, path, "oig_exclusion_staging", Columns, ct), ct);
+                () => CsvTableLoader.LoadAsync(connection, path, "oig_exclusion_staging", Columns, ct), ct, log: context.Log);
             return counts["oig_exclusion"];
         }, ct);
 }
@@ -77,7 +77,7 @@ public sealed class OptOutSource : DatasetSource
         WithDownloadAsync(context, release, "cms_opt_out.csv", async (connection, path) =>
         {
             var counts = await TableSwap.ReplaceAsync(connection, ["medicare_opt_out"], context.Options.MinRowRatio,
-                () => CsvTableLoader.LoadAsync(connection, path, "medicare_opt_out_staging", Columns, ct), ct);
+                () => CsvTableLoader.LoadAsync(connection, path, "medicare_opt_out_staging", Columns, ct), ct, log: context.Log);
             return counts["medicare_opt_out"];
         }, ct);
 }

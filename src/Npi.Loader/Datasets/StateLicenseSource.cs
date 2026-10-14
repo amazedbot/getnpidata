@@ -417,6 +417,12 @@ public sealed class StateLicenseSource : DatasetSource
                     $"{state} matched {rows:N0} rows, fewer than {context.Options.MinRowRatio:P0} of the {before:N0} it had; the previous rows are kept.");
             }
 
+            if (before > 0)
+            {
+                // The change log (Phase 3 step 3.2): licenses added, dropped, changing status or renewed, and new board actions.
+                await DatasetChanges.RecordStateLicensesAsync(connection, state, matched, DateTime.UtcNow, context.Log, ct);
+            }
+
             await ReplaceStateAsync(connection, state, $"SELECT {Columns} FROM `{matched}`", version, rows, ct);
             return rows;
         }

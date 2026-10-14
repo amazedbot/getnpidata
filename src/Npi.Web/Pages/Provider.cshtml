@@ -607,7 +607,7 @@
                         {
                             <tr>
                                 <td>@c.RecordedOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                                <td>@(c.Type switch { "name" => "Name", "credential" => "Credential", "specialty" => "Primary specialty", "address" => "Primary practice address", _ => c.Type })</td>
+                                <td>@Npi.Core.Search.ChangeTypes.Label(c.Type)</td>
                                 <td>@(c.OldValue ?? "(none)")</td>
                                 <td>@(c.NewValue ?? "(none)")</td>
                             </tr>
@@ -615,7 +615,7 @@
                     </tbody>
                 </table>
             </div>
-            <p class="src">Tracked from the weekly NPPES files since October 2026.</p>
+            <p class="src">Tracked since October 2026: NPPES changes from the weekly files; state licenses and board actions, OIG exclusions and Medicare opt-outs from each reload of those lists (since October 14, 2026).</p>
         </section>
     }
 
