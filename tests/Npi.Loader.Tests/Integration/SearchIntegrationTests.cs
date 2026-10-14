@@ -1077,6 +1077,87 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Overture_places_every_address_for_a_new_release_and_only_new_addresses_between_releases()
+    {
+        await using var db = await SeededAsync();
+        // A one-state Overture release in Overture's layout: A's and B's Farmingdale address points, a place at D's address,
+        // and an address point far away with D's house number and street.
+        var root = Path.Combine(_folder, "overture").Replace('\\', '/') + "/";
+        var addresses = $"{root}2026-09-23.1/theme=addresses/type=address";
+        var places = $"{root}2026-09-23.1/theme=places/type=place";
+        Directory.CreateDirectory(addresses);
+        Directory.CreateDirectory(places);
+        using (var duck = new DuckDB.NET.Data.DuckDBConnection("DataSource=:memory:"))
+        {
+            duck.Open();
+            using var command = duck.CreateCommand();
+            command.CommandText =
+                $$"""
+                COPY (SELECT * FROM (VALUES
+                  ('US', '1', 'BROADWAY', '11701', 'AMITYVILLE', {'xmin': -73.4151, 'ymin': 40.6791, 'xmax': -73.4151, 'ymax': 40.6791}),
+                  ('US', '300', 'CONKLIN STREET', '11735', 'FARMINGDALE', {'xmin': -73.4410, 'ymin': 40.7310, 'xmax': -73.4410, 'ymax': 40.7310}),
+                  ('US', '5', 'ATLANTIC AVE', '90012', 'LOS ANGELES', {'xmin': -118.2400, 'ymin': 34.0600, 'xmax': -118.2400, 'ymax': 34.0600}))
+                  t(country, number, street, postcode, postal_city, bbox)) TO '{{addresses}}/part-0.parquet' (FORMAT parquet);
+                COPY (SELECT {'primary': 'ATLANTIC SPINE CARE'} AS names,
+                             [{'freeform': '5 ATLANTIC AVE', 'postcode': '11201', 'locality': 'BROOKLYN'}] AS addresses,
+                             {'xmin': -73.9950, 'ymin': 40.6905, 'xmax': -73.9950, 'ymax': 40.6905} AS bbox,
+                             0.9 AS confidence, 'open' AS operating_status, [{'update_time': '2026-05-01T00:00:00.000Z'}] AS sources)
+                  TO '{{places}}/part-0.parquet' (FORMAT parquet);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var options = new LoaderOptions { WorkFolder = _folder, LogFolder = _folder, OvertureReleasesUrl = "https://overture.test/list", OvertureBaseUrl = root };
+        var matcher = new OvertureMatcher(db.Database, new HttpClient(new FakeOverture()), Logger.None, options);
+        const string points = "SELECT p.addr_key, p.source, p.lat, p.lon, p.matched, p.`release` FROM address_point p ORDER BY p.addr_key";
+        const string listings = "SELECT addr_key, name, operating_status, updated, `release` FROM address_place ORDER BY addr_key, name";
+
+        // No full pass recorded: every state (NY here) is placed. A by its address point, B's Farmingdale office by its
+        // ("CONKLIN STREET" = "Conklin St"), D by the place listed at its address; E and B's Brooklyn office aren't in Overture.
+        var full = await matcher.RefreshAsync(_ct);
+        Assert.Equal(new OvertureRefresh("2026-09-23.1", true, 5, 3), full);
+        Assert.Equal(["address", "address", "place"], (await db.QueryAsync<string>("SELECT source FROM address_point ORDER BY source")).ToArray());
+        Assert.Equal("ATLANTIC SPINE CARE", await db.ScalarAsync<string>("SELECT name FROM address_place"));
+        Assert.Equal(5L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM overture_checked WHERE `release` = '2026-09-23.1'"));
+        Assert.Equal("2026-09-23.1", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'overture_full'"));
+        Assert.Null(await matcher.RefreshAsync(_ct)); // the same release, and the projection hasn't changed since
+
+        // A's and D's addresses are new to Overture (as after a weekly); one pass over the release places them as the full pass did.
+        var fullPoints = await db.QueryAsync<(string, string, double, double, string, string)>(points);
+        var fullListings = await db.QueryAsync<(string, string, string, DateTime, string)>(listings);
+        await db.ExecuteAsync(
+            """
+            DELETE x FROM address_point x JOIN provider_location l ON l.addr_key = x.addr_key WHERE l.npi IN (@A, @D);
+            DELETE x FROM address_place x JOIN provider_location l ON l.addr_key = x.addr_key WHERE l.npi IN (@A, @D);
+            DELETE x FROM overture_checked x JOIN provider_location l ON l.addr_key = x.addr_key WHERE l.npi IN (@A, @D);
+            UPDATE reference_data SET checked_at = (SELECT projected_at FROM data_version WHERE id = 1) - INTERVAL 1 MINUTE WHERE source = 'overture';
+            """, new { A, D });
+        var loadedAt = await db.ScalarAsync<DateTime>("SELECT loaded_at FROM reference_data WHERE source = 'overture'");
+        Assert.Equal(new OvertureRefresh("2026-09-23.1", false, 2, 2), await matcher.RefreshAsync(_ct));
+        Assert.Equal(fullPoints, await db.QueryAsync<(string, string, double, double, string, string)>(points));
+        Assert.Equal(fullListings, await db.QueryAsync<(string, string, string, DateTime, string)>(listings));
+        Assert.Equal(5L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM overture_checked"));
+        // Their providers are queued for the labels; only checked_at moved, so the record quality doesn't relabel everyone.
+        Assert.Equal([A, D], (await db.QueryAsync<string>("SELECT npi FROM builder_pending WHERE builder = 'address_types' ORDER BY npi")).ToArray());
+        Assert.Equal(2L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM quality_pending WHERE npi IN (@A, @D)", new { A, D }));
+        Assert.Equal(2L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM address_pending"));
+        Assert.Equal(loadedAt, await db.ScalarAsync<DateTime>("SELECT loaded_at FROM reference_data WHERE source = 'overture'"));
+        Assert.Null(await matcher.RefreshAsync(_ct));
+    }
+
+    /// <summary>The S3 listing of Overture release folders: one release.</summary>
+    private sealed class FakeOverture : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            request.RequestUri!.ToString() == "https://overture.test/list"
+                ? Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent("<ListBucketResult><CommonPrefixes><Prefix>release/2026-09-23.1/</Prefix></CommonPrefixes></ListBucketResult>"),
+                })
+                : throw new InvalidOperationException($"Unexpected request {request.RequestUri}");
+    }
+
+    [Fact]
     public async Task Records_are_labelled_current_check_or_stale()
     {
         await using var db = await SeededAsync();

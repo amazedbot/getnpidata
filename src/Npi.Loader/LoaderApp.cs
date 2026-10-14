@@ -89,6 +89,22 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             log.Information("Search projection is current");
         }
 
+        // Stage 5.5 item 10: Overture places the new practice addresses at their building (every state for a new release),
+        // before the address types, the map and the quality labels read them.
+        var overtureFull = false;
+        if (projectionOk)
+        {
+            try
+            {
+                overtureFull = (await new OvertureMatcher(database, http, log, options).RefreshAsync(ct))?.Full == true;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Error(ex, "Placing new practice addresses with Overture failed");
+                datasetsOk = false;
+            }
+        }
+
         // Stage 5.5 item 12: standardized credentials, rebuilt after each projection.
         var credentials = new CredentialBuilder(database, log, options.MinRowRatio);
         if (projectionOk && await credentials.IsStaleAsync(ct))
@@ -135,7 +151,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         }
 
         // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
-        var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
+        var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct, fullMap: overtureFull);
 
         // Stage 5.5 item 18: the FEMA buildings of the addresses mapped or moved since the last match, read in place, and their labels.
         if (projectionOk && mapOk)
@@ -226,7 +242,8 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         return ok ? 0 : 1;
     }
 
-    private async Task<bool> RefreshMapAsync(int maxBatches, CancellationToken ct, string? countyFips = null)
+    /// <param name="fullMap">Rebuild every map point (after Overture placed every state's addresses).</param>
+    private async Task<bool> RefreshMapAsync(int maxBatches, CancellationToken ct, string? countyFips = null, bool fullMap = false)
     {
         try
         {
@@ -238,9 +255,9 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             {
                 log.Information("Map table not rebuilt (SkipMapBuild)");
             }
-            else if (outcome.Geocoded > 0 || await map.IsStaleAsync(ct))
+            else if (fullMap || outcome.Geocoded > 0 || await map.IsStaleAsync(ct))
             {
-                await map.BuildAsync(ct);
+                await map.BuildAsync(ct, full: fullMap);
             }
             else
             {
