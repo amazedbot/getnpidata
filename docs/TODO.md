@@ -26,7 +26,7 @@ Fixes the owner found (2026-10-14), one pull request each; B and C wait for the 
 2. **Phase 3, the rest** (data quality signals and change history):
    - **New data, approved 2026-10-13 (not built yet):**
      - **Older Medicare years, 2013–2023** (Part B by provider and Part D prescribers by provider, data.cms.gov), shown as "last billed Medicare in [year]" and as a reason on the quality label.
-   - **Step 3.6 (owner, 2026-10-14):** organization and facility home pages: `/facilities` (hospitals, nursing homes, home health, hospices, FQHCs and rural clinics, with type and state filters; `/hospitals` opens its hospitals tab), `/organizations` (organization NPIs by plain category and state) with `/groups` (Medicare groups by size), and an "Organizations & facilities" menu entry.
+   - **Step 3.6 (owner, 2026-10-14):** a **"Facilities & hospitals"** home page (`/facilities`, `/hospitals` opening it on hospitals: every certified facility by type, filters, map, ratings, exports) and a **"Groups & organizations"** home page (`/organizations`, `/groups`: Medicare groups and organization NPIs, exports), both in the menu, built from data already loaded. Proposed new sources for those pages and the profiles (PRODUCT_PLAN.md Phase 3; each needs a yes): CMS All Owners and Change of Ownership files, the AHRQ health systems compendium, hospital cost reports and Form 990s, Medicare inpatient/outpatient hospital services, more Care Compare files (dialysis, surgery centres, rehab and long-term care hospitals, nursing home inspections and penalties), HIFLD hospitals, HRSA health center sites, UDS and 340B, and the ACO files.
    - **Step 3.7 (owner, 2026-10-14; researched, not built):** more states' Medicaid enrollment. Florida's Provider Master List (public, weekly, by NPI) is confirmed and is added like NY and CA. The national HHS "Medicaid Provider Enrollment Segments" (every state, 2018–2024 history) and "Medicaid Provider Spending by HCPCS" (Medicaid billing, 2018–2024) are proposals that need a yes. Texas, New Jersey, Pennsylvania, Ohio and Maine publish no bulk list (PRODUCT_PLAN.md Phase 3).
    - **Step 3.3:** change pages ("Changes in [county] this month", "New practices", "Closed or moved") and monthly change counts on county pages.
    - **Step 3.4, approved 2026-10-13:** history before October 2026 from the NBER archive of past NPPES monthly files, for trends, analytics and statistics (a large download, one file per period).
@@ -34,6 +34,7 @@ Fixes the owner found (2026-10-14), one pull request each; B and C wait for the 
 ## Waiting for the owner
 
 **Decisions:**
+- **Step 3.6 sources:** which of the proposed sources for the facility and organization pages to add (PRODUCT_PLAN.md Phase 3 step 3.6).
 - **Step 3.7 sources:** the national T-MSIS Medicaid enrollment history and Medicaid billing files (opendata.hhs.gov), besides Florida's list.
 - **Phase 8, insurance networks (Stage 5.5 item 16):** pick the pilot state and approve the sources.
 - **Phase 4 sources:** SAM.gov exclusions, state Medicaid exclusion lists.
