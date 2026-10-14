@@ -3,3 +3,6 @@
 
 # Test fixtures are byte-exact copies of real files (line endings matter to the loader tests).
 tests/fixtures/** -text
+
+# Run inside the Linux MySQL container: LF only.
+*.sh text eol=lf

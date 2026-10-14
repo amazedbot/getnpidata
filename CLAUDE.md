@@ -170,8 +170,16 @@ getnpidata/
                            edit one, add a new one (next number, in its topic's folder) and regenerate schema.sql.
   deploy/
     azure.md               Azure setup + deploy notes
-    setup-local-mysql.ps1  configures a local MySQL 8.4 for the loader
-  .github/workflows/ci.yml build + test on every PR and push to master
+    setup-local-mysql.ps1  configures a local MySQL 8.4 for the loader (Windows)
+    docker/init/           the login script the MySQL container runs once (docker-compose.yml)
+  docker-compose.yml       MySQL 8.4 set up for the loader on any OS; passwords in the git-ignored .env (.env.example)
+  scripts/                 PowerShell (5.1 and 7): setup-secrets.ps1 (-Docker | -CreateLogins), loader.ps1 <command>,
+                           site.ps1 [-Port], test.ps1 [-UpdateSchema]; the loader and site run from published copies in
+                           the git-ignored .run/, so building never collides with a running site
+  .vscode/                 extensions.json (C# Dev Kit) and settings.json (the solution), shared
+  .github/workflows/ci.yml           build + test on every PR and push to master
+  .github/workflows/fresh-clone.yml  README's setup on a clean Linux machine (Docker MySQL, scripts, doctor, every test
+                                     with MySQL, sample load, the site answering), when the parts it covers change
 ```
 
 **Tests** use **xUnit v3** on **Microsoft.Testing.Platform** (MTP). The .NET 10 SDK no longer runs xunit.v3 4.x
@@ -194,7 +202,8 @@ through VSTest, so `global.json` opts `dotnet test` into MTP. Consequences:
 
 **Config & secrets:**
 - **Where things go.** `appsettings.json` holds non-secret defaults. Secrets go in user-secrets (loader and dev), environment variables or the git-ignored `appsettings.Local.json`; in production, in App Service → Configuration. **Never commit a real password, token or API key.**
-- **Names.** Connection strings are `LocalMySql` (loader) and `RemoteMySql` (site). Settings: `WorkFolder` (default `%ProgramData%\getnpidata\work`), `LogFolder` (default `%ProgramData%\getnpidata\logs`), `HudApiToken`, and `Api:*` for the site (§7 Stage 5).
+- **Names.** Connection strings are `LocalMySql` (loader) and `RemoteMySql` (site). Settings: `WorkFolder` (default `%ProgramData%\getnpidata\work` on Windows, `~/.local/share/getnpidata/work` elsewhere: `LoaderOptions.DefaultRoot`), `LogFolder` (`…\logs`), `HudApiToken` (optional since 2026-10-14: without it HUD is skipped with a warning), and `Api:*` for the site (§7 Stage 5).
+- **A fresh clone** (owner, 2026-10-14: anyone should be able to run what the owner runs): README "Running it yourself" — Docker or a Windows MySQL, `scripts/setup-secrets.ps1`, `scripts/loader.ps1 doctor`, `migrate`, `sample` or `run`, `scripts/site.ps1`. The analysis rules are pinned (`AnalysisLevel` 10.0-recommended) so a newer SDK can't break the build with new warnings.
 - **The HUD token** has been issued to the owner. If it's missing, ask the owner to run `dotnet user-secrets --project src/Npi.Loader set "HudApiToken" "<token>"`, and never paste it into a tracked file.
 
 ---
@@ -281,7 +290,7 @@ Work stage by stage, one branch per stage (§10). At the end of each stage, upda
 Old copies, unrelated projects and stale files were removed. The `src/` + `tests/` skeleton, CI and `deploy/azure.md` were created. The owner's backup was restored as `npi_test`, and its schema became `db/migrations/001_baseline.sql`.
 
 ### Stage 1 — C# loader (done)
-Commands (`Npi.Loader <command>`): `run` (default), `migrate`, `discover`, `load-file <zip>`, `reference`, `project`; since Stage 5.5 also `datasets`, `credentials`, `address-types`, `quality`, `areas`, `geocode` and `overture` (§7 Stage 5.5). `publish` belongs to the old Stage 6 design and exits 1 "not implemented".
+Commands (`Npi.Loader <command>`): `run` (default), `migrate`, `discover`, `load-file <zip>`, `reference`, `project`; since Stage 5.5 also `datasets`, `credentials`, `address-types`, `quality`, `areas`, `geocode` and `overture` (§7 Stage 5.5); since 2026-10-14 `doctor` (checks this computer's setup and says what to fix; changes nothing) and `sample` (the newest weekly file only, the reference data and the tables built from them, for a quick try; the weekly is recorded as `Sample`, not Completed, so a later `run` loads the monthly and then that weekly again). `publish` belongs to the old Stage 6 design and exits 1 "not implemented".
 
 1. **Discover:** `HttpClient` GET of `NPI_Files.html`. Hrefs are classified by regex, V2 only:
    - `^NPPES_Data_Dissemination_(?<month>[A-Za-z]+)_(?<year>\d{4})_V2\.zip$` → monthly
@@ -501,6 +510,9 @@ come first. Code comments cite these item numbers:
 ## 8. Commands and environment
 
 ```powershell
+scripts/loader.ps1 doctor                           # what this computer still needs (MySQL, logins, folders, settings)
+scripts/site.ps1 -Port 5080                         # the site, from a published copy in .run/site (the owner's LAN site)
+scripts/test.ps1                                    # every test, the MySQL ones with the NpiTestMySql user-secret
 dotnet build getnpidata.sln
 dotnet test                                         # MySQL integration tests run only when NPI_TEST_MYSQL is set
 dotnet run --project src/Npi.Loader -- discover
@@ -528,7 +540,7 @@ $env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"   # enables th
 **Working from a Claude Code session on the loader PC:**
 - Claude's shells may see a private `%APPDATA%`, so they can't read or write the owner's user-secrets. Scripts that need the secrets run in the owner's Terminal panel. They read `secrets.json` there, write any MySQL client option file to a temp path, and delete it afterwards.
 - Windows PowerShell 5.1 redirection (`*>`) writes UTF-16, so decode before grepping.
-- A running site locks `src/Npi.Web/bin`. Stop it before building the solution, or build to another `OutDir`.
+- A site started with `dotnet run` locks `src/Npi.Web/bin`, so building the solution fails while it runs; `scripts/site.ps1` serves a published copy from `.run/site` instead (the LAN site on 5080 runs that way since 2026-10-14).
 
 ---
 

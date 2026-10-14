@@ -9,6 +9,9 @@ public static class DownLogStatus
     public const string Loading = "Loading";
     public const string Completed = "Completed";
     public const string Failed = "Failed";
+
+    /// <summary>Loaded by the <c>sample</c> command: not done, so <c>run</c> loads it again after the monthly.</summary>
+    public const string Sample = "Sample";
 }
 
 /// <summary>
@@ -47,6 +50,10 @@ public sealed class DownLog(Database database)
     public Task CompleteAsync(NppesFile file, long rows, CancellationToken ct) => UpdateAsync(
         "UPDATE `downlog` SET `status` = @Status, `completed_at` = UTC_TIMESTAMP(), `rows_loaded` = @rows WHERE `filename` = @FileName",
         new { file.FileName, Status = DownLogStatus.Completed, rows }, ct);
+
+    public Task SetSampleAsync(NppesFile file, CancellationToken ct) => UpdateAsync(
+        "UPDATE `downlog` SET `status` = @Status WHERE `filename` = @FileName",
+        new { file.FileName, Status = DownLogStatus.Sample }, ct);
 
     public Task FailAsync(NppesFile file, string error, CancellationToken ct) => UpdateAsync(
         "UPDATE `downlog` SET `status` = @Status, `completed_at` = UTC_TIMESTAMP(), `error` = @error WHERE `filename` = @FileName",

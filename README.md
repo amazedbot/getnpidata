@@ -12,8 +12,8 @@ order/refer eligibility, Medicare Care Compare (accepts assignment, telehealth, 
 hospital affiliations), Medicare services and prescribing, industry payments (Open Payments) and the health
 facilities an organization runs. Counties come with population and shortage-area facts.
 
-> **Status:** the website, API and data loader are complete and running on the loader PC. Public hosting on Azure
-> (App Service + Azure Database for MySQL) is the next step.
+> **Status:** the website, API and data loader run on the project's own PC; public hosting on Azure comes later.
+> To run your own copy, see [Running it yourself](#running-it-yourself).
 
 ---
 
@@ -280,45 +280,110 @@ providers. Verify anything important in the official [NPPES NPI Registry](https:
 
 ## Running it yourself
 
+Everything here is free and public; a full copy of what the project's own PC runs fits on one computer.
+
 ### How it works
 
 ```
-CMS NPPES files ──► Npi.Loader (Windows, scheduled) ──► local MySQL (full raw data + search tables)
-                                                            │
-                                                  Npi.Loader publish (diff sync)   [planned]
-                                                            ▼
-                         Npi.Web (website + /api/v1) ◄── Azure Database for MySQL (search tables only)
+CMS NPPES files + other public datasets ──► Npi.Loader (run daily) ──► MySQL 8.4: raw data + search tables
+                                                                              │
+                                                    Npi.Web (website + /api/v1) reads the search tables
 ```
 
-The loader downloads the NPPES files, loads them into MySQL with all-or-nothing table swaps (the site never sees a
-half-loaded table), refreshes the reference data, and rebuilds compact search tables. The website reads only the
-search tables.
+The loader downloads the NPPES files and the other public datasets, loads them into MySQL with all-or-nothing table
+swaps (the site never sees a half-loaded table), and rebuilds the search tables. After the first load, a daily `run`
+loads only what changed (about 15 minutes after a weekly file).
 
 ### Requirements
 
-- .NET 10 SDK
-- MySQL 8.4 with `local_infile=ON`. `deploy/setup-local-mysql.ps1` configures a Windows install.
-- About 25 GB of disk for the database, plus room for the ~1.2 GB monthly download
-- A free [HUD USPS API token](https://www.huduser.gov/portal/dataset/uspszip-api.html) for the ZIP–county crosswalk
+- **The .NET 10 SDK** ([download](https://dotnet.microsoft.com/download/dotnet/10.0)). Opening `getnpidata.sln` in an
+  editor and building fails without it. In VS Code, also install the C# Dev Kit extension (VS Code suggests it); Visual
+  Studio 2026 and JetBrains Rider work too. Check with `dotnet --list-sdks`: a 10.0 line must be listed.
+- **MySQL 8.4** with `local_infile=ON`: Docker on any OS, or a local install (the Windows script below sets it up).
+- **PowerShell** for the `scripts/`: Windows PowerShell 5.1 comes with Windows; on Linux or macOS install PowerShell 7.
+  What they do can also be typed by hand (shown below).
+- **Disk:** about 100 GB free for a full load (the database grows to ~35 GB; downloads of up to ~9 GB at a time are
+  deleted after loading). A sample load needs about 1 GB.
+- **Optional:** a free [HUD USPS API token](https://www.huduser.gov/portal/dataset/uspszip-api.html) for county search
+  and the area pages.
 
-### Configure
+### 1. Get a MySQL database
 
-Secrets go in user-secrets, environment variables or a git-ignored `appsettings.Local.json`, never in tracked files.
+Pick one:
+
+- **Docker (any OS):** copy `.env.example` to `.env` and replace the passwords, then run `docker compose up -d`. It
+  starts MySQL 8.4 on `127.0.0.1:3306` with the settings the loader needs and creates the database `npi` and three
+  logins: `npi_loader` (the loader), `npi_web` (the site, read-only) and `npi_test` (the tests). Then store their
+  connection strings with `scripts/setup-secrets.ps1 -Docker`.
+- **MySQL on Windows without Docker:** `winget install Oracle.MySQL --version 8.4.9`, then, from an elevated
+  PowerShell, `deploy/setup-local-mysql.ps1` (it writes `my.ini` with `local_infile=ON` and registers and starts the
+  `MySQL84` service; set a root password right away, as it says). Then `scripts/setup-secrets.ps1 -CreateLogins` asks
+  for the root password once, creates the database and the three logins with random passwords, and stores them.
+- **A MySQL 8.4 you already have:** create a database, a loader login with all privileges on it plus
+  `SESSION_VARIABLES_ADMIN`, and a site login with `SELECT` on it, and turn on `local_infile`. Then
+  `scripts/setup-secrets.ps1` asks for each connection.
+
+`setup-secrets.ps1` stores everything as .NET user-secrets (outside the repository) and also asks for the optional
+settings. By hand, the same is:
 
 ```powershell
-dotnet user-secrets --project src/Npi.Loader set "ConnectionStrings:LocalMySql" "Server=localhost;Database=npi;User ID=…;Password=…;AllowLoadLocalInfile=true"
-dotnet user-secrets --project src/Npi.Loader set "HudApiToken" "<token>"
-dotnet user-secrets --project src/Npi.Web    set "ConnectionStrings:RemoteMySql" "Server=localhost;Database=npi;User ID=…;Password=…"
+dotnet user-secrets --project src/Npi.Loader set "ConnectionStrings:LocalMySql" "Server=localhost;Database=npi;User ID=npi_loader;Password=…"
+dotnet user-secrets --project src/Npi.Web    set "ConnectionStrings:RemoteMySql" "Server=localhost;Database=npi;User ID=npi_web;Password=…"
+dotnet user-secrets --project src/Npi.Loader set "HudApiToken" "<token>"     # optional
 ```
 
-The loader's database user needs all privileges on its database plus `SESSION_VARIABLES_ADMIN`. The website only
-needs `SELECT`.
+### 2. Check the setup
+
+```powershell
+scripts/loader.ps1 doctor
+```
+
+It checks the .NET runtime, the folders and disk space, MySQL's version, `local_infile`, the logins and their
+privileges, the migrations, the network and the optional settings, and prints what to fix for each problem. It changes
+nothing.
+
+### 3. Load the data
+
+```powershell
+scripts/loader.ps1 migrate     # create the tables (db/migrations; db/schema.sql shows the result)
+scripts/loader.ps1 sample      # optional quick try: the newest weekly file only, a few minutes
+scripts/loader.ps1 run         # the full load (below); then run it daily
+```
+
+**The full load, as the project's own PC runs it.** The first `run` takes many hours (about a working day, mostly
+downloads and table builds). It loads:
+
+- the NPPES monthly file (~1.1 GB zipped, ~9.8M NPIs), then the newer weekly files and the deactivation report;
+- the reference data (NUCC taxonomy, HUD ZIP–county crosswalk, Census counties and ZIP centres);
+- every enrichment dataset: OIG exclusions, Medicare opt-out and order-and-refer, Care Compare, facilities, Medicare
+  billing and prescribing, Open Payments (several GB), FDA product data, state licenses, FEMA buildings (21 GB, one file
+  at a time) and Overture Maps building points (read in place);
+- the search tables, standardized credentials, address types, area counts and record-quality labels.
+
+Practice addresses are geocoded with the Census batch geocoder, 200,000 per `run`. To place all ~3.3 million at once
+(about 3 hours), run `scripts/loader.ps1 geocode` after the first `run`, then `run` again. From then on, a daily `run`
+(Windows Task Scheduler, cron, …) keeps everything current; it skips files already loaded, so running it often is safe.
+Exit code `0` means everything completed, `1` that something failed (the log says what), `2` a bad command line.
+
+**Optional inputs** the load works without:
+
+- `HudApiToken`: without it there is no ZIP–county crosswalk, so county search and the area pages stay empty.
+- `SecUserAgent` (`getnpidata <your e-mail>`, SEC's fair-access rule): SEC listings on the company pages.
+- `OpenFdaApiKey` (free): product adverse-event counts fill in one run instead of 900 a day.
+- **State license files a person has to download** (the other 11 states load by themselves). Put them in the state
+  license files folder (`doctor` shows where), one subfolder per state:
+  - `FL`: `PROF_ALL.zip` and `dxe004dd.txt` from the Florida Department of Health MQA data download (free account);
+  - `AL`: the newest `roster-*.csv` from the Alabama Board of Medical Examiners roster;
+  - `MI`: the license lists (`*.xlsx`) from Michigan LARA;
+  - `CA`: the Medical Board of California physician and surgeon database (Microsoft Access files, sent on request;
+    read on Windows only).
 
 | Setting | Project | Default | Meaning |
 |---|---|---|---|
 | `ConnectionStrings:LocalMySql` | Loader | — | Database the loader writes (secret) |
-| `HudApiToken` | Loader | — | HUD API token (secret) |
-| `WorkFolder`, `LogFolder` | Loader | `%ProgramData%\getnpidata\work`, `…\logs` | Downloads and daily log files (kept 60 days) |
+| `HudApiToken` | Loader | — | HUD API token (secret; optional: without it county search and the area pages stay empty) |
+| `SecUserAgent`, `OpenFdaApiKey` | Loader | — | Optional: SEC listings on company pages ("getnpidata <your e-mail>"); a larger openFDA quota (secret) |
+| `WorkFolder`, `LogFolder`, `StateLicenseFilesFolder` | Loader | `%ProgramData%\getnpidata\work`, `…\logs`, `…\state-files` on Windows; `~/.local/share/getnpidata/…` elsewhere | Downloads, daily log files (kept 60 days), hand-downloaded state license files |
 | `KeepLastZip` | Loader | `true` | Keep the newest downloaded zip |
 | `MinRowRatio` | Loader | `0.95` | A full reload must have at least 95% of the current row count, or it is rejected |
 | `HudRefreshDays` | Loader | `14` | How often to re-check the HUD crosswalk |
@@ -331,16 +396,10 @@ needs `SELECT`.
 Environment variables work too: prefix `NPI_` for the loader (for example `NPI_HudApiToken`). For the site, use the
 standard ASP.NET Core form, for example `Api__RequireKey=true`.
 
-### Load the data
-
-```powershell
-dotnet run --project src/Npi.Loader -- migrate     # create or upgrade the schema
-dotnet run --project src/Npi.Loader -- discover    # dry run: list the NPPES files run would load
-dotnet run --project src/Npi.Loader -- run         # load everything new, refresh reference data, rebuild search tables
-```
-
-| Command | Does |
+| Command (`scripts/loader.ps1 <command>`, or `dotnet run --project src/Npi.Loader -- <command>`) | Does |
 |---|---|
+| `doctor` | Check this computer's setup (MySQL version, `local_infile`, logins and privileges, migrations, folders, disk, network, optional settings) and say what to fix |
+| `sample` | Quick try: only the newest weekly file (~50,000 providers) plus reference data, search tables, map and labels, in minutes. The enrichment datasets are skipped; a later `run` does the full load |
 | `run` (default) | Load new NPPES files (newest monthly, then weeklies in order, then the deactivation report), refresh stale reference data, and rebuild the search tables if anything changed |
 | `migrate` | Apply the numbered migrations in `db/migrations` |
 | `discover` | List what `run` would load |
@@ -353,19 +412,17 @@ dotnet run --project src/Npi.Loader -- run         # load everything new, refres
 | `areas` | Recount the providers per area (US, states, counties) and plain specialty for the area pages; `run` and `project` do it after each projection |
 | `overture [area]` | Place practice addresses at their building with Overture Maps data (read in place from its public files, one state's area at a time), then rebuild the map tables: every state, one state (`NY`) or one county (`36103`) |
 | `geocode [county]` | Geocode every practice address not geocoded yet (Census batch geocoder, ~24,000 a minute) and rebuild the map tables. With a 5-digit county FIPS (e.g. `36103`), only that county's addresses. `run` geocodes up to 200,000 new addresses per run |
-| `publish` | Sync the search tables to Azure *(planned)* |
 
-`run` skips files already loaded, so running it daily is safe. Exit code `0` means everything completed, `1` means
-something failed (see the log), and `2` means a bad command line. A first full load takes about an hour.
-
-### Run the site
+### 4. Run the site
 
 ```powershell
-dotnet run --project src/Npi.Web   # http://<this-PC>:5000 and https://<this-PC>:5001, listening on all interfaces
+scripts/site.ps1               # http://localhost:5080, and this computer's address on the network
+scripts/site.ps1 -Port 5000
 ```
 
-To reach it from other devices on your network, allow the port through Windows Firewall. LAN clients use http,
-because the development HTTPS certificate is trusted only for localhost.
+It builds the site into `.run/site` first and serves it from there, so building the solution meanwhile doesn't fail on
+files the running site holds. Other devices on your network need a firewall rule for the port, and use http. Without
+the script: `dotnet run --project src/Npi.Web` (http on 5000, https on 5001).
 
 ## Project layout
 
@@ -378,24 +435,23 @@ because the development HTTPS certificate is trusted only for localhost.
 | `tests/` | xUnit v3 tests for each project, plus hand-made fixtures with tricky values (commas, quotes, braces, backslashes, Unicode) |
 | `db/migrations` | Numbered SQL migrations in topic folders, applied by `Npi.Loader migrate` ([details](db/migrations/README.md)) |
 | `db/schema.sql` | Every table as the migrations leave it, in one file, for reading |
-| `deploy/` | [Azure setup and deployment](deploy/azure.md), local MySQL setup script |
+| `scripts/` | PowerShell scripts: `setup-secrets.ps1`, `loader.ps1`, `site.ps1`, `test.ps1` |
+| `docker-compose.yml`, `.env.example` | MySQL 8.4 set up for the loader, in Docker |
+| `deploy/` | [Azure setup and deployment](deploy/azure.md), the Windows MySQL setup script, the Docker login script |
 | `CLAUDE.md` | Design decisions, as-built notes and progress log |
 
 ## Development
 
 ```powershell
 dotnet build getnpidata.sln
-dotnet test
+scripts/test.ps1                 # every test; the MySQL tests use the NpiTestMySql login (setup-secrets.ps1)
+scripts/test.ps1 -UpdateSchema   # after adding a migration: rewrites db/schema.sql
 ```
 
-CI (GitHub Actions) builds and tests every pull request. The MySQL integration tests run when `NPI_TEST_MYSQL` holds
-a connection string to a MySQL server where the user may create `npi_test_it_*` databases; otherwise they are
-skipped.
+CI (GitHub Actions) builds and tests every pull request. The MySQL integration tests run when `NPI_TEST_MYSQL` holds a
+connection string to a MySQL server where the user may create `npi_test_it_*` databases (`scripts/test.ps1` sets it
+from the `NpiTestMySql` user-secret); otherwise they are skipped. A second CI job checks a fresh clone on Linux: MySQL in
+Docker, `setup-secrets.ps1 -Docker`, `doctor`, every test with MySQL, `sample`, then the site answering.
 
-```powershell
-$env:NPI_TEST_MYSQL = "Server=localhost;User ID=…;Password=…"
-dotnet test
-```
-
-Tests run on Microsoft.Testing.Platform (selected in `global.json`). Use `dotnet test`, not
+Tests run on Microsoft.Testing.Platform (selected in `global.json`). Use `dotnet test` or `scripts/test.ps1`, not
 `dotnet test getnpidata.sln`.

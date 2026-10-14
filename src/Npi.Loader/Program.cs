@@ -50,7 +50,6 @@ try
         return 1;
     }
 
-    var database = new Database(configuration.GetConnectionString("LocalMySql") ?? "");
     using var http = new HttpClient(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All })
     {
         // Covers connecting and the response headers; the body of a 1 GB monthly can stream for longer.
@@ -58,12 +57,20 @@ try
     };
     http.DefaultRequestHeaders.UserAgent.ParseAdd("getnpidata-loader/1.0 (+https://github.com/amazedbot/getnpidata)");
 
+    if (invocation.Command is LoaderCommand.Doctor)
+    {
+        // Before the database: the doctor reports a missing or wrong connection string instead of failing on it.
+        return await new Doctor(options, configuration, http, Console.Out).RunAsync(cts.Token);
+    }
+
+    var database = new Database(configuration.GetConnectionString("LocalMySql") ?? "");
     var app = new LoaderApp(options, database, http, Log.Logger);
     return invocation.Command switch
     {
         LoaderCommand.Migrate => await app.MigrateAsync(cts.Token),
         LoaderCommand.Discover => await app.DiscoverAsync(cts.Token),
         LoaderCommand.Run => await app.RunAsync(cts.Token),
+        LoaderCommand.Sample => await app.SampleAsync(cts.Token),
         LoaderCommand.LoadFile => await app.LoadFileAsync(invocation.Arguments[0], cts.Token),
         LoaderCommand.Reference => await app.ReferenceAsync(cts.Token),
         LoaderCommand.Datasets => await app.DatasetsAsync(invocation.Arguments.Count > 0 ? invocation.Arguments[0] : null, cts.Token),

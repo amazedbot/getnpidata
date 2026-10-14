@@ -189,6 +189,44 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     }
 
     /// <summary>
+    /// The <c>sample</c> command, for a quick try of the site: the newest weekly NPPES file only (~50,000 providers, minutes),
+    /// the reference data, the search tables, standardized credentials, address types, area counts, the map (Census-geocoded,
+    /// a bounded number of addresses) and the record-quality labels. The Stage 5.5 datasets, Overture and FEMA are skipped.
+    /// The weekly is recorded as <c>Sample</c>, not Completed, so a later <c>run</c> loads the monthly and then this weekly again.
+    /// </summary>
+    public async Task<int> SampleAsync(CancellationToken ct)
+    {
+        await EnsureReadyAsync(ct);
+        var pageUrl = new Uri(options.NppesPageUrl);
+        var weekly = NppesPage.ParseZipLinks(await http.GetStringAsync(pageUrl, ct), pageUrl)
+            .Select(link => new PlannedFile(NppesFileClassifier.Classify(link.FileName)!, link.Url))
+            .Where(x => x.File is { Kind: NppesFileKind.Weekly })
+            .MaxBy(x => x.File.FileDate);
+        if (weekly is null)
+        {
+            log.Error("No weekly file is listed on {Page}", pageUrl);
+            return 1;
+        }
+
+        var downloader = new Downloader(http, log, options.DownloadAttempts, parts: options.DownloadParts, partMinBytes: options.DownloadPartMinBytes);
+        if (!await ProcessAsync(weekly.File, () => downloader.DownloadAsync(weekly.Url, weekly.File.FileName, options.ResolvedWorkFolder, ct), ct))
+        {
+            return 1;
+        }
+
+        await _downLog.SetSampleAsync(weekly.File, ct);
+        var referenceOk = await new ReferenceLoader(options, database, http, log).RefreshAllAsync(force: false, ct);
+        await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
+        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
+        await new AddressTypeBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
+        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
+        var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
+        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: false);
+        log.Information("Sample loaded from {File}. A full load: Npi.Loader run (it loads the monthly file, then this weekly again)", weekly.File.FileName);
+        return referenceOk && mapOk ? 0 : 1;
+    }
+
+    /// <summary>
     /// The <c>geocode</c> command: geocode every practice address not geocoded yet, then rebuild the map table.
     /// With a county FIPS, only that county's addresses (to try the map in one area before the whole backlog).
     /// </summary>

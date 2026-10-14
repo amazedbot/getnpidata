@@ -20,6 +20,8 @@ public class LoaderCommandLineTests
     [InlineData("reference", LoaderCommand.Reference)]
     [InlineData("project", LoaderCommand.Project)]
     [InlineData("publish", LoaderCommand.Publish)]
+    [InlineData("doctor", LoaderCommand.Doctor)]
+    [InlineData("sample", LoaderCommand.Sample)]
     [InlineData("DISCOVER", LoaderCommand.Discover)]
     public void Known_commands_parse(string name, LoaderCommand expected)
     {
@@ -91,5 +93,13 @@ public class LoaderCommandLineTests
 
         Assert.Null(invocation);
         Assert.False(string.IsNullOrWhiteSpace(error));
+    }
+
+    [Fact]
+    public void Default_folders_are_writable_places_on_every_system()
+    {
+        Assert.Equal(Path.Combine(@"C:\ProgramData", "getnpidata"), LoaderOptions.DefaultRootFor(windows: true, xdgDataHome: "/x", programData: @"C:\ProgramData", home: "/home/a"));
+        Assert.Equal(Path.Combine("/data", "getnpidata"), LoaderOptions.DefaultRootFor(windows: false, xdgDataHome: "/data", programData: "/usr/share", home: "/home/a"));
+        Assert.Equal(Path.Combine("/home/a", ".local", "share", "getnpidata"), LoaderOptions.DefaultRootFor(windows: false, xdgDataHome: null, programData: "/usr/share", home: "/home/a"));
     }
 }

@@ -1,19 +1,21 @@
 using System.Text;
+using Dapper;
 using System.Text.RegularExpressions;
 
 namespace Npi.Loader.Tests.Integration;
 
 /// <summary>
 /// db/schema.sql is every table as the migrations leave it, for reading (db/migrations/README.md). It is checked against a
-/// freshly migrated test database; with NPI_UPDATE_SCHEMA=1 the test writes the file instead. Skipped unless NPI_TEST_MYSQL is set.
+/// freshly migrated database (the tests' template); with NPI_UPDATE_SCHEMA=1 the test writes the file instead. Skipped unless NPI_TEST_MYSQL is set.
 /// </summary>
 public sealed partial class SchemaFileTests
 {
     [Fact]
     public async Task Schema_file_matches_the_migrations()
     {
-        await using var db = await TestDatabase.CreateAsync();
-        var tables = await db.QueryAsync<string>(
+        var template = await TestDatabase.TemplateAsync();
+        await using var connection = await template.OpenAsync(TestContext.Current.CancellationToken);
+        var tables = await connection.QueryAsync<string>(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name");
         var text = new StringBuilder("""
             -- db/schema.sql: every table as migrations 001 to the newest leave it, generated from a freshly migrated database.
@@ -23,12 +25,13 @@ public sealed partial class SchemaFileTests
             """);
         foreach (var table in tables)
         {
-            var create = (await db.QueryAsync<(string Table, string Create)>($"SHOW CREATE TABLE `{table}`")).Single().Create;
+            var create = (await connection.QueryAsync<(string Table, string Create)>($"SHOW CREATE TABLE `{table}`")).Single().Create;
             text.Append('\n').Append(AutoIncrement().Replace(create, "").ReplaceLineEndings("\n")).Append(";\n");
         }
 
         var path = Path.Combine(RepositoryRoot(), "db", "schema.sql");
-        var expected = text.ToString();
+        // The header comes from this file's raw string, which takes the file's line endings (CRLF in a Windows checkout).
+        var expected = text.ToString().ReplaceLineEndings("\n");
         if (Environment.GetEnvironmentVariable("NPI_UPDATE_SCHEMA") == "1")
         {
             await File.WriteAllTextAsync(path, expected, TestContext.Current.CancellationToken);

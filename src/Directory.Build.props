@@ -1,9 +1,10 @@
 <Project>
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
 
-  <!-- Production code: warnings are errors (CLAUDE.md §9). -->
+  <!-- Production code: warnings are errors (CLAUDE.md §9). The analysis rules are pinned to .NET 10's set, so a newer SDK
+       (which adds rules) can't turn new warnings into build errors on someone else's computer. -->
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisLevel>10.0-recommended</AnalysisLevel>
   </PropertyGroup>
 </Project>

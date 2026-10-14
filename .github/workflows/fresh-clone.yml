@@ -1,0 +1,107 @@
+name: Fresh clone (Linux)
+
+# Follows README "Running it yourself" on a clean Linux machine: MySQL in Docker, the scripts, doctor, every test with
+# MySQL, a sample load from the real public files, and the site answering. Runs when the parts it covers change, and on
+# demand (Actions → Fresh clone → Run workflow). It downloads from CMS, NUCC and the Census Bureau.
+on:
+  pull_request:
+    paths:
+      - "src/Npi.Loader/**"
+      - "src/Npi.Web/**"
+      - "src/Npi.Core/**"
+      - "db/**"
+      - "scripts/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "deploy/docker/**"
+      - "global.json"
+      - "Directory.*.props"
+      - ".github/workflows/fresh-clone.yml"
+  push:
+    branches: [master]
+    paths:
+      - "src/Npi.Loader/**"
+      - "src/Npi.Web/**"
+      - "src/Npi.Core/**"
+      - "db/**"
+      - "scripts/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "deploy/docker/**"
+      - "global.json"
+      - "Directory.*.props"
+      - ".github/workflows/fresh-clone.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-clone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: MySQL in Docker (.env with random passwords)
+        run: |
+          cp .env.example .env
+          for name in MYSQL_ROOT_PASSWORD NPI_LOADER_PASSWORD NPI_WEB_PASSWORD NPI_TEST_PASSWORD; do
+            sed -i "s/^$name=.*/$name=$(openssl rand -hex 16)/" .env
+          done
+          docker compose up -d --wait
+
+      - name: Store the connection strings (scripts/setup-secrets.ps1 -Docker)
+        shell: pwsh
+        run: ./scripts/setup-secrets.ps1 -Docker -SkipOptional
+
+      - name: Doctor
+        shell: pwsh
+        run: ./scripts/loader.ps1 doctor
+
+      - name: Migrate
+        shell: pwsh
+        run: ./scripts/loader.ps1 -NoBuild migrate
+
+      - name: Every test, with MySQL (scripts/test.ps1)
+        shell: pwsh
+        run: ./scripts/test.ps1
+
+      - name: Sample load (newest weekly NPPES file)
+        shell: pwsh
+        run: ./scripts/loader.ps1 -NoBuild sample
+
+      - name: Doctor after loading
+        shell: pwsh
+        run: ./scripts/loader.ps1 -NoBuild doctor
+
+      - name: The site answers (scripts/site.ps1)
+        run: |
+          nohup pwsh ./scripts/site.ps1 -Port 5080 > site.log 2>&1 &
+          for i in $(seq 1 90); do curl -sf http://localhost:5080/health > /dev/null && break; sleep 2; done
+          check() { code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:5080$1"); echo "$code $1"; [ "$code" = "200" ]; }
+          check /health
+          check /
+          check "/search?q=dentists+in+NY"
+          check /api/v1/meta
+          npi=$(curl -sf "http://localhost:5080/api/v1/providers?state=NY&pageSize=1" | jq -r '.items[0].npi')
+          echo "first NY provider: $npi"
+          [ -n "$npi" ] && [ "$npi" != "null" ]
+          check "/provider/$npi"
+          check "/api/v1/providers/$npi"
+          check "/export.csv?state=NY&category=Dentists"
+          check /map
+          check /companies-and-products
+
+      - name: Logs
+        if: always()
+        run: |
+          cat site.log 2>/dev/null | tail -50 || true
+          tail -100 ~/.local/share/getnpidata/logs/*.log 2>/dev/null || true

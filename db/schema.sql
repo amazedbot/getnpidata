@@ -710,8 +710,8 @@ CREATE TABLE `medicare_reassignment` (
   `npi` char(10) DEFAULT NULL,
   `specialty` varchar(120) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `ix_medicare_reassignment_npi` (`npi`),
-  KEY `ix_medicare_reassignment_group` (`group_pac_id`,`npi`)
+  KEY `ix_medicare_reassignment_group` (`group_pac_id`,`npi`),
+  KEY `ix_medicare_reassignment_npi` (`npi`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `medicare_revalidation` (
