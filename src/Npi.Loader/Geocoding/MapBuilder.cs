@@ -121,7 +121,7 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
             await Database.ExecuteAsync(connection, FillSpecialtySql("provider_map_specialty_staging", "`provider_map_staging`"), ct);
             await Database.ExecuteAsync(connection,
                 Projection.CredentialBuilder.MapCredentialSql("provider_map_credential_staging", "provider_credential", "provider_map_staging"), ct);
-        }, ct);
+        }, ct, deferIndexes: true, log: log);
         var rows = counts["provider_map"];
         var exact = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             "SELECT COUNT(*) FROM `provider_map` WHERE `approximate` = 0", cancellationToken: ct));

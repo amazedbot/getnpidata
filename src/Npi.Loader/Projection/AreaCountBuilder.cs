@@ -132,7 +132,7 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
 
             await PrepareNewAsync(connection, "specialty_code_category_staging", ct);
             await CountNewAsync(connection, "area_provider_count_staging", null, ct);
-        }, ct);
+        }, ct, deferIndexes: true, log: log);
         await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{NewRows}`", ct);
 
         var now = DateTime.UtcNow;

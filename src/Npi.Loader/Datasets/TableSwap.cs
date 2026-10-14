@@ -13,9 +13,15 @@ namespace Npi.Loader.Datasets;
 public static class TableSwap
 {
     /// <param name="fill">Fills the staging tables (named <c>{table}_staging</c>, already created LIKE the targets).</param>
+    /// <param name="deferIndexes">
+    /// Fill the staging tables without their secondary indexes and build those afterwards (<see cref="DeferredIndexes"/>), for
+    /// large tables whose fill doesn't read them through one.
+    /// </param>
+    /// <param name="log">Where the index builds are logged (with <paramref name="deferIndexes"/>).</param>
     /// <returns>The row count of each new table.</returns>
     public static async Task<IReadOnlyDictionary<string, long>> ReplaceAsync(
-        MySqlConnection connection, IReadOnlyList<string> tables, double minRowRatio, Func<Task> fill, CancellationToken ct)
+        MySqlConnection connection, IReadOnlyList<string> tables, double minRowRatio, Func<Task> fill, CancellationToken ct,
+        bool deferIndexes = false, Serilog.ILogger? log = null)
     {
         try
         {
@@ -25,7 +31,9 @@ public static class TableSwap
                 await Database.ExecuteAsync(connection, $"CREATE TABLE {Staging(table)} LIKE {SqlIdentifier.Quote(table)}", ct);
             }
 
+            var deferred = deferIndexes ? await DeferredIndexes.DropAsync(connection, tables.Select(t => t + "_staging"), ct) : [];
             await fill();
+            await DeferredIndexes.RestoreAsync(connection, deferred, log ?? Serilog.Core.Logger.None, ct);
 
             var counts = new Dictionary<string, long>();
             foreach (var table in tables)
