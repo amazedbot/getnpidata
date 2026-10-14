@@ -86,6 +86,7 @@ Nothing. Speed items 1, 2, 3, 4 and 8 are done (below); the next item waits for 
 - ~~Step 3.5: spot check of 50 Stale records, and other sources tested~~ (2026-10-13; results in PRODUCT_PLAN.md Phase 3)
 
 **Speed work:**
+- ~~Item 4: FEMA buildings for new and moved addresses only, the files read in place~~ (2026-10-14, PR #72: 5,724 new addresses in 5.6 min instead of a 17 min full load with a 21 GB download)
 - ~~Item 8: downloads kept until loaded, reused when unchanged, large files in parallel parts~~ (2026-10-13, PR #71)
 - ~~Item 3: dataset reloads queue only the providers whose rows changed, for the quality label~~ (2026-10-13, PR #70: 35,260 relabelled in 1:55 instead of 9.5M in 25 min)
 - ~~Item 2: the builders after the projection work from the queue~~ (2026-10-13, PR #65: everything after a weekly in about 10 min instead of about 2.5 h)
