@@ -66,9 +66,9 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
 
             if (file.Kind == NppesFileKind.Monthly)
             {
-                await QueueMonthlyChangesAsync(connection, targets.Select(t => t.Table).ToList(), ct);
+                var compared = await QueueMonthlyChangesAsync(connection, targets.Select(t => t.Table).ToList(), ct);
                 await ReplaceAllAsync(connection, targets.Select(t => t.Table).ToList(), ct);
-                var flagged = await Deactivations.ApplyAsync(connection, scopeTable: null, ct);
+                var flagged = await Deactivations.ApplyPendingAsync(connection, all: !compared, ct);
                 log.Information("Deactivation flags refreshed: {Rows:N0} rows changed", flagged);
             }
             else
@@ -133,13 +133,16 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
     /// Only the columns the projection reads count (<see cref="ProjectionBuilder.ReadsColumn"/>), so changes in columns the
     /// site never shows queue nothing (comparing every column, the October 2026 file differed in 4.6M NPIs, in columns such
     /// as the EIN and certification date). npidata rows compare by <see cref="StagingLoader.SourceHash"/>, written while the
-    /// files load; child rows by an MD5 per NPI, computed here (those tables are small).
+    /// files load; child rows by an MD5 per NPI, computed here (those tables are small). The same pass over npidata queues in
+    /// <c>deactivation_pending</c> the NPIs whose deactivation flag may change (speed item 10): those whose row differs, or
+    /// whose deactivation or reactivation date does (the reactivation date isn't in the hash: the projection doesn't read it).
     /// </summary>
-    private async Task QueueMonthlyChangesAsync(MySqlConnection connection, IReadOnlyList<string> tables, CancellationToken ct)
+    /// <returns>False on a first load (nothing stored to compare with): every flag is then computed.</returns>
+    private async Task<bool> QueueMonthlyChangesAsync(MySqlConnection connection, IReadOnlyList<string> tables, CancellationToken ct)
     {
         if (await Database.CountAsync(connection, "npidata", ct) == 0)
         {
-            return; // a first load: the projection is built in full
+            return false; // a first load: the projection is built in full
         }
 
         var started = DateTime.UtcNow;
@@ -171,6 +174,7 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
 
         log.Information("Monthly: {Rows:N0} NPIs differ from the stored data ({Seconds:N0}s)",
             await Database.CountAsync(connection, "projection_pending", ct) - before, (DateTime.UtcNow - started).TotalSeconds);
+        return true;
 
         async Task QueueTableChangesAsync(string table)
         {
@@ -180,11 +184,20 @@ public sealed class NpiDataLoader(Database database, ILogger log, double minRowR
             var st = SqlIdentifier.Quote(table + "_staging");
             if (table == "npidata")
             {
+                // One read of both tables: every NPI whose flag may change, then those of them whose row differs.
+                var differs = $"NOT (s.`{StagingLoader.SourceHash}` <=> n.`{StagingLoader.SourceHash}`) OR s.`{StagingLoader.SourceHash}` IS NULL";
+                await RunAsync(
+                    $"""
+                    INSERT IGNORE INTO `deactivation_pending` (`NPI`)
+                    SELECT s.`NPI` FROM {st} s LEFT JOIN {t} n ON n.`NPI` = s.`NPI`
+                    WHERE {differs} OR NOT (s.`NPI_Deactivation_Date` <=> n.`NPI_Deactivation_Date`)
+                       OR NOT (s.`NPI_Reactivation_Date` <=> n.`NPI_Reactivation_Date`)
+                    """);
                 await RunAsync(
                     $"""
                     INSERT IGNORE INTO `projection_pending` (`npi`)
-                    SELECT s.`NPI` FROM {st} s LEFT JOIN {t} n ON n.`NPI` = s.`NPI`
-                    WHERE NOT (s.`{StagingLoader.SourceHash}` <=> n.`{StagingLoader.SourceHash}`) OR s.`{StagingLoader.SourceHash}` IS NULL
+                    SELECT s.`NPI` FROM `deactivation_pending` p JOIN {st} s ON s.`NPI` = p.`NPI` LEFT JOIN {t} n ON n.`NPI` = s.`NPI`
+                    WHERE {differs}
                     """);
                 await RunAsync(
                     $"""

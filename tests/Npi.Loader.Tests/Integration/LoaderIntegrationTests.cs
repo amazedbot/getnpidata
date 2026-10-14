@@ -209,6 +209,49 @@ public sealed class LoaderIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Monthly_and_report_loads_recompute_only_the_flags_that_can_change()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        await using var connection = await db.Database.OpenAsync(_ct);
+        // After each load, recomputing every flag (the old way) must change nothing, and the queue must be empty.
+        async Task AssertFlagsCompleteAsync()
+        {
+            Assert.Equal(0, await Load.Deactivations.ApplyAsync(connection, scopeTable: null, _ct));
+            Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM deactivation_pending"));
+        }
+
+        var september = new NppesZipBuilder()
+            .Provider(A, ("Last_Update_Date", "09/01/2026"))
+            .Provider(B, ("NPI_Deactivation_Date", "01/01/2020"), ("NPI_Reactivation_Date", "02/01/2021"), ("Last_Update_Date", "02/01/2021"))
+            .Provider(C, ("Last_Update_Date", "09/01/2026"))
+            .Provider(D, ("NPI_Deactivation_Date", "05/01/2019"), ("Last_Update_Date", "05/01/2019"));
+        Assert.Equal(0, await LoadFileAsync(db, september.Write(_folder, "NPPES_Data_Dissemination_September_2026_V2.zip")));
+        await AssertFlagsCompleteAsync();
+        Assert.Equal(0, await LoadFileAsync(db, DeactivationZip("NPPES_Deactivated_NPI_Report_091426_V2.zip", (C, "09/14/2026"), (B, "01/01/2020"))));
+        await AssertFlagsCompleteAsync();
+        Assert.Equal([(A, 0), (B, 0), (C, 1), (D, 1)], await db.QueryAsync<(string, int)>("SELECT NPI, Is_Deactivated FROM npidata ORDER BY NPI"));
+
+        // Only reactivation dates change, which the row hash doesn't cover: B's is withdrawn, D is reactivated.
+        var october = new NppesZipBuilder()
+            .Provider(A, ("Last_Update_Date", "09/01/2026"))
+            .Provider(B, ("NPI_Deactivation_Date", "01/01/2020"), ("Last_Update_Date", "02/01/2021"))
+            .Provider(C, ("Last_Update_Date", "09/01/2026"))
+            .Provider(D, ("NPI_Deactivation_Date", "05/01/2019"), ("NPI_Reactivation_Date", "06/01/2026"), ("Last_Update_Date", "05/01/2019"));
+        Assert.Equal(0, await LoadFileAsync(db, october.Write(_folder, "NPPES_Data_Dissemination_October_2026_V2.zip")));
+        await AssertFlagsCompleteAsync();
+        Assert.Equal([(A, 0), (B, 1), (C, 1), (D, 0)], await db.QueryAsync<(string, int)>("SELECT NPI, Is_Deactivated FROM npidata ORDER BY NPI"));
+
+        // A load stopped after its swap, before the flags: its queued NPIs are recomputed by the next load. The next report
+        // adds A and keeps the rest, so only A and the leftover C are recomputed.
+        await db.ExecuteAsync("UPDATE npidata SET Is_Deactivated = 0 WHERE NPI = @C", new { C });
+        await db.ExecuteAsync("INSERT INTO deactivation_pending (NPI) VALUES (@C)", new { C });
+        Assert.Equal(0, await LoadFileAsync(db, DeactivationZip("NPPES_Deactivated_NPI_Report_101226_V2.zip",
+            (A, "10/12/2026"), (B, "01/01/2020"), (C, "09/14/2026"))));
+        await AssertFlagsCompleteAsync();
+        Assert.Equal([(A, 1), (B, 1), (C, 1), (D, 0)], await db.QueryAsync<(string, int)>("SELECT NPI, Is_Deactivated FROM npidata ORDER BY NPI"));
+    }
+
+    [Fact]
     public async Task Migrations_are_recorded_and_not_reapplied()
     {
         await using var db = await TestDatabase.CreateAsync();

@@ -162,7 +162,7 @@ getnpidata/
     Npi.Web.Tests/     query-string binding, API behaviour (WebApplicationFactory, no database)
     Npi.Client.Tests/  the client against the in-memory API + client/server contract checks
     fixtures/          real V2 headers, NPI_Files.html, reference-data excerpts (byte-exact; see .gitattributes)
-  db/migrations/           numbered .sql files (001–094) + README, embedded in and applied by `Npi.Loader migrate`.
+  db/migrations/           numbered .sql files (001–095) + README, embedded in and applied by `Npi.Loader migrate`.
                            Applied migrations are checksummed: never edit one, add a new one instead.
   deploy/
     azure.md               Azure setup + deploy notes
@@ -216,7 +216,7 @@ loading"); it requires TLS (`SslMode=Required`) and firewall rules (see `deploy/
 
 **Deactivation flag rule** (`Deactivations.ApplyAsync`):
 - **When it's set:** `Is_Deactivated = 1` when the NPI has a deactivation date (the report date, else `NPI_Deactivation_Date`) and no `NPI_Reactivation_Date` on or after it. An empty `NPI_Deactivation_Date` is filled from the report.
-- **When it's recomputed:** for all rows after every monthly and deactivation load, and for that week's NPIs after every weekly.
+- **When it's recomputed:** for that week's NPIs after every weekly; after a monthly or deactivation report, for the NPIs queued in `deactivation_pending` before its swap (095, speed item 10): a monthly's NPIs whose row differs from the stored one (`Source_Hash`) or whose deactivation or reactivation date does (found in the same pass as the monthly's change queue), a report's NPIs it adds, drops or redates. The queue is emptied only after the flags are applied, so a load stopped in between is caught up by the next one. A first load, or more than 500,000 queued NPIs, recomputes every row (~1 min).
 - **Date comparisons** use `YYYYMMDD` strings built with SUBSTRING, because `STR_TO_DATE` errors on malformed values in strict SQL mode.
 
 **Baseline schema:** the owner's backup (2026-10-07) is captured in `db/migrations/001_baseline.sql`, with caveats in
