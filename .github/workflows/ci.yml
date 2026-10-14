@@ -27,5 +27,17 @@ jobs:
       - name: Build
         run: dotnet build getnpidata.sln --no-restore --configuration Release
 
-      - name: Test
+      # MySQL 8.4 as docker-compose.yml sets it up (the logins from deploy/docker/init), for the MySQL integration tests.
+      # Random passwords; nothing is downloaded but the image.
+      - name: MySQL in Docker
+        run: |
+          cp .env.example .env
+          for name in MYSQL_ROOT_PASSWORD NPI_LOADER_PASSWORD NPI_WEB_PASSWORD NPI_TEST_PASSWORD; do
+            sed -i "s/^$name=.*/$name=$(openssl rand -hex 16)/" .env
+          done
+          sed -i "s/^MYSQL_BUFFER_POOL=.*/MYSQL_BUFFER_POOL=1G/" .env
+          docker compose up -d --wait
+          echo "NPI_TEST_MYSQL=Server=127.0.0.1;Port=3306;User ID=npi_test;Password=$(grep '^NPI_TEST_PASSWORD=' .env | cut -d= -f2)" >> "$GITHUB_ENV"
+
+      - name: Test (with MySQL)
         run: dotnet test --solution getnpidata.sln --no-build --configuration Release

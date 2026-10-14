@@ -449,10 +449,11 @@ scripts/test.ps1                 # every test; the MySQL tests use the NpiTestMy
 scripts/test.ps1 -UpdateSchema   # after adding a migration: rewrites db/schema.sql
 ```
 
-CI (GitHub Actions) builds and tests every pull request. The MySQL integration tests run when `NPI_TEST_MYSQL` holds a
-connection string to a MySQL server where the user may create `npi_test_it_*` databases (`scripts/test.ps1` sets it
-from the `NpiTestMySql` user-secret); otherwise they are skipped. A second CI job checks a fresh clone on Linux: MySQL in
-Docker, `setup-secrets.ps1 -Docker`, `doctor`, every test with MySQL, `sample`, then the site answering.
+CI (GitHub Actions) builds and tests every pull request, with MySQL in Docker. The MySQL integration tests run when
+`NPI_TEST_MYSQL` holds a connection string to a MySQL server where the user may create `npi_test_it_*` databases
+(`scripts/test.ps1` sets it from the `NpiTestMySql` user-secret); otherwise they are skipped. A second job checks a fresh
+clone on Linux (MySQL in Docker, `setup-secrets.ps1 -Docker`, `doctor`, every test, `sample`, then the site answering)
+when a pull request changes the setup, once a week, and on demand.
 
 Tests run on Microsoft.Testing.Platform (selected in `global.json`). Use `dotnet test` or `scripts/test.ps1`, not
 `dotnet test getnpidata.sln`.
