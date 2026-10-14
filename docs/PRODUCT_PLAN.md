@@ -437,7 +437,7 @@ of 2026-10-13 proposed these items; the owner chose the order below. The state o
 | 12 | Bulk-load into tables without indexes, add them afterwards (**done** 2026-10-14; full-text and spatial indexes kept, they cost more added afterwards) | big loads 1.5–3× faster (measured: full projection 63 → ~51 min, area counts 19 → 11 min; credentials, address types ~1 min less; quality, Part D, map unchanged) |
 | 6 | Socrata delta pulls (TX, WA, IL, CO, CT, DE), a full pull every few weeks | changed rows only |
 | 7 | Independent sources, states and the Vermont feed in parallel (2–4 at a time) | downloads overlap loads |
-| 10 | Deactivation flags by difference | 9.8M rows → a few thousand |
+| 10 | Deactivation flags by difference (**done** 2026-10-14) | 9.8M rows → a few thousand (measured: after a monthly under 1 s instead of 55–61 s; after a report a few seconds instead of ~57 s) |
 | 13 | The map-by-credential table built once; independent builders side by side | less after item 2 |
 | 11 | API caches: the openFDA key (**done**, PR #62); ClinicalTrials.gov 3–5 requests at once (not scheduled) | the first fill in one run instead of ~10 days |
 | 9 | Stream zips instead of extracting them, where a loader still extracts (not scheduled) | disk and time |
