@@ -15,8 +15,8 @@ public static partial class SearchValidation
     private const int MaxTextLength = 60;
 
     /// <summary>Returns the filter with values trimmed/upper-cased, or throws <see cref="SearchValidationException"/>.</summary>
-    /// <param name="requireFilter">False for the map search, where the map area itself is the filter.</param>
-    public static SearchFilter Normalize(SearchFilter filter, bool requireFilter = true)
+    /// <remarks>Every filter is optional: none at all means every active provider (owner, 2026-10-14).</remarks>
+    public static SearchFilter Normalize(SearchFilter filter)
     {
         var errors = new Dictionary<string, List<string>>();
         void Error(string field, string message)
@@ -63,25 +63,6 @@ public static partial class SearchValidation
             Sort = Clean(filter.Sort, nameof(SearchFilter.Sort)),
             NameMatch = Clean(filter.NameMatch, nameof(SearchFilter.NameMatch))?.ToLowerInvariant() is { } match && match != NameSearch.Prefix ? match : null,
         };
-
-        if (requireFilter && f is { Category: null, Classification: null, TaxonomyCode: null, State: null, CountyFips: null, City: null, Zip5: null,
-                LastName: null, FirstName: null, OrgName: null, Npi: null, EntityType: null, Gender: null, Credential: null,
-                Excluded: null, OptedOut: null, OrderRefer: null, AcceptsAssignment: null, Telehealth: null, MinYears: null,
-                MedicareActive: null, Shortage: null, NewWithinDays: null, UpdatedWithinDays: null })
-        {
-            if (f.AddressType is not null)
-            {
-                Error(nameof(SearchFilter.AddressType), "Practice building needs another filter, such as a state, a county or a specialty.");
-            }
-            else if (f.Quality is not null)
-            {
-                Error(nameof(SearchFilter.Quality), "Record quality needs another filter, such as a state, a county or a specialty.");
-            }
-            else
-            {
-                Error("filter", "Enter at least one search filter.");
-            }
-        }
 
         if (f.Subcategory is not null && f.Category is null)
         {

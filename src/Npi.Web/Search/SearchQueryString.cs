@@ -134,10 +134,10 @@ public static class SearchQueryString
         new("shortage", ParameterType.Text, nameof(SearchFilter.Shortage),
             "primaryCare, dental or mentalHealth: a practice location in a county with an HRSA Health Professional Shortage Area of that kind."),
         new("addressType", ParameterType.Text, nameof(SearchFilter.AddressType),
-            "commercial, residential or unknown: a practice location in that kind of building (FEMA USA Structures and signs of a business at the address). Needs another filter."),
+            "commercial, residential or unknown: a practice location in that kind of building (FEMA USA Structures and signs of a business at the address)."),
         new("quality", ParameterType.Text, nameof(SearchFilter.Quality),
             "Record quality: notStale (hide stale records), current, check or stale. Stale = not updated in NPPES for 10+ years with no sign of current practice; " +
-            "check = something conflicts or is missing (see each result's quality reasons). Needs another filter."),
+            "check = something conflicts or is missing (see each result's quality reasons)."),
         new("medicareActive", ParameterType.TrueFalse, nameof(SearchFilter.MedicareActive),
             "true: only providers who billed Medicare Part B or Part D in the latest CMS data year; false: those who didn't."),
         new("newWithinDays", ParameterType.WholeNumber, nameof(SearchFilter.NewWithinDays),
@@ -161,7 +161,7 @@ public static class SearchQueryString
     public static bool HasAnyFilter(IQueryCollection q) => FilterKeys.Any(k => Text(q, k) is not null);
 
     private static readonly string[] FilterKeys =
-        ["classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential",
+        ["category", "subcategory", "classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential",
          "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears", "medicareActive", "shortage", "addressType", "quality",
          "newWithinDays", "updatedWithinDays"];
 

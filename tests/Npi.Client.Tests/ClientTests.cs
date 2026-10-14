@@ -182,9 +182,9 @@ public class ClientTests
         await using var factory = new ApiFactory();
         using var npi = new NpiClient(factory.CreateClient());
 
-        var none = await Assert.ThrowsAsync<NpiApiException>(() => npi.SearchProvidersAsync(new ProviderSearch(), Ct));
-        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
-        Assert.True(none.Errors.ContainsKey("filter"));
+        var badNpi = await Assert.ThrowsAsync<NpiApiException>(() => npi.SearchProvidersAsync(new ProviderSearch { Npi = "123" }, Ct));
+        Assert.Equal(HttpStatusCode.BadRequest, badNpi.StatusCode);
+        Assert.True(badNpi.Errors.ContainsKey("npi"));
 
         var radius = await Assert.ThrowsAsync<NpiApiException>(() => npi.SearchProvidersAsync(new ProviderSearch { Zip = "11701", Radius = 500 }, Ct));
         Assert.Contains("radius", radius.Errors.Keys);

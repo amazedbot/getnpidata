@@ -166,19 +166,28 @@ public sealed class LoaderOptions
 
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
+    /// <summary>
+    /// The ready-made file of every active provider (owner, 2026-10-14), rebuilt by <c>run</c> after a load changed its data and
+    /// served by the site for an export with no filter. The site reads it from the same folder (its <c>FullExport:Folder</c>).
+    /// Default: <see cref="DefaultRoot"/>/exports.
+    /// </summary>
+    public string ExportFolder { get; set; } = "";
+
+    public string ResolvedExportFolder => Resolve(ExportFolder, "exports");
+
+    /// <summary>How many NPI ranges the full export reads at once.</summary>
+    public int ExportParts { get; set; } = 8;
+
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");
 
     /// <summary>
     /// Where the work, log and state-file folders go unless configured: %ProgramData%\getnpidata on Windows; elsewhere
     /// $XDG_DATA_HOME/getnpidata, else ~/.local/share/getnpidata (the shared data folder there, /usr/share, isn't writable).
     /// </summary>
-    public static string DefaultRoot => DefaultRootFor(OperatingSystem.IsWindows(), Environment.GetEnvironmentVariable("XDG_DATA_HOME"),
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    public static string DefaultRoot => Npi.Core.DataFolders.DefaultRoot;
 
     internal static string DefaultRootFor(bool windows, string? xdgDataHome, string programData, string home) =>
-        windows ? Path.Combine(programData, "getnpidata")
-        : !string.IsNullOrWhiteSpace(xdgDataHome) ? Path.Combine(xdgDataHome, "getnpidata")
-        : Path.Combine(home, ".local", "share", "getnpidata");
+        Npi.Core.DataFolders.DefaultRootFor(windows, xdgDataHome, programData, home);
 
     private static string Resolve(string configured, string leaf) =>
         string.IsNullOrWhiteSpace(configured)

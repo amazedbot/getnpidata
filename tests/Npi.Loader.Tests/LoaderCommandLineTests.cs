@@ -22,6 +22,7 @@ public class LoaderCommandLineTests
     [InlineData("publish", LoaderCommand.Publish)]
     [InlineData("doctor", LoaderCommand.Doctor)]
     [InlineData("sample", LoaderCommand.Sample)]
+    [InlineData("export", LoaderCommand.Export)]
     [InlineData("DISCOVER", LoaderCommand.Discover)]
     public void Known_commands_parse(string name, LoaderCommand expected)
     {

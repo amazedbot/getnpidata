@@ -39,11 +39,62 @@ public class ApiTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task Search_without_filters_is_a_validation_problem()
+    public async Task A_bad_search_is_a_validation_problem()
     {
         await using var factory = new ApiFactory();
-        var problem = await ProblemAsync(await factory.CreateClient().GetAsync("/api/v1/providers", Ct), HttpStatusCode.BadRequest);
-        Assert.True(problem.GetProperty("errors").TryGetProperty("filter", out _));
+        var problem = await ProblemAsync(await factory.CreateClient().GetAsync("/api/v1/providers?npi=123", Ct), HttpStatusCode.BadRequest);
+        Assert.True(problem.GetProperty("errors").TryGetProperty("npi", out _));
+    }
+
+    [Fact]
+    public async Task An_export_with_no_filter_is_the_ready_made_file()
+    {
+        var folder = Directory.CreateTempSubdirectory("npi-web-export-").FullName;
+        try
+        {
+            var csv = '﻿' + "NPI,Name" + "\r\n" + "1000000004,\"SMITH, ANN\"" + "\r\n";
+            await using (var gz = new System.IO.Compression.GZipStream(File.Create(Path.Combine(folder, Npi.Core.Search.FullExport.FileName)),
+                             System.IO.Compression.CompressionLevel.Fastest))
+            {
+                await gz.WriteAsync(System.Text.Encoding.UTF8.GetBytes(csv), Ct);
+            }
+
+            await File.WriteAllTextAsync(Path.Combine(folder, Npi.Core.Search.FullExport.InfoFileName),
+                """{"asOf":"2026-10-11","rows":1,"builtAt":"2026-10-14T20:00:00Z","bytes":40}""", Ct);
+            await using var factory = new ApiFactory(new Dictionary<string, string> { ["FullExport:Folder"] = folder });
+            using var client = factory.CreateClient();
+
+            // Without Accept-Encoding: unpacked on the way out.
+            using var plain = new HttpRequestMessage(HttpMethod.Get, "/export.csv");
+            var response = await client.SendAsync(plain, Ct);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("npi_all_providers_20261011.csv", response.Content.Headers.ContentDisposition!.FileName!.Trim('"'));
+            Assert.Equal(csv, System.Text.Encoding.UTF8.GetString(await response.Content.ReadAsByteArrayAsync(Ct)));
+
+            // With it: sent as stored. The API's CSV is the same file; a filter or another column set streams the search instead.
+            using var gzipped = new HttpRequestMessage(HttpMethod.Get, "/api/v1/providers.csv");
+            gzipped.Headers.AcceptEncoding.ParseAdd("gzip");
+            var api = await client.SendAsync(gzipped, Ct);
+            Assert.Equal(["gzip"], api.Content.Headers.ContentEncoding);
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/export/all.csv.gz", Ct)).StatusCode);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task The_sites_exports_send_a_bad_search_back_to_the_search_page()
+    {
+        await using var factory = new ApiFactory();
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false });
+        var csv = await client.GetAsync("/export.csv?npi=123", Ct);
+        Assert.Equal(HttpStatusCode.Redirect, csv.StatusCode);
+        Assert.Equal("/search?npi=123", csv.Headers.Location!.OriginalString);
+        var panel = await client.GetAsync("/export?npi=123&columns=contact&format=xlsx", Ct);
+        Assert.Equal("/search?npi=123", panel.Headers.Location!.OriginalString);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/providers.csv?npi=123", Ct)).StatusCode); // the API keeps its problem
     }
 
     [Theory]
@@ -52,7 +103,6 @@ public class ApiTests
     [InlineData("/api/v1/providers?state=NY&entityType=3", "entityType")]
     [InlineData("/api/v1/providers?state=NY&pageSize=500", "pageSize")]
     [InlineData("/api/v1/providers.csv?npi=12", "npi")]
-    [InlineData("/export.csv?zip=117", "zip")]
     [InlineData("/api/v1/companies?pageSize=500", "pageSize")]
     [InlineData("/api/v1/companies?page=0", "page")]
     [InlineData("/api/v1/products?kind=Pill", "kind")]

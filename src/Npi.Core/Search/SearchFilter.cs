@@ -1,8 +1,8 @@
 namespace Npi.Core.Search;
 
 /// <summary>
-/// A provider search (CLAUDE.md §7 Stage 3.2). Every filter is optional, but at least one is
-/// required. The web page, the CSV export and /api/v1 all build one of these, so results match.
+/// A provider search (CLAUDE.md §7 Stage 3.2). Every filter is optional; none means every active provider (owner,
+/// 2026-10-14). The web page, the CSV export and /api/v1 all build one of these, so results match.
 /// </summary>
 public sealed record SearchFilter
 {
@@ -89,13 +89,13 @@ public sealed record SearchFilter
 
     /// <summary>
     /// commercial, residential or unknown (<see cref="AddressTypes"/>, Stage 5.5 item 18): a practice location in that kind of
-    /// building. Needs another filter: on its own it would match most providers.
+    /// building.
     /// </summary>
     public string? AddressType { get; init; }
 
     /// <summary>
     /// Record quality (<see cref="RecordQuality"/>, docs/PRODUCT_PLAN.md step 3.1): <c>notStale</c> (hide stale records), <c>current</c>,
-    /// <c>check</c> or <c>stale</c>. Needs another filter.
+    /// <c>check</c> or <c>stale</c>.
     /// </summary>
     public string? Quality { get; init; }
 

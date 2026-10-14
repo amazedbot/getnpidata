@@ -47,9 +47,9 @@ public class QuickSearchTests
     public async Task Exports_validate_before_the_download_starts()
     {
         await using var factory = new Factory();
-        var client = factory.CreateClient();
+        var client = factory.CreateClient(new() { AllowAutoRedirect = false });
         var response = await client.GetAsync("/export?format=xlsx&zip=123", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("\"zip\"", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode); // back to the search page, which says what's wrong
+        Assert.Equal("/search?zip=123", response.Headers.Location!.OriginalString);
     }
 }

@@ -70,7 +70,7 @@ same search code, so they always return the same providers.
 
 ## Search filters
 
-At least one filter is required. Filters combine with AND.
+Every filter is optional: none lists every active provider. Filters combine with AND.
 
 | Parameter | Meaning | Example |
 |---|---|---|
@@ -99,8 +99,8 @@ At least one filter is required. Filters combine with AND.
 | `minYears` | At least this many years since graduation (Care Compare), 1–70 | `20` |
 | `medicareActive` | `true`: only providers who billed Medicare Part B or Part D in the latest data year | `true` |
 | `shortage` | `primaryCare`, `dental` or `mentalHealth`: a practice location in a county with that kind of shortage area | `dental` |
-| `addressType` | `commercial`, `residential` or `unknown`: a practice location in that kind of building (FEMA USA Structures, and signs of a business at the address). Needs another filter | `residential` |
-| `quality` | Record quality: `notStale` (hide stale records), `current`, `check` or `stale`. Needs another filter | `notStale` |
+| `addressType` | `commercial`, `residential` or `unknown`: a practice location in that kind of building (FEMA USA Structures, and signs of a business at the address) | `residential` |
+| `quality` | Record quality: `notStale` (hide stale records), `current`, `check` or `stale` | `notStale` |
 | `newWithinDays` | New providers: NPI issued (enumerated) within the last this many days, 1–3650. With `sort=-enumeration`, a newest-first feed | `30` |
 | `updatedWithinDays` | NPPES record updated within the last this many days, 1–3650 | `7` |
 | `sort` | `name` (default), `npi`, `credential`, `city`, `state`, `zip`, `lastUpdate`, `enumeration`; prefix `-` for descending | `-lastUpdate` |
@@ -144,7 +144,9 @@ addresses are not searched. Each result row shows the location that matched.
   order, with a Lookup Status (Active, Deactivated, Not found, Invalid NPI — a wrong check digit, usually a typo), the
   deactivation, exclusion and opt-out end dates, and the summary columns.
 - **`/export.csv?…`**: the CSV for any search (UTF-8 with BOM, so Excel shows accents correctly). It's named
-  `npi_search_<yyyyMMdd>.csv`.
+  `npi_search_<yyyyMMdd>.csv`. With no filter it is every active provider, sorted by NPI, from a ready-made file the
+  loader rebuilds after each load (`npi_all_providers_<as-of date>.csv`, ~2.4 GB, sent gzipped, ~600 MB);
+  `/export/all.csv.gz` downloads that file still gzipped.
 - **Footer**: the date the data is current through and the number of active providers.
 
 Credentials are shown standardized ("M.D." and "MD" both show as MD; "M.S., CCC-SLP" as "MS, CCC-SLP"), and the

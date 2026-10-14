@@ -59,6 +59,12 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
 
     public IReadOnlyDictionary<string, string[]> Errors { get; private set; } = new Dictionary<string, string[]>();
 
+    /// <summary>A message about an export that came back to the page (e.g. Excel's row limit).</summary>
+    public string? Notice { get; private set; }
+
+    /// <summary>The pages a visitor can browse: paging stops at <see cref="SearchFilter.MaxResultWindow"/> rows.</summary>
+    public long BrowsablePages => Result is null ? 0 : Math.Min(PageCount, Math.Max(1, SearchFilter.MaxResultWindow / Result.PageSize));
+
     public IReadOnlyList<string> Classifications { get; private set; } = [];
 
     public IReadOnlyList<string> Specializations { get; private set; } = [];
@@ -140,18 +146,20 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
             return Page();
         }
 
-        if (Query is null && !SearchQueryString.HasAnyFilter(Request.Query))
+        // The home page; /search with no filter lists every active provider (owner, 2026-10-14), with the builder beside it.
+        if (Query is null && !SearchQueryString.HasAnyFilter(Request.Query) && !Request.Path.StartsWithSegments("/search", StringComparison.OrdinalIgnoreCase))
         {
-            var isSearchPath = Request.Path.StartsWithSegments("/search", StringComparison.OrdinalIgnoreCase);
-            Mode = isSearchPath ? SearchPageMode.Builder : SearchPageMode.Home;
-            if (Mode == SearchPageMode.Home)
-            {
-                ViewData["HideTopSearch"] = true;
-                Version = await geography.GetDataVersionAsync(ct);
-                NewProviders = await NewProvidersAsync(ct);
-            }
-
+            Mode = SearchPageMode.Home;
+            ViewData["HideTopSearch"] = true;
+            Version = await geography.GetDataVersionAsync(ct);
+            NewProviders = await NewProvidersAsync(ct);
             return Page();
+        }
+
+        // An export that couldn't be made (Excel past its row limit) comes back here to say so.
+        if (Request.Query["notice"] == "excel-limit")
+        {
+            Notice = $"Excel holds at most {ProviderXlsx.MaxRows:N0} rows, and this list is larger. Download it as CSV, which has no row limit, or narrow the list.";
         }
 
         Mode = SearchPageMode.Results;
@@ -257,6 +265,11 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
             var category = SpecialtyCategories.Default.Find(f.Category);
             var who = category?.Find(f.Subcategory)?.Title ?? category?.Title
                       ?? ((f.Specialization ?? f.Classification) is { } specialty ? Plural(specialty) : f.EntityType == 2 ? "Organizations" : "Providers");
+            if (!SearchQueryString.HasAnyFilter(Request.Query) && Interpretation is null)
+            {
+                return "Every active US provider";
+            }
+
             var state = f.State is null ? null : GeographyCatalog.StateName(f.State);
             var place = f.Zip5 is not null
                 ? f.RadiusMiles is { } r ? $"within {r} miles of {f.Zip5}" : $"in ZIP {f.Zip5}"

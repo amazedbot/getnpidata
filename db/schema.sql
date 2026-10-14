@@ -1917,6 +1917,13 @@ CREATE TABLE `schema_migrations` (
   PRIMARY KEY (`version`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `search_total` (
+  `name` varchar(40) NOT NULL,
+  `total` bigint NOT NULL,
+  `counted_at` datetime NOT NULL,
+  PRIMARY KEY (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `sec_company` (
   `cik` int NOT NULL,
   `ticker` varchar(20) NOT NULL,

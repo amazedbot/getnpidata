@@ -56,8 +56,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         }
 
         var f = SearchValidation.Normalize(
-            filter with { State = null, CountyFips = null, City = null, Zip5 = null, RadiusMiles = null, Sort = null, Page = 1, PageSize = SearchFilter.DefaultPageSize },
-            requireFilter: false);
+            filter with { State = null, CountyFips = null, City = null, Zip5 = null, RadiusMiles = null, Sort = null, Page = 1, PageSize = SearchFilter.DefaultPageSize });
         var query = new SearchQuery(f, await taxonomy.ResolveAsync(f, ct), radiusCenter: null, areaSearch: true, credential: await ResolveCredentialAsync(f, ct));
         var p = new DynamicParameters(query.Parameters);
         p.Add("cells", bounds.Cells);
@@ -183,14 +182,21 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
     {
         await using var connection = await OpenAsync(ct);
         var query = await PrepareAsync(connection, filter, ct);
-        long total;
+        long total = -1;
         List<string> npis;
-        if (query.MayBeBroad && query.IndexOrderPageSql is { } indexOrderSql
-            && (total = await connection.ExecuteScalarAsync<long>(new CommandDefinition(query.CountSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct)))
-               >= SearchFilter.BroadSearchThreshold)
+        if (query.MayBeBroad)
+        {
+            total = await connection.ExecuteScalarAsync<long>(new CommandDefinition(query.CountSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct));
+        }
+
+        if (total >= SearchFilter.BroadSearchThreshold)
         {
             // Huge result (e.g. a whole state): matches are dense, so walking the sort index is fast,
-            // while sorting a million rows for one page is not (CLAUDE.md §11 item 6).
+            // while sorting a million rows for one page is not (CLAUDE.md §11 item 6). Sorts without an index can't be walked.
+            var indexOrderSql = query.IndexOrderPageSql ?? throw new SearchValidationException(new Dictionary<string, string[]>
+            {
+                ["filter"] = [$"A list of {total:N0} providers can be sorted only by name, NPI, enumeration date or last update. Choose one of those, narrow the list, or download it."],
+            });
             npis = (await connection.QueryAsync<string>(new CommandDefinition(indexOrderSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct))).ToList();
         }
         else
@@ -237,6 +243,35 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         foreach (var item in await SummarizeAsync(connection, query, batch, ct))
         {
             yield return item;
+        }
+    }
+
+    /// <summary>
+    /// Every active provider with an NPI from <paramref name="from"/> up to (not including) <paramref name="to"/>, in NPI order,
+    /// in batches: the full export file, which the loader builds from several ranges at once (<see cref="FullExport"/>).
+    /// </summary>
+    public async IAsyncEnumerable<ProviderSummary> AllInNpiRangeAsync(string from, string to, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        const int batchSize = 2000;
+        await using var connection = await OpenAsync(ct);
+        var query = await PrepareAsync(connection, new SearchFilter(), ct);
+        var after = "";
+        while (true)
+        {
+            var npis = (await connection.QueryAsync<string>(new CommandDefinition(
+                "SELECT npi FROM provider WHERE npi >= @from AND npi > @after AND npi < @to ORDER BY npi LIMIT @batchSize",
+                new { from, after, to, batchSize }, commandTimeout: 600, cancellationToken: ct))).ToList();
+            if (npis.Count == 0)
+            {
+                yield break;
+            }
+
+            foreach (var item in await SummarizeAsync(connection, query, npis, ct))
+            {
+                yield return item;
+            }
+
+            after = npis[^1];
         }
     }
 

@@ -14,6 +14,9 @@ public sealed class Database(string connectionString)
 
     public string DatabaseName => new MySqlConnectionStringBuilder(_connectionString).Database;
 
+    /// <summary>The connection string, for the Npi.Core services the loader uses (the full export).</summary>
+    public string ConnectionString => _connectionString;
+
     public async Task<MySqlConnection> OpenAsync(CancellationToken ct)
     {
         var connection = new MySqlConnection(_connectionString);

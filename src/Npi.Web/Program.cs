@@ -98,8 +98,10 @@ app.UseSwaggerUI(o =>
 app.MapGet("/product/{slug}/prescribers.csv", (string slug, HttpContext http, ProductService products, CancellationToken ct) =>
     Npi.Web.Api.ApiEndpoints.PrescribersCsvAsync(slug, http, products, ct));
 
-// Streamed CSV of every match, no row cap (CLAUDE.md §7 Stage 4). Same query string as the search page.
-app.MapGet("/export.csv", CsvExport.HandleAsync);
+// Streamed CSV of every match, no row cap (CLAUDE.md §7 Stage 4). Same query string as the search page; with no filter, the
+// loader's ready-made file of every active provider (also as the gzipped file itself).
+app.MapGet("/export.csv", CsvExport.HandleSiteAsync);
+app.MapGet("/export/all.csv.gz", CsvExport.HandleFullFile);
 
 // The search page's export panel (docs/PRODUCT_PLAN.md step 1.3): CSV or Excel, with a column set.
 app.MapGet("/export", CsvExport.HandleExportAsync);

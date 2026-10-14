@@ -35,6 +35,7 @@ public sealed class SearchQuery
     private readonly string? _areaAddress;
     private bool _stateOnSearchTables;                     // a USPS city carries the state on provider_location; the search tables (s, b) keep it                 // map search: the building at the pin (provider_map m)
     private bool _zipListLocation;                         // the location is a ZIP or a list of ZIPs (county), so the (code, zip5) index can drive
+    private readonly bool _areaSearchQuery;
     private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
     private string? _driverKind;
     private readonly List<string> _relevance = [];          // "similar" names: best matches first (default sort only)
@@ -57,6 +58,7 @@ public sealed class SearchQuery
         IReadOnlyCollection<string>? cityZips = null, IReadOnlyCollection<string>? countyZips = null)
     {
         Filter = filter;
+        _areaSearchQuery = areaSearch;
         _sort = SearchSortOrder.TryParse(filter.Sort, out var sort)
             ? sort
             : throw new ArgumentException($"Unknown sort '{filter.Sort}'; validate the filter first.", nameof(filter));
@@ -213,6 +215,12 @@ public sealed class SearchQuery
             // NO_SEMIJOIN: check each provider as the sort index is walked. Otherwise MySQL materializes
             // every matching NPI (1.2M for CA) and sorts them, which is what this plan exists to avoid.
             _broadWhere.Add($"EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM provider_location l WHERE l.npi = p.npi AND {Location("l")})");
+        }
+
+        // A specialty on its own nationwide can be broad too (Doctors: 1.6M, Dentists: 391k): checked per provider on the walk.
+        if (taxonomyCodes is not null && !_hasLocationFilter && !areaSearch)
+        {
+            _broadWhere.Add("EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM provider_taxonomy t WHERE t.npi = p.npi AND t.taxonomy_code IN @taxonomyCodes)");
         }
 
         // Positive Care Compare filters, on alias cc (cc_clinician). They narrow a location driver, or drive on their own.
@@ -462,6 +470,48 @@ public sealed class SearchQuery
 
     private string Hint => _driver is null ? "" : "/*+ JOIN_ORDER(c, p) */ ";
 
+    /// <summary>No filter at all: every active provider (owner, 2026-10-14).</summary>
+    public bool IsUnfiltered => _driver is null && _remaining.Count == 0;
+
+    /// <summary>
+    /// A single broad filter nationwide, counted from a total kept for it instead of counting millions of rows (owner, 2026-10-14):
+    /// a plain category or subcategory (the area counts' US row: providers with a US practice location), a record-quality label
+    /// (its own index, ~1.6 s for 7.7M) or a practice building type (<c>search_total</c>, written with the address types; counting
+    /// it took 28 s). Null for anything else.
+    /// </summary>
+    private string? NationwideTotalSql
+    {
+        get
+        {
+            if (_hasLocationFilter && _locationTemplates.Count > 0)
+            {
+                return null;
+            }
+
+            if (_driverKind == "taxonomy" && !_hasLocationFilter && _remaining.Count == 0 && Filter is { Category: { } category, Classification: null, TaxonomyCode: null })
+            {
+                Parameters.Add("usCategory", category);
+                Parameters.Add("usSubcategory", Filter.Subcategory ?? "");
+                return "SELECT COALESCE((SELECT providers FROM area_provider_count WHERE area_type = 'us' AND area_id = 'US' AND category = @usCategory " +
+                       "AND subcategory = @usSubcategory), (SELECT COUNT(DISTINCT t.npi) FROM provider_taxonomy t WHERE t.taxonomy_code IN @taxonomyCodes))";
+            }
+
+            if (_driverKind is null && !_hasLocationFilter && _remaining.Count == 1 && Filter.Quality is { } quality)
+            {
+                Parameters.Add("countLabels", RecordQuality.FilterLabels(quality).ToArray());
+                return "SELECT COUNT(*) FROM provider_quality WHERE label IN @countLabels";
+            }
+
+            if (_driverKind == "building" && _remaining.Count == 0 && _locationTemplates.Count == 0)
+            {
+                return "SELECT COALESCE((SELECT total FROM search_total WHERE name = CONCAT('building:', @addressType)), " +
+                       "(SELECT COUNT(DISTINCT b.npi) FROM building_search b WHERE b.building_type = @addressType))";
+            }
+
+            return null;
+        }
+    }
+
     /// <summary>
     /// The match count. A location-only search with nothing else to check counts straight from the
     /// location index: every provider_location row belongs to a projected provider, so joining
@@ -471,6 +521,17 @@ public sealed class SearchQuery
     {
         get
         {
+            if (NationwideTotalSql is { } nationwide)
+            {
+                return nationwide;
+            }
+
+            // No filter at all (every active provider): the projection's own count, instead of counting 9.5M rows.
+            if (IsUnfiltered)
+            {
+                return "SELECT COALESCE((SELECT provider_count FROM data_version WHERE id = 1), (SELECT COUNT(*) FROM provider))";
+            }
+
             if (_driverKind == "location" && _remaining.Count == 0)
             {
                 return $"SELECT COUNT(DISTINCT l.npi) FROM provider_location l WHERE {Location("l")}";
@@ -496,7 +557,8 @@ public sealed class SearchQuery
     /// </summary>
     // A label that keeps most providers (notStale) may be broad; a single label is sparse enough that sorting its candidates is faster
     // than walking the name index (CA + stale: 20 s walking, 3.8 s sorting; CA + notStale: 16.8 s sorting).
-    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "quality" && Filter.Quality == RecordQuality.FilterNotStale) || (_driverKind == "date" && !_hasLocationFilter);
+    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "quality" && Filter.Quality == RecordQuality.FilterNotStale)
+                              || (_driverKind == "date" && !_hasLocationFilter) || (_driverKind == "taxonomy" && !_hasLocationFilter && !_areaSearchQuery);
 
     /// <summary>
     /// The page read in sort-index order (name or NPI sorts only, else null). Fast when matches are
@@ -519,7 +581,11 @@ public sealed class SearchQuery
                 return null;
             }
 
-            var where = _broadWhere.Count > 0 ? " WHERE " + string.Join(" AND ", _broadWhere) : "";
+            // Every EXISTS is checked per provider as the index is walked (NO_SEMIJOIN): as a semijoin MySQL first collected every
+            // match (1.8M stale records: 21 s for the first page instead of 0.1 s).
+            var where = _broadWhere.Count > 0
+                ? " WHERE " + string.Join(" AND ", _broadWhere).Replace("EXISTS (SELECT 1 ", "EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 ", StringComparison.Ordinal)
+                : "";
             return $"SELECT p.npi FROM provider p FORCE INDEX FOR ORDER BY ({index}){where} ORDER BY {OrderBy} LIMIT @take OFFSET @skip";
         }
     }

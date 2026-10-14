@@ -60,6 +60,8 @@ public class SearchQueryStringTests
     [InlineData("?state=", false)]
     [InlineData("?state=NY", true)]
     [InlineData("?entityType=2", true)]
+    [InlineData("?category=Dentists", true)]
+    [InlineData("?category=Dentists&subcategory=Orthodontists+(braces)", true)]
     public void Only_real_filters_start_a_search(string qs, bool expected) =>
         Assert.Equal(expected, SearchQueryString.HasAnyFilter(Query(qs)));
 

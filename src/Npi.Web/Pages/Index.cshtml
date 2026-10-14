@@ -130,6 +130,10 @@ else
             {
                 <p class="error" role="alert">@string.Join(" ", general)</p>
             }
+            @if (Model.Notice is { } notice)
+            {
+                <p class="notice" role="status">@notice</p>
+            }
 
             <partial name="_SpecialtyFields" model="Model.Fields" />
 
@@ -238,17 +242,20 @@ else
                         <label for="format">Format</label>
                         <select id="format" name="format">
                             <option value="csv">CSV</option>
-                            <option value="xlsx">Excel</option>
+                            @if (result.TotalCount <= ProviderXlsx.MaxRows)
+                            {
+                                <option value="xlsx">Excel</option>
+                            }
                         </select>
                         <button type="submit">Export all @N(result.TotalCount)</button>
-                        <span class="muted small">CSV has no row limit; Excel holds up to @N(ProviderXlsx.MaxRows).</span>
+                        <span class="muted small">CSV has no row limit; Excel holds up to @N(ProviderXlsx.MaxRows)@(result.TotalCount > ProviderXlsx.MaxRows ? ", fewer than this list" : "").</span>
                     </form>
 
                     <div class="results-head">
                         <h2 id="results-heading">@N(result.TotalCount) provider@(result.TotalCount == 1 ? "" : "s")</h2>
                         <a class="button secondary" href="@Model.MapLink">View on map</a>
                     </div>
-                    var caption = "Search results, page " + result.Page.ToString(CultureInfo.InvariantCulture) + " of " + N(Model.PageCount);
+                    var caption = "Search results, page " + result.Page.ToString(CultureInfo.InvariantCulture) + " of " + N(Model.BrowsablePages);
                     <partial name="_ProviderRows" model="new ProviderRows(result.Items, caption, Model)" />
 
                     <nav class="pager" aria-label="Result pages">
@@ -256,15 +263,15 @@ else
                         {
                             <a href="@Model.PageLink(result.Page - 1)" rel="prev">‹ Previous</a>
                         }
-                        <span>Page @result.Page of @N(Model.PageCount)</span>
-                        @if (result.Page < Model.PageCount && (long)result.Page * result.PageSize < SearchFilter.MaxResultWindow)
+                        <span>Page @result.Page of @N(Model.BrowsablePages)@if (Model.PageCount > Model.BrowsablePages){<text> <span class="muted">(the first @N(SearchFilter.MaxResultWindow) of @N(result.TotalCount))</span></text>}</span>
+                        @if (result.Page < Model.BrowsablePages)
                         {
                             <a href="@Model.PageLink(result.Page + 1)" rel="next">Next ›</a>
                         }
                     </nav>
                     @if (result.TotalCount > SearchFilter.MaxResultWindow)
                     {
-                        <p class="muted">Browsing is limited to the first @N(SearchFilter.MaxResultWindow) results. Narrow the search, or export them all.</p>
+                        <p class="muted">Browsing stops after the first @N(SearchFilter.MaxResultWindow) results. Narrow the search, or export all @N(result.TotalCount) above.</p>
                     }
                 }
                 else

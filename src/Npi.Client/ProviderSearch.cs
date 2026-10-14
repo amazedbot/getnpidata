@@ -5,7 +5,7 @@ namespace Npi.Client;
 
 /// <summary>
 /// Search filters for <see cref="NpiClient.SearchProvidersAsync"/> and <see cref="NpiClient.DownloadProvidersCsvAsync"/>.
-/// Set at least one filter. Properties map one-to-one to the API's query parameters.
+/// Every filter is optional (none lists every active provider). Properties map one-to-one to the API's query parameters.
 /// </summary>
 public sealed class ProviderSearch
 {
@@ -80,10 +80,10 @@ public sealed class ProviderSearch
     /// <summary>primaryCare, dental or mentalHealth: a practice location in a county with an HRSA shortage area of that kind.</summary>
     public string? Shortage { get; set; }
 
-    /// <summary>commercial, residential or unknown: a practice location in that kind of building. Needs another filter.</summary>
+    /// <summary>commercial, residential or unknown: a practice location in that kind of building.</summary>
     public string? AddressType { get; set; }
 
-    /// <summary>Record quality: notStale (hide stale records), current, check or stale. Needs another filter.</summary>
+    /// <summary>Record quality: notStale (hide stale records), current, check or stale.</summary>
     public string? Quality { get; set; }
 
     /// <summary>true: only providers who billed Medicare Part B or Part D in the latest data year; false: those who didn't.</summary>

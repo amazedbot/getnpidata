@@ -12,7 +12,10 @@ Last updated: 2026-10-14.
 
 ## In progress
 
-Nothing. Speed items 1, 2, 3, 4, 5, 8, 10 and 12 are done (below); the next item waits for the owner's "go".
+Fixes the owner found (2026-10-14), one pull request each:
+- ~~**A:** nationwide lists and exports: no filter required, category alone, `quality` / `addressType` alone, the ready-made file of every provider rebuilt by the loader, Excel over its limit refused with a note, the pager says how many pages can be browsed~~ (2026-10-14)
+- **B:** the map's filters laid out like the search page's, one "Search in this area" button, a clear message when the area is too large.
+- **C:** the map's area as a list and a CSV (a `bbox` filter in the list, the exports, the API and the client).
 
 ## Next, in order
 
@@ -23,6 +26,7 @@ Nothing. Speed items 1, 2, 3, 4, 5, 8, 10 and 12 are done (below); the next item
 2. **Phase 3, the rest** (data quality signals and change history):
    - **New data, approved 2026-10-13 (not built yet):**
      - **Older Medicare years, 2013–2023** (Part B by provider and Part D prescribers by provider, data.cms.gov), shown as "last billed Medicare in [year]" and as a reason on the quality label.
+   - **Step 3.6 (owner, 2026-10-14):** organization and facility home pages: `/facilities` (hospitals, nursing homes, home health, hospices, FQHCs and rural clinics, with type and state filters; `/hospitals` opens its hospitals tab), `/organizations` (organization NPIs by plain category and state) with `/groups` (Medicare groups by size), and an "Organizations & facilities" menu entry.
    - **Step 3.3:** change pages ("Changes in [county] this month", "New practices", "Closed or moved") and monthly change counts on county pages.
    - **Step 3.4, approved 2026-10-13:** history before October 2026 from the NBER archive of past NPPES monthly files, for trends, analytics and statistics (a large download, one file per period).
 
