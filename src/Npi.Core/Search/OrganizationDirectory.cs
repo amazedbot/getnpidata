@@ -110,11 +110,11 @@ public sealed record GroupFilter
 }
 
 /// <summary>
-/// Medicare group practices and organization NPIs (docs/PRODUCT_PLAN.md step 3.6). Two snapshots kept in memory until the data
-/// changes (<see cref="SnapshotCache{T}"/>): every group with an active clinician (~200,000) with its size, organization NPIs and
-/// group MIPS score; and the active organization NPIs (~1.9M) counted by plain category, state and record-quality label, with
-/// the organizations paid the most by Medicare Part B. Both take seconds to build from the database, so the site builds them once
-/// after starting and again after a load, in the background.
+/// Medicare group practices and organization NPIs (docs/PRODUCT_PLAN.md step 3.6), from the tables the loader builds
+/// (DirectoryBuilder: <c>directory_group</c>, <c>directory_org_count</c>, <c>directory_org_billing</c>), kept in memory until it
+/// rebuilds them (<see cref="SnapshotCache{T}"/>): every group with an active clinician (~200,000) with its size, organization NPIs
+/// and group MIPS score; and the active organization NPIs counted by plain category, state and record-quality label, with the
+/// organizations paid the most by Medicare Part B.
 /// </summary>
 public sealed class OrganizationDirectory : IDisposable
 {
@@ -136,12 +136,12 @@ public sealed class OrganizationDirectory : IDisposable
         _groupsOfNpi = (npi, ct) => GroupsOfNpiAsync(connectionString, npi, ct);
     }
 
-    /// <summary>For tests: a directory over rows already built.</summary>
+    /// <summary>For tests: a directory over rows already built (no groups: not ready yet).</summary>
     internal OrganizationDirectory(IReadOnlyList<GroupSummary> groups, IReadOnlyList<(string? Code, string? State, int Label, int Organizations)> organizations,
         IReadOnlyList<OrganizationBilling> billing, int? billingYear, IReadOnlyDictionary<string, IReadOnlyList<string>> groupsOfNpi)
     {
-        var g = new GroupSnapshot(groups);
-        var o = new OrganizationSnapshot(organizations, billing.Count, billing.Sum(b => b.Payments), billingYear, billing.Take(TopBillingCount).ToList());
+        var g = groups.Count == 0 ? GroupSnapshot.NotReady : new GroupSnapshot(groups);
+        var o = groups.Count == 0 ? OrganizationSnapshot.NotReady : new OrganizationSnapshot(organizations, billing.Count, billing.Sum(b => b.Payments), billingYear, billing.Take(TopBillingCount).ToList());
         _groups = new SnapshotCache<GroupSnapshot>(_ => Task.FromResult(""), _ => Task.FromResult(g));
         _organizations = new SnapshotCache<OrganizationSnapshot>(_ => Task.FromResult(""), _ => Task.FromResult(o));
         _groupsOfNpi = (npi, _) => Task.FromResult(groupsOfNpi.GetValueOrDefault(npi) ?? []);
@@ -160,10 +160,13 @@ public sealed class OrganizationDirectory : IDisposable
         await _organizations.GetAsync(ct);
     }
 
+    /// <summary>False until the loader has built the directory tables; the other methods throw <see cref="DirectoryNotReadyException"/> meanwhile.</summary>
+    public async Task<bool> IsReadyAsync(CancellationToken ct) => (await _groups.GetAsync(ct)).Ready && (await _organizations.GetAsync(ct)).Ready;
+
     public async Task<OrganizationOverview> GetOverviewAsync(CancellationToken ct)
     {
-        var groups = await _groups.GetAsync(ct);
-        var organizations = await _organizations.GetAsync(ct);
+        var groups = await GroupsAsync(ct);
+        var organizations = await OrganizationsAsync(ct);
         return new OrganizationOverview(groups.Rows.Count, groups.Rows.Count(g => g.MipsScore is not null), groups.Rows.Max(g => g.MipsYear), groups.Sizes,
             groups.Rows.Take(LargestCount).ToList(), organizations.Total, organizations.Categories(null), organizations.States, organizations.BillingCount,
             organizations.BillingTotal, organizations.BillingYear, organizations.TopBilling);
@@ -171,7 +174,13 @@ public sealed class OrganizationDirectory : IDisposable
 
     /// <summary>Active organization NPIs by plain category in one state (or everywhere), most first.</summary>
     public async Task<IReadOnlyList<OrganizationCategoryCount>> GetCategoriesAsync(string? state, CancellationToken ct) =>
-        (await _organizations.GetAsync(ct)).Categories(string.IsNullOrWhiteSpace(state) ? null : state.Trim().ToUpperInvariant());
+        (await OrganizationsAsync(ct)).Categories(string.IsNullOrWhiteSpace(state) ? null : state.Trim().ToUpperInvariant());
+
+    private async Task<GroupSnapshot> GroupsAsync(CancellationToken ct) =>
+        await _groups.GetAsync(ct) is { Ready: true } groups ? groups : throw new DirectoryNotReadyException("The group list");
+
+    private async Task<OrganizationSnapshot> OrganizationsAsync(CancellationToken ct) =>
+        await _organizations.GetAsync(ct) is { Ready: true } organizations ? organizations : throw new DirectoryNotReadyException("The organization list");
 
     /// <summary>A group from the snapshot, without waiting for it (null while it is being built or for an unknown PAC ID).</summary>
     public GroupSummary? PeekGroup(string pacId) => _groups.Peek()?.Find(pacId);
@@ -198,7 +207,7 @@ public sealed class OrganizationDirectory : IDisposable
 
     private async Task<List<GroupSummary>> MatchAsync(GroupFilter filter, CancellationToken ct)
     {
-        var snapshot = await _groups.GetAsync(ct);
+        var snapshot = await GroupsAsync(ct);
         var q = filter.Q?.Trim() ?? "";
         IEnumerable<GroupSummary> rows = snapshot.Rows;
         if (q.Length == 10 && q.All(char.IsAsciiDigit))
@@ -253,6 +262,10 @@ public sealed class OrganizationDirectory : IDisposable
     {
         private readonly Dictionary<string, GroupSummary> _byPac;
 
+        public static readonly GroupSnapshot NotReady = new([]) { Ready = false };
+
+        public bool Ready { get; private init; } = true;
+
         public GroupSnapshot(IReadOnlyList<GroupSummary> rows)
         {
             Rows = rows.OrderByDescending(g => g.Clinicians).ThenBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ThenBy(g => g.PacId, StringComparer.Ordinal).ToList();
@@ -280,6 +293,10 @@ public sealed class OrganizationDirectory : IDisposable
     {
         // (state or "", category) → counts; state "" = everywhere.
         private readonly Dictionary<(string State, string Category), int[]> _counts = [];
+
+        public static readonly OrganizationSnapshot NotReady = new([], 0, 0, null, []) { Ready = false };
+
+        public bool Ready { get; private init; } = true;
 
         public OrganizationSnapshot(IReadOnlyList<(string? Code, string? State, int Label, int Organizations)> rows, int billingCount, double billingTotal,
             int? billingYear, IReadOnlyList<OrganizationBilling> topBilling)
@@ -339,117 +356,80 @@ public sealed class OrganizationDirectory : IDisposable
     }
 
     // Types as MySqlConnector returns them (Dapper maps records by constructor).
-    private sealed record CountRow(string PacId, long Clinicians);
+    private sealed record GroupRow(string PacId, string Name, string? State, int Clinicians, int OrganizationNpis, long? Accepts, double? MipsScore,
+        short? MipsYear);
 
-    private sealed record NameRow(string PacId, string? Name, string? State, long? Accepts);
+    private sealed record CountRow(string TaxonomyCode, string State, long Label, int Organizations);
 
-    private sealed record MipsRow(string PacId, long? Year, double? Score);
+    private sealed record TopBillingRow(string Npi, double Payments, int? Beneficiaries, string? OrgName, string? PrimaryTaxonomyCode, string? City, string? State);
 
-    private sealed record OrganizationRow(string? Code, string? State, long Label, long Organizations);
-
-    private sealed record BillingRow(string Npi, short Year, double Payments, int? Beneficiaries);
-
-    private sealed record NameLookupRow(string Npi, string? OrgName, string? PrimaryTaxonomyCode, string? City, string? State);
-
-    private const int Timeout = 600;
-
+    /// <summary>The groups: <c>directory_group</c>, which the loader builds (DirectoryBuilder); not ready before its first build.</summary>
     private static async Task<GroupSnapshot> LoadGroupsAsync(string connectionString, CancellationToken ct)
     {
         await using var connection = new MySqlConnection(connectionString);
         await connection.OpenAsync(ct);
+        if (!await DataStamp.BuiltAsync(connection, ct))
+        {
+            return GroupSnapshot.NotReady;
+        }
 
-        // The heaviest query of these pages (~5.9M group memberships, each checked against the projection): the active clinicians
-        // of every group, counted as OrganizationService counts one group's for its page.
-        var counts = await connection.QueryAsync<CountRow>(new CommandDefinition(
-            """
-            SELECT g.pac AS PacId, COUNT(*) AS Clinicians
-            FROM (SELECT group_pac_id AS pac, npi FROM medicare_reassignment WHERE npi IS NOT NULL
-                  UNION SELECT org_pac_id, npi FROM cc_group) g
-            JOIN provider p ON p.npi = g.npi
-            GROUP BY g.pac
-            """, commandTimeout: Timeout, cancellationToken: ct));
-        var careCompare = (await connection.QueryAsync<NameRow>(new CommandDefinition(
-                "SELECT org_pac_id AS PacId, MAX(group_name) AS Name, MAX(state) AS State, CAST(MAX(accepts_assignment) AS SIGNED) AS Accepts FROM cc_group GROUP BY org_pac_id",
-                commandTimeout: Timeout, cancellationToken: ct)))
-            .ToDictionary(r => r.PacId, StringComparer.Ordinal);
-        var reassignment = (await connection.QueryAsync<NameRow>(new CommandDefinition(
+        try
+        {
+            var rows = await connection.QueryAsync<GroupRow>(new CommandDefinition(
                 """
-                SELECT group_pac_id AS PacId, MAX(group_name) AS Name, MAX(group_state) AS State, CAST(NULL AS SIGNED) AS Accepts
-                FROM medicare_reassignment GROUP BY group_pac_id
-                """, commandTimeout: Timeout, cancellationToken: ct)))
-            .ToDictionary(r => r.PacId, StringComparer.Ordinal);
-
-        // Organization NPIs enrolled under a PAC ID: the enrollment file names organizations in org_name (individuals have none).
-        var organizations = (await connection.QueryAsync<CountRow>(new CommandDefinition(
-                """
-                SELECT e.pac_id AS PacId, COUNT(DISTINCT e.npi) AS Clinicians
-                FROM medicare_enrollment e JOIN provider p ON p.npi = e.npi
-                WHERE e.pac_id IS NOT NULL AND e.org_name IS NOT NULL
-                GROUP BY e.pac_id
-                """, commandTimeout: Timeout, cancellationToken: ct)))
-            .ToDictionary(r => r.PacId, r => (int)r.Clinicians, StringComparer.Ordinal);
-        var mips = (await connection.QueryAsync<MipsRow>(new CommandDefinition(
-                """
-                SELECT org_pac_id AS PacId, CAST(MAX(program_year) AS SIGNED) AS Year, MAX(final_score) AS Score
-                FROM cc_mips WHERE source = 'group' AND org_pac_id IS NOT NULL GROUP BY org_pac_id
-                """, commandTimeout: Timeout, cancellationToken: ct)))
-            .ToDictionary(r => r.PacId, StringComparer.Ordinal);
-
-        var rows = counts.Select(c =>
-            {
-                var cc = careCompare.GetValueOrDefault(c.PacId);
-                var re = reassignment.GetValueOrDefault(c.PacId);
-                var m = mips.GetValueOrDefault(c.PacId);
-                return new GroupSummary(c.PacId, cc?.Name ?? re?.Name ?? "Group " + c.PacId, re?.State ?? cc?.State, (int)c.Clinicians,
-                    organizations.GetValueOrDefault(c.PacId), cc?.Accepts is { } a ? a != 0 : null, m?.Score is { } score ? Math.Round(score, 2) : null,
-                    m?.Score is null ? null : (int?)m.Year);
-            })
-            .ToList();
-        return new GroupSnapshot(rows);
+                SELECT pac_id AS PacId, name AS Name, state AS State, clinicians AS Clinicians, organization_npis AS OrganizationNpis,
+                       CAST(accepts_assignment AS SIGNED) AS Accepts, mips_score AS MipsScore, mips_year AS MipsYear
+                FROM directory_group
+                """, cancellationToken: ct));
+            return new GroupSnapshot(rows.Select(r => new GroupSummary(r.PacId, r.Name, r.State, r.Clinicians, r.OrganizationNpis,
+                r.Accepts is { } a ? a != 0 : null, r.MipsScore, r.MipsYear)).ToList());
+        }
+        catch (MySqlException ex) when (ex.ErrorCode == MySqlErrorCode.NoSuchTable)
+        {
+            return GroupSnapshot.NotReady;
+        }
     }
 
+    /// <summary>The organization counts and Part B payments: <c>directory_org_count</c> and <c>directory_org_billing</c> (DirectoryBuilder).</summary>
     private static async Task<OrganizationSnapshot> LoadOrganizationsAsync(string connectionString, CancellationToken ct)
     {
         await using var connection = new MySqlConnection(connectionString);
         await connection.OpenAsync(ct);
+        if (!await DataStamp.BuiltAsync(connection, ct))
+        {
+            return OrganizationSnapshot.NotReady;
+        }
 
-        // Every active organization NPI by primary taxonomy, primary practice state and label: a pass over provider (~9.5M rows).
-        var rows = (await connection.QueryAsync<OrganizationRow>(new CommandDefinition(
-                """
-                SELECT p.primary_taxonomy_code AS Code, l.state AS State, CAST(COALESCE(q.label, 0) AS SIGNED) AS Label, COUNT(*) AS Organizations
-                FROM provider p
+        try
+        {
+            var counts = (await connection.QueryAsync<CountRow>(new CommandDefinition(
+                    """
+                    SELECT taxonomy_code AS TaxonomyCode, state AS State, CAST(label AS SIGNED) AS Label, organizations AS Organizations
+                    FROM directory_org_count
+                    """, cancellationToken: ct)))
+                .Select(r => ((string?)(r.TaxonomyCode.Length == 0 ? null : r.TaxonomyCode), (string?)(r.State.Length == 0 ? null : r.State), (int)r.Label, r.Organizations))
+                .ToList();
+            var (billed, total, year) = await connection.QuerySingleAsync<(long Count, double Total, long? Year)>(new CommandDefinition(
+                "SELECT COUNT(*), COALESCE(SUM(payments), 0), CAST(MAX(data_year) AS SIGNED) FROM directory_org_billing", cancellationToken: ct));
+            var top = await connection.QueryAsync<TopBillingRow>(new CommandDefinition(
+                $"""
+                SELECT b.npi AS Npi, b.payments AS Payments, b.beneficiaries AS Beneficiaries, p.org_name AS OrgName,
+                       p.primary_taxonomy_code AS PrimaryTaxonomyCode, l.city AS City, l.state AS State
+                FROM (SELECT npi, payments, beneficiaries FROM directory_org_billing ORDER BY payments DESC, npi LIMIT {TopBillingCount}) b
+                JOIN provider p ON p.npi = b.npi
                 LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
-                LEFT JOIN provider_quality q ON q.npi = p.npi
-                WHERE p.entity_type = 2
-                GROUP BY p.primary_taxonomy_code, l.state, q.label
-                """, commandTimeout: Timeout, cancellationToken: ct)))
-            .Select(r => (r.Code, r.State, (int)r.Label, (int)r.Organizations))
-            .ToList();
-
-        // Organizations' own Medicare Part B payments (most Part B rows are individuals; ~1.3M rows checked against the projection).
-        var billing = (await connection.QueryAsync<BillingRow>(new CommandDefinition(
-                """
-                SELECT u.npi AS Npi, u.data_year AS Year, u.payment_amount AS Payments, u.beneficiaries AS Beneficiaries
-                FROM medicare_utilization u JOIN provider p ON p.npi = u.npi
-                WHERE p.entity_type = 2 AND u.payment_amount > 0
-                """, commandTimeout: Timeout, cancellationToken: ct)))
-            .ToList();
-        var top = billing.OrderByDescending(b => b.Payments).ThenBy(b => b.Npi, StringComparer.Ordinal).Take(TopBillingCount).ToList();
-        var names = top.Count == 0 ? [] : (await connection.QueryAsync<NameLookupRow>(new CommandDefinition(
-                """
-                SELECT p.npi AS Npi, p.org_name AS OrgName, p.primary_taxonomy_code AS PrimaryTaxonomyCode, l.city AS City, l.state AS State
-                FROM provider p LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
-                WHERE p.npi IN @npis
-                """, new { npis = top.Select(t => t.Npi).ToArray() }, commandTimeout: Timeout, cancellationToken: ct)))
-            .GroupBy(n => n.Npi).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        var topBilling = top.Select(t =>
-            {
-                var n = names.GetValueOrDefault(t.Npi);
-                return new OrganizationBilling(t.Npi, n?.OrgName ?? t.Npi, SpecialtyCategories.Default.Place(n?.PrimaryTaxonomyCode)?.Singular, n?.City, n?.State,
-                    t.Payments, t.Beneficiaries);
-            })
-            .ToList();
-        return new OrganizationSnapshot(rows, billing.Count, billing.Sum(b => b.Payments), billing.Count > 0 ? billing.Max(b => (int)b.Year) : null, topBilling);
+                ORDER BY b.payments DESC, b.npi
+                """, cancellationToken: ct));
+            var topBilling = top.GroupBy(t => t.Npi).Select(g => g.First())
+                .Select(t => new OrganizationBilling(t.Npi, t.OrgName ?? t.Npi, SpecialtyCategories.Default.Place(t.PrimaryTaxonomyCode)?.Singular, t.City, t.State,
+                    t.Payments, t.Beneficiaries))
+                .ToList();
+            return new OrganizationSnapshot(counts, (int)billed, total, year is { } y ? (int)y : null, topBilling);
+        }
+        catch (MySqlException ex) when (ex.ErrorCode == MySqlErrorCode.NoSuchTable)
+        {
+            return OrganizationSnapshot.NotReady;
+        }
     }
 
     private static async Task<IReadOnlyList<string>> GroupsOfNpiAsync(string connectionString, string npi, CancellationToken ct)

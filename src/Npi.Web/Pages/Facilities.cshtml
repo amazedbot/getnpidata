@@ -2,6 +2,21 @@
 @using System.Globalization
 @using Npi.Core.Search
 @model FacilitiesModel
+@if (Model.NotReady)
+{
+    ViewData["Title"] = "Facilities & hospitals";
+    <div class="profile industry">
+        <div>
+            <h1>Facilities &amp; hospitals</h1>
+            <p class="lede">Every Medicare-certified hospital, nursing home, home health agency, hospice, clinic and center, from CMS's Provider of Services file and Medicare Care Compare.</p>
+        </div>
+        <section class="card" role="status" aria-labelledby="prep-h">
+            <h2 id="prep-h">The list is being prepared</h2>
+            <p>It is built with the next data load and appears here then. Each facility's own page works already, for example from a hospital on a provider's profile.</p>
+        </section>
+    </div>
+    return;
+}
 @{
     var o = Model.Overview;
     var r = Model.Result;

@@ -81,6 +81,7 @@ try
         LoaderCommand.Quality => await app.QualityAsync(cts.Token),
         LoaderCommand.Export => await app.ExportAsync(cts.Token),
         LoaderCommand.Areas => await app.AreasAsync(cts.Token),
+        LoaderCommand.Directories => await app.DirectoriesAsync(cts.Token),
         LoaderCommand.Overture => await app.OvertureAsync(invocation.Arguments.Count > 0 ? invocation.Arguments[0] : null, cts.Token),
         LoaderCommand.Geocode => await app.GeocodeAsync(invocation.Arguments.Count > 0 ? invocation.Arguments[0] : null, cts.Token),
         _ => throw new InvalidOperationException($"Unhandled command {invocation.Command}"),

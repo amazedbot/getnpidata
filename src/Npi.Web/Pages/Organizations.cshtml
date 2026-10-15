@@ -2,6 +2,21 @@
 @using System.Globalization
 @using Npi.Core.Search
 @model OrganizationsModel
+@if (Model.NotReady)
+{
+    ViewData["Title"] = "Groups & organizations";
+    <div class="profile industry">
+        <div>
+            <h1>Groups &amp; organizations</h1>
+            <p class="lede">Medicare group practices and every organization with an NPI: clinics, practices, agencies, labs, pharmacies and suppliers.</p>
+        </div>
+        <section class="card" role="status" aria-labelledby="prep-h">
+            <h2 id="prep-h">The lists are being prepared</h2>
+            <p>They are built with the next data load and appear here then. Meanwhile, <a href="/search?entityType=2">search organization NPIs</a>; each group's own page works already, for example from a clinician's profile.</p>
+        </section>
+    </div>
+    return;
+}
 @{
     var o = Model.Overview;
     ViewData["Title"] = Model.GroupsView ? "Medicare groups" : "Groups & organizations";

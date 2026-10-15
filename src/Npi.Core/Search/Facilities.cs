@@ -259,7 +259,8 @@ public sealed record FacilityFilter
 /// <summary>
 /// Every Medicare-certified facility (docs/PRODUCT_PLAN.md step 3.6): the Provider of Services file (every CCN, active or closed)
 /// joined with the Care Compare listings of hospitals, nursing homes, home health agencies and hospices (names, ratings,
-/// ownership, beds), kept in memory (~130,000 rows) until the data changes, so filters, sorts and pages need no query.
+/// ownership, beds). The loader writes the merged list to <c>directory_facility</c> (<see cref="ReadSourcesAsync"/>); the site
+/// keeps that table in memory (~130,000 rows) until the loader rebuilds it, so filters, sorts and pages need no query.
 /// </summary>
 public sealed class FacilityDirectory : IDisposable
 {
@@ -270,10 +271,10 @@ public sealed class FacilityDirectory : IDisposable
         _cache = new SnapshotCache<Snapshot>(ct => DataStamp.ReadAsync(connectionString, ct), ct => LoadAsync(connectionString, ct));
     }
 
-    /// <summary>For tests: a directory over rows already built.</summary>
+    /// <summary>For tests: a directory over rows already built (none: not ready yet).</summary>
     internal FacilityDirectory(IReadOnlyList<FacilitySummary> rows)
     {
-        var snapshot = new Snapshot(rows);
+        var snapshot = rows.Count == 0 ? Snapshot.NotReady : new Snapshot(rows);
         _cache = new SnapshotCache<Snapshot>(_ => Task.FromResult(""), _ => Task.FromResult(snapshot));
     }
 
@@ -282,13 +283,16 @@ public sealed class FacilityDirectory : IDisposable
     /// <summary>Fills the cache (the site calls it once after starting, so the first visitor doesn't wait for it).</summary>
     public Task WarmAsync(CancellationToken ct) => _cache.GetAsync(ct);
 
-    public async Task<FacilityOverview> GetOverviewAsync(CancellationToken ct) => (await _cache.GetAsync(ct)).Overview;
+    /// <summary>False until the loader has built the list (<c>directory_facility</c>); the other methods throw <see cref="DirectoryNotReadyException"/> meanwhile.</summary>
+    public async Task<bool> IsReadyAsync(CancellationToken ct) => (await _cache.GetAsync(ct)).Ready;
+
+    public async Task<FacilityOverview> GetOverviewAsync(CancellationToken ct) => (await ReadyAsync(ct)).Overview;
 
     /// <summary>One page of the facilities matching a valid filter (<see cref="FacilityFilter.Validate"/>).</summary>
     public async Task<FacilityPage> SearchAsync(FacilityFilter filter, CancellationToken ct)
     {
         Check(filter);
-        var matches = (await _cache.GetAsync(ct)).Match(filter).ToList();
+        var matches = (await ReadyAsync(ct)).Match(filter).ToList();
         var items = Sorted(matches.Select(e => e.Item), filter.Sort).Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize).ToList();
         return new FacilityPage(items, filter.Page, filter.PageSize, matches.Count);
     }
@@ -296,7 +300,7 @@ public sealed class FacilityDirectory : IDisposable
     /// <summary>How many facilities of each type match the filter's other conditions (the type chips above the list).</summary>
     public async Task<IReadOnlyList<FacilityTypeCount>> CountByTypeAsync(FacilityFilter filter, CancellationToken ct)
     {
-        var matches = (await _cache.GetAsync(ct)).Match(filter with { Type = null }).Select(e => e.Item).ToList();
+        var matches = (await ReadyAsync(ct)).Match(filter with { Type = null }).Select(e => e.Item).ToList();
         return FacilityTypes.All.Select(t => new FacilityTypeCount(t.Code, t.Plural, matches.Count(r => r.Type == t.Code && r.Active),
                 matches.Count(r => r.Type == t.Code && !r.Active)))
             .ToList();
@@ -306,13 +310,16 @@ public sealed class FacilityDirectory : IDisposable
     public async IAsyncEnumerable<FacilitySummary> AllAsync(FacilityFilter filter, [EnumeratorCancellation] CancellationToken ct)
     {
         Check(filter with { Page = 1, PageSize = FacilityFilter.DefaultPageSize });
-        var snapshot = await _cache.GetAsync(ct);
+        var snapshot = await ReadyAsync(ct);
         foreach (var item in Sorted(snapshot.Match(filter).Select(e => e.Item), filter.Sort))
         {
             ct.ThrowIfCancellationRequested();
             yield return item;
         }
     }
+
+    private async Task<Snapshot> ReadyAsync(CancellationToken ct) =>
+        await _cache.GetAsync(ct) is { Ready: true } snapshot ? snapshot : throw new DirectoryNotReadyException("The facility list");
 
     private static void Check(FacilityFilter filter)
     {
@@ -395,6 +402,10 @@ public sealed class FacilityDirectory : IDisposable
         private readonly IReadOnlyList<Entry> _entries;
         private readonly Dictionary<string, Entry> _byCcn;
 
+        public static readonly Snapshot NotReady = new([]) { Ready = false };
+
+        public bool Ready { get; private init; } = true;
+
         public Snapshot(IReadOnlyList<FacilitySummary> rows)
         {
             _entries = rows.Select(r => new Entry(r, " " + Normalize(r.Name) + " | " + Normalize(r.City) + " ")).ToList();
@@ -476,11 +487,50 @@ public sealed class FacilityDirectory : IDisposable
 
     private sealed record CentroidRow(string Zip5, double Lat, double Lon);
 
+    // Types as MySqlConnector returns them (Dapper maps records by constructor).
+    private sealed record DirectoryRow(string Ccn, string Type, string? Kind, string Name, string? Address, string? City, string? State, string? Zip5,
+        string? Phone, string? Ownership, int? Beds, double? Rating, long Active, DateTime? TerminationDate, string? TerminationReason, int BillingNpis,
+        double? Lat, double? Lon);
+
+    /// <summary>The site's list: <c>directory_facility</c>, which the loader builds (<see cref="ReadSourcesAsync"/>); not ready before its first build.</summary>
     private static async Task<Snapshot> LoadAsync(string connectionString, CancellationToken ct)
     {
         await using var connection = new MySqlConnection(connectionString);
         await connection.OpenAsync(ct);
-        const int timeout = 300;
+        if (!await DataStamp.BuiltAsync(connection, ct))
+        {
+            return Snapshot.NotReady;
+        }
+
+        List<DirectoryRow> rows;
+        try
+        {
+            rows = (await connection.QueryAsync<DirectoryRow>(new CommandDefinition(
+                """
+                SELECT ccn AS Ccn, type AS Type, kind AS Kind, name AS Name, address AS Address, city AS City, state AS State, zip5 AS Zip5, phone AS Phone,
+                       ownership AS Ownership, beds AS Beds, rating AS Rating, CAST(active AS SIGNED) AS Active, termination_date AS TerminationDate,
+                       termination_reason AS TerminationReason, billing_npis AS BillingNpis, lat AS Lat, lon AS Lon
+                FROM directory_facility
+                """, cancellationToken: ct))).ToList();
+        }
+        catch (MySqlException ex) when (ex.ErrorCode == MySqlErrorCode.NoSuchTable)
+        {
+            return Snapshot.NotReady;
+        }
+
+        return new Snapshot(rows.Select(r => new FacilitySummary(r.Ccn, r.Type, FacilityTypes.Get(r.Type).Singular, r.Kind,
+                r.Name, r.Address, r.City, r.State, r.Zip5, r.Phone, r.Ownership, r.Beds, r.Rating, r.Active != 0,
+                r.TerminationDate is { } d ? DateOnly.FromDateTime(d) : null, r.TerminationReason, r.BillingNpis, r.Lat, r.Lon))
+            .ToList());
+    }
+
+    /// <summary>
+    /// Every facility from the source tables (the Provider of Services file, the four Care Compare listings, the CCN-to-NPI
+    /// enrollments of active NPIs and the ZIP centres), merged (<see cref="Merge"/>): what the loader writes to <c>directory_facility</c>.
+    /// </summary>
+    public static async Task<IReadOnlyList<FacilitySummary>> ReadSourcesAsync(MySqlConnection connection, CancellationToken ct)
+    {
+        const int timeout = 600;
         var pos = await connection.QueryAsync<PosRow>(new CommandDefinition(
             """
             SELECT ccn AS Ccn, name AS Name, address AS Address, city AS City, state AS State, zip5 AS Zip5, CAST(active AS SIGNED) AS Active,
@@ -508,20 +558,20 @@ public sealed class FacilityDirectory : IDisposable
             commandTimeout: timeout, cancellationToken: ct));
         var centroids = await connection.QueryAsync<CentroidRow>(new CommandDefinition(
             "SELECT zip5 AS Zip5, CAST(lat AS DOUBLE) AS Lat, CAST(lon AS DOUBLE) AS Lon FROM zip_centroid", commandTimeout: timeout, cancellationToken: ct));
-        return new Snapshot(Merge(pos.Select(p => new PosFacility(p.Ccn, p.Name, p.Address, p.City, p.State, p.Zip5, p.Active != 0, p.TerminationCode,
+        return Merge(pos.Select(p => new PosFacility(p.Ccn, p.Name, p.Address, p.City, p.State, p.Zip5, p.Active != 0, p.TerminationCode,
                 p.TerminationDate is { } d ? DateOnly.FromDateTime(d) : null)),
             listed.Select(l => new ListedFacility(l.Type, l.Row.Ccn, l.Row.Name, l.Row.Address, l.Row.City, l.Row.State, l.Row.Zip, l.Row.Phone,
                 l.Row.Kind, l.Row.Ownership, (int?)l.Row.Beds, l.Row.Rating)),
             npis.Select(n => (n.Ccn, n.Kind, (int)n.Npis)),
-            centroids.ToDictionary(c => c.Zip5, c => (c.Lat, c.Lon))));
+            centroids.ToDictionary(c => c.Zip5, c => (c.Lat, c.Lon)));
     }
 
     /// <summary>A row of the Provider of Services file.</summary>
-    internal sealed record PosFacility(string Ccn, string? Name, string? Address, string? City, string? State, string? Zip5, bool Active,
+    public sealed record PosFacility(string Ccn, string? Name, string? Address, string? City, string? State, string? Zip5, bool Active,
         string? TerminationCode, DateOnly? TerminationDate);
 
     /// <summary>A facility listed in Care Compare (hospitals, nursing homes, home health agencies, hospices).</summary>
-    internal sealed record ListedFacility(string Type, string Ccn, string Name, string? Address, string? City, string? State, string? Zip, string? Phone,
+    public sealed record ListedFacility(string Type, string Ccn, string Name, string? Address, string? City, string? State, string? Zip, string? Phone,
         string? Kind, string? Ownership, int? Beds, double? Rating);
 
     /// <summary>
@@ -529,7 +579,7 @@ public sealed class FacilityDirectory : IDisposable
     /// health clinic …), else its number range (<see cref="FacilityTypes.FromCcn"/>). A Care Compare listing is a facility certified
     /// now; otherwise the Provider of Services file says whether its certification ended. Facilities without a name are left out.
     /// </summary>
-    internal static IReadOnlyList<FacilitySummary> Merge(IEnumerable<PosFacility> pos, IEnumerable<ListedFacility> listed,
+    public static IReadOnlyList<FacilitySummary> Merge(IEnumerable<PosFacility> pos, IEnumerable<ListedFacility> listed,
         IEnumerable<(string Ccn, string Kind, int Npis)> npis, IReadOnlyDictionary<string, (double Lat, double Lon)> centroids)
     {
         var byCcn = new Dictionary<string, PosFacility>(StringComparer.OrdinalIgnoreCase);

@@ -54,6 +54,9 @@ public class OrganizationsModel(OrganizationDirectory directory, SearchService s
 
     public IReadOnlyDictionary<string, string[]> Errors { get; private set; } = new Dictionary<string, string[]>();
 
+    /// <summary>True before the loader has built the directory tables (the first load after they were added): the page says so.</summary>
+    public bool NotReady { get; private set; }
+
     public bool GroupsView => View == "groups";
 
     public bool Searched => !string.IsNullOrWhiteSpace(Q);
@@ -91,6 +94,12 @@ public class OrganizationsModel(OrganizationDirectory directory, SearchService s
             MinClinicians = MaxClinicians = null;
             PageNumber = 1;
             filter = Filter(1);
+        }
+
+        if (!await directory.IsReadyAsync(ct))
+        {
+            NotReady = true;
+            return;
         }
 
         Overview = await directory.GetOverviewAsync(ct);

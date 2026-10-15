@@ -21,3 +21,4 @@ Applied in number order together with the other folders (see [../README.md](../R
 | `077_provider_deactivated.sql` | Every deactivated NPI with its date, for the "Deactivated on [date]" status page (redesign step 1.4). |
 | `096_provider_change_kinds.sql` | `provider_change.change_type` widened to 20 characters for the kinds step 3.2 adds (phone, locations, taxonomies, other names, licenses, exclusions, opt-outs). |
 | `098_search_total.sql` | Nationwide totals for a single broad filter (practice building type), so a nationwide list counts instantly. |
+| `101_directories.sql` | The Facilities & hospitals and Groups & organizations lists (step 3.6), built by the loader (`DirectoryBuilder`): every certified facility, every Medicare group with its size and MIPS score, organization NPI counts by taxonomy, state and record quality, and organizations' own Medicare Part B payments. |

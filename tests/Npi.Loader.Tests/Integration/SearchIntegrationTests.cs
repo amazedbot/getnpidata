@@ -644,6 +644,35 @@ public sealed class SearchIntegrationTests : IDisposable
             INSERT INTO medicare_utilization (npi, data_year, payment_amount, beneficiaries) VALUES (@D, 2024, 12345.5, 40), (@A, 2024, 999, 10);
             """, new { A, B, C, D, E });
 
+        // Before the loader's first build the site says the lists are being prepared (and never aggregates the sources itself).
+        using (var early = new FacilityDirectory(db.ConnectionString))
+        using (var earlyGroups = new OrganizationDirectory(db.ConnectionString))
+        {
+            Assert.False(await early.IsReadyAsync(_ct));
+            Assert.False(await earlyGroups.IsReadyAsync(_ct));
+            await Assert.ThrowsAsync<DirectoryNotReadyException>(() => early.SearchAsync(new FacilityFilter(), _ct));
+            await Assert.ThrowsAsync<DirectoryNotReadyException>(() => earlyGroups.GetOverviewAsync(_ct));
+        }
+
+        var builder = new DirectoryBuilder(db.Database, Logger.None, 0.95);
+        Assert.True(await builder.IsStaleAsync(_ct));
+        var built = await builder.BuildAsync(_ct);
+        Assert.Equal((6L, 2L, 1L, 1L), (built["directory_facility"], built["directory_group"], built["directory_org_count"], built["directory_org_billing"]));
+        Assert.False(await builder.IsStaleAsync(_ct));
+
+        // The table holds exactly what merging the sources gives (what the site computed in memory before the table existed).
+        await using (var connection = await db.Database.OpenAsync(_ct))
+        {
+            using var fromTable = new FacilityDirectory(db.ConnectionString);
+            var all = new List<FacilitySummary>();
+            await foreach (var f in fromTable.AllAsync(new FacilityFilter { Status = "all" }, _ct))
+            {
+                all.Add(f);
+            }
+
+            Assert.Equal((await FacilityDirectory.ReadSourcesAsync(connection, _ct)).OrderBy(f => f.Ccn, StringComparer.Ordinal), all.OrderBy(f => f.Ccn, StringComparer.Ordinal));
+        }
+
         using var facilities = new FacilityDirectory(db.ConnectionString);
         var active = await facilities.SearchAsync(new FacilityFilter(), _ct);
         Assert.Equal(["331850", "330045", "331501", "337001", "335002"], active.Items.Select(f => f.Ccn));

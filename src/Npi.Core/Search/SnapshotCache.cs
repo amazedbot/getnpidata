@@ -6,22 +6,49 @@ namespace Npi.Core.Search;
 /// <summary>The stamp <see cref="SnapshotCache{T}"/> compares to see whether the data changed.</summary>
 public static class DataStamp
 {
-    /// <summary>The stamp of the data the pages are built from: the projection time and the newest dataset or reference load.</summary>
+    /// <summary>The <c>reference_data</c> row the loader's directory builder writes when it rebuilt the directory tables.</summary>
+    public const string DirectorySource = "directories";
+
+    /// <summary>When the loader last rebuilt the facility and group tables ("" before the first build).</summary>
     public static async Task<string> ReadAsync(string connectionString, CancellationToken ct)
     {
         await using var connection = new MySqlConnection(connectionString);
         return await connection.ExecuteScalarAsync<string?>(new CommandDefinition(
-            """
-            SELECT CONCAT_WS('|', (SELECT projected_at FROM data_version WHERE id = 1), (SELECT MAX(loaded_at) FROM reference_data))
-            """, cancellationToken: ct)) ?? "";
+            "SELECT CAST(loaded_at AS CHAR) FROM reference_data WHERE source = @source", new { source = DirectorySource }, cancellationToken: ct)) ?? "";
+    }
+
+    /// <summary>True once the loader has built the directory tables (they may then be empty: a database without those datasets).</summary>
+    public static async Task<bool> BuiltAsync(MySqlConnection connection, CancellationToken ct) =>
+        await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM reference_data WHERE source = @source", new { source = DirectorySource }, cancellationToken: ct)) > 0;
+}
+
+/// <summary>
+/// A directory page asked for a list the loader hasn't built yet (the first load after the tables were added hasn't run). The pages say the list is being prepared; the API answers 503.
+/// </summary>
+public sealed class DirectoryNotReadyException : Exception
+{
+    public DirectoryNotReadyException()
+        : this("The list")
+    {
+    }
+
+    public DirectoryNotReadyException(string what)
+        : base($"{what} is being prepared; it is built after the next data load.")
+    {
+    }
+
+    public DirectoryNotReadyException(string message, Exception innerException)
+        : base(message, innerException)
+    {
     }
 }
 
 /// <summary>
 /// A value read once from the database and kept in memory until the data changes (the Facilities &amp; hospitals and Groups &amp;
-/// organizations pages, docs/PRODUCT_PLAN.md step 3.6). Every <see cref="CheckEvery"/> a request looks at the data's stamp (the
-/// projection time and the newest dataset load, one cheap query); when it changed, the value is rebuilt in the background while
-/// requests keep the old one. Only the first request after the site starts waits for the build.
+/// organizations pages, docs/PRODUCT_PLAN.md step 3.6). Every <see cref="CheckEvery"/> a request looks at the data's stamp (when
+/// the loader last rebuilt the directory tables, one cheap query); when it changed, the value is reread in the background while
+/// requests keep the old one. Only the first request after the site starts waits for the read (small tables: under a second).
 /// </summary>
 public sealed class SnapshotCache<T>(Func<CancellationToken, Task<string>> stamp, Func<CancellationToken, Task<T>> load) : IDisposable
     where T : class

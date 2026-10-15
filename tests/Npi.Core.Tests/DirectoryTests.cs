@@ -254,6 +254,24 @@ public class DirectoryTests
     }
 
     [Fact]
+    public async Task Lists_the_loader_has_not_built_yet_say_so()
+    {
+        using var facilities = new FacilityDirectory([]);
+        Assert.False(await facilities.IsReadyAsync(Ct));
+        await Assert.ThrowsAsync<DirectoryNotReadyException>(() => facilities.SearchAsync(new FacilityFilter(), Ct));
+        await Assert.ThrowsAsync<DirectoryNotReadyException>(() => facilities.GetOverviewAsync(Ct));
+
+        using var organizations = new OrganizationDirectory([], [], [], null, new Dictionary<string, IReadOnlyList<string>>());
+        Assert.False(await organizations.IsReadyAsync(Ct));
+        await Assert.ThrowsAsync<DirectoryNotReadyException>(() => organizations.SearchGroupsAsync(new GroupFilter(), Ct));
+        await Assert.ThrowsAsync<DirectoryNotReadyException>(() => organizations.GetCategoriesAsync(null, Ct));
+        Assert.Null(organizations.PeekGroup("1000000001"));
+
+        using var ready = Organizations();
+        Assert.True(await ready.IsReadyAsync(Ct));
+    }
+
+    [Fact]
     public async Task A_snapshot_is_built_once_and_peeked_without_waiting()
     {
         var builds = 0;

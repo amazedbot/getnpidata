@@ -31,7 +31,8 @@ public class DirectoryTests
         [("207Q00000X", "NY", 1, 10)], [], null,
         new Dictionary<string, IReadOnlyList<string>> { ["1234567893"] = ["1000000002"] });
 
-    internal sealed class DirectoryFactory : WebApplicationFactory<Program>
+    /// <param name="ready">False: the loader hasn't built the directory tables yet.</param>
+    internal sealed class DirectoryFactory(bool ready = true) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -39,10 +40,28 @@ public class DirectoryTests
             builder.UseSetting("ConnectionStrings:RemoteMySql", "Server=127.0.0.1;Port=1;Database=none;User ID=none;Password=none;Connection Timeout=1");
             builder.ConfigureServices(s =>
             {
-                s.AddSingleton(Facilities());
-                s.AddSingleton(Organizations());
+                s.AddSingleton(ready ? Facilities() : new FacilityDirectory([]));
+                s.AddSingleton(ready ? Organizations() : new OrganizationDirectory([], [], [], null, new Dictionary<string, IReadOnlyList<string>>()));
             });
         }
+    }
+
+    [Fact]
+    public async Task Before_the_first_build_the_api_says_the_lists_are_being_prepared()
+    {
+        await using var factory = new DirectoryFactory(ready: false);
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false });
+        foreach (var url in new[] { "/api/v1/facilities", "/api/v1/facilities.csv", "/api/v1/groups?state=NY", "/api/v1/groups.csv" })
+        {
+            var response = await client.GetAsync(url, Ct);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Contains("being prepared", await response.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        // A bad filter is still a bad filter; the site's CSV links go back to the page, which says the list is being prepared.
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/facilities?type=spa", Ct)).StatusCode);
+        Assert.Equal("/facilities?type=hospital", (await client.GetAsync("/facilities.csv?type=hospital", Ct)).Headers.Location!.OriginalString);
+        Assert.Equal("/groups", (await client.GetAsync("/groups.csv", Ct)).Headers.Location!.OriginalString);
     }
 
     [Fact]

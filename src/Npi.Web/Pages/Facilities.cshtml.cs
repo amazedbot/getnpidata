@@ -49,6 +49,9 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
 
     public IReadOnlyDictionary<string, string[]> Errors { get; private set; } = new Dictionary<string, string[]>();
 
+    /// <summary>True before the loader has built the directory tables (the first load after they were added): the page says so.</summary>
+    public bool NotReady { get; private set; }
+
     public StaticMap? Map { get; private set; }
 
     public string Attribution => mapOptions.Value.Attribution;
@@ -88,6 +91,12 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
             MinRating = MaxRating = null;
             PageNumber = 1;
             filter = Filter(1);
+        }
+
+        if (!await facilities.IsReadyAsync(ct))
+        {
+            NotReady = true;
+            return;
         }
 
         Overview = await facilities.GetOverviewAsync(ct);

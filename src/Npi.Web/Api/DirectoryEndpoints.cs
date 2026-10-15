@@ -22,49 +22,87 @@ public static class DirectoryEndpoints
         PageSize = pageSize ?? GroupFilter.DefaultPageSize,
     };
 
-    public static async Task<Results<Ok<FacilityPage>, ValidationProblem>> SearchFacilitiesAsync(string? q, string? type, string? state, int? minRating,
-        int? maxRating, string? status, string? sort, int? page, int? pageSize, FacilityDirectory facilities, CancellationToken ct)
+    public static async Task<Results<Ok<FacilityPage>, ValidationProblem, ProblemHttpResult>> SearchFacilitiesAsync(string? q, string? type, string? state,
+        int? minRating, int? maxRating, string? status, string? sort, int? page, int? pageSize, FacilityDirectory facilities, CancellationToken ct)
     {
         var filter = Facilities(q, type, state, minRating, maxRating, status, sort, page, pageSize);
-        return filter.Validate() is { Count: > 0 } errors
-            ? TypedResults.ValidationProblem(errors)
-            : TypedResults.Ok(await facilities.SearchAsync(filter, ct));
+        if (filter.Validate() is { Count: > 0 } errors)
+        {
+            return TypedResults.ValidationProblem(errors);
+        }
+
+        if (!await facilities.IsReadyAsync(ct))
+        {
+            return NotReady(new DirectoryNotReadyException("The facility list"));
+        }
+
+        return TypedResults.Ok(await facilities.SearchAsync(filter, ct));
     }
 
-    public static async Task<Results<Ok<GroupPage>, ValidationProblem>> SearchGroupsAsync(string? q, string? state, int? minClinicians, int? maxClinicians,
-        string? sort, int? page, int? pageSize, OrganizationDirectory organizations, CancellationToken ct)
+    public static async Task<Results<Ok<GroupPage>, ValidationProblem, ProblemHttpResult>> SearchGroupsAsync(string? q, string? state, int? minClinicians,
+        int? maxClinicians, string? sort, int? page, int? pageSize, OrganizationDirectory organizations, CancellationToken ct)
     {
         var filter = Groups(q, state, minClinicians, maxClinicians, sort, page, pageSize);
-        return filter.Validate() is { Count: > 0 } errors
-            ? TypedResults.ValidationProblem(errors)
-            : TypedResults.Ok(await organizations.SearchGroupsAsync(filter, ct));
+        if (filter.Validate() is { Count: > 0 } errors)
+        {
+            return TypedResults.ValidationProblem(errors);
+        }
+
+        if (!await organizations.IsReadyAsync(ct))
+        {
+            return NotReady(new DirectoryNotReadyException("The group list"));
+        }
+
+        return TypedResults.Ok(await organizations.SearchGroupsAsync(filter, ct));
     }
 
     /// <summary>Every facility matching the filters as CSV, in the list's order (paging ignored).</summary>
-    public static Task<IResult> FacilitiesCsvAsync(string? q, string? type, string? state, int? minRating, int? maxRating, string? status, string? sort,
+    public static async Task<IResult> FacilitiesCsvAsync(string? q, string? type, string? state, int? minRating, int? maxRating, string? status, string? sort,
         HttpContext http, FacilityDirectory facilities, CancellationToken ct)
     {
         var filter = Facilities(q, type, state, minRating, maxRating, status, sort);
-        return filter.Validate() is { Count: > 0 } errors
-            ? Task.FromResult(Invalid(http, "/facilities", errors))
-            : CsvAsync(http, $"facilities_{DateTime.UtcNow:yyyyMMdd}.csv", (body, site) => FacilityCsv.WriteAsync(facilities.AllAsync(filter, ct), body, site, ct), ct);
+        if (filter.Validate() is { Count: > 0 } errors)
+        {
+            return Invalid(http, "/facilities", errors);
+        }
+
+        if (!await facilities.IsReadyAsync(ct))
+        {
+            return IsApi(http) ? NotReady(new DirectoryNotReadyException("The facility list")) : TypedResults.Redirect("/facilities" + http.Request.QueryString);
+        }
+
+        return await CsvAsync(http, $"facilities_{DateTime.UtcNow:yyyyMMdd}.csv",
+            (body, site) => FacilityCsv.WriteAsync(facilities.AllAsync(filter, ct), body, site, ct), ct);
     }
 
     /// <summary>Every group matching the filters as CSV, in the list's order (paging ignored).</summary>
-    public static Task<IResult> GroupsCsvAsync(string? q, string? state, int? minClinicians, int? maxClinicians, string? sort, HttpContext http,
+    public static async Task<IResult> GroupsCsvAsync(string? q, string? state, int? minClinicians, int? maxClinicians, string? sort, HttpContext http,
         OrganizationDirectory organizations, CancellationToken ct)
     {
         var filter = Groups(q, state, minClinicians, maxClinicians, sort);
-        return filter.Validate() is { Count: > 0 } errors
-            ? Task.FromResult(Invalid(http, "/groups", errors))
-            : CsvAsync(http, $"medicare_groups_{DateTime.UtcNow:yyyyMMdd}.csv", (body, site) => GroupCsv.WriteAsync(organizations.AllGroupsAsync(filter, ct), body, site, ct), ct);
+        if (filter.Validate() is { Count: > 0 } errors)
+        {
+            return Invalid(http, "/groups", errors);
+        }
+
+        if (!await organizations.IsReadyAsync(ct))
+        {
+            return IsApi(http) ? NotReady(new DirectoryNotReadyException("The group list")) : TypedResults.Redirect("/groups" + http.Request.QueryString);
+        }
+
+        return await CsvAsync(http, $"medicare_groups_{DateTime.UtcNow:yyyyMMdd}.csv",
+            (body, site) => GroupCsv.WriteAsync(organizations.AllGroupsAsync(filter, ct), body, site, ct), ct);
     }
+
+    private static bool IsApi(HttpContext http) => http.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
 
     // The API answers a bad filter with its problem; the site's CSV links go back to the page, which shows the error.
     private static IResult Invalid(HttpContext http, string page, Dictionary<string, string[]> errors) =>
-        http.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
-            ? TypedResults.ValidationProblem(errors)
-            : TypedResults.Redirect(page + http.Request.QueryString);
+        IsApi(http) ? TypedResults.ValidationProblem(errors) : TypedResults.Redirect(page + http.Request.QueryString);
+
+    // Before the loader's first build of the directory tables (after they were added): try again after the next load.
+    private static ProblemHttpResult NotReady(DirectoryNotReadyException ex) =>
+        TypedResults.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Not ready yet", detail: ex.Message);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
