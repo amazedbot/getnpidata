@@ -510,7 +510,9 @@ public sealed class SearchIntegrationTests : IDisposable
         await db.ExecuteAsync(
             """
             INSERT INTO address_point (addr_key, source, lat, lon, matched, `release`, matched_at)
-            SELECT addr_key, 'address', 40.9331, -73.1452, '200 MAIN ST', '2026-09-23.1', UTC_TIMESTAMP() + INTERVAL 1 SECOND FROM provider_location WHERE npi = @E
+            SELECT addr_key, 'address', 40.9331, -73.1452, '200 MAIN ST', '2026-09-23.1',
+                   (SELECT checked_at FROM reference_data WHERE source = 'provider_map') + INTERVAL 1 SECOND -- after the map's last update, whatever the clock's rounding
+            FROM provider_location WHERE npi = @E
             """, new { E });
         Assert.True(await map.IsStaleAsync(_ct));
         await map.BuildAsync(_ct);
