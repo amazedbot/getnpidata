@@ -55,6 +55,9 @@ public sealed class MedicareServicesSource : MedicareYearlySource
 
     public override string Name => "cms_physician_by_service";
 
+    // ~10M rows ranked per NPI.
+    public override bool Heavy => true;
+
     protected override string CatalogTitle => "Medicare Physician & Other Practitioners - by Provider and Service";
 
     private static readonly CsvColumn[] Columns =

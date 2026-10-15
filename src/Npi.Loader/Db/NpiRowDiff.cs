@@ -40,17 +40,18 @@ public static class NpiRowDiff
             await RunAsync("DROP TEMPORARY TABLE IF EXISTS `npi_diff_new`, `npi_diff_old`");
             await RunAsync($"CREATE TEMPORARY TABLE `npi_diff_new` (PRIMARY KEY (`npi`)) {PerNpi(newTable)}");
             await RunAsync($"CREATE TEMPORARY TABLE `npi_diff_old` (PRIMARY KEY (`npi`)) {PerNpi(oldTable)}");
-            // Two statements: MySQL can't open a temporary table twice in one.
-            await RunAsync(
+            // Two statements: MySQL can't open a temporary table twice in one. In NPI order, and repeated after a deadlock: other
+            // sources may be queueing NPIs at the same time (speed item 7).
+            await Database.RetryOnLockConflictAsync(() => RunAsync(
                 $"""
                 INSERT IGNORE INTO {SqlIdentifier.Quote(queue)} (`npi`)
-                SELECT a.`npi` FROM `npi_diff_new` a LEFT JOIN `npi_diff_old` b ON b.`npi` = a.`npi` WHERE NOT (a.`h` <=> b.`h`)
-                """);
-            await RunAsync(
+                SELECT a.`npi` FROM `npi_diff_new` a LEFT JOIN `npi_diff_old` b ON b.`npi` = a.`npi` WHERE NOT (a.`h` <=> b.`h`) ORDER BY a.`npi`
+                """), ct);
+            await Database.RetryOnLockConflictAsync(() => RunAsync(
                 $"""
                 INSERT IGNORE INTO {SqlIdentifier.Quote(queue)} (`npi`)
-                SELECT b.`npi` FROM `npi_diff_old` b LEFT JOIN `npi_diff_new` a ON a.`npi` = b.`npi` WHERE a.`npi` IS NULL
-                """);
+                SELECT b.`npi` FROM `npi_diff_old` b LEFT JOIN `npi_diff_new` a ON a.`npi` = b.`npi` WHERE a.`npi` IS NULL ORDER BY b.`npi`
+                """), ct);
         }
         finally
         {

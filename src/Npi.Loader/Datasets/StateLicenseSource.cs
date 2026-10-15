@@ -240,11 +240,12 @@ public sealed class StateLicenseSource : DatasetSource
 
     public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
     {
-        var versions = new List<(string State, string? Version)>();
-        foreach (var dataset in Datasets)
-        {
-            versions.Add((dataset.State, await dataset.VersionAsync(context, ct)));
-        }
+        // Up to ParallelStates probes at once, kept in Datasets order.
+        var found = new string?[Datasets.Count];
+        await Parallel.ForEachAsync(Enumerable.Range(0, Datasets.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, context.Options.ParallelStates), CancellationToken = ct },
+            async (i, probeCt) => found[i] = await Datasets[i].VersionAsync(context, probeCt));
+        var versions = Datasets.Select((d, i) => (d.State, Version: found[i])).ToList();
 
         context.Log.Information("State licenses versions: {Versions}", string.Join(" | ", versions.Select(v => $"{v.State} {v.Version ?? "none"}")));
         _versions = versions;
@@ -288,12 +289,13 @@ public sealed class StateLicenseSource : DatasetSource
         """;
 
     /// <summary>
-    /// Reloads only the states whose files changed since they were last loaded (<c>state_license_version</c>), one state at a
-    /// time: its files are filtered to the rows whose license number an NPPES provider lists for that state
-    /// (<see cref="StateLicenseFilter"/>), loaded into the scratch table, matched, and that state's rows in
-    /// <c>provider_state_license</c> replaced in one transaction (with the ≥ MinRowRatio check against its previous rows). The
-    /// NPIs whose rows changed are queued in <c>quality_pending</c> for the record-quality label. A state that fails keeps
-    /// its previous rows and is tried again next time; the others are kept. A state whose files are gone is removed.
+    /// Reloads only the states whose files changed since they were last loaded (<c>state_license_version</c>): up to
+    /// <see cref="LoaderOptions.ParallelStates"/> states at once download their files and filter them to the rows whose license
+    /// number an NPPES provider lists for that state (<see cref="StateLicenseFilter"/>); then, one state at a time, the rows are
+    /// loaded into the scratch table, matched, and that state's rows in <c>provider_state_license</c> replaced in one transaction
+    /// (with the ≥ MinRowRatio check against its previous rows). The NPIs whose rows changed are queued in
+    /// <c>quality_pending</c> for the record-quality label. A state that fails keeps its previous rows and is tried again next
+    /// time; the others are kept. A state whose files are gone is removed.
     /// </summary>
     /// <returns>The rows in provider_state_license afterwards.</returns>
     public override async Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct)
@@ -303,35 +305,67 @@ public sealed class StateLicenseSource : DatasetSource
         var stored = (await connection.QueryAsync<(string State, string Version)>(new CommandDefinition(
                 "SELECT `state`, `version` FROM `state_license_version`", cancellationToken: ct)))
             .ToDictionary(v => v.State, v => v.Version, StringComparer.Ordinal);
-        var failed = new List<string>();
-        foreach (var state in Datasets.Select(d => d.State).Distinct())
-        {
-            var mine = Datasets.Select((d, i) => (Dataset: d, versions[i].Version)).Where(x => x.Dataset.State == state).ToList();
-            var available = mine.Where(x => x.Version is not null).ToList();
-            var version = CombineVersions(mine.Select(x => (state, x.Version)).ToList());
-            if (stored.TryGetValue(state, out var previous) && previous == version && available.Count > 0)
-            {
-                context.Log.Information("State licenses {State}: unchanged", state);
-                continue;
-            }
+        var states = Datasets.Select(d => d.State).Distinct().ToList();
+        var failed = new bool[states.Count];
 
-            try
+        // The scratch tables (state_license_raw_staging, provider_state_license_new) and the replacement are one state's at a time,
+        // on this connection; the downloads and filtering beside them use their own.
+        using var applying = new SemaphoreSlim(1, 1);
+        await Parallel.ForEachAsync(Enumerable.Range(0, states.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, context.Options.ParallelStates), CancellationToken = ct }, async (s, stateCt) =>
             {
-                var rows = available.Count == 0
-                    ? await RemoveStateAsync(connection, state, ct)
-                    : await LoadStateAsync(context, connection, state, available.Select(x => x.Dataset).ToList(), version, ct);
-                context.Log.Information("State licenses {State}: {Rows:N0} matched rows", state, rows);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                context.Log.Error(ex, "State licenses {State} failed; its previous rows are kept", state);
-                failed.Add(state);
-            }
-        }
+                var state = states[s];
+                var stateContext = context.ForStep($"state_licenses {state}");
+                var mine = Datasets.Select((d, i) => (Dataset: d, versions[i].Version)).Where(x => x.Dataset.State == state).ToList();
+                var available = mine.Where(x => x.Version is not null).ToList();
+                var version = CombineVersions(mine.Select(x => (state, x.Version)).ToList());
+                if (stored.TryGetValue(state, out var previous) && previous == version && available.Count > 0)
+                {
+                    stateContext.Log.Information("State licenses {State}: unchanged", state);
+                    return;
+                }
 
-        if (failed.Count > 0)
+                IReadOnlyList<PreparedFile> prepared = [];
+                try
+                {
+                    if (available.Count > 0)
+                    {
+                        prepared = await PrepareStateAsync(stateContext, state, available.Select(x => x.Dataset).ToList(), stateCt);
+                    }
+
+                    await applying.WaitAsync(stateCt);
+                    long rows;
+                    try
+                    {
+                        rows = available.Count == 0
+                            ? await RemoveStateAsync(connection, state, stateCt)
+                            : await LoadStateAsync(stateContext, connection, state, prepared, version, stateCt);
+                    }
+                    finally
+                    {
+                        applying.Release();
+                    }
+
+                    stateContext.Log.Information("State licenses {State}: {Rows:N0} matched rows", state, rows);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !stateCt.IsCancellationRequested)
+                {
+                    stateContext.Log.Error(ex, "State licenses {State} failed; its previous rows are kept", state);
+                    failed[s] = true;
+                }
+                finally
+                {
+                    foreach (var file in prepared)
+                    {
+                        File.Delete(file.Path);
+                    }
+                }
+            });
+
+        if (failed.Any(f => f))
         {
-            throw new InvalidOperationException($"State licenses failed for {string.Join(", ", failed)}; the other states were updated.");
+            throw new InvalidOperationException(
+                $"State licenses failed for {string.Join(", ", states.Where((_, s) => failed[s]))}; the other states were updated.");
         }
 
         return await connection.ExecuteScalarAsync<long>(new CommandDefinition("SELECT COUNT(*) FROM `provider_state_license`", cancellationToken: ct));
@@ -340,45 +374,81 @@ public sealed class StateLicenseSource : DatasetSource
     private const string Columns = "`npi`, `state`, `kind`, `source`, `license_number`, `license_type`, `status`, `expiration_date`, `discipline`, " +
                                    "`action_date`, `action`, `description`, `verify_url`";
 
-    private static async Task<long> LoadStateAsync(DatasetContext context, MySqlConnector.MySqlConnection connection, string state,
-        IReadOnlyList<StateDataset> datasets, string version, CancellationToken ct)
+    /// <summary>A state dataset's rows that could match, ready to load (<see cref="PrepareStateAsync"/>).</summary>
+    private sealed record PreparedFile(StateDataset Dataset, string Path);
+
+    /// <summary>
+    /// Downloads (or copies) each of the state's files and keeps the rows whose license number an NPPES provider lists for the
+    /// state, one file after another, into a file per dataset in the work folder. Its own connection reads the license numbers.
+    /// </summary>
+    private static async Task<IReadOnlyList<PreparedFile>> PrepareStateAsync(DatasetContext context, string state, List<StateDataset> datasets,
+        CancellationToken ct)
     {
-        const string raw = "state_license_raw_staging";
-        const string matched = "provider_state_license_new";
         var keys = new LicenseKeys();
-        await foreach (var key in connection.QueryUnbufferedAsync<(string? All, string? Last)>(
-                           $"SELECT DISTINCT {TaxonomyKey}, {TaxonomyKeyLast} FROM `provider_taxonomy` t WHERE t.`license_state` = @state AND t.`license_no` IS NOT NULL",
-                           new { state }).WithCancellation(ct))
+        await using (var connection = await context.Database.OpenAsync(ct))
         {
-            keys.Add(key.All, key.Last);
+            await foreach (var key in connection.QueryUnbufferedAsync<(string? All, string? Last)>(
+                               $"SELECT DISTINCT {TaxonomyKey}, {TaxonomyKeyLast} FROM `provider_taxonomy` t WHERE t.`license_state` = @state AND t.`license_no` IS NOT NULL",
+                               new { state }).WithCancellation(ct))
+            {
+                keys.Add(key.All, key.Last);
+            }
         }
 
+        var prepared = new List<PreparedFile>();
         try
         {
-            await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{raw}`", ct);
-            await Database.ExecuteAsync(connection, $"CREATE TABLE `{raw}` LIKE `state_license_raw`", ct);
-            foreach (var dataset in datasets)
+            for (var i = 0; i < datasets.Count; i++)
             {
+                var dataset = datasets[i];
                 var (path, delete) = await dataset.FetchAsync(context, ct);
-                var filtered = Path.Combine(context.Options.ResolvedWorkFolder, "datasets", $"state_{dataset.Source}_{dataset.Kind}_filtered.csv");
+                // Numbered: two of a state's datasets can share a source and kind (MD's two lists).
+                var filtered = Path.Combine(context.Options.ResolvedWorkFolder, "datasets", $"state_{dataset.Source}_{dataset.Kind}_{i}_filtered.csv");
                 try
                 {
+                    prepared.Add(new PreparedFile(dataset, filtered));
                     var (read, kept) = await StateLicenseFilter.FilterAsync(path, filtered, dataset, keys, ct);
-                    var loaded = await CsvTableLoader.LoadAsync(connection, filtered, raw, dataset.Columns, ct, dataset.CharacterSet, constants: new Dictionary<string, string>
-                    {
-                        ["state"] = dataset.State, ["kind"] = dataset.Kind, ["source"] = dataset.Source,
-                    }, delimiter: dataset.Delimiter);
-                    context.Log.Information("State licenses {State} ({Kind}): {Read:N0} rows read, {Kept:N0} with a license number NPPES lists, {Rows:N0} loaded",
-                        state, dataset.Kind, read, kept, loaded);
+                    context.Log.Information("State licenses {State} ({Kind}): {Read:N0} rows read, {Kept:N0} with a license number NPPES lists",
+                        state, dataset.Kind, read, kept);
                 }
                 finally
                 {
-                    File.Delete(filtered);
                     if (delete)
                     {
                         File.Delete(path);
                     }
                 }
+            }
+
+            return prepared;
+        }
+        catch
+        {
+            foreach (var file in prepared)
+            {
+                File.Delete(file.Path);
+            }
+
+            throw;
+        }
+    }
+
+    private static async Task<long> LoadStateAsync(DatasetContext context, MySqlConnector.MySqlConnection connection, string state,
+        IReadOnlyList<PreparedFile> files, string version, CancellationToken ct)
+    {
+        const string raw = "state_license_raw_staging";
+        const string matched = "provider_state_license_new";
+        try
+        {
+            await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{raw}`", ct);
+            await Database.ExecuteAsync(connection, $"CREATE TABLE `{raw}` LIKE `state_license_raw`", ct);
+            foreach (var (dataset, filtered) in files)
+            {
+                var loaded = await CsvTableLoader.LoadAsync(connection, filtered, raw, dataset.Columns, ct, dataset.CharacterSet, constants: new Dictionary<string, string>
+                {
+                    ["state"] = dataset.State, ["kind"] = dataset.Kind, ["source"] = dataset.Source,
+                }, delimiter: dataset.Delimiter);
+                context.Log.Information("State licenses {State} ({Kind}): {Rows:N0} rows loaded", state, dataset.Kind, loaded);
             }
 
             // Match into a scratch copy, then replace the state's rows in one transaction (readers see the old rows until it commits).
@@ -423,7 +493,7 @@ public sealed class StateLicenseSource : DatasetSource
                 await DatasetChanges.RecordStateLicensesAsync(connection, state, matched, DateTime.UtcNow, context.Log, ct);
             }
 
-            await ReplaceStateAsync(connection, state, $"SELECT {Columns} FROM `{matched}`", version, rows, ct);
+            await ReplaceStateAsync(connection, state, matched, version, rows, ct);
             return rows;
         }
         finally
@@ -440,25 +510,32 @@ public sealed class StateLicenseSource : DatasetSource
         return 0;
     }
 
-    /// <summary>Replaces one state's rows (and its version) in one transaction; the NPIs of the old and new rows are queued for relabelling.</summary>
-    private static async Task ReplaceStateAsync(MySqlConnector.MySqlConnection connection, string state, string? newRows, string? version, long rows,
+    /// <summary>
+    /// Replaces one state's rows (and its version) with those of <paramref name="newTable"/> (none when null) in one transaction.
+    /// The NPIs of the old and new rows are queued for relabelling first, in one statement in NPI order (other sources queue
+    /// NPIs at the same time, speed item 7), so a failure leaves at most a too long queue.
+    /// </summary>
+    private static async Task ReplaceStateAsync(MySqlConnector.MySqlConnection connection, string state, string? newTable, string? version, long rows,
         CancellationToken ct)
     {
+        var param = new { state, version, rows, now = DateTime.UtcNow };
+        var newNpis = newTable is null ? "" : $" UNION SELECT `npi` FROM `{newTable}`";
+        await Database.RetryOnLockConflictAsync(() => connection.ExecuteAsync(new CommandDefinition(
+            $"INSERT IGNORE INTO `quality_pending` (`npi`) SELECT `npi` FROM (SELECT `npi` FROM `provider_state_license` WHERE `state` = @state{newNpis}) x ORDER BY `npi`",
+            param, commandTimeout: 0, cancellationToken: ct)), ct);
+
         await using var transaction = await connection.BeginTransactionAsync(ct);
         async Task RunAsync(string sql) =>
-            await connection.ExecuteAsync(new CommandDefinition(sql, new { state, version, rows, now = DateTime.UtcNow }, transaction, commandTimeout: 0,
-                cancellationToken: ct));
+            await connection.ExecuteAsync(new CommandDefinition(sql, param, transaction, commandTimeout: 0, cancellationToken: ct));
 
-        await RunAsync("INSERT IGNORE INTO `quality_pending` (`npi`) SELECT DISTINCT `npi` FROM `provider_state_license` WHERE `state` = @state");
         await RunAsync("DELETE FROM `provider_state_license` WHERE `state` = @state");
-        if (newRows is null)
+        if (newTable is null)
         {
             await RunAsync("DELETE FROM `state_license_version` WHERE `state` = @state");
         }
         else
         {
-            await RunAsync($"INSERT INTO `provider_state_license` ({Columns}) {newRows}");
-            await RunAsync("INSERT IGNORE INTO `quality_pending` (`npi`) SELECT DISTINCT `npi` FROM `provider_state_license` WHERE `state` = @state");
+            await RunAsync($"INSERT INTO `provider_state_license` ({Columns}) SELECT {Columns} FROM `{newTable}`");
             await RunAsync(
                 """
                 INSERT INTO `state_license_version` (`state`, `version`, `rows_loaded`, `loaded_at`) VALUES (@state, @version, @rows, @now) AS new

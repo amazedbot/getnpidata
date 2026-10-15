@@ -67,4 +67,27 @@ public sealed class Database(string connectionString)
 
     public static Task ExecuteAsync(MySqlConnection connection, string sql, CancellationToken ct, MySqlTransaction? tx = null, object? param = null) =>
         connection.ExecuteAsync(new CommandDefinition(sql, param, tx, cancellationToken: ct));
+
+    /// <summary>
+    /// Runs <paramref name="action"/> again when MySQL rolled it back as a deadlock victim or a lock wait timed out, up to
+    /// <paramref name="attempts"/> times: datasets load side by side (speed item 7) and queue NPIs into the same tables. The
+    /// action must be safe to repeat (an INSERT IGNORE, or a whole transaction).
+    /// </summary>
+    public static async Task<T> RetryOnLockConflictAsync<T>(Func<Task<T>> action, CancellationToken ct, int attempts = 3)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (MySqlException e) when (attempt < attempts && IsLockConflict(e))
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt), ct);
+            }
+        }
+    }
+
+    /// <summary>A deadlock (1213) or a lock wait timeout (1205).</summary>
+    public static bool IsLockConflict(MySqlException e) => e.ErrorCode is MySqlErrorCode.LockDeadlock or MySqlErrorCode.LockWaitTimeout;
 }

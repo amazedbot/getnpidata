@@ -79,6 +79,9 @@ public sealed class OpenPaymentsYearSource : OpenPaymentsSummarySource
 {
     public override string Name => "open_payments_years";
 
+    // ~2.5 GB, ~7.5M rows.
+    public override bool Heavy => true;
+
     protected override string Title => "Payments grouped by physician (distinct) for all years";
 
     private static readonly CsvColumn[] Columns =
@@ -133,6 +136,9 @@ public sealed class OpenPaymentsCompanySource : OpenPaymentsSummarySource
     public const int TopRecipients = 100;
 
     public override string Name => "open_payments_companies";
+
+    // ~1.8 GB, ~14M rows.
+    public override bool Heavy => true;
 
     protected override string Title => "Payments grouped by covered recipient and reporting entities for all years";
 

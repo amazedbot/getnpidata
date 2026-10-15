@@ -40,6 +40,9 @@ public sealed partial class FemaStructureSource : DatasetSource
 
     public override string Name => "fema_structures";
 
+    // ~21 GB downloaded, DuckDB with 3 GB of memory, then every address relabelled.
+    public override bool Heavy => true;
+
     public override TimeSpan CheckInterval => TimeSpan.FromDays(7);
 
     private sealed record Part(string Key, string ETag, DateTime Modified);

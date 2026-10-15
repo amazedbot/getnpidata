@@ -676,11 +676,15 @@ public sealed class DatasetIntegrationTests : IDisposable
         // A day later only the version probes go out: the LEIE HEAD, the CMS catalog (once) and the Care Compare entries, but no files.
         clock.Advance(TimeSpan.FromDays(1));
         Assert.True(await Loader(db, server, clock).RefreshAsync(force: false, only: null, _ct));
+        // The sources check side by side (speed item 7), so the order varies; the catalog is still fetched once.
         Assert.Equal(
-            ["HEAD https://oig.test/UPDATED.csv", "https://cms.test/data.json", "https://pdc.test/items/mj5m-pzi6", "https://pdc.test/items/27ea-46a8",
-             "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py", "https://pdc.test/items/dgck-syfz", "https://pdc.test/items/6jpm-sxkc",
-             "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8", "https://fda.test/download.json", "https://fda.test/download.json"],
-            server.Requests); // HRSA, Census, Open Payments and most FDA files are checked weekly; FDA's shortage list and adverse event export dates daily
+            new[]
+            {
+                "HEAD https://oig.test/UPDATED.csv", "https://cms.test/data.json", "https://pdc.test/items/mj5m-pzi6", "https://pdc.test/items/27ea-46a8",
+                "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py", "https://pdc.test/items/dgck-syfz", "https://pdc.test/items/6jpm-sxkc",
+                "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8", "https://fda.test/download.json", "https://fda.test/download.json",
+            }.Order(StringComparer.Ordinal),
+            server.Requests.Order(StringComparer.Ordinal)); // HRSA, Census, Open Payments and most FDA files are checked weekly; FDA's shortage list and adverse event export dates daily
 
         // The datasets command forces a reload of one source.
         server.Requests.Clear();
@@ -766,7 +770,11 @@ public sealed class DatasetIntegrationTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var url = request.RequestUri!.AbsoluteUri;
-            Requests.Add(request.Method == HttpMethod.Head ? "HEAD " + url : url);
+            lock (Requests)
+            {
+                // The sources run side by side.
+                Requests.Add(request.Method == HttpMethod.Head ? "HEAD " + url : url);
+            }
             if (ProviderData.TryGetValue(url, out var entry))
             {
                 var json = $$"""{"modified":"{{entry.Modified}}","distribution":[{"downloadURL":"https://pdc.test/files/{{entry.File}}","mediaType":"text/csv"}]}""";

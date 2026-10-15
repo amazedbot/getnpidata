@@ -16,6 +16,13 @@ public sealed class PartDDrugPrescriberSource : DatasetSource
 
     public override string Name => "part_d_prescribers";
 
+    // ~4 GB, ~26M rows.
+    public override bool Heavy => true;
+
+    // The prescribing overlap it rebuilds reads the products (op_product, op_product_npi, fda_ndc_product), and open_payments
+    // rebuilds the same tables after its own load.
+    public override IReadOnlyList<string> After => ["open_payments", "fda_products"];
+
     private static readonly CsvColumn[] Columns =
     [
         new("Prscrbr_NPI", "npi", CsvValue.Npi), new("Brnd_Name", "brand"), new("Gnrc_Name", "generic"),

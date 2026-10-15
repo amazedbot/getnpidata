@@ -28,6 +28,9 @@ public sealed partial class OpenPaymentsSource : DatasetSource
 
     public override string Name => "open_payments";
 
+    // ~9 GB, ~16M rows unpivoted per product.
+    public override bool Heavy => true;
+
     public override TimeSpan CheckInterval => TimeSpan.FromDays(7);
 
     private static readonly CsvColumn[] Columns =
