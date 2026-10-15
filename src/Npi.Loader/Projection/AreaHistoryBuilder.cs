@@ -122,14 +122,14 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
             var changes = await CountChangesAsync(connection, RunAsync, meta, param, first, ct);
             var rows = await WriteStatsAsync(connection, RunAsync, asOfMonth, from, trackedFrom, first, ct);
 
-            var now = DateTime.UtcNow;
+            // MySQL's clock, as the area counts and the projection record theirs (compared in IsStaleAsync).
             await Database.ExecuteAsync(connection,
                 """
                 INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
-                VALUES (@source, @version, '', @rows, @now, @now) AS new
+                VALUES (@source, @version, '', @rows, UTC_TIMESTAMP(), UTC_TIMESTAMP()) AS new
                 ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `checked_at` = new.`checked_at`,
                   `loaded_at` = IF(@fullDiff, new.`loaded_at`, `reference_data`.`loaded_at`)
-                """, ct, param: new { source = Source, version = "as of " + asOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), rows, now, fullDiff });
+                """, ct, param: new { source = Source, version = "as of " + asOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), rows, fullDiff });
             log.Information("Area history: {Events:N0} moves and deactivations, {Changes:N0} recorded changes, {Rows:N0} monthly rows ({Months}) in {Seconds:N0}s",
                 events, changes, rows, first ? $"derived from {AreaHistoryMath.MonthKey(derivedFrom)}" : $"from {AreaHistoryMath.MonthKey(openFrom)}",
                 watch.Elapsed.TotalSeconds);
@@ -389,8 +389,15 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
             FROM `provider_deactivated` d WHERE d.`deactivation_date` >= DATE(@from) GROUP BY m
             """, "`deactivated` = x.n"), null);
 
-        // The as-of month's provider counts, taken again: a category no longer counted there drops out.
+        // The as-of month's provider counts, taken again: a category no longer counted there drops out, and every state and
+        // county gets a count, 0 when nobody practises there (so a month with a count is told from one without).
         await run($"UPDATE `{Stats}` SET `providers` = NULL WHERE `month` = DATE(@asOfMonth)", null);
+        await run(Upsert("`providers`",
+            """
+            SELECT 'us' AS t, 'US' AS i, '' AS c, '' AS s, DATE(@asOfMonth) AS m, 0 AS n
+            UNION ALL SELECT DISTINCT 'state', `state`, '', '', DATE(@asOfMonth), 0 FROM `county`
+            UNION ALL SELECT 'county', `county_fips`, '', '', DATE(@asOfMonth), 0 FROM `county`
+            """, "`providers` = x.n"), null);
         await run(Upsert("`providers`",
             "SELECT `area_type` AS t, `area_id` AS i, `category` AS c, '' AS s, DATE(@asOfMonth) AS m, `providers` AS n FROM `area_provider_count` WHERE `subcategory` = ''",
             "`providers` = x.n"), null);

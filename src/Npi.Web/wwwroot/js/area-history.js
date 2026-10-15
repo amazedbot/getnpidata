@@ -19,8 +19,10 @@
     var error = (css.getPropertyValue('--error') || '#A3361F').trim();
     var warn = (css.getPropertyValue('--warn') || '#7A4E00').trim();
     var muted = (css.getPropertyValue('--muted') || '#4E5F58').trim();
+    // Drawn at the canvas's own width (redrawn when it changes), so the labels keep their size on a phone.
     var width = 760;
     var height = 260;
+    var shown = 'newProviders';
     var margin = { top: 12, right: 8, bottom: 28, left: 52 };
     var names = {
         newProviders: 'New NPIs', deactivated: 'Deactivated', movedIn: 'Moved in', movedOut: 'Moved out',
@@ -39,6 +41,9 @@
     }
 
     function draw(series) {
+        shown = series;
+        width = Math.max(300, Math.round(canvas.getBoundingClientRect().width) || 760);
+        height = width < 500 ? 220 : 260;
         // The months the series is known for, from its first one on.
         var all = data.months;
         var start = all.findIndex(function (m) { return value(m, series) !== null && value(m, series) !== undefined; });
@@ -51,8 +56,9 @@
 
         var x = d3.scaleBand().domain(months.map(function (m) { return m.month; })).range([margin.left, width - margin.right]).padding(0.18);
         var svg = d3.select(canvas).append('svg').attr('viewBox', [0, 0, width, height].join(' '));
-        var every = Math.max(1, Math.ceil(months.length / 10));
-        var ticks = months.filter(function (m, i) { return months.length <= 12 || (m.month.slice(5) === '01' && months.length > 24) || (months.length <= 24 && i % every === 0); })
+        // Years under a long series (each January), else every month or every few, as many as fit.
+        var every = Math.max(1, Math.ceil(months.length / (width < 500 ? 4 : 10)));
+        var ticks = months.filter(function (m, i) { return months.length > 24 ? m.month.slice(5) === '01' : i % every === 0; })
             .map(function (m) { return m.month; });
 
         if (series === 'quality') {
@@ -111,4 +117,11 @@
         draw(button.dataset.series);
     });
     draw('newProviders');
+    var last = width;
+    window.addEventListener('resize', function () {
+        if (Math.abs(Math.round(canvas.getBoundingClientRect().width) - last) > 40) {
+            draw(shown);
+            last = width;
+        }
+    });
 })();

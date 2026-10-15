@@ -346,6 +346,7 @@ public sealed class SearchIntegrationTests : IDisposable
     [
         "credential_map", "provider_credential", "credential_list", "credential_search", "provider_map_credential", "address_type", "building_search",
         "specialty_code_category", "area_provider_count", "provider_map", "provider_map_specialty", "provider_quality", "quality_search",
+        "area_month_stat", "area_month_event", "area_history_location",
     ];
 
     // sideBySide: as run builds them (speed item 13): credentials, address types and area counts at once, the credentials leaving
@@ -398,6 +399,7 @@ public sealed class SearchIntegrationTests : IDisposable
                 Assert.Equal("filled by the map", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = @source",
                     new { source = CredentialBuilder.MapCellsSource }));
             }
+            await new AreaHistoryBuilder(db.Database, Logger.None).BuildAsync(_ct, full);
         }
 
         await BuildAllAsync(full: true);
