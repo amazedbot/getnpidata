@@ -306,7 +306,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
   - **Saved monitoring:** a roster re-checked weekly. This arrives with accounts in Phase 5.
 - **Data:**
   - **Have:** everything listed above.
-  - **Missing (all free, all need the owner's OK):**
+  - **Missing (all free; SAM.gov and the state Medicaid exclusion lists approved by the owner 2026-10-15):**
     - **SAM.gov exclusions**: the federal debarment list, a public extract plus an API key;
     - **state Medicaid exclusion lists**: about 40 states, each in its own format, so pilot the largest first;
     - **more state license boards**: from the survey in CLAUDE.md; RI, VT, WV, AL, MI and CA were added 2026-10-12/13, and New York's bulk files can be requested (Phase 3);
@@ -375,7 +375,7 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
     - hospital ratings in plain language;
     - "what this specialty treats" explanations;
     - large-text and screen-reader checks.
-  - **Insurance network pilot in one state** (the open Stage 5.5 item 16, folded into this phase): "listed in [plan]'s directory" with its source and date, never "accepting new patients".
+  - **Insurance network pilot in New York** (owner, 2026-10-15; the open Stage 5.5 item 16, folded into this phase): "listed in [plan]'s directory" with its source and date, never "accepting new patients".
 - **Data:**
   - **Have:** Care Compare, hospital ratings, HCAHPS, the map.
   - **Missing:**
@@ -447,6 +447,7 @@ tiers; pay-as-you-go verification; data licensing; custom area reports. Sponsore
 - 2026-10-15: an open business listing counts as a sign of practice only when a confirming source backs it (Meta, store locators and listing services, or a Bing/Foursquare record seen within 3 years); a 10+ year old record with only a listing is Check.
 - 2026-10-15: the owner approved the step 3.6 sources Claude judges best: All Owners and Change of Ownership, more Care Compare facility types and hospital measures, nursing home deficiencies and penalties, Medicare inpatient/outpatient by provider, HIFLD hospitals, HRSA health center sites and 340B, the MSSP ACO files and the AHRQ compendium (built after the pages); HCRIS cost reports, Form 990s and UDS later.
 - 2026-10-15: step 3.3 becomes part of Areas: an analytical, statistics-based Areas section (country, state, county for now) with changes over time, a JavaScript map with statistics to the county level and shortage areas, going back in time once step 3.4's NBER history is in. Step 3.7's sources (Florida's Provider Master List, the national T-MSIS enrollment segments and Medicaid spending files) are approved; not to be added yet.
+- 2026-10-15: Phase 4's SAM.gov exclusions and state Medicaid exclusion lists approved; New York is the Phase 8 insurance network pilot state; step 3.7 stays on hold. Step 3.6 part 2: people listed as facility owners are shown by name and role on the facility page only (no person pages or search); ACO participants are matched to organizations by exact legal business name, marked as a name match; dialysis and surgery center NPIs count as a sign of practice; OAS CAHPS and ESRD QIP added; HRSA health center sites in Find care; 340B from the owner's OPAIS download; AHRQ's Compendium from the owner's downloads, credited to AHRQ.
 - 2026-10-15: before release, a web-based admin console with everything in Docker: Portainer Community Edition for the containers, CloudBeaver for the database (read and write, an account per admin), loader runs and site settings (API keys, rate limit) from the console, a few admins, an audit log; built with Phase 2, which decides whether production runs in containers.
 - 2026-10-13: [TODO.md](TODO.md) is the working to-do list, kept up to date with each decision; this document stays the full plan.
 
