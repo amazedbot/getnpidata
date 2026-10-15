@@ -35,7 +35,10 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
     [BindProperty(SupportsGet = true)]
     public string? Sort { get; set; }
 
-    [BindProperty(SupportsGet = true, Name = "page")]
+    /// <summary>
+    /// The list's page, read from the query string in <c>OnGetAsync</c>: a property bound by the name "page" would get Razor Pages'
+    /// own route value of that name (the page's path) instead.
+    /// </summary>
     public int PageNumber { get; set; } = 1;
 
     public FacilityOverview Overview { get; private set; } = null!;
@@ -58,6 +61,7 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
 
     public async Task OnGetAsync(CancellationToken ct)
     {
+        PageNumber = int.TryParse(Request.Query["page"], NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0 ? number : 1;
         // /hospitals is this page on hospitals.
         if (Type is null && Request.Path.StartsWithSegments("/hospitals", StringComparison.OrdinalIgnoreCase))
         {
@@ -68,14 +72,12 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
         Type = FacilityTypes.Find(Type)?.Code ?? Type;
         var filter = Filter(PageNumber);
         var errors = filter.Validate();
-        if (!ModelState.IsValid)
+        // A rating that isn't a number (the page number is left to Razor Pages, whose route values also carry a "page").
+        foreach (var key in new[] { nameof(MinRating), nameof(MaxRating) })
         {
-            foreach (var (key, entry) in ModelState)
+            if (ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0)
             {
-                if (entry.Errors.Count > 0)
-                {
-                    errors[char.ToLowerInvariant(key[0]) + key[1..]] = ["Must be a whole number."];
-                }
+                errors[char.ToLowerInvariant(key[0]) + key[1..]] = ["Must be a whole number."];
             }
         }
 
