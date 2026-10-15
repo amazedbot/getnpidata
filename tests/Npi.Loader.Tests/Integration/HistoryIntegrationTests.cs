@@ -1,5 +1,6 @@
 using Npi.Core.Search;
 using Npi.Loader.History;
+using Npi.Loader.Projection;
 using Serilog.Core;
 
 namespace Npi.Loader.Tests.Integration;
@@ -164,6 +165,109 @@ public sealed class HistoryIntegrationTests : IDisposable
         Assert.True(await ProcessAsync(db, "order", Files("order-again")));
         Assert.Equal(versions, await VersionsAsync(db));
         Assert.Equal(stats, await StatsAsync(db));
+    }
+
+    private static readonly DateOnly Aug2018 = new(2018, 8, 1), Sep2018 = new(2018, 9, 1), Oct2018 = new(2018, 10, 1);
+
+    // August 2018 (no pl_pfile): A in Suffolk, B in Brooklyn. September (the first pl_pfile): A also practises in Brooklyn.
+    // October: A drops Brooklyn, B adds Suffolk.
+    private IReadOnlyList<(HistoryFile File, string Zip)> LocationFiles(string name)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, name)).FullName;
+        HistoryFiles Both() => new HistoryFiles()
+            .Active(A, "NY", "11735", "05/23/2005", "05/23/2005", [Chiro])
+            .Active(B, "NY", "11201", "05/23/2005", "05/23/2005", [Dentist]);
+        var aug = Both().Zip(folder, "NPPES_Data_Dissemination_August_2018.zip", HistoryFiles.Layout.Y2016, new DateOnly(2018, 8, 12), pfile: true);
+        var sep = Both().Secondary(A, "NY", "11201")
+            .Zip(folder, "NPPES_Data_Dissemination_September_2018.zip", HistoryFiles.Layout.Y2016, new DateOnly(2018, 9, 9), pfile: true, locations: true);
+        var oct = Both().Secondary(B, "NY", "117351234")
+            .Zip(folder, "NPPES_Data_Dissemination_October_2018.zip", HistoryFiles.Layout.Y2016, new DateOnly(2018, 10, 7), pfile: true, locations: true);
+        HistoryFile F(DateOnly month, string zip) => new(month, Path.GetFileName(zip), new Uri("https://example.test/" + Path.GetFileName(zip)), "cms");
+        return [(F(Aug2018, aug), aug), (F(Sep2018, sep), sep), (F(Oct2018, oct), oct)];
+    }
+
+    [Fact]
+    public async Task Secondary_locations_count_from_the_first_file_that_lists_them()
+    {
+        await using var db = await SeededAsync();
+        var files = LocationFiles("locations");
+        // Two files, then a new run for the third: the stored location sets are read back.
+        Assert.True(await ProcessAsync(db, "locations", files.Take(2).ToList()));
+        Assert.True(await ProcessAsync(db, "locations", files));
+
+        Assert.Equal(5L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM npi_history"));
+        Assert.Equal([((sbyte)0, (int?)null), ((sbyte)1, 1), ((sbyte)1, 1)],
+            await db.QueryAsync<(sbyte, int?)>("SELECT locations, secondary_rows FROM history_period ORDER BY period"));
+        Assert.Equal(Sep2018.ToDateTime(TimeOnly.MinValue), await db.ScalarAsync<DateTime?>("SELECT any_location_from FROM area_history_meta WHERE id = 1"));
+        Assert.Equal(["1|NY|11201", "2|NY|11735"], await db.QueryAsync<string>("SELECT CONCAT_WS('|', set_id, state, zip5) FROM npi_history_location_set ORDER BY set_id"));
+
+        // August: by primary location. September: A counts in Kings too, but that's the new definition, not a move.
+        Assert.Equal((1, 1), (await StatAsync(db, "county", Suffolk, "", Aug2018, "providers"), await StatAsync(db, "county", Kings, "", Aug2018, "providers")));
+        Assert.Equal((1, 2, 0), (await StatAsync(db, "county", Suffolk, "", Sep2018, "providers"), await StatAsync(db, "county", Kings, "", Sep2018, "providers"),
+            await StatAsync(db, "county", Kings, "", Sep2018, "moved_in")));
+        Assert.Equal(2, await StatAsync(db, "county", Kings, "Chiropractic & complementary care", Sep2018, "providers") + await StatAsync(db, "county", Kings, "Dentists", Sep2018, "providers"));
+        // October: A left Kings, B came to Suffolk; both stay in NY and the US.
+        Assert.Equal((2, 1), (await StatAsync(db, "county", Suffolk, "", Oct2018, "providers"), await StatAsync(db, "county", Kings, "", Oct2018, "providers")));
+        Assert.Equal((1, 1), (await StatAsync(db, "county", Kings, "", Oct2018, "moved_out"), await StatAsync(db, "county", Suffolk, "", Oct2018, "moved_in")));
+        Assert.Equal((0, 0, 2), (await StatAsync(db, "state", "NY", "", Oct2018, "moved_in"), await StatAsync(db, "state", "NY", "", Oct2018, "moved_out"),
+            await StatAsync(db, "us", "US", "", Oct2018, "providers")));
+
+        var service = new AreaHistoryService(db.ConnectionString);
+        var kings = (await service.GetAsync("NY", Kings, null, _ct))!;
+        Assert.Equal((Sep2018, Sep2018), (kings.Coverage.AnyLocationFrom, kings.Coverage.DefinitionStep()));
+        Assert.Equal([(int?)null, null, -1], kings.Months.Select(m => m.NetChange).ToList());      // none across the definition step
+        Assert.Empty(await service.GetChangeNpisAsync("NY", Kings, AreaChangeKinds.MovedIn, Sep2018, null, _ct));
+        Assert.Equal([A], await service.GetChangeNpisAsync("NY", Kings, AreaChangeKinds.MovedOut, Oct2018, null, _ct));
+        Assert.Equal([B], await service.GetChangeNpisAsync("NY", Suffolk, AreaChangeKinds.MovedIn, Oct2018, null, _ct));
+    }
+
+    [Fact]
+    public async Task A_file_read_as_history_counts_its_providers_as_the_area_counts_do()
+    {
+        await using var db = await SeededAsync();
+        static (string, string)[] At(string state, string zip, string country = "US") =>
+        [
+            ("Provider_First_Line_Business_Practice_Location_Address", "1 Main St"), ("Provider_Business_Practice_Location_Address_City_Name", "TOWN"),
+            ("Provider_Business_Practice_Location_Address_State_Name", state), ("Provider_Business_Practice_Location_Address_Postal_Code", zip),
+            ("Provider_Business_Practice_Location_Address_Country_Code", country),
+        ];
+        static (string, string)[] Doing(string code, string enumeration = "05/23/2005") =>
+        [
+            ("Entity_Type_Code", "1"), ("Provider_Last_Name_Legal_Name", "TESTER"), ("Healthcare_Provider_Taxonomy_Code_1", code),
+            ("Healthcare_Provider_Primary_Taxonomy_Switch_1", "Y"), ("Provider_Enumeration_Date", enumeration), ("Last_Update_Date", "01/02/2026"),
+        ];
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "join")).FullName;
+        var zip = new NppesZipBuilder()
+            .Provider(A, [.. Doing(Chiro), .. At("NY", "11735")])
+            .Provider(B, [.. Doing(Dentist), .. At("NY", "11201")])
+            .Provider(C, [.. Doing(Chiro), .. At("ONTARIO", "K1A0B1", "CA")])
+            .Provider(D, [.. Doing(Dentist), .. At("NJ", "070011234")])
+            .Provider(E, [("Entity_Type_Code", "1"), ("Healthcare_Provider_Taxonomy_Code_1", Chiro), ("NPI_Deactivation_Date", "01/01/2025"), .. At("NY", "11735")])
+            .Location(A, "2 Court St", "", "BROOKLYN", "NY", "11201", "US")
+            .Location(A, "3 Court St", "", "BROOKLYN", "NY", "112011234", "US")
+            .Location(B, "4 Elm St", "", "NEWARK", "NJ", "07102", "US")
+            .Location(C, "5 Bay St", "", "TOWN", "NY", "11735", "US")
+            .Write(folder, "NPPES_Data_Dissemination_January_2026_V2.zip");
+
+        // Loaded as a monthly and counted by the projection and the area counts (what the recorded series takes each month) …
+        using var http = new HttpClient();
+        Assert.Equal(0, await new LoaderApp(new LoaderOptions { WorkFolder = folder, LogFolder = folder }, db.Database, http, Logger.None).LoadFileAsync(zip, _ct));
+        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+
+        // … and read as the archive's month: the same providers in every area and category.
+        var january = new HistoryFile(new DateOnly(2026, 1, 1), Path.GetFileName(zip), new Uri("https://example.test/" + Path.GetFileName(zip)), "cms");
+        Assert.True(await Builder(db, "join").ProcessFilesAsync([january], _ => Task.FromResult(zip), _ct));
+        var counted = await db.QueryAsync<string>(
+            "SELECT CONCAT_WS('|', area_type, area_id, category, providers) FROM area_provider_count WHERE subcategory = '' AND providers > 0 ORDER BY 1");
+        var archived = await db.QueryAsync<string>(
+            """
+            SELECT CONCAT_WS('|', area_type, area_id, category, providers) FROM area_month_stat
+            WHERE basis = 3 AND month = '2026-01-01' AND subcategory = '' AND providers > 0 ORDER BY 1
+            """);
+        Assert.Contains("county|36047||2", counted);                                             // A (secondary) and B in Brooklyn
+        Assert.Contains("us|US||4", counted);                                                    // C's Ontario address counts in the US
+        Assert.Equal(counted, archived);
     }
 
     [Fact]

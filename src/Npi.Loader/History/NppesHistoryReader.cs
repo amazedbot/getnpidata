@@ -7,14 +7,20 @@ namespace Npi.Loader.History;
 
 /// <summary>What one archived NPPES file held (docs/PRODUCT_PLAN.md step 3.4).</summary>
 /// <param name="DataDate">The file's own date: the end of <c>npidata_20050523-YYYYMMDD</c>, else null.</param>
-public sealed record HistoryFileSummary(string EntryName, DateOnly? DataDate, int Columns, long Rows, long DeactivatedRows, long BadRows);
+/// <param name="HasLocations">The zip listed secondary practice locations (<c>pl_pfile_*.csv</c>, from September 2018).</param>
+/// <param name="SecondaryRows">The secondary location rows read (0 without a pl_pfile).</param>
+public sealed record HistoryFileSummary(string EntryName, DateOnly? DataDate, int Columns, long Rows, long DeactivatedRows, long BadRows,
+    bool HasLocations = false, long SecondaryRows = 0);
 
 /// <summary>
 /// Streams the npidata CSV of an NPPES monthly zip of any era (2007 to now) straight from the zip entry, never unzipping to
 /// disk, and reads only the ~35 columns the history needs, found by their header names (CLAUDE.md §4's mapping: 187 columns in
 /// 2007, 314 in 2011, 329 from 2012 with the taxonomy groups, 330 from 2024; V2 says "Provider Sex Code"). The entry is
 /// <c>npidata_*.csv</c> (<c>npidata_pfile_*</c> from 2018), in any folder of the zip, matched case-insensitively; the header
-/// files (<c>…NPIDataDisseminationFileHeader.csv</c>, <c>…FileHeader.csv</c>, <c>…_fileheader.csv</c>) are skipped.
+/// files (<c>…NPIDataDisseminationFileHeader.csv</c>, <c>…FileHeader.csv</c>, <c>…_fileheader.csv</c>) are skipped. From
+/// September 2018 the zip also holds <c>pl_pfile_*.csv</c>, the secondary practice locations, read first: each NPI's state and
+/// ZIP pairs become its location set (<see cref="NpiVersion.LocationSet"/>); a zip without one leaves every NPI's set unknown
+/// (-1), which keeps its previous set.
 /// </summary>
 public static partial class NppesHistoryReader
 {
@@ -30,6 +36,14 @@ public static partial class NppesHistoryReader
     // The field slots read, by name (after HeaderMapper.ToColumnName).
     private const int Npi = 0, Entity = 1, State = 2, Postal = 3, Country = 4, Enumeration = 5, LastUpdate = 6, Deactivation = 7, Reactivation = 8,
         FirstCode = 9, FirstSwitch = FirstCode + TaxonomySlots, SlotCount = FirstSwitch + TaxonomySlots;
+
+    private const int LocationState = 1, LocationPostal = 2, LocationCountry = 3;
+
+    private static readonly string[] LocationColumns =
+    [
+        "NPI", "Provider_Secondary_Practice_Location_Address_State_Name", "Provider_Secondary_Practice_Location_Address_Postal_Code",
+        "Provider_Secondary_Practice_Location_Address_Country_Code",
+    ];
 
     private static readonly string[] SlotColumns =
     [
@@ -50,11 +64,16 @@ public static partial class NppesHistoryReader
         ?? throw new InvalidDataException($"No npidata CSV in the zip (entries: {string.Join(", ", zip.Entries.Select(e => e.FullName).Take(10))}).");
 
     /// <summary>True for <c>npidata_….csv</c> in any folder, not a header file.</summary>
-    public static bool IsDataEntry(string fullName)
+    public static bool IsDataEntry(string fullName) => IsEntry(fullName, "npidata");
+
+    /// <summary>True for <c>pl_pfile_….csv</c> (secondary practice locations) in any folder, not a header file.</summary>
+    public static bool IsLocationEntry(string fullName) => IsEntry(fullName, "pl_pfile");
+
+    private static bool IsEntry(string fullName, string prefix)
     {
         var name = fullName.Replace('\\', '/');
         name = name[(name.LastIndexOf('/') + 1)..];
-        return name.StartsWith("npidata", StringComparison.OrdinalIgnoreCase)
+        return name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
                && name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
                && !name.Contains("fileheader", StringComparison.OrdinalIgnoreCase);
     }
@@ -69,7 +88,9 @@ public static partial class NppesHistoryReader
     }
 
     /// <summary>The position of each field slot in the header (-1 for the NPI never: missing columns throw).</summary>
-    public static int[] MapHeader(IReadOnlyList<string> headers)
+    public static int[] MapHeader(IReadOnlyList<string> headers) => MapHeader(headers, SlotColumns, "npidata");
+
+    private static int[] MapHeader(IReadOnlyList<string> headers, string[] columns, string what)
     {
         var positions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < headers.Count; i++)
@@ -77,10 +98,10 @@ public static partial class NppesHistoryReader
             positions.TryAdd(HeaderMapper.ToColumnName(headers[i]), i);
         }
 
-        var missing = SlotColumns.Where(c => !positions.ContainsKey(c)).ToList();
+        var missing = columns.Where(c => !positions.ContainsKey(c)).ToList();
         return missing.Count > 0
-            ? throw new InvalidDataException($"The npidata header ({headers.Count} columns) lacks {string.Join(", ", missing)}.")
-            : SlotColumns.Select(c => positions[c]).ToArray();
+            ? throw new InvalidDataException($"The {what} header ({headers.Count} columns) lacks {string.Join(", ", missing)}.")
+            : columns.Select(c => positions[c]).ToArray();
     }
 
     /// <summary>The data date in the name of the zip's npidata CSV, without reading it.</summary>
@@ -90,29 +111,71 @@ public static partial class NppesHistoryReader
         return DataDateOf(FindDataEntry(zip).FullName);
     }
 
-    /// <summary>Reads every row of the zip's npidata CSV.</summary>
+    /// <summary>Reads every row of the zip's npidata CSV, with each NPI's secondary locations when the zip lists them.</summary>
     public static HistoryFileSummary Read(string zipPath, HistoryValues dictionary, RowHandler onRow, CancellationToken ct)
     {
         using var zip = ZipFile.OpenRead(zipPath);
         var entry = FindDataEntry(zip);
-        using var stream = entry.Open();
-        return Read(stream, entry.FullName, dictionary, onRow, ct);
-    }
-
-    /// <summary>Reads every row of an npidata CSV stream (its header row first).</summary>
-    public static HistoryFileSummary Read(Stream stream, string entryName, HistoryValues dictionary, RowHandler onRow, CancellationToken ct)
-    {
-        var header = CsvHeader.Read(stream);
-        var slots = MapHeader(header.Columns);
-        // field position → slot, -1 for fields not read; the last field read, after which the row is skipped to its end.
-        var slotOf = Enumerable.Repeat(-1, header.Columns.Count).ToArray();
-        for (var s = 0; s < slots.Length; s++)
+        LocationSets? locations = null;
+        var locationEntry = zip.Entries.Where(e => IsLocationEntry(e.FullName)).MaxBy(e => e.Length);
+        if (locationEntry is not null)
         {
-            slotOf[slots[s]] = s;
+            using var locationStream = locationEntry.Open();
+            locations = ReadLocations(locationStream, dictionary, ct);
         }
 
-        var lastField = slots.Max();
-        var parser = new Parser(dictionary, slotOf, lastField, onRow);
+        using var stream = entry.Open();
+        return Read(stream, entry.FullName, dictionary, onRow, ct, locations);
+    }
+
+    /// <summary>Each NPI's secondary practice locations, as location set ids, and the rows read.</summary>
+    public sealed record LocationSets(IReadOnlyDictionary<int, int> SetOf, long Rows);
+
+    /// <summary>
+    /// Reads a pl_pfile CSV stream: each NPI's distinct (state, ZIP) pairs, states of at most 5 characters (the ones the area
+    /// figures count), the ZIP only for US addresses, as a set in <paramref name="dictionary"/>.
+    /// </summary>
+    public static LocationSets ReadLocations(Stream stream, HistoryValues dictionary, CancellationToken ct)
+    {
+        var pairs = new List<(int Key, ushort State, int Zip)>(1 << 16);
+        var parser = new LocationParser(dictionary, pairs);
+        Scan(stream, parser, MapHeader(CsvHeader.Read(stream).Columns, LocationColumns, "pl_pfile"), ct);
+        pairs.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.State != b.State ? a.State.CompareTo(b.State) : a.Zip.CompareTo(b.Zip));
+        var setOf = new Dictionary<int, int>();
+        var buffer = new List<(ushort State, int Zip)>();
+        for (var i = 0; i < pairs.Count;)
+        {
+            var key = pairs[i].Key;
+            buffer.Clear();
+            for (; i < pairs.Count && pairs[i].Key == key; i++)
+            {
+                buffer.Add((pairs[i].State, pairs[i].Zip));
+            }
+
+            setOf[key] = dictionary.LocationSet(buffer);
+        }
+
+        return new LocationSets(setOf, parser.Rows);
+    }
+
+    /// <summary>
+    /// Reads every row of an npidata CSV stream (its header row first). <paramref name="locations"/> = the zip's secondary
+    /// locations (null: the zip has none, and every row's <see cref="NpiVersion.LocationSet"/> is -1, unknown).
+    /// </summary>
+    public static HistoryFileSummary Read(Stream stream, string entryName, HistoryValues dictionary, RowHandler onRow, CancellationToken ct,
+        LocationSets? locations = null)
+    {
+        var header = CsvHeader.Read(stream);
+        var parser = new Parser(dictionary, onRow, locations?.SetOf);
+        Scan(stream, parser, MapHeader(header.Columns), ct);
+        return new HistoryFileSummary(entryName, DataDateOf(entryName), header.Columns.Count, parser.Rows, parser.DeactivatedRows, parser.BadRows,
+            locations is not null, locations?.Rows ?? 0);
+    }
+
+    // Streams the rest of a CSV (after its header) through a scanner reading the fields at these positions.
+    private static void Scan(Stream stream, Scanner parser, int[] slots, CancellationToken ct)
+    {
+        parser.Map(slots);
         var buffer = new byte[4 << 20];
         var filled = 0;
         var eof = false;
@@ -144,7 +207,7 @@ public static partial class NppesHistoryReader
             {
                 if (eof)
                 {
-                    throw new InvalidDataException("The last row of the npidata file is incomplete.");
+                    throw new InvalidDataException("The last row of the file is incomplete.");
                 }
 
                 // A row longer than the buffer: grow it.
@@ -155,21 +218,32 @@ public static partial class NppesHistoryReader
             buffer.AsSpan(used, filled - used).CopyTo(buffer);
             filled -= used;
         }
-
-        return new HistoryFileSummary(entryName, DataDateOf(entryName), header.Columns.Count, parser.Rows, parser.DeactivatedRows, parser.BadRows);
     }
 
-    private sealed class Parser(HistoryValues dictionary, int[] slotOf, int lastField, RowHandler onRow)
+    /// <summary>A CSV row scanner over bytes: finds the fields at the mapped positions and hands each row to <see cref="Emit"/>.</summary>
+    private abstract class Scanner(int slotCount)
     {
-        private readonly (int Start, int Length)[] _fields = new (int, int)[SlotCount];
+        private readonly (int Start, int Length)[] _fields = new (int, int)[slotCount];
         private readonly char[] _chars = new char[64];
-        private readonly char[] _codes = new char[TaxonomySlots];
+        private int[] slotOf = [];
+        private int lastField;
 
         public long Rows { get; private set; }
 
-        public long DeactivatedRows { get; private set; }
-
         public long BadRows { get; private set; }
+
+        /// <summary>The slots' field positions (from the header).</summary>
+        public void Map(int[] slots)
+        {
+            // field position → slot, -1 for fields not read; the last field read, after which the row is skipped to its end.
+            slotOf = Enumerable.Repeat(-1, slots.Max() + 1).ToArray();
+            for (var s = 0; s < slots.Length; s++)
+            {
+                slotOf[slots[s]] = s;
+            }
+
+            lastField = slots.Max();
+        }
 
         /// <summary>Parses the complete rows in <paramref name="data"/>; returns the bytes used (the rest starts an incomplete row).</summary>
         public int ParseRows(ReadOnlySpan<byte> data, bool final)
@@ -341,28 +415,90 @@ public static partial class NppesHistoryReader
             }
         }
 
-        private ReadOnlySpan<byte> Field(ReadOnlySpan<byte> data, int slot)
+        protected ReadOnlySpan<byte> Field(ReadOnlySpan<byte> data, int slot)
         {
             var (start, length) = _fields[slot];
             var value = length <= 0 ? [] : data.Slice(start, length);
             return value.Trim((byte)' ');
         }
 
-        private void Emit(ReadOnlySpan<byte> data)
+        protected abstract void Emit(ReadOnlySpan<byte> data);
+
+        // The row's NPI key (slot 0), or false for the header row of a file joined to another, a blank line or a bad NPI.
+        protected bool TryKey(ReadOnlySpan<byte> data, out int key)
         {
             var npiText = Field(data, Npi);
             if (npiText.Length != 10 || !long.TryParse(npiText, NumberStyles.None, CultureInfo.InvariantCulture, out var npi) || npi < 1_000_000_000L)
             {
-                // The header row of a file joined to another, or a blank line.
                 if (!npiText.IsEmpty && !npiText.SequenceEqual("NPI"u8))
                 {
                     BadRows++;
                 }
 
-                return;
+                key = 0;
+                return false;
             }
 
             Rows++;
+            key = NpiVersion.Key(npi);
+            return true;
+        }
+
+        // The ZIP of a US address (+1, so 0 = none).
+        protected static int ZipOf(ReadOnlySpan<byte> country, ReadOnlySpan<byte> postal) =>
+            (country.IsEmpty || country.SequenceEqual("US"u8) || country.SequenceEqual("us"u8))
+            && postal.Length >= 5 && int.TryParse(postal[..5], NumberStyles.None, CultureInfo.InvariantCulture, out var zip)
+                ? zip + 1
+                : 0;
+
+        // An ASCII field as upper-case chars (NPPES text here is ASCII: states, countries, codes), at most maxLength.
+        protected ReadOnlySpan<char> Upper(ReadOnlySpan<byte> value, int maxLength)
+        {
+            var length = Math.Min(value.Length, Math.Min(maxLength, _chars.Length));
+            for (var i = 0; i < length; i++)
+            {
+                var b = value[i];
+                _chars[i] = b is >= (byte)'a' and <= (byte)'z' ? (char)(b - 32) : b < 128 ? (char)b : '?';
+            }
+
+            return _chars.AsSpan(0, length).Trim();
+        }
+    }
+
+    // pl_pfile rows: (NPI, state, ZIP) pairs.
+    private sealed class LocationParser(HistoryValues dictionary, List<(int Key, ushort State, int Zip)> pairs) : Scanner(LocationColumns.Length)
+    {
+        protected override void Emit(ReadOnlySpan<byte> data)
+        {
+            if (!TryKey(data, out var key))
+            {
+                return;
+            }
+
+            var state = Upper(Field(data, LocationState), 40);
+            if (state.IsEmpty || state.Length > 5)
+            {
+                return;
+            }
+
+            pairs.Add((key, dictionary.States.Add(state), ZipOf(Field(data, LocationCountry), Field(data, LocationPostal))));
+        }
+    }
+
+    // npidata rows: an NPI's version.
+    private sealed class Parser(HistoryValues dictionary, RowHandler onRow, IReadOnlyDictionary<int, int>? locations) : Scanner(SlotCount)
+    {
+        private readonly char[] _codes = new char[TaxonomySlots];
+
+        public long DeactivatedRows { get; private set; }
+
+        protected override void Emit(ReadOnlySpan<byte> data)
+        {
+            if (!TryKey(data, out var key))
+            {
+                return;
+            }
+
             var version = new NpiVersion
             {
                 Entity = Field(data, Entity) is [var e] && e is (byte)'1' or (byte)'2' ? (byte)(e - '0') : (byte)0,
@@ -380,12 +516,8 @@ public static partial class NppesHistoryReader
             var country = Field(data, Country);
             version.Country = dictionary.Countries.Add(Upper(country, 2));
             version.State = dictionary.States.Add(Upper(Field(data, State), 40));
-            var us = country.IsEmpty || country.SequenceEqual("US"u8) || country.SequenceEqual("us"u8);
-            var postal = Field(data, Postal);
-            if (us && postal.Length >= 5 && int.TryParse(postal[..5], NumberStyles.None, CultureInfo.InvariantCulture, out var zip))
-            {
-                version.Zip = zip + 1;
-            }
+            version.Zip = ZipOf(country, Field(data, Postal));
+            version.LocationSet = locations is null ? -1 : locations.GetValueOrDefault(key);
 
             // The primary taxonomy: the first slot switched Y with a code, else slot 1 (as the projection takes it).
             var codes = 0;
@@ -414,20 +546,7 @@ public static partial class NppesHistoryReader
 
             version.Primary = primary != 0 ? primary : first;
             version.TaxonomySet = dictionary.Set(_codes.AsSpan(0, codes));
-            onRow(NpiVersion.Key(npi), version);
-        }
-
-        // An ASCII field as upper-case chars (NPPES text here is ASCII: states, countries, codes), at most maxLength.
-        private ReadOnlySpan<char> Upper(ReadOnlySpan<byte> value, int maxLength)
-        {
-            var length = Math.Min(value.Length, Math.Min(maxLength, _chars.Length));
-            for (var i = 0; i < length; i++)
-            {
-                var b = value[i];
-                _chars[i] = b is >= (byte)'a' and <= (byte)'z' ? (char)(b - 32) : b < 128 ? (char)b : '?';
-            }
-
-            return _chars.AsSpan(0, length).Trim();
+            onRow(key, version);
         }
 
         // MM/DD/YYYY → DayNumber; 0 for empty or malformed.
@@ -465,5 +584,6 @@ public static partial class NppesHistoryReader
 
     /// <summary>For logs: a short description of the header layout.</summary>
     public static string Describe(HistoryFileSummary summary) =>
-        string.Create(CultureInfo.InvariantCulture, $"{summary.EntryName}: {summary.Columns} columns, {summary.Rows:N0} rows ({summary.DeactivatedRows:N0} deactivated)");
+        string.Create(CultureInfo.InvariantCulture,
+            $"{summary.EntryName}: {summary.Columns} columns, {summary.Rows:N0} rows ({summary.DeactivatedRows:N0} deactivated){(summary.HasLocations ? $", {summary.SecondaryRows:N0} secondary locations" : "")}");
 }

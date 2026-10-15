@@ -25,15 +25,27 @@ public sealed record AreaHistoryCoverage(DateOnly? DerivedFrom, DateOnly? Tracke
 {
     /// <summary>
     /// The first month of the figures from the archived monthly NPPES files (docs/PRODUCT_PLAN.md step 3.4: CMS NPPES, historical
-    /// copies via NBER), counted by primary practice location; null when the archive isn't loaded.
+    /// copies via NBER); null when the archive isn't loaded.
     /// </summary>
     public DateOnly? ArchiveFrom { get; init; }
+
+    /// <summary>
+    /// The first archive month counted by every practice location (the first file listing secondary ones, September 2018), as
+    /// the recorded and derived series count; the archive's earlier months count primary practice locations only.
+    /// </summary>
+    public DateOnly? AnyLocationFrom { get; init; }
 
     /// <summary>The archive's last month shown: the month before the recorded series starts, or its newest file.</summary>
     public DateOnly? ArchiveTo { get; init; }
 
     /// <summary>True for a month whose figures come from the archive.</summary>
     public bool InArchive(DateOnly month) => ArchiveFrom is { } from && ArchiveTo is { } to && month >= from && month <= to;
+
+    /// <summary>True when the month's providers are counted by every practice location (false: the archive's primary-only months).</summary>
+    public bool EveryLocation(DateOnly month) => !InArchive(month) || AnyLocationFrom is { } any && month >= any;
+
+    /// <summary>The archive month where the count changes from primary to every practice location (null when there is none).</summary>
+    public DateOnly? DefinitionStep() => AnyLocationFrom is { } any && ArchiveFrom is { } from && any > from && InArchive(any) ? any : null;
 }
 
 /// <summary>An area's monthly figures, oldest month first.</summary>
@@ -147,7 +159,7 @@ public static class AreaHistoryMath
 
         var months = new List<AreaMonth>();
         int? previousProviders = null;
-        var previousArchived = false;
+        var previousEvery = true;
         for (var m = first; m <= last; m = m.AddMonths(1))
         {
             all.TryGetValue(m, out var a);
@@ -177,13 +189,13 @@ public static class AreaHistoryMath
                 Count(r => r.ExclusionChanges, From(m, coverage.ChangesFrom)),
                 a?.QualityCurrent, a?.QualityCheck, a?.QualityStale)
             {
-                // Not across the archive's end: it counts primary practice locations, the recorded series every practice location.
-                NetChange = providers is { } now && previousProviders is { } before && (previousArchived == archived) ? now - before : null,
+                // Not where the definition changes (the archive counts primary practice locations before September 2018, every one after).
+                NetChange = providers is { } now && previousProviders is { } before && previousEvery == coverage.EveryLocation(m) ? now - before : null,
                 Partial = coverage.AsOfMonth == m,
                 Basis = basis,
             });
             previousProviders = providers;
-            previousArchived = archived;
+            previousEvery = coverage.EveryLocation(m);
         }
 
         return months;

@@ -240,10 +240,14 @@ public sealed class HistoryTests
         v.TaxonomySet = values.Set(codes);
         var line = new StringBuilder();
         HistoryBuilder.VersionLine(line, NpiVersion.Key(1000000004), v, values);
-        Assert.Equal("1000000004\t2007-11-12\t0\t1\tNY\t00501\tUS\t111N00000X\t1\t2005-05-23\t\\N\t\\N\t\\N\n", line.ToString());
+        Assert.Equal("1000000004\t2007-11-12\t0\t1\tNY\t00501\tUS\t111N00000X\t1\t\\N\t2005-05-23\t\\N\t\\N\t\\N\n", line.ToString());
 
         HistoryBuilder.VersionLine(line, NpiVersion.Key(1999999999), NpiVersion.GoneVersion() with { FromPeriod = 1 }, values);
-        Assert.Equal("1999999999\t0001-01-02\t2\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\n", line.ToString());
+        Assert.Equal("1999999999\t0001-01-02\t2\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\t\\N\n", line.ToString());
+
+        v.LocationSet = values.LocationSet([(values.States.Add("NJ"), 7001), (values.States.Add("NY"), 0)]);
+        HistoryBuilder.VersionLine(line, NpiVersion.Key(1000000004), v, values);
+        Assert.Equal("1000000004\t2007-11-12\t0\t1\tNY\t00501\tUS\t111N00000X\t1\t1\t2005-05-23\t\\N\t\\N\t\\N\n", line.ToString());
     }
 
     private static Dictionary<DateOnly, string> Statuses(params (DateOnly Month, string Status)[] rows) => rows.ToDictionary(r => r.Month, r => r.Status);
@@ -279,5 +283,73 @@ public sealed class HistoryTests
         statuses[M(2026, 10)] = HistoryPeriodStatus.Missing;
         statuses[M(2026, 11)] = HistoryPeriodStatus.Missing;
         Assert.Equal(HistoryPlan.Append.Next, HistoryPlan.CanAppend(statuses, M(2026, 12), out _));
+    }
+
+    [Fact]
+    public void Secondary_locations_are_read_from_the_pl_pfile_and_kept_through_a_file_without_one()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "npi-history-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var state = new HistoryState(new HistoryValues());
+            PeriodDiff Apply(string zip) => state.Apply(NppesHistoryReader.PeekDataDate(zip)!.Value,
+                handler => NppesHistoryReader.Read(zip, state.Dictionary, handler, CancellationToken.None), minRowRatio: 0);
+
+            // August 2018: no pl_pfile yet. A practises in NY only.
+            var august = Apply(new HistoryFiles()
+                .Active(A, "NY", "11735", "05/23/2005", "05/23/2005", [Chiro])
+                .Active(B, "NY", "11201", "05/23/2005", "05/23/2005", [Dentist])
+                .Zip(folder, "aug.zip", HistoryFiles.Layout.Y2016, new DateOnly(2018, 8, 12), pfile: true));
+            Assert.False(august.File.HasLocations);
+            Assert.True(state.TryGet(NpiVersion.Key(1000000004), out var a));
+            Assert.Equal(0, a.LocationSet);
+
+            // September 2018: the first pl_pfile. A also practises in NJ (twice, and a foreign row without a ZIP; an over-long state is left out).
+            var september = Apply(new HistoryFiles()
+                .Active(A, "NY", "11735", "05/23/2005", "05/23/2005", [Chiro])
+                .Active(B, "NY", "11201", "05/23/2005", "05/23/2005", [Dentist])
+                .Secondary(A, "NJ", "07001").Secondary(A, "nj", "070011234").Secondary(A, "ON", "K1A0B1", "CA").Secondary(A, "ONTARIO", "K1A0B1", "CA")
+                .Zip(folder, "sep.zip", HistoryFiles.Layout.Y2016, new DateOnly(2018, 9, 9), pfile: true, locations: true));
+            Assert.Equal((true, 4L, 1, 1, 1), (september.File.HasLocations, september.File.SecondaryRows, september.Versions, september.LocationsChanged, september.WithLocations));
+            Assert.True(state.TryGet(NpiVersion.Key(1000000004), out a));
+            Assert.Equal([("NJ", "07001"), ("ON", "")], state.Dictionary.LocationPairs(a.LocationSet).ToList());
+
+            // A file without a pl_pfile after it: A keeps its locations, nothing changes.
+            var october = Apply(new HistoryFiles()
+                .Active(A, "NY", "11735", "05/23/2005", "05/23/2005", [Chiro])
+                .Active(B, "NY", "11201", "05/23/2005", "05/23/2005", [Dentist])
+                .Zip(folder, "oct.zip", HistoryFiles.Layout.Y2016, new DateOnly(2018, 10, 7), pfile: true));
+            Assert.Equal(0, october.Versions);
+
+            // B gains A's set (the same id), A drops NJ.
+            var november = Apply(new HistoryFiles()
+                .Active(A, "NY", "11735", "05/23/2005", "05/23/2005", [Chiro])
+                .Active(B, "NY", "11201", "05/23/2005", "05/23/2005", [Dentist])
+                .Secondary(A, "ON", "K1A0B1", "CA").Secondary(B, "NJ", "07001").Secondary(B, "ON", "", "CA")
+                .Zip(folder, "nov.zip", HistoryFiles.Layout.Y2016, new DateOnly(2018, 11, 11), pfile: true, locations: true));
+            Assert.Equal((2, 2), (november.Versions, november.LocationsChanged));
+            Assert.True(state.TryGet(NpiVersion.Key(1000000012), out var b));
+            Assert.Equal(a.LocationSet, b.LocationSet);
+            Assert.Equal(2, state.Dictionary.LocationSetCount);
+            Assert.Equal(2, state.Dictionary.TakeNewLocationSets().Count);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_stored_location_set_keeps_its_id_and_a_new_one_gets_the_next()
+    {
+        var values = new HistoryValues();
+        values.AddStoredLocationSet(7, [("NY", "11735"), ("NJ", "")]);
+        var ny = values.States.Add("NY");
+        var nj = values.States.Add("NJ");
+        Assert.Equal(7, values.LocationSet(new List<(ushort, int)> { (ny, 11736), (nj, 0) }.OrderBy(p => p.Item1).ToList()));
+        Assert.Empty(values.TakeNewLocationSets());
+        Assert.Equal(8, values.LocationSet([(ny, 11736)]));
+        Assert.Equal([8], values.TakeNewLocationSets());
     }
 }

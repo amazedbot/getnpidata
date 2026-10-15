@@ -1772,13 +1772,19 @@ public sealed class AreaHistoryCoverage
     public DateTime? AsOfDate { get; set; }
 
     /// <summary>
-    /// The first month of the figures from the archived monthly NPPES files (CMS NPPES; historical copies via NBER), counted by
-    /// primary practice location; null when the archive isn't loaded.
+    /// The first month of the figures from the archived monthly NPPES files (CMS NPPES; historical copies via NBER); null when
+    /// the archive isn't loaded.
     /// </summary>
     public DateTime? ArchiveFrom { get; set; }
 
     /// <summary>The archive's last month: the month before the recorded series starts.</summary>
     public DateTime? ArchiveTo { get; set; }
+
+    /// <summary>
+    /// The first archive month counted by every practice location (the first file listing secondary ones, September 2018);
+    /// earlier archive months count primary practice locations only.
+    /// </summary>
+    public DateTime? AnyLocationFrom { get; set; }
 }
 
 /// <summary>One statistic for every state or county (GET /api/v1/areas/map).</summary>

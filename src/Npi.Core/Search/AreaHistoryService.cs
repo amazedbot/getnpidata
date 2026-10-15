@@ -23,7 +23,8 @@ public sealed class AreaHistoryService(string connectionString)
     private const string InCategorySql =
         "EXISTS (SELECT 1 FROM provider_taxonomy t JOIN specialty_code_category m ON m.code = t.taxonomy_code WHERE t.npi = p.npi AND m.category = @category)";
 
-    private sealed record MetaRow(DateTime? DerivedFrom, DateTime? TrackedFrom, DateTime? ChangesFrom, DateTime? AsOfMonth, DateTime? ArchiveFrom, DateTime? ArchiveTo);
+    private sealed record MetaRow(DateTime? DerivedFrom, DateTime? TrackedFrom, DateTime? ChangesFrom, DateTime? AsOfMonth, DateTime? ArchiveFrom, DateTime? ArchiveTo,
+        DateTime? AnyLocationFrom);
 
     private sealed record Row(string Category, DateTime Month, sbyte Basis, int? Providers, int? NewProviders, int? Deactivated, int? MovedIn,
         int? MovedOut, int? SpecialtyChanges, int? LicenseChanges, int? ExclusionChanges, int? QualityCurrent, int? QualityCheck, int? QualityStale);
@@ -94,7 +95,7 @@ public sealed class AreaHistoryService(string connectionString)
         var meta = await connection.QuerySingleOrDefaultAsync<MetaRow>(new CommandDefinition(
             """
             SELECT derived_from AS DerivedFrom, tracked_from AS TrackedFrom, changes_from AS ChangesFrom, as_of_month AS AsOfMonth,
-                   archive_from AS ArchiveFrom, archive_to AS ArchiveTo
+                   archive_from AS ArchiveFrom, archive_to AS ArchiveTo, any_location_from AS AnyLocationFrom
             FROM area_history_meta WHERE id = 1
             """, cancellationToken: ct));
         var asOf = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition("SELECT as_of_date FROM data_version WHERE id = 1", cancellationToken: ct));
@@ -105,6 +106,7 @@ public sealed class AreaHistoryService(string connectionString)
         {
             ArchiveFrom = archiveTo is null ? null : D(meta?.ArchiveFrom),
             ArchiveTo = archiveTo,
+            AnyLocationFrom = archiveTo is null ? null : D(meta?.AnyLocationFrom),
         };
     }
 
@@ -213,7 +215,7 @@ public sealed class AreaHistoryService(string connectionString)
                     AreaMapStats.Deactivated when tracked || archived => all?.Deactivated ?? 0,
                     AreaMapStats.Stale => AreaHistoryMath.QualityShare(all?.QualityStale, all?.QualityCurrent, all?.QualityCheck, all?.QualityStale),
                     AreaMapStats.Net => Providers(when) is { } now && Providers(when.AddMonths(-1)) is { } before
-                                        && coverage.InArchive(when) == coverage.InArchive(when.AddMonths(-1)) ? now - before : null,
+                                        && coverage.EveryLocation(when) == coverage.EveryLocation(when.AddMonths(-1)) ? now - before : null,
                     _ => null,
                 };
             }
@@ -253,18 +255,34 @@ public sealed class AreaHistoryService(string connectionString)
         _ => ("area_month_event e WHERE e.area_type = @type AND e.area_id = @id AND e.month = @month AND e.kind = @kind", "e.npi"),
     };
 
-    // An archived version (alias x of npi_history) counts in the area: as the loader's HistoryAreaStats places it (primary
-    // practice location; a state of at most 5 characters; counties by today's HUD crosswalk).
-    private static string InArchiveAreaSql(string type, string x) => type switch
+    // An archived version (alias x of npi_history) counts in the area: as the loader's HistoryAreaStats places it (its primary
+    // practice location or, from the files that list them, a secondary one; a state of at most 5 characters; counties by today's
+    // HUD crosswalk). primaryOnly: the primary location alone (the moves of the month the definition changes).
+    private static string InArchiveAreaSql(string type, string x, bool primaryOnly = false)
     {
-        "county" => $"({x}.state IS NOT NULL AND CHAR_LENGTH({x}.state) <= 5 AND EXISTS (SELECT 1 FROM zip_county z WHERE z.zip5 = {x}.zip5 AND z.county_fips = @id))",
-        "state" => $"COALESCE({x}.state = @id, 0)",
-        _ => $"({x}.state IS NOT NULL AND CHAR_LENGTH({x}.state) <= 5)",
-    };
+        var primary = type switch
+        {
+            "county" => $"({x}.state IS NOT NULL AND CHAR_LENGTH({x}.state) <= 5 AND EXISTS (SELECT 1 FROM zip_county z WHERE z.zip5 = {x}.zip5 AND z.county_fips = @id))",
+            "state" => $"COALESCE({x}.state = @id, 0)",
+            _ => $"{x}.state IS NOT NULL",
+        };
+        if (primaryOnly)
+        {
+            return primary;
+        }
+
+        var secondary = type switch
+        {
+            "county" => $"EXISTS (SELECT 1 FROM npi_history_location_set l JOIN zip_county z ON z.zip5 = l.zip5 WHERE l.set_id = {x}.location_set AND z.county_fips = @id)",
+            "state" => $"EXISTS (SELECT 1 FROM npi_history_location_set l WHERE l.set_id = {x}.location_set AND l.state = @id)",
+            _ => $"{x}.location_set IS NOT NULL",
+        };
+        return $"({primary} OR {secondary})";
+    }
 
     // The providers behind a count in a month from the NPPES archive (step 3.4), read from npi_history: the versions that month's
     // file started (@p, its data date) and the ones they replaced. New NPIs: first versions, active, issued in the month.
-    private static (string From, string Npi) ArchiveListSql(string type, string kind, bool category)
+    private static (string From, string Npi) ArchiveListSql(string type, string kind, bool category, bool definitionStep = false)
     {
         const string pair = "npi_history n JOIN npi_history o ON o.npi = n.npi AND o.to_period = n.from_period WHERE n.from_period = @p";
         const string both = "n.status = 0 AND o.status = 0";
@@ -275,9 +293,9 @@ public sealed class AreaHistoryService(string connectionString)
                 + "AND NOT EXISTS (SELECT 1 FROM npi_history e WHERE e.npi = n.npi AND e.from_period < n.from_period) AND " + InArchiveAreaSql(type, "n")
                 + (category ? " AND EXISTS (SELECT 1 FROM npi_history_set_category c WHERE c.set_id = n.taxonomy_set AND c.category = @category)" : ""),
             AreaChangeKinds.Deactivated => $"{pair} AND n.status <> 0 AND o.status = 0 AND {InArchiveAreaSql(type, "o")}",
-            AreaChangeKinds.MovedIn => $"{pair} AND {both} AND {InArchiveAreaSql(type, "n")} AND NOT {InArchiveAreaSql(type, "o")}",
-            AreaChangeKinds.MovedOut => $"{pair} AND {both} AND {InArchiveAreaSql(type, "o")} AND NOT {InArchiveAreaSql(type, "n")}",
-            AreaChangeKinds.Specialty => $"{pair} AND {both} AND NOT (n.primary_taxonomy <=> o.primary_taxonomy) AND {InArchiveAreaSql(type, "n")}",
+            AreaChangeKinds.MovedIn => $"{pair} AND {both} AND {InArchiveAreaSql(type, "n", definitionStep)} AND NOT {InArchiveAreaSql(type, "o", definitionStep)}",
+            AreaChangeKinds.MovedOut => $"{pair} AND {both} AND {InArchiveAreaSql(type, "o", definitionStep)} AND NOT {InArchiveAreaSql(type, "n", definitionStep)}",
+            AreaChangeKinds.Specialty => $"{pair} AND {both} AND NOT (n.primary_taxonomy <=> o.primary_taxonomy) AND {InArchiveAreaSql(type, "n", definitionStep)}",
             _ => "npi_history n WHERE FALSE",
         };
         return (from, "CAST(n.npi AS CHAR)");
@@ -299,7 +317,7 @@ public sealed class AreaHistoryService(string connectionString)
         var param = new DynamicParameters(Param(type, id, kind, month, category, page));
         param.Add("p", p);
         param.Add("archiveFrom", coverage.ArchiveFrom!.Value.ToDateTime(TimeOnly.MinValue));
-        return (ArchiveListSql(type, kind, category.Length > 0), param);
+        return (ArchiveListSql(type, kind, category.Length > 0, coverage.DefinitionStep() == month), param);
     }
 
     /// <summary>True when the area has lists of that kind (the US counts no moves).</summary>

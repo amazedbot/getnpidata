@@ -4,8 +4,10 @@ namespace Npi.Loader.History;
 
 /// <summary>What one file changed in the history (docs/PRODUCT_PLAN.md step 3.4).</summary>
 /// <param name="Changed">The NPIs with a new version from this file (their new version is in the state).</param>
+/// <param name="LocationsChanged">Active NPIs whose secondary locations changed (of <see cref="Moved"/>).</param>
+/// <param name="WithLocations">Active NPIs with secondary locations after the file.</param>
 public sealed record PeriodDiff(DateOnly DataDate, HistoryFileSummary File, IReadOnlyList<int> Changed, int NewNpis, int Moved, int SpecialtyChanged,
-    int Deactivated, int Gone, int Reactivated, int Active)
+    int Deactivated, int Gone, int Reactivated, int Active, int LocationsChanged = 0, int WithLocations = 0)
 {
     public int Versions => Changed.Count;
 }
@@ -49,11 +51,18 @@ public sealed class HistoryState(HistoryValues dictionary, int capacity = 0)
         var period = dataDate.DayNumber;
         var sequence = ++_sequence;
         var changed = new List<int>(256 * 1024);
-        int newNpis = 0, moved = 0, specialty = 0, deactivated = 0, reactivated = 0;
+        int newNpis = 0, moved = 0, specialty = 0, deactivated = 0, reactivated = 0, locations = 0;
 
-        void OnRow(int key, in NpiVersion row)
+        void OnRow(int key, in NpiVersion fields)
         {
             ref var current = ref CollectionsMarshal.GetValueRefOrAddDefault(_npis, key, out var exists);
+            var row = fields;
+            if (row.LocationSet < 0)
+            {
+                // A file without secondary locations after one with them: each NPI keeps the set it had.
+                row.LocationSet = exists && row.Status == HistoryStatus.Active ? Math.Max(current.LocationSet, 0) : 0;
+            }
+
             if (!exists)
             {
                 current = row;
@@ -75,8 +84,9 @@ public sealed class HistoryState(HistoryValues dictionary, int capacity = 0)
             {
                 if (current.Status == HistoryStatus.Active && row.Status == HistoryStatus.Active)
                 {
-                    moved += current.State != row.State || current.Zip != row.Zip ? 1 : 0;
+                    moved += current.State != row.State || current.Zip != row.Zip || current.LocationSet != row.LocationSet ? 1 : 0;
                     specialty += current.Primary != row.Primary ? 1 : 0;
+                    locations += current.LocationSet != row.LocationSet ? 1 : 0;
                 }
 
                 deactivated += current.Status == HistoryStatus.Active && row.Status != HistoryStatus.Active ? 1 : 0;
@@ -116,13 +126,15 @@ public sealed class HistoryState(HistoryValues dictionary, int capacity = 0)
             changed.Add(key);
         }
 
-        var active = 0;
+        int active = 0, withLocations = 0;
         foreach (var version in _npis.Values)
         {
             active += version.Status == HistoryStatus.Active ? 1 : 0;
+            withLocations += version.Status == HistoryStatus.Active && version.LocationSet > 0 ? 1 : 0;
         }
 
         LastListed = file.Rows;
-        return new PeriodDiff(dataDate, file, changed, newNpis, moved, specialty, deactivated + gone.Count, gone.Count, reactivated, active);
+        return new PeriodDiff(dataDate, file, changed, newNpis, moved, specialty, deactivated + gone.Count, gone.Count, reactivated, active, locations,
+            withLocations);
     }
 }

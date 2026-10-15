@@ -210,12 +210,20 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
             log.Information(
                 "History measure {File} ({Date}): {Summary}; read and compared in {Seconds:N1}s ({Rate:N0} MB/s of zip); {Versions:N0} versions: {New:N0} new NPIs, " +
                 "{Moved:N0} moved, {Specialty:N0} primary taxonomy changed, {Deactivated:N0} deactivated ({Gone:N0} no longer listed), {Reactivated:N0} reactivated, " +
-                "{Other:N0} other changes (dates, entity, other codes); {Active:N0} active, {Npis:N0} NPIs in memory, {Sets:N0} taxonomy sets, {Memory:N0} MB managed",
+                "{Other:N0} other changes (dates, entity, other codes); {Active:N0} active ({WithLocations:N0} with secondary locations, {LocationsChanged:N0} of them changed), {Npis:N0} NPIs in memory, {Sets:N0} taxonomy sets, {LocationSets:N0} location sets, {Memory:N0} MB managed",
                 Path.GetFileName(zip), dataDate, NppesHistoryReader.Describe(diff.File), watch.Elapsed.TotalSeconds, bytes / 1e6 / watch.Elapsed.TotalSeconds,
                 diff.Versions, diff.NewNpis, diff.Moved, diff.SpecialtyChanged, diff.Deactivated, diff.Gone, diff.Reactivated,
-                diff.Versions - diff.NewNpis - diff.Deactivated - diff.Reactivated - diff.Moved, diff.Active, state.Count, state.Dictionary.SetCount,
+                diff.Versions - diff.NewNpis - diff.Deactivated - diff.Reactivated - diff.Moved, diff.Active, diff.WithLocations, diff.LocationsChanged, state.Count,
+                state.Dictionary.SetCount,
+                state.Dictionary.LocationSetCount,
                 GC.GetTotalMemory(false) / 1_000_000);
             LogUnmapped(state, Path.GetFileName(zip));
+            if (diff.File.HasLocations)
+            {
+                var perNpi = state.All.Sum(e => (long)state.Dictionary.LocationPairCountOf(e.Value.LocationSet));
+                log.Information("History measure {File}: {Sets:N0} location sets hold {Pairs:N0} (state, ZIP) rows; stored per NPI the open versions alone would need {PerNpi:N0}",
+                    Path.GetFileName(zip), state.Dictionary.LocationSetCount, state.Dictionary.LocationPairCount, perNpi);
+            }
             if (crosswalk.Count > 0)
             {
                 var (unmatched, providers) = UnmatchedZips(state, crosswalk);
@@ -297,7 +305,7 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
             CREATE TABLE `{Batch}` (
               `npi` INT UNSIGNED NOT NULL, `from_period` DATE NOT NULL, `status` TINYINT NOT NULL, `entity_type` TINYINT NULL, `state` VARCHAR(40) NULL,
               `zip5` CHAR(5) NULL, `country` CHAR(2) NULL, `primary_taxonomy` VARCHAR(10) NULL, `taxonomy_set` INT UNSIGNED NULL,
-              `enumeration_date` DATE NULL, `last_update_date` DATE NULL, `deactivation_date` DATE NULL, `reactivation_date` DATE NULL,
+              `location_set` INT UNSIGNED NULL, `enumeration_date` DATE NULL, `last_update_date` DATE NULL, `deactivation_date` DATE NULL, `reactivation_date` DATE NULL,
               PRIMARY KEY (`npi`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
             """, ct);
 
@@ -338,6 +346,9 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
         }
 
         var sets = state.Dictionary.TakeNewSets();
+        var locationRows = state.Dictionary.TakeNewLocationSets()
+            .SelectMany(id => state.Dictionary.LocationPairs(id).Select(pair => new { Id = id, pair.State, pair.Zip }))
+            .ToList();
         var param = new { p = diff.DataDate.ToDateTime(TimeOnly.MinValue), period = file.Period.ToDateTime(TimeOnly.MinValue) };
         await using var tx = await connection.BeginTransactionAsync(ct);
         foreach (var chunk in sets.Chunk(1000))
@@ -346,6 +357,12 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
                 chunk.Select(s => new { s.Id, s.Codes }), tx, cancellationToken: ct));
             await connection.ExecuteAsync(new CommandDefinition("INSERT IGNORE INTO `npi_history_set_category` (`set_id`, `category`) VALUES (@Id, @Category)",
                 chunk.SelectMany(s => HistoryAreaStats.CategoriesOf(s.Codes).Select(c => new { s.Id, Category = c })), tx, cancellationToken: ct));
+        }
+
+        foreach (var chunk in locationRows.Chunk(1000))
+        {
+            await connection.ExecuteAsync(new CommandDefinition("INSERT IGNORE INTO `npi_history_location_set` (`set_id`, `state`, `zip5`) VALUES (@Id, @State, @Zip)",
+                chunk, tx, cancellationToken: ct));
         }
 
         await connection.ExecuteAsync(new CommandDefinition(
@@ -360,13 +377,15 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
             """
             UPDATE `history_period` SET `status` = 'Completed', `file_date` = DATE(@p), `columns_count` = @columns, `rows_read` = @rows,
               `deactivated_rows` = @deactivatedRows, `active` = @active, `versions` = @versions, `new_npis` = @newNpis, `gone` = @gone,
-              `zip_unmatched` = @zipUnmatched, `zip_unmatched_providers` = @zipUnmatchedProviders, `stats_done` = 0, `completed_at` = UTC_TIMESTAMP(),
+              `zip_unmatched` = @zipUnmatched, `zip_unmatched_providers` = @zipUnmatchedProviders, `stats_done` = 0, `locations` = @locations,
+              `secondary_rows` = @secondaryRows, `completed_at` = UTC_TIMESTAMP(),
               `seconds` = @seconds, `error` = NULL
             WHERE `period` = DATE(@period)
             """, new
         {
             param.p, param.period, columns = diff.File.Columns, rows = diff.File.Rows, deactivatedRows = diff.File.DeactivatedRows, active = diff.Active,
             versions = inserted, newNpis = diff.NewNpis, gone = diff.Gone, zipUnmatched, zipUnmatchedProviders, seconds,
+            locations = diff.File.HasLocations ? 1 : 0, secondaryRows = diff.File.HasLocations ? diff.File.SecondaryRows : (long?)null,
         }, tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{Batch}`", CancellationToken.None);
@@ -374,7 +393,7 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
 
     private static readonly string[] VersionColumns =
     [
-        "npi", "from_period", "status", "entity_type", "state", "zip5", "country", "primary_taxonomy", "taxonomy_set",
+        "npi", "from_period", "status", "entity_type", "state", "zip5", "country", "primary_taxonomy", "taxonomy_set", "location_set",
         "enumeration_date", "last_update_date", "deactivation_date", "reactivation_date",
     ];
 
@@ -419,6 +438,7 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
         Text(line, d.Countries[v.Country]);
         Text(line, d.Codes[v.Primary]);
         line.Append('\t').Append(v.TaxonomySet == 0 ? "\\N" : v.TaxonomySet.ToString(CultureInfo.InvariantCulture));
+        line.Append('\t').Append(v.LocationSet <= 0 ? "\\N" : v.LocationSet.ToString(CultureInfo.InvariantCulture));
         Date(line, v.Enumeration);
         Date(line, v.LastUpdate);
         Date(line, v.Deactivation);
@@ -437,6 +457,13 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
             dictionary.AddStoredSet((int)id, codes);
         }
 
+        foreach (var set in (await connection.QueryAsync<(uint, string, string)>(new CommandDefinition(
+                     "SELECT `set_id`, `state`, `zip5` FROM `npi_history_location_set` ORDER BY `set_id`", cancellationToken: ct)))
+                 .GroupBy(r => r.Item1))
+        {
+            dictionary.AddStoredLocationSet((int)set.Key, set.Select(r => (r.Item2, r.Item3)));
+        }
+
         var listed = await connection.ExecuteScalarAsync<long?>(new CommandDefinition(
             "SELECT `rows_read` FROM `history_period` WHERE `status` = 'Completed' ORDER BY `period` DESC LIMIT 1", cancellationToken: ct));
         // Room for the NPIs the last file listed and a year of new ones, so the dictionary doesn't grow (and double) mid-file.
@@ -444,7 +471,7 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
         await using (var command = new MySqlCommand(
                    """
                    SELECT `npi`, `from_period`, `status`, `entity_type`, `state`, `zip5`, `country`, `primary_taxonomy`, `taxonomy_set`,
-                          `enumeration_date`, `last_update_date`, `deactivation_date`, `reactivation_date`
+                          `enumeration_date`, `last_update_date`, `deactivation_date`, `reactivation_date`, `location_set`
                    FROM `npi_history` WHERE `to_period` IS NULL
                    """, connection) { CommandTimeout = 0 })
         await using (var reader = await command.ExecuteReaderAsync(ct))
@@ -467,6 +494,7 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
                     LastUpdate = Day(reader, 10),
                     Deactivation = Day(reader, 11),
                     Reactivation = Day(reader, 12),
+                    LocationSet = reader.IsDBNull(13) ? 0 : (int)reader.GetUInt32(13),
                 });
             }
         }

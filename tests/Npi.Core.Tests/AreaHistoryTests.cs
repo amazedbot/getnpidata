@@ -225,5 +225,16 @@ public class AreaHistoryTests
         Assert.Equal((9, 1), (dentists[2].Providers, dentists[2].NewProviders));
         Assert.Equal(0, dentists[1].NewProviders);                                               // known: 0 in July
         Assert.Equal(0, dentists[3].Providers);                                                  // a month with a file: none listed
+
+        // With the secondary locations counted from August (the first file listing them): no net change for August (the
+        // definition steps up there), and the join with the recorded series in October is smooth.
+        var withLocations = coverage with { AnyLocationFrom = M(2026, 8) };
+        Assert.Equal(M(2026, 8), withLocations.DefinitionStep());
+        Assert.False(withLocations.EveryLocation(M(2026, 7)));
+        Assert.True(withLocations.EveryLocation(M(2026, 8)));
+        months = AreaHistoryMath.Fill(rows, withLocations, "county", "");
+        Assert.Equal(((int?)null, 3, 6), (months[2].NetChange, months[3].NetChange, months[4].NetChange));
+        Assert.Null((coverage with { AnyLocationFrom = M(2026, 6) }).DefinitionStep());       // every archive month counts every location
+        Assert.Equal(6, AreaHistoryMath.Fill(rows, coverage with { AnyLocationFrom = M(2026, 6) }, "county", "")[4].NetChange);
     }
 }

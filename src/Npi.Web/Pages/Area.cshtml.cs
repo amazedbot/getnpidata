@@ -280,6 +280,7 @@ public class AreaModel(AreaProfileService areas, AreaHistoryService history, IOp
         derivedFrom = History?.Coverage.DerivedFrom is { } d ? AreaHistoryMath.MonthKey(d) : null,
         archiveFrom = History?.Coverage.ArchiveFrom is { } af ? AreaHistoryMath.MonthKey(af) : null,
         archiveTo = History?.Coverage.ArchiveTo is { } at ? AreaHistoryMath.MonthKey(at) : null,
+        anyLocationFrom = History?.Coverage.DefinitionStep() is { } step ? AreaHistoryMath.MonthKey(step) : null,
         trackedFrom = History?.Coverage.TrackedFrom is { } t ? AreaHistoryMath.MonthKey(t) : null,
     };
 }

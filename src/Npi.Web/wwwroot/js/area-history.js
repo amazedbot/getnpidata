@@ -99,7 +99,8 @@
             var first = months[0].month;
             var archived = data.archiveFrom && data.archiveTo && first <= data.archiveTo;
             note.textContent = names[series] + ' from ' + label(first) + '.'
-                + (archived ? ' To ' + label(data.archiveTo) + ': from the archived monthly NPPES files (CMS NPPES; historical copies via NBER), by primary practice location.' : '')
+                + (archived ? ' To ' + label(data.archiveTo) + ': from the archived monthly NPPES files (CMS NPPES; historical copies via NBER)'
+                    + (data.anyLocationFrom && first < data.anyLocationFrom ? ', by primary practice location before ' + label(data.anyLocationFrom) + ' and by every practice location from then.' : '.') : '')
                 + (data.trackedFrom && first < data.trackedFrom && !archived ? ' Paler columns (before ' + label(data.trackedFrom) + ') are worked out from today\'s data.' : '')
                 + (months[months.length - 1].partial ? ' The last column is the month so far.' : '');
         }

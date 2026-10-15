@@ -30,6 +30,9 @@ public struct NpiVersion
     public ushort Primary;
     public int Zip;
     public int TaxonomySet;
+
+    /// <summary>The set of secondary practice locations (<see cref="HistoryValues.LocationSet"/>; 0 = none, -1 = the file didn't list them).</summary>
+    public int LocationSet;
     public int Enumeration;
     public int LastUpdate;
     public int Deactivation;
@@ -44,7 +47,7 @@ public struct NpiVersion
     /// <summary>True when the history fields are equal (not the bookkeeping).</summary>
     public readonly bool Same(in NpiVersion other) =>
         Entity == other.Entity && Status == other.Status && State == other.State && Country == other.Country && Primary == other.Primary
-        && Zip == other.Zip && TaxonomySet == other.TaxonomySet && Enumeration == other.Enumeration && LastUpdate == other.LastUpdate
+        && Zip == other.Zip && TaxonomySet == other.TaxonomySet && LocationSet == other.LocationSet && Enumeration == other.Enumeration && LastUpdate == other.LastUpdate
         && Deactivation == other.Deactivation && Reactivation == other.Reactivation;
 
     /// <summary>The status a file row says: deactivated when it has a deactivation date and no reactivation on or after it (CLAUDE.md §6.1).</summary>

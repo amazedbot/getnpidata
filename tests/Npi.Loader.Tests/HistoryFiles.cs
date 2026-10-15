@@ -20,6 +20,7 @@ public sealed class HistoryFiles
     }
 
     private readonly List<Dictionary<string, string>> _rows = [];
+    private readonly List<(string Npi, string State, string Zip, string Country)> _secondary = [];
 
     public static IReadOnlyList<string> Header(Layout layout) => layout switch
     {
@@ -64,6 +65,25 @@ public sealed class HistoryFiles
         return Row(npi, [.. values]);
     }
 
+    /// <summary>A secondary practice location (pl_pfile, written when <see cref="Zip"/> is asked for locations).</summary>
+    public HistoryFiles Secondary(string npi, string state, string zip, string country = "US")
+    {
+        _secondary.Add((npi, state, zip, country));
+        return this;
+    }
+
+    /// <summary>The pl_pfile CSV (today's header) of the secondary locations.</summary>
+    public string LocationCsv()
+    {
+        var csv = new StringBuilder(File.ReadLines(Fixtures.Path("pl_pfile_v2_fileheader.csv")).First()).Append('\n');
+        foreach (var (npi, state, zip, country) in _secondary)
+        {
+            csv.Append($"\"{npi}\",\"1 MAIN ST\",\"\",\"TOWN\",\"{state}\",\"{zip}\",\"{country}\",\"\",\"\",\"\"\n");
+        }
+
+        return csv.ToString();
+    }
+
     /// <summary>A deactivated NPI as the files list it from November 2012: the NPI and its deactivation date only.</summary>
     public HistoryFiles Deactivated(string npi, string date) => Row(npi, ("NPI_Deactivation_Date", date));
 
@@ -80,8 +100,11 @@ public sealed class HistoryFiles
         return csv.ToString();
     }
 
-    /// <summary>Writes the zip: <c>npidata_20050523-&lt;dataDate&gt;.csv</c> (in <paramref name="subfolder"/> when given) and its header file.</summary>
-    public string Zip(string folder, string zipName, Layout layout, DateOnly dataDate, string? subfolder = null, bool pfile = false)
+    /// <summary>
+    /// Writes the zip: <c>npidata_20050523-&lt;dataDate&gt;.csv</c> (in <paramref name="subfolder"/> when given) and its header file,
+    /// and with <paramref name="locations"/> the <c>pl_pfile</c> of the secondary locations (as the files have from September 2018).
+    /// </summary>
+    public string Zip(string folder, string zipName, Layout layout, DateOnly dataDate, string? subfolder = null, bool pfile = false, bool locations = false)
     {
         var path = Path.Combine(folder, zipName);
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
@@ -91,6 +114,14 @@ public sealed class HistoryFiles
         Add(zip, prefix + (layout == Layout.Y2007 ? "NPIDataDisseminationFileHeader.csv" : layout == Layout.V2 ? "_fileheader.csv" : "FileHeader.csv"),
             csv[..(csv.IndexOf('\n') + 1)]);
         Add(zip, "NPPES Data Dissemination - Readme.pdf", "%PDF-1.4 placeholder");
+        if (locations)
+        {
+            var date = dataDate.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
+            var pl = LocationCsv();
+            Add(zip, $"pl_pfile_20050523-{date}.csv", pl);
+            Add(zip, $"pl_pfile_20050523-{date}_FileHeader.csv", pl[..(pl.IndexOf('\n') + 1)]);
+        }
+
         return path;
     }
 

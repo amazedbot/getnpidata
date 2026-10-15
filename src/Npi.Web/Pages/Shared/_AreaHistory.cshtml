@@ -123,12 +123,24 @@
             {
                 <li><strong>@AreaHistoryMath.MonthName(archiveFrom) to @AreaHistoryMath.MonthName(archiveTo)</strong>: from the archived monthly NPPES files
                     (source: CMS NPPES; historical copies via NBER, <a href="https://doi.org/10.60592/bjwk-8n62">doi.org/10.60592/bjwk-8n62</a>), each compared with the one before.
-                    Providers are counted by their <em>primary</em> practice location, in today's county boundaries; new NPIs by the place where they first appeared,
+                    @if (h.Coverage.DefinitionStep() is { } step)
+                    {
+                        <text>Before @AreaHistoryMath.MonthName(step) providers are counted by their <em>primary</em> practice location only; from @AreaHistoryMath.MonthName(step), the first file that lists secondary practice locations, by every practice location, as today. The count steps up there, so no net change is shown for that month, and its moves compare primary locations only.</text>
+                    }
+                    else if (h.Coverage.AnyLocationFrom is null)
+                    {
+                        <text>Providers are counted by their <em>primary</em> practice location only (these files list no secondary ones).</text>
+                    }
+                    else
+                    {
+                        <text>Providers are counted by every practice location, as today.</text>
+                    }
+                    In today's county boundaries; new NPIs by the place where they first appeared,
                     deactivations where they practised before (until November 2012 a deactivated NPI simply dropped out of the file), moves and specialty changes
                     between one file and the next. @(Model.ArchiveGaps is { Length: > 0 } gaps ? $"No file survives for {gaps}: those months have new NPIs only, and their other changes count in the next month with a file." : "")
                     @if (h.Coverage.TrackedFrom is { } joined && joined == archiveTo.AddMonths(1))
                     {
-                        <text>From @AreaHistoryMath.MonthName(joined) the figures are recorded as the loads arrive and count every practice location, so the provider count steps up there (no net change is shown across that month).</text>
+                        <text>From @AreaHistoryMath.MonthName(joined) the figures are recorded as the loads arrive, counted the same way.</text>
                     }
                 </li>
             }

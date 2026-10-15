@@ -19,7 +19,11 @@ public sealed class HistoryValues
     private readonly List<string?> _setCodes = [null];
     private readonly List<int> _newSets = [];
 
-    public HistoryValues() => _setLookup = _sets.GetAlternateLookup<ReadOnlySpan<char>>();
+    public HistoryValues()
+    {
+        _setLookup = _sets.GetAlternateLookup<ReadOnlySpan<char>>();
+        _locationLookup = _locationSets.GetAlternateLookup<ReadOnlySpan<char>>();
+    }
 
     /// <summary>The id of the set of these codes (numbers from <see cref="Codes"/>; any order, repeats allowed), adding it when new; 0 for none.</summary>
     public int Set(Span<char> codeNumbers)
@@ -85,6 +89,99 @@ public sealed class HistoryValues
     }
 
     public int SetCount => _sets.Count;
+
+    // A location set's key: per (state, ZIP) pair, sorted and distinct, three chars: the state's number, then the ZIP (+1) in two.
+    private readonly Dictionary<string, int> _locationSets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int>.AlternateLookup<ReadOnlySpan<char>> _locationLookup;
+    private readonly List<(ushort State, int Zip)[]?> _locationPairs = [null];
+    private readonly List<int> _newLocationSets = [];
+    private char[] _locationKey = new char[48];
+
+    /// <summary>
+    /// The id of the set of these secondary locations ((state number, ZIP + 1 or 0) pairs, sorted by state then ZIP; repeats
+    /// allowed), adding it when new; 0 for none.
+    /// </summary>
+    public int LocationSet(IReadOnlyList<(ushort State, int Zip)> sortedPairs)
+    {
+        if (sortedPairs.Count == 0)
+        {
+            return 0;
+        }
+
+        if (_locationKey.Length < sortedPairs.Count * 3)
+        {
+            _locationKey = new char[sortedPairs.Count * 3];
+        }
+
+        var length = 0;
+        var distinct = new List<(ushort, int)>(sortedPairs.Count);
+        for (var i = 0; i < sortedPairs.Count; i++)
+        {
+            var (state, zip) = sortedPairs[i];
+            if (i > 0 && sortedPairs[i - 1] == (state, zip))
+            {
+                continue;
+            }
+
+            distinct.Add((state, zip));
+            _locationKey[length++] = (char)state;
+            _locationKey[length++] = (char)(zip >> 16);
+            _locationKey[length++] = (char)(zip & 0xFFFF);
+        }
+
+        var key = _locationKey.AsSpan(0, length);
+        if (_locationLookup.TryGetValue(key, out var id))
+        {
+            return id;
+        }
+
+        id = _locationPairs.Count;
+        _locationSets.Add(new string(key), id);
+        _locationPairs.Add([.. distinct]);
+        _newLocationSets.Add(id);
+        return id;
+    }
+
+    /// <summary>A stored location set (its id and (state, ZIP or "") rows from the database), when resuming.</summary>
+    public void AddStoredLocationSet(int id, IEnumerable<(string State, string Zip)> rows)
+    {
+        var pairs = rows
+            .Select(r => (State: States.Add(r.State), Zip: int.TryParse(r.Zip, out var zip) ? zip + 1 : 0))
+            .Distinct()
+            .OrderBy(p => p.State).ThenBy(p => p.Zip)
+            .ToArray();
+        while (_locationPairs.Count <= id)
+        {
+            _locationPairs.Add(null);
+        }
+
+        // Registered under its stored id, and not written again.
+        var key = new string([.. pairs.SelectMany(p => new[] { (char)p.State, (char)(p.Zip >> 16), (char)(p.Zip & 0xFFFF) })]);
+        _locationSets[key] = id;
+        _locationPairs[id] = pairs;
+    }
+
+    /// <summary>The (state, ZIP or "") pairs of a location set; empty for 0.</summary>
+    public IEnumerable<(string State, string Zip)> LocationPairs(int id) =>
+        id > 0 && id < _locationPairs.Count && _locationPairs[id] is { } pairs
+            ? pairs.Select(p => (States[p.State]!, p.Zip == 0 ? "" : (p.Zip - 1).ToString("D5", System.Globalization.CultureInfo.InvariantCulture)))
+            : [];
+
+    /// <summary>The location sets added since the last call (to write with the period's versions).</summary>
+    public IReadOnlyList<int> TakeNewLocationSets()
+    {
+        var sets = _newLocationSets.ToList();
+        _newLocationSets.Clear();
+        return sets;
+    }
+
+    public int LocationSetCount => _locationSets.Count;
+
+    /// <summary>The (state, ZIP) rows of every location set (what npi_history_location_set holds).</summary>
+    public long LocationPairCount => _locationPairs.Sum(p => (long)(p?.Length ?? 0));
+
+    /// <summary>The number of pairs in one location set.</summary>
+    public int LocationPairCountOf(int id) => id > 0 && id < _locationPairs.Count ? _locationPairs[id]?.Length ?? 0 : 0;
 }
 
 /// <summary>Strings numbered from 1 (0 = none), looked up by span. At most 65,535.</summary>
