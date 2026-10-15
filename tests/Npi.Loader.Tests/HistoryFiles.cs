@@ -125,6 +125,33 @@ public sealed class HistoryFiles
         return path;
     }
 
+    /// <summary>
+    /// Breaks the compressed data of the zip's npidata CSV in place (every byte 0xFF: a deflate block of the reserved type), as
+    /// in NBER's damaged March 2011 copy, keeping the zip's directory valid so it still opens.
+    /// </summary>
+    public static void Damage(string zipPath)
+    {
+        var bytes = File.ReadAllBytes(zipPath);
+        for (var at = 0; at + 30 <= bytes.Length && BitConverter.ToUInt32(bytes, at) == 0x04034b50;)
+        {
+            var size = (int)BitConverter.ToUInt32(bytes, at + 18);
+            var nameLength = BitConverter.ToUInt16(bytes, at + 26);
+            var extraLength = BitConverter.ToUInt16(bytes, at + 28);
+            var name = Encoding.UTF8.GetString(bytes, at + 30, nameLength);
+            var data = at + 30 + nameLength + extraLength;
+            if (name.Contains("npidata_", StringComparison.Ordinal) && name.EndsWith(".csv", StringComparison.Ordinal) && !name.Contains("eader", StringComparison.Ordinal))
+            {
+                Array.Fill(bytes, (byte)0xFF, data, size);
+                File.WriteAllBytes(zipPath, bytes);
+                return;
+            }
+
+            at = data + size;
+        }
+
+        throw new InvalidOperationException($"No npidata CSV entry found in {zipPath}");
+    }
+
     private static void Add(ZipArchive zip, string name, string content)
     {
         using var writer = new StreamWriter(zip.CreateEntry(name).Open(), new UTF8Encoding(false));

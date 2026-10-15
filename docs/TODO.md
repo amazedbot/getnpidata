@@ -68,6 +68,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 ## Not scheduled
 
 - ~~Speed item 16: build the loader to its own output folder, so loader changes never wait on stopping the site~~ done by the scripts of 2026-10-14 (checked 2026-10-15): the site runs from `.run/site`, the loader from `.run/loader`, so with the site up `dotnet build getnpidata.sln` and publishing the loader both succeed. Left as is: `loader.ps1` republishes into the `.run/loader` it runs from, so a rebuild while another loader run is going fails (`-NoBuild` works); one loader runs at a time.
+- Speed item 18 (found 2026-10-15): the area history rewrites its last two months (1,186,742 rows, 347 s in `run`) even when nothing it reads changed (0 moves, 0 recorded changes); skip it then.
 
 ## Done
 

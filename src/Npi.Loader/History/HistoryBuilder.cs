@@ -131,6 +131,15 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
             {
                 await ProcessAsync(state, zips, file, zip, ct);
             }
+            catch (DamagedArchiveException ex)
+            {
+                // Nothing was written (the file is read in full before any version is), but the state in memory took the rows
+                // read so far, so it is read back from the database.
+                log.Warning("History {Month}: {File} ({Url}) is damaged: {Message}; recorded as a month without a file", Key(file.Period),
+                    file.FileName, file.Url, ex.Message);
+                await RecordMissingAsync(file.Period, $"damaged copy ({file.Url}): {ex.Message}", ct);
+                state = await LoadStateAsync(ct);
+            }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 log.Error(ex, "History {Month}: {File} failed; the next run starts again here", Key(file.Period), file.FileName);

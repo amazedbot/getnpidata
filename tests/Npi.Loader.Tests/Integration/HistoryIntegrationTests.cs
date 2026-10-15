@@ -27,7 +27,7 @@ public sealed class HistoryIntegrationTests : IDisposable
     // November 2011 (October has no file): A moved to Brooklyn, B's primary taxonomy is now chiropractic, C dropped out
     // (deactivated, inferred), D (issued in October, Suffolk) and E (November, Brooklyn) are new.
     // December 2012 (329 columns, deactivated NPIs listed): C listed with its date, D deactivated.
-    private IReadOnlyList<(HistoryFile File, string Zip)> Files(string name, bool brokenSecond = false)
+    private IReadOnlyList<(HistoryFile File, string Zip)> Files(string name, bool brokenSecond = false, bool damagedSecond = false)
     {
         var folder = Directory.CreateDirectory(Path.Combine(_folder, name)).FullName;
         var first = new HistoryFiles()
@@ -48,6 +48,10 @@ public sealed class HistoryIntegrationTests : IDisposable
                 .Active(D, "NY", "11735", "10/20/2011", "10/20/2011", [Chiro])
                 .Active(E, "NY", "11201", "11/02/2011", "11/02/2011", [Dentist])
                 .Zip(folder, Path.GetFileName(second), HistoryFiles.Layout.Y2011, new DateOnly(2011, 11, 13), subfolder: "20111113_0101");
+            if (damagedSecond)
+            {
+                HistoryFiles.Damage(second);
+            }
         }
 
         var third = new HistoryFiles()
@@ -318,5 +322,22 @@ public sealed class HistoryIntegrationTests : IDisposable
         Assert.Equal(
             await straight.QueryAsync<(string, string, string, int)>("SELECT area_type, area_id, category, providers FROM history_area_count ORDER BY 1, 2, 3"),
             await resumed.QueryAsync<(string, string, string, int)>("SELECT area_type, area_id, category, providers FROM history_area_count ORDER BY 1, 2, 3"));
+    }
+
+    [Fact]
+    public async Task A_damaged_copy_counts_as_a_month_without_a_file_and_the_run_goes_on()
+    {
+        await using var without = await SeededAsync();
+        await using var damaged = await SeededAsync();
+        var files = Files("without");
+        Assert.True(await ProcessAsync(without, "without", [files[0], files[2]]));
+
+        // November's CSV won't unpack: recorded Missing with why, the state read back, and December compared with September.
+        Assert.True(await ProcessAsync(damaged, "damaged", Files("damaged", damagedSecond: true)));
+        var periods = await damaged.QueryAsync<(string, string?)>("SELECT status, error FROM history_period ORDER BY period");
+        Assert.Equal(["Completed", "Missing", "Completed"], periods.Select(p => p.Item1));
+        Assert.StartsWith("damaged copy (https://example.test/NPPES_Data_Dissemination_Nov_2011.zip)", periods[1].Item2);
+        Assert.Equal(await VersionsAsync(without), await VersionsAsync(damaged));
+        Assert.Equal(await StatsAsync(without), await StatsAsync(damaged));
     }
 }
