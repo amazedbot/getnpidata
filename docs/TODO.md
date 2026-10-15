@@ -67,7 +67,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 ## Not scheduled
 
 - Speed item 9: stream zip files instead of extracting them first, where a loader still extracts.
-- Speed item 16: build the loader to its own output folder, so loader changes never wait on stopping the site.
+- ~~Speed item 16: build the loader to its own output folder, so loader changes never wait on stopping the site~~ done by the scripts of 2026-10-14 (checked 2026-10-15): the site runs from `.run/site`, the loader from `.run/loader`, so with the site up `dotnet build getnpidata.sln` and publishing the loader both succeed. Left as is: `loader.ps1` republishes into the `.run/loader` it runs from, so a rebuild while another loader run is going fails (`-NoBuild` works); one loader runs at a time.
 - Speed item 17 (found 2026-10-15): the map builds in full when its incremental batch is a large share of the map. After a full Overture pass the incremental path re-placed 8.6M providers in 61 min, where a full build takes ~24 min.
 
 ## Done
