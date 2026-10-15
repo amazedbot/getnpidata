@@ -83,6 +83,9 @@ public sealed class ProviderSearch
     /// <summary>commercial, residential or unknown: a practice location in that kind of building.</summary>
     public string? AddressType { get; set; }
 
+    /// <summary>Map area "west,south,east,north" in degrees (at most 2.5° × 3.5°): a practice location whose map point is inside it.</summary>
+    public string? Bbox { get; set; }
+
     /// <summary>Record quality: notStale (hide stale records), current, check or stale.</summary>
     public string? Quality { get; set; }
 
@@ -134,6 +137,7 @@ public sealed class ProviderSearch
         Add("city", City);
         Add("zip", Zip);
         AddInt("radius", Radius);
+        Add("bbox", Bbox);
         Add("lastName", LastName);
         Add("firstName", FirstName);
         Add("orgName", OrgName);

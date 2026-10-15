@@ -33,6 +33,7 @@ public sealed class SearchQuery
     private readonly List<string> _locationTemplates = []; // "{0}" = table alias
     private readonly string? _addressTemplate;             // the building at a provider_location row ("{0}" = its alias); not in the search tables
     private readonly string? _areaAddress;
+    private readonly string? _areaTemplate;                // a list's map area (bbox): the location's map point inside it ("{0}" = a provider_location alias)
     private bool _stateOnSearchTables;                     // a USPS city carries the state on provider_location; the search tables (s, b) keep it                 // map search: the building at the pin (provider_map m)
     private bool _zipListLocation;                         // the location is a ZIP or a list of ZIPs (county), so the (code, zip5) index can drive
     private readonly bool _areaSearchQuery;
@@ -205,7 +206,18 @@ public sealed class SearchQuery
             }
         }
 
-        _hasLocationFilter = _locationTemplates.Count > 0 || _addressTemplate is not null;
+        // A list's map area (owner, 2026-10-14): a practice location whose map point is inside it. Like the building, it needs the
+        // address key, so it is checked on provider_location; the drivers below start from the map tables instead.
+        if (!areaSearch && filter.Bbox is not null && MapBounds.Parse(filter.Bbox) is { Problem: null } box)
+        {
+            Parameters.Add("box", box.Polygon);
+            Parameters.Add("cells", box.Cells);
+            // FORCE INDEX: without it MySQL read every point in the box through the spatial index for the check (3.9 s instead of 0.28 s
+            // for 57k providers).
+            _areaTemplate = "EXISTS (SELECT 1 FROM provider_map am FORCE INDEX (PRIMARY) WHERE am.npi = {0}.npi AND am.addr_key = {0}.addr_key AND MBRContains(ST_GeomFromText(@box, 0), am.pt))";
+        }
+
+        _hasLocationFilter = _locationTemplates.Count > 0 || _addressTemplate is not null || _areaTemplate is not null;
 
         // For a possibly huge search (no specialty, name, NPI or credential), the sort-index plan needs
         // every condition on p itself.
@@ -249,7 +261,7 @@ public sealed class SearchQuery
         // - the map: up to 90 days of enumerations or 31 of updates; a year of new providers in Manhattan took 9 s
         //   from the candidates and 1 s from the points in view.
         var hasDate = filter.NewWithinDays is not null || filter.UpdatedWithinDays is not null;
-        var narrowLocation = filter.CountyFips is not null || filter.City is not null || filter.Zip5 is not null;
+        var narrowLocation = filter.CountyFips is not null || filter.City is not null || filter.Zip5 is not null || _areaTemplate is not null;
         var selectiveDate = areaSearch
             ? filter.NewWithinDays <= MapSelectiveNewDays || filter.UpdatedWithinDays <= MapSelectiveUpdatedDays
             : hasDate && (!_hasLocationFilter
@@ -274,6 +286,14 @@ public sealed class SearchQuery
             _driverKind = "taxonomy";
             drivenBy.Add("taxonomy");
         }
+        else if (taxonomyCodes is not null && _areaTemplate is not null)
+        {
+            // A list of the map area: the specialty's providers in the area's grid cells, as on the map; each one's location is then
+            // checked against the area (and any other location filter).
+            _driver = "SELECT DISTINCT s.npi FROM provider_map_specialty s WHERE s.taxonomy_code IN @taxonomyCodes AND s.cell IN @cells";
+            _driverKind = "taxonomy";
+            drivenBy.Add("taxonomy");
+        }
         else if (taxonomyCodes is not null && _hasLocationFilter)
         {
             // A broad specialty category ("Doctors": 238 codes) by county or ZIP: past 200 codes MySQL stops estimating each
@@ -281,7 +301,7 @@ public sealed class SearchQuery
             var zipIndex = taxonomyCodes.Count > ManyTaxonomyCodes && _zipListLocation && filter.City is null ? " FORCE INDEX (ix_provider_search_zip)" : "";
             _driver = $"SELECT DISTINCT s.npi FROM provider_search s{zipIndex} WHERE s.taxonomy_code IN @taxonomyCodes AND {Location("s", withAddress: false)}";
             drivenBy.Add("taxonomy");
-            drivenBy.Add(_addressTemplate is null ? "location" : "search-location");
+            drivenBy.Add(_addressTemplate is null && _areaTemplate is null ? "location" : "search-location");
             _driverKind = "search";
         }
         else if (taxonomyCodes is not null)
@@ -297,12 +317,18 @@ public sealed class SearchQuery
             drivenBy.Add("credential");
             _driverKind = "credential";
         }
+        else if (credential is not null && _areaTemplate is not null)
+        {
+            _driver = "SELECT DISTINCT c.npi FROM provider_map_credential c WHERE c.credential = @credentialExact AND c.cell IN @cells";
+            drivenBy.Add("credential");
+            _driverKind = "credential";
+        }
         else if (credential is not null && _hasLocationFilter && !areaSearch)
         {
             // Like specialty + location: one index range on (credential, state, city, zip5).
             _driver = $"SELECT DISTINCT s.npi FROM credential_search s WHERE s.credential = @credentialExact AND {Location("s", withAddress: false)}";
             drivenBy.Add("credential");
-            drivenBy.Add(_addressTemplate is null ? "location" : "search-location");
+            drivenBy.Add(_addressTemplate is null && _areaTemplate is null ? "location" : "search-location");
             _driverKind = "search";
         }
         else if (selectiveDate)
@@ -328,7 +354,7 @@ public sealed class SearchQuery
             drivenBy.Add("name");
             _driverKind = "name";
         }
-        else if (filter.Quality is not null && _hasLocationFilter && _addressTemplate is null && !areaSearch)
+        else if (filter.Quality is not null && _hasLocationFilter && _addressTemplate is null && _areaTemplate is null && !areaSearch)
         {
             // Record quality + location (docs/PRODUCT_PLAN.md step 3.1): one index range on (label, state, city, zip5), like the
             // practice building; checking the label of every located provider took 30 s for CA.
@@ -340,6 +366,17 @@ public sealed class SearchQuery
             _driverKind = "quality";
             drivenBy.Add("quality");
             drivenBy.Add("location");
+        }
+        else if (_areaTemplate is not null)
+        {
+            // The points inside the area (spatial index). When the area is the only location filter, a point in it is a location in
+            // it, so the location needn't be checked again.
+            _driver = "SELECT DISTINCT am.npi FROM provider_map am WHERE MBRContains(ST_GeomFromText(@box, 0), am.pt)";
+            _driverKind = "area";
+            if (_locationTemplates.Count == 0 && _addressTemplate is null)
+            {
+                drivenBy.Add("location");
+            }
         }
         else if (_addressTemplate is not null)
         {
@@ -540,7 +577,7 @@ public sealed class SearchQuery
             // Only NPI-level checks left (dataset flags): count the candidates without joining provider,
             // which costs a random lookup per candidate (950k for a whole state). Only for drivers drawn from
             // projection tables; the NPI, flag and Care Compare drivers can list NPIs that aren't projected.
-            if (_driverKind is "location" or "building" or "quality" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" && _remaining.Count == _remainingNpiOnly.Count)
+            if (_driverKind is "location" or "building" or "quality" or "search" or "taxonomy" or "name" or "org" or "credential" or "date" or "area" && _remaining.Count == _remainingNpiOnly.Count)
             {
                 var flags = _remainingNpiOnly.Count > 0 ? " WHERE " + string.Join(" AND ", _remainingNpiOnly.Select(t => Format(t, "c"))) : "";
                 return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";
@@ -557,7 +594,7 @@ public sealed class SearchQuery
     /// </summary>
     // A label that keeps most providers (notStale) may be broad; a single label is sparse enough that sorting its candidates is faster
     // than walking the name index (CA + stale: 20 s walking, 3.8 s sorting; CA + notStale: 16.8 s sorting).
-    public bool MayBeBroad => _driverKind is null or "location" or "building" || (_driverKind == "quality" && Filter.Quality == RecordQuality.FilterNotStale)
+    public bool MayBeBroad => _driverKind is null or "location" or "building" or "area" || (_driverKind == "quality" && Filter.Quality == RecordQuality.FilterNotStale)
                               || (_driverKind == "date" && !_hasLocationFilter) || (_driverKind == "taxonomy" && !_hasLocationFilter && !_areaSearchQuery);
 
     /// <summary>
@@ -635,6 +672,7 @@ public sealed class SearchQuery
     {
         IEnumerable<string> templates = _stateOnSearchTables && alias is "s" or "b" ? _locationTemplates.Prepend("{0}.state = @state") : _locationTemplates;
         templates = withAddress && _addressTemplate is not null ? templates.Append(_addressTemplate) : templates;
+        templates = withAddress && _areaTemplate is not null ? templates.Append(_areaTemplate) : templates;
         return templates.Any() ? string.Join(" AND ", templates.Select(t => Format(t, alias))) : "1 = 1";
     }
 

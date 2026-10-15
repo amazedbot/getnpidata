@@ -276,6 +276,7 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
                 : f.City is not null ? $"in {f.City}, {f.State}"
                 : f.CountyFips is not null && Counties.FirstOrDefault(c => c.Fips == f.CountyFips) is { } county ? $"in {county.Name}, {f.State}"
                 : state is not null ? $"in {state}" : null;
+            place = f.Bbox is null ? place : place is null ? "in the map area" : $"{place}, in the map area";
             return place is null ? who : $"{who} {place}";
         }
     }
@@ -302,6 +303,9 @@ public class IndexModel(SearchService search, TaxonomyCatalog taxonomy, Geograph
 
     /// <summary>The map search page with the same filters; it opens on the area of the location filters (Stage 5.5 item 10).</summary>
     public string MapLink => "/map" + SearchQueryString.ToQueryString(Filter, includePaging: false);
+
+    /// <summary>The list without its map area.</summary>
+    public string WithoutAreaLink => ListLink(Filter with { Bbox = null });
 
     /// <summary>The filter as name/value pairs for the export panel's hidden fields.</summary>
     public IEnumerable<KeyValuePair<string, string>> FilterPairs =>

@@ -167,6 +167,48 @@ public class SearchQueryTests
     }
 
     [Fact]
+    public void A_map_area_is_checked_and_normalized()
+    {
+        Assert.Equal("-73.99,40.7,-73.95,40.75", SearchValidation.Normalize(new SearchFilter { Bbox = " -73.9900001,40.70,-73.95,40.75 " }).Bbox); // alone too
+        Assert.Contains(nameof(SearchFilter.Bbox), Assert.Throws<SearchValidationException>(() =>
+            SearchValidation.Normalize(new SearchFilter { Bbox = "-74,40,-73" })).Errors.Keys);
+        var large = Assert.Throws<SearchValidationException>(() => SearchValidation.Normalize(new SearchFilter { Bbox = "-80,38,-70,42" }));
+        Assert.Contains("too large", large.Errors[nameof(SearchFilter.Bbox)][0], StringComparison.Ordinal);
+        Assert.Contains(nameof(SearchFilter.Bbox), Assert.Throws<SearchValidationException>(() =>
+            SearchValidation.Normalize(new SearchFilter { Bbox = "-73,40,-74,41" })).Errors.Keys);
+    }
+
+    [Fact]
+    public void A_map_area_drives_from_the_map_tables()
+    {
+        // Alone: the points in the area, nothing left to check.
+        var alone = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Bbox = "-74,40.7,-73.9,40.8" }), null, null);
+        Assert.Equal("SELECT COUNT(*) FROM (SELECT DISTINCT am.npi FROM provider_map am WHERE MBRContains(ST_GeomFromText(@box, 0), am.pt)) c", alone.CountSql);
+        Assert.True(alone.MayBeBroad);
+        Assert.Equal("POLYGON((-74 40.7, -73.9 40.7, -73.9 40.8, -74 40.8, -74 40.7))", alone.Parameters.Get<string>("box"));
+
+        // A specialty: its providers in the area's grid cells, each one's location then checked against the area.
+        var dentists = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Dentist", Bbox = "-74,40.7,-73.9,40.8" }), ["122300000X"], null);
+        Assert.Equal("FROM (SELECT DISTINCT s.npi FROM provider_map_specialty s WHERE s.taxonomy_code IN @taxonomyCodes AND s.cell IN @cells) c JOIN provider p ON p.npi = c.npi " +
+            "WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND " +
+            "EXISTS (SELECT 1 FROM provider_map am FORCE INDEX (PRIMARY) WHERE am.npi = l.npi AND am.addr_key = l.addr_key AND MBRContains(ST_GeomFromText(@box, 0), am.pt)))", dentists.From);
+        Assert.False(dentists.MayBeBroad);
+
+        // A credential: the same by its map cells.
+        var mds = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Credential = "MD", Bbox = "-74,40.7,-73.9,40.8" }), null, null, credential: "MD");
+        Assert.StartsWith("FROM (SELECT DISTINCT c.npi FROM provider_map_credential c WHERE c.credential = @credentialExact AND c.cell IN @cells) c", mds.From, StringComparison.Ordinal);
+
+        // With another location filter: both on the same location.
+        var state = new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "NY", Bbox = "-74,40.7,-73.9,40.8" }), null, null);
+        Assert.Contains("WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND l.state = @state AND EXISTS (SELECT 1 FROM provider_map am", state.From,
+            StringComparison.Ordinal);
+
+        // The map's own search ignores it (the area is the view).
+        var map = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Bbox = "-74,40.7,-73.9,40.8" }), null, null, areaSearch: true);
+        Assert.DoesNotContain("provider_map am", map.AreaSql("@box"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_classification_with_no_codes_matches_nothing_but_stays_valid_sql()
     {
         var query = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Nothing" }), [], null);

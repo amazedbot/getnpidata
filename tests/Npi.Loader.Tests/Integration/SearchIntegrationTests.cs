@@ -1007,6 +1007,16 @@ public sealed class SearchIntegrationTests : IDisposable
         var tooLarge = await Assert.ThrowsAsync<SearchValidationException>(() => search.SearchAreaAsync(new SearchFilter(), MapBounds.Parse("-100,30,-70,45")!, _ct));
         Assert.Contains("bbox", tooLarge.Errors.Keys);
 
+        // The same area as a list filter (owner, 2026-10-14): every match, not only the pins; each provider once, at a location inside it.
+        var listed = await search.SearchAsync(new SearchFilter { Bbox = "-74.1,40.5,-73.3,40.9" }, _ct);
+        Assert.Equal([A, B, D, E], listed.Items.Select(i => i.Npi).Order());
+        Assert.Equal(4, listed.TotalCount);
+        var listedChiros = await search.SearchAsync(new SearchFilter { Classification = "Chiropractor", Bbox = "-74.1,40.5,-73.3,40.9" }, _ct);
+        Assert.Equal([A, B], listedChiros.Items.Select(i => i.Npi).Order());
+        Assert.Equal([A], await search.SearchAllAsync(new SearchFilter { Bbox = "-73.43,40.67,-73.40,40.69" }, _ct).Select(i => i.Npi).ToListAsync(_ct));
+        Assert.Empty((await search.SearchAsync(new SearchFilter { State = "CA", Bbox = "-73.43,40.67,-73.40,40.69" }, _ct)).Items); // both must hold
+        Assert.Empty((await search.SearchAsync(new SearchFilter { Classification = "Chiropractor", Bbox = "-73.39,40.67,-73.30,40.69" }, _ct)).Items);
+
         // "View on map" opens on the area of the search's location filters.
         var maps = new MapService(db.ConnectionString);
         var county = await maps.GetStartAreaAsync(new SearchFilter { CountyFips = "36103" }, _ct);

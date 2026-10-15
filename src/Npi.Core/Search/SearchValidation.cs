@@ -132,6 +132,26 @@ public static partial class SearchValidation
             Error(nameof(SearchFilter.AddressType), "Practice building must be commercial, residential or unknown.");
         }
 
+        if (f.Bbox is not null)
+        {
+            // The map area of a list (owner, 2026-10-14): the same limits as the map, kept short in links.
+            var box = MapBounds.Parse(f.Bbox.Trim());
+            if (box is null)
+            {
+                Error(nameof(SearchFilter.Bbox), "The map area (bbox) must be four numbers: west,south,east,north in degrees.");
+            }
+            else if (box.Problem is not null)
+            {
+                Error(nameof(SearchFilter.Bbox), box.Problem.StartsWith("Zoom", StringComparison.Ordinal)
+                    ? $"The map area is too large: at most {MapBounds.MaxLatSpan}° of latitude by {MapBounds.MaxLonSpan}° of longitude (about 170 × 180 miles)."
+                    : box.Problem);
+            }
+            else
+            {
+                f = f with { Bbox = box.ToBboxString() };
+            }
+        }
+
         if (f.Quality is not null && RecordQuality.FilterValue(f.Quality) is null)
         {
             Error(nameof(SearchFilter.Quality), "Record quality must be notStale, current, check or stale.");

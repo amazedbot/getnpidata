@@ -126,7 +126,8 @@ addresses are not searched. Each result row shows the location that matched.
     located, so it sits at its ZIP code's center.
   - The table below the map (beside it on very wide screens) lists every provider at the pins in view, and
     updates as you pan. Sort it by distance from the map center, name, specialty, city or last update, either way.
-  - At most 1,000 providers per search, the closest to the center; zoom in or add filters for more. A view too large to
+  - At most 1,000 providers per search, the closest to the center. **Open as list** and **Download CSV** give every
+    match in the searched area, with the same filters (the list's "Map area" filter, `bbox` in the API). A view too large to
     search (more than about 170 miles across) says how large it is and how large an area can be searched, and the
     button becomes **Zoom in and search**, which zooms in on the middle of the view and searches there.
   - **Near me** centers the map on your location (the browser asks first; it stays in your browser) and searches

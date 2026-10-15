@@ -172,6 +172,15 @@ else
                     </select>
                     <span class="field-error">@Model.Error(nameof(SearchFilter.City))</span>
                 </div>
+                @if (f.Bbox is not null || Model.Errors.ContainsKey(nameof(SearchFilter.Bbox)))
+                {
+                    <div class="field wide">
+                        <input type="hidden" name="bbox" value="@(f.Bbox ?? Request.Query["bbox"].ToString())" />
+                        <p class="area-chip"><span class="chip">Map area <a href="@Model.WithoutAreaLink" aria-label="Remove the map area">×</a></span>
+                            <a href="@Model.MapLink">See it on the map</a></p>
+                        <span class="field-error">@Model.Error(nameof(SearchFilter.Bbox))</span>
+                    </div>
+                }
                 <div class="field narrow">
                     <label for="zip">ZIP</label>
                     <input id="zip" name="zip" value="@f.Zip5" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code" />
