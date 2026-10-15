@@ -46,7 +46,7 @@ public static class DirectoryEndpoints
     {
         var filter = Facilities(q, type, state, minRating, maxRating, status, sort);
         return filter.Validate() is { Count: > 0 } errors
-            ? Task.FromResult<IResult>(TypedResults.ValidationProblem(errors))
+            ? Task.FromResult(Invalid(http, "/facilities", errors))
             : CsvAsync(http, $"facilities_{DateTime.UtcNow:yyyyMMdd}.csv", (body, site) => FacilityCsv.WriteAsync(facilities.AllAsync(filter, ct), body, site, ct), ct);
     }
 
@@ -56,9 +56,15 @@ public static class DirectoryEndpoints
     {
         var filter = Groups(q, state, minClinicians, maxClinicians, sort);
         return filter.Validate() is { Count: > 0 } errors
-            ? Task.FromResult<IResult>(TypedResults.ValidationProblem(errors))
+            ? Task.FromResult(Invalid(http, "/groups", errors))
             : CsvAsync(http, $"medicare_groups_{DateTime.UtcNow:yyyyMMdd}.csv", (body, site) => GroupCsv.WriteAsync(organizations.AllGroupsAsync(filter, ct), body, site, ct), ct);
     }
+
+    // The API answers a bad filter with its problem; the site's CSV links go back to the page, which shows the error.
+    private static IResult Invalid(HttpContext http, string page, Dictionary<string, string[]> errors) =>
+        http.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+            ? TypedResults.ValidationProblem(errors)
+            : TypedResults.Redirect(page + http.Request.QueryString);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

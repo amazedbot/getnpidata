@@ -608,6 +608,87 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Facility_and_group_directories()
+    {
+        await using var db = await SeededAsync();
+        // Facilities: a hospital in POS and Care Compare, an FQHC (POS only, billing under D and the deactivated C), a closed hospital,
+        // and Care Compare listings without a POS row. Groups: 9000000001 (A, B, E; C is deactivated), 9000000003 (A, Care Compare
+        // only) and 9000000002 (only C: left out). D is the only organization NPI.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO cms_pos_facility (ccn, name, category, address, city, state, zip5, active, termination_code, termination_date) VALUES
+              ('330045', 'GOOD SAMARITAN HOSP', '01', '1000 MONTAUK HWY', 'WEST ISLIP', 'NY', '11795', 1, '00', NULL),
+              ('331850', 'BROOKLYN COMMUNITY HEALTH', '20', '5 ATLANTIC AVE', 'BROOKLYN', 'NY', '11201', 1, NULL, NULL),
+              ('330888', 'OLD NAME HOSPITAL', '01', '10 COURT ST', 'BROOKLYN', 'NY', '11201', 0, '01', '2020-01-01');
+            INSERT INTO cms_hospital (ccn, name, address, city, state, zip, hospital_type, emergency_services, overall_rating) VALUES
+              ('330045', 'GOOD SAMARITAN HOSPITAL', '1000 MONTAUK HWY', 'WEST ISLIP', 'NY', '11795', 'Acute Care Hospitals', 1, 3);
+            INSERT INTO cms_nursing_home (ccn, name, city, state, zip, certified_beds, overall_rating) VALUES ('335002', 'SHORE VIEW CARE', 'AMITYVILLE', 'NY', '11701', 120, 2);
+            INSERT INTO cms_home_health (ccn, name, city, state, zip, quality_rating) VALUES ('337001', 'HOME CARE OF LONG ISLAND', 'HAUPPAUGE', 'NY', '11788', 4.5);
+            INSERT INTO cms_hospice (ccn, name, city, state, zip, family_rating) VALUES ('331501', 'GOOD SHEPHERD HOSPICE', 'MEDFORD', 'NY', '11763', NULL);
+            INSERT INTO cms_facility_npi (ccn, npi, kind) VALUES ('330045', @D, 'hospital'), ('331850', @D, 'fqhc'), ('331850', @C, 'fqhc');
+
+            INSERT INTO medicare_enrollment (npi, enrollment_id, pac_id, provider_type, state, org_name) VALUES
+              (@D, 'O20200101000001', '9000000001', 'PART B SUPPLIER - CLINIC/GROUP PRACTICE', 'NY', 'SMITH JONES AND CO LLC'),
+              (@A, 'I20200101000001', '1111111111', 'CHIROPRACTIC', 'NY', NULL);
+            INSERT INTO medicare_reassignment (group_pac_id, group_enrollment_id, group_name, group_state, record_type, npi, specialty) VALUES
+              ('9000000001', 'O20200101000001', 'Smith Jones And Co Llc', 'NY', 'Reassignment', @A, 'Chiropractic'),
+              ('9000000001', 'O20200101000001', 'Smith Jones And Co Llc', 'NY', 'Reassignment', @B, 'Chiropractic'),
+              ('9000000001', 'O20200101000001', 'Smith Jones And Co Llc', 'NY', 'Reassignment', @C, 'Chiropractic'),
+              ('9000000002', 'O20200101000002', 'Tiny Group', 'NY', 'Reassignment', @C, 'Chiropractic');
+            INSERT INTO cc_group (npi, org_pac_id, group_name, members, accepts_assignment) VALUES
+              (@E, '9000000001', 'SMITH JONES & CO', 4, 1), (@A, '9000000003', 'ISLAND SPINE', 1, 0);
+            INSERT INTO cc_mips (npi, program_year, source, org_pac_id, facility_name, final_score) VALUES
+              (@A, 2024, 'group', '9000000001', 'SMITH JONES', 88.5), (@B, 2024, 'group', '9000000001', 'SMITH JONES', 88.5),
+              (@A, 2024, 'individual', NULL, NULL, 70);
+            INSERT INTO provider_quality (npi, label, reasons, activity) VALUES (@D, 2, 0, 0);
+            INSERT INTO medicare_utilization (npi, data_year, payment_amount, beneficiaries) VALUES (@D, 2024, 12345.5, 40), (@A, 2024, 999, 10);
+            """, new { A, B, C, D, E });
+
+        using var facilities = new FacilityDirectory(db.ConnectionString);
+        var active = await facilities.SearchAsync(new FacilityFilter(), _ct);
+        Assert.Equal(["331850", "330045", "331501", "337001", "335002"], active.Items.Select(f => f.Ccn));
+        var fqhc = active.Items[0];
+        Assert.Equal((FacilityTypes.Fqhc, 1, 40.694), (fqhc.Type, fqhc.BillingNpis, fqhc.Latitude));        // C is deactivated
+        var hospital = active.Items[1];
+        Assert.Equal(("GOOD SAMARITAN HOSPITAL", "Acute care hospital", 3.0, (double?)null), (hospital.Name, hospital.Kind, hospital.Rating, hospital.Latitude));
+        Assert.Equal((120, 2.0), (active.Items[4].Beds, active.Items[4].Rating));
+        Assert.Equal(4.5, active.Items[3].Rating);
+        var closed = Assert.Single((await facilities.SearchAsync(new FacilityFilter { Status = "closed" }, _ct)).Items);
+        Assert.Equal(("330888", new DateOnly(2020, 1, 1), "Closed or merged"), (closed.Ccn, closed.TerminationDate, closed.TerminationReason));
+        var overview = await facilities.GetOverviewAsync(_ct);
+        Assert.Equal((5, 1), (overview.Active, overview.Closed));
+        Assert.Equal([0, 1, 0, 0, 0], overview.Ratings.Single(r => r.Type == FacilityTypes.NursingHome).ByStars);
+
+        using var organizations = new OrganizationDirectory(db.ConnectionString);
+        var groups = await organizations.SearchGroupsAsync(new GroupFilter(), _ct);
+        Assert.Equal([new GroupSummary("9000000001", "SMITH JONES & CO", "NY", 3, 1, true, 88.5, 2024), new GroupSummary("9000000003", "ISLAND SPINE", null, 1, 0, false, null, null)],
+            groups.Items);
+        Assert.Equal(["9000000001", "9000000003"], (await organizations.SearchGroupsAsync(new GroupFilter { Q = A }, _ct)).Items.Select(g => g.PacId));
+        Assert.Equal(["9000000003"], (await organizations.SearchGroupsAsync(new GroupFilter { Q = "spine" }, _ct)).Items.Select(g => g.PacId));
+        var orgs = await organizations.GetOverviewAsync(_ct);
+        Assert.Equal((2, 1, 1), (orgs.Groups, orgs.GroupsWithMips, orgs.Organizations));
+        Assert.Equal(("Dentists", 1, 1), orgs.Categories.Select(c => (c.Category, c.Organizations, c.Check)).Single());
+        Assert.Equal(["NY"], orgs.States);
+        Assert.Equal((1, 12345.5, 2024), (orgs.BillingOrganizations, orgs.BillingTotal, orgs.BillingYear));
+        Assert.Equal((D, "SMITH, JONES & CO, LLC", "BROOKLYN"), orgs.TopBilling.Select(b => (b.Npi, b.Name, b.City)).Single());
+        Assert.Empty(await organizations.GetCategoriesAsync("CA", _ct));
+
+        // Facility pages for facilities only the Provider of Services file lists.
+        var service = new OrganizationService(db.ConnectionString);
+        var page = (await service.GetFacilityAsync("331850", 1, _ct))!;
+        Assert.True(page.CertificationOnly);
+        Assert.Equal(("fqhc", "BROOKLYN COMMUNITY HEALTH", "5 ATLANTIC AVE", "11201", 40.694), (page.Facility.Kind, page.Facility.Name, page.Address, page.Zip, page.Latitude));
+        Assert.Equal([D], page.BillingNpis.Select(n => n.Npi));
+        Assert.Equal(new FacilityCertification(true, null, null), page.Certification);
+        var gone = (await service.GetFacilityAsync("330888", 1, _ct))!;
+        Assert.Equal(("hospital", "Short-term hospital"), (gone.Facility.Kind, gone.Facility.Type));
+        Assert.Equal(new FacilityCertification(false, new DateOnly(2020, 1, 1), "Closed or merged"), gone.Certification);
+        var listed = (await service.GetFacilityAsync("330045", 1, _ct))!;
+        Assert.False(listed.CertificationOnly);
+        Assert.Equal(new FacilityCertification(true, null, null), listed.Certification);
+    }
+
+    [Fact]
     public async Task Area_counts_and_pages()
     {
         await using var db = await SeededAsync();

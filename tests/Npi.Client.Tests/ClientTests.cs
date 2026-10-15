@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.DependencyInjection;
 using Npi.Web.Search;
 using Server = Npi.Core.Search;
 
@@ -149,6 +150,10 @@ public class ClientTests
     [InlineData(typeof(Server.MedicareHistory), typeof(MedicareHistory))]
     [InlineData(typeof(Server.MedicareHistoryYear), typeof(MedicareHistoryYear))]
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
+    [InlineData(typeof(Server.FacilityPage), typeof(FacilityPage))]
+    [InlineData(typeof(Server.FacilitySummary), typeof(FacilitySummary))]
+    [InlineData(typeof(Server.GroupPage), typeof(GroupPage))]
+    [InlineData(typeof(Server.GroupSummary), typeof(GroupSummary))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
         // The names as JSON writes them: [JsonIgnore] properties aren't sent, [JsonPropertyName] renames.
@@ -176,6 +181,74 @@ public class ClientTests
         Assert.True(Assert.Single(client.Taxonomies).IsPrimary);
         Assert.Equal("20814-0001", Assert.Single(client.Locations).Zip);
         Assert.Equal(["OTHER NAME"], client.OtherNames);
+    }
+
+    [Fact]
+    public void Facility_and_group_searches_send_every_parameter_the_server_takes()
+    {
+        // The server binds the list's parameters as handler arguments; the client must send each of them by the same name.
+        static string[] ServerParameters(string method) =>
+            [.. typeof(Npi.Web.Api.DirectoryEndpoints).GetMethod(method)!.GetParameters()
+                .Where(p => p.ParameterType == typeof(string) || p.ParameterType == typeof(int?)).Select(p => p.Name!)];
+
+        static string[] Keys(string query) => [.. QueryHelpers.ParseQuery(query).Keys];
+
+        var facilities = new FacilitySearch
+        {
+            Q = "good samaritan", Type = "hospital", State = "NY", MinRating = 3, MaxRating = 5, Status = "all", Sort = "-rating", Page = 2, PageSize = 100,
+        };
+        Assert.Equal(ServerParameters(nameof(Npi.Web.Api.DirectoryEndpoints.SearchFacilitiesAsync)), Keys(facilities.ToQueryString()));
+        Assert.Equal("?q=good%20samaritan&type=hospital", new FacilitySearch { Q = " good samaritan ", Type = "hospital", State = " " }.ToQueryString());
+
+        var groups = new GroupSearch { Q = "1234567893", State = "NY", MinClinicians = 10, MaxClinicians = 50, Sort = "name", Page = 2, PageSize = 10 };
+        Assert.Equal(ServerParameters(nameof(Npi.Web.Api.DirectoryEndpoints.SearchGroupsAsync)), Keys(groups.ToQueryString()));
+        Assert.Equal("", new GroupSearch().ToQueryString());
+    }
+
+    private sealed class DirectoryFactory : WebApplicationFactory<Program>
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            builder.UseSetting("ConnectionStrings:RemoteMySql", "Server=127.0.0.1;Port=1;Database=none;User ID=none;Password=none;Connection Timeout=1");
+            builder.ConfigureServices(s =>
+            {
+                s.AddSingleton(new Npi.Core.Search.FacilityDirectory(Npi.Core.Search.FacilityDirectory.Merge(
+                    [new("331850", "HEALTHY COMMUNITY CENTER", "5 MAIN ST", "BROOKLYN", "NY", "11201", true, null, null),
+                     new("330888", "OLD NAME HOSPITAL", "10 COURT ST", "BROOKLYN", "NY", "11201", false, "01", new DateOnly(2020, 1, 1))],
+                    [], [], new Dictionary<string, (double Lat, double Lon)> { ["11201"] = (40.69, -73.99) })));
+                s.AddSingleton(new Npi.Core.Search.OrganizationDirectory(
+                    [new("1000000001", "BIG HEALTH GROUP", "NY", 1200, 3, true, 91.25, 2024)], [], [], null,
+                    new Dictionary<string, IReadOnlyList<string>>()));
+            });
+        }
+    }
+
+    [Fact]
+    public async Task Facilities_and_groups_read_into_client_models()
+    {
+        await using var factory = new DirectoryFactory();
+        using var npi = new NpiClient(factory.CreateClient());
+
+        var closed = await npi.SearchFacilitiesAsync(new FacilitySearch { Status = "closed" }, Ct);
+        var hospital = Assert.Single(closed.Items);
+        Assert.Equal(("330888", "hospital", "Short-term hospital", false, new DateTime(2020, 1, 1), "Closed or merged", 40.69),
+            (hospital.Ccn, hospital.Type, hospital.Kind, hospital.Active, hospital.TerminationDate, hospital.TerminationReason, hospital.Latitude));
+
+        var groups = await npi.SearchGroupsAsync(new GroupSearch { MinClinicians = 100 }, Ct);
+        Assert.Equal((1, "1000000001", 91.25, true), (groups.TotalCount, groups.Items[0].PacId, groups.Items[0].MipsScore, groups.Items[0].AcceptsMedicare));
+
+        using var csv = new MemoryStream();
+        await npi.DownloadFacilitiesCsvAsync(new FacilitySearch { Type = "fqhc" }, csv, Ct);
+        Assert.Contains("331850,HEALTHY COMMUNITY CENTER", System.Text.Encoding.UTF8.GetString(csv.ToArray()), StringComparison.Ordinal);
+        using var groupCsv = new MemoryStream();
+        await npi.DownloadGroupsCsvAsync(new GroupSearch(), groupCsv, Ct);
+        Assert.Contains("1000000001,BIG HEALTH GROUP", System.Text.Encoding.UTF8.GetString(groupCsv.ToArray()), StringComparison.Ordinal);
+
+        var bad = await Assert.ThrowsAsync<NpiApiException>(() => npi.SearchFacilitiesAsync(new FacilitySearch { Type = "spa", MinRating = 7 }, Ct));
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        Assert.Contains("type", bad.Errors.Keys);
+        Assert.Contains("minRating", bad.Errors.Keys);
     }
 
     [Fact]

@@ -408,11 +408,14 @@ public sealed class FacilityDirectory : IDisposable
         {
             var q = filter.Q?.Trim() ?? "";
             IEnumerable<Entry> rows = _entries;
+            var byCcn = false;
             if (q.Length > 0)
             {
                 if (_byCcn.TryGetValue(q, out var exact))
                 {
+                    // A CMS number finds its facility, closed or not.
                     rows = [exact];
+                    byCcn = true;
                 }
                 else if (InputFormats.IsZip5(q))
                 {
@@ -431,7 +434,7 @@ public sealed class FacilityDirectory : IDisposable
             return rows.Where(e =>
                 (type is null || e.Item.Type == type)
                 && (state is null || e.Item.State == state)
-                && (status switch { FacilityFilter.StatusClosed => !e.Item.Active, FacilityFilter.StatusAll => true, _ => e.Item.Active })
+                && (byCcn || status switch { FacilityFilter.StatusClosed => !e.Item.Active, FacilityFilter.StatusAll => true, _ => e.Item.Active })
                 && (filter.MinRating is not { } min || e.Item.Rating >= min)
                 && (filter.MaxRating is not { } max || e.Item.Rating < max + 1));
         }

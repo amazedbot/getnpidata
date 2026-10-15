@@ -343,7 +343,7 @@ public sealed class OrganizationDirectory : IDisposable
 
     private sealed record NameRow(string PacId, string? Name, string? State, long? Accepts);
 
-    private sealed record MipsRow(string PacId, short? Year, double? Score);
+    private sealed record MipsRow(string PacId, long? Year, double? Score);
 
     private sealed record OrganizationRow(string? Code, string? State, long Label, long Organizations);
 
@@ -390,7 +390,7 @@ public sealed class OrganizationDirectory : IDisposable
             .ToDictionary(r => r.PacId, r => (int)r.Clinicians, StringComparer.Ordinal);
         var mips = (await connection.QueryAsync<MipsRow>(new CommandDefinition(
                 """
-                SELECT org_pac_id AS PacId, MAX(program_year) AS Year, MAX(final_score) AS Score
+                SELECT org_pac_id AS PacId, CAST(MAX(program_year) AS SIGNED) AS Year, MAX(final_score) AS Score
                 FROM cc_mips WHERE source = 'group' AND org_pac_id IS NOT NULL GROUP BY org_pac_id
                 """, commandTimeout: Timeout, cancellationToken: ct)))
             .ToDictionary(r => r.PacId, StringComparer.Ordinal);
@@ -402,7 +402,7 @@ public sealed class OrganizationDirectory : IDisposable
                 var m = mips.GetValueOrDefault(c.PacId);
                 return new GroupSummary(c.PacId, cc?.Name ?? re?.Name ?? "Group " + c.PacId, re?.State ?? cc?.State, (int)c.Clinicians,
                     organizations.GetValueOrDefault(c.PacId), cc?.Accepts is { } a ? a != 0 : null, m?.Score is { } score ? Math.Round(score, 2) : null,
-                    m?.Score is null ? null : m.Year);
+                    m?.Score is null ? null : (int?)m.Year);
             })
             .ToList();
         return new GroupSnapshot(rows);
