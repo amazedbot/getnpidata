@@ -22,7 +22,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 
 1. **Speed items 6, 7, 13:**
    - ~~6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull~~ dropped (owner, 2026-10-15): only Connecticut publishes real deltas (about 32,000 of 1.88M rows a week); TX, CO, DE and NY replace every row at each update and WA and IL re-touch every row daily, so it would save 1–2 min a week;
-   - 7: independent sources, states and the Vermont feed in parallel (2–4 at a time);
+   - ~~7: independent sources, states and the Vermont feed in parallel (2–4 at a time)~~ (2026-10-15; timings in the combined run after the batch);
    - ~~13: build the map-by-credential table once; run credentials, address types and area counts side by side~~ (2026-10-15; timings in the combined run after the batch).
 2. **Phase 3, the rest** (data quality signals and change history):
    - **New data, approved 2026-10-13 (not built yet):**
