@@ -741,7 +741,8 @@ public sealed class DatasetIntegrationTests : IDisposable
 
         var ownership = new OwnershipService(db.ConnectionString);
         var hospital = (await ownership.GetFacilityOwnershipAsync("330045", _ct))!;
-        Assert.Equal(("O20020101000001", "GOOD SAMARITAN HOSPITAL", "1234567891", new DateOnly(2026, 8, 31)),
+        // The legal name is the enrollment file's (hospital_enrollments_sample.csv, Windows-1252 with an en dash).
+        Assert.Equal(("O20020101000001", "GOOD SAMARITAN HOSPITAL – WEST ISLIP", "1234567891", new DateOnly(2026, 8, 31)),
             (hospital.EnrollmentId, hospital.LegalName, hospital.AssociateId, hospital.OwnersAsOf));
         // Owners first, the largest stake first; then control; officers last.
         // A person: name, title and role only, no associate ID or place (no page of their own).

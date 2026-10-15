@@ -245,6 +245,19 @@ CREATE TABLE `cc_mips` (
   KEY `ix_cc_mips_npi` (`npi`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `cms_facility_enrollment` (
+  `enrollment_id` varchar(20) NOT NULL,
+  `kind` varchar(20) NOT NULL,
+  `ccn` varchar(10) DEFAULT NULL,
+  `npi` char(10) DEFAULT NULL,
+  `associate_id` char(10) DEFAULT NULL,
+  `org_name` varchar(200) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  PRIMARY KEY (`enrollment_id`),
+  KEY `ix_cms_facility_enrollment_ccn` (`ccn`),
+  KEY `ix_cms_facility_enrollment_associate` (`associate_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `cms_facility_npi` (
   `ccn` varchar(10) NOT NULL,
   `npi` char(10) NOT NULL,
@@ -484,6 +497,10 @@ CREATE TABLE `directory_facility` (
   `billing_npis` int NOT NULL,
   `lat` double DEFAULT NULL,
   `lon` double DEFAULT NULL,
+  `ownership_changed` date DEFAULT NULL,
+  `penalties` int NOT NULL DEFAULT '0',
+  `fines` double DEFAULT NULL,
+  `last_penalty` date DEFAULT NULL,
   PRIMARY KEY (`ccn`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -630,6 +647,81 @@ CREATE TABLE `extractlog` (
   `extract_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `rows_loaded` bigint DEFAULT NULL,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `facility_owner` (
+  `enrollment_id` varchar(20) NOT NULL,
+  `owner_id` char(10) NOT NULL,
+  `role_code` varchar(4) NOT NULL,
+  `kind` varchar(20) NOT NULL,
+  `facility_associate_id` char(10) DEFAULT NULL,
+  `facility_name` varchar(200) DEFAULT NULL,
+  `owner_type` char(1) NOT NULL,
+  `role_text` varchar(100) DEFAULT NULL,
+  `association_date` date DEFAULT NULL,
+  `name` varchar(200) DEFAULT NULL,
+  `title` varchar(100) DEFAULT NULL,
+  `dba_name` varchar(200) DEFAULT NULL,
+  `city` varchar(60) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `percentage` double DEFAULT NULL,
+  `owner_kinds` varchar(400) DEFAULT NULL,
+  `period_end` date DEFAULT NULL,
+  PRIMARY KEY (`enrollment_id`,`owner_id`,`role_code`),
+  KEY `ix_facility_owner_owner` (`owner_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `facility_owner_entity` (
+  `owner_id` char(10) NOT NULL,
+  `owner_type` char(1) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `dba_name` varchar(200) DEFAULT NULL,
+  `city` varchar(60) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `owner_kinds` varchar(400) DEFAULT NULL,
+  `facilities` int NOT NULL,
+  `owned` int NOT NULL,
+  PRIMARY KEY (`owner_id`),
+  KEY `ix_facility_owner_entity_size` (`owned`,`facilities`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `facility_ownership_change` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `kind` varchar(20) NOT NULL,
+  `chow_type_code` varchar(4) DEFAULT NULL,
+  `chow_type` varchar(60) DEFAULT NULL,
+  `effective_date` date DEFAULT NULL,
+  `buyer_enrollment_id` varchar(20) DEFAULT NULL,
+  `buyer_ccn` varchar(10) DEFAULT NULL,
+  `buyer_npi` char(10) DEFAULT NULL,
+  `buyer_associate_id` char(10) DEFAULT NULL,
+  `buyer_name` varchar(200) DEFAULT NULL,
+  `buyer_dba_name` varchar(200) DEFAULT NULL,
+  `seller_enrollment_id` varchar(20) DEFAULT NULL,
+  `seller_ccn` varchar(10) DEFAULT NULL,
+  `seller_npi` char(10) DEFAULT NULL,
+  `seller_associate_id` char(10) DEFAULT NULL,
+  `seller_name` varchar(200) DEFAULT NULL,
+  `seller_dba_name` varchar(200) DEFAULT NULL,
+  `period_end` date DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_facility_ownership_change_buyer_ccn` (`buyer_ccn`),
+  KEY `ix_facility_ownership_change_seller_ccn` (`seller_ccn`),
+  KEY `ix_facility_ownership_change_buyer` (`buyer_associate_id`),
+  KEY `ix_facility_ownership_change_seller` (`seller_associate_id`),
+  KEY `ix_facility_ownership_change_seller_enrollment` (`seller_enrollment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `facility_ownership_change_owner` (
+  `enrollment_id` varchar(20) NOT NULL,
+  `owner_id` char(10) NOT NULL,
+  `role_code` varchar(4) NOT NULL,
+  `owner_type` char(1) NOT NULL,
+  `name` varchar(200) DEFAULT NULL,
+  `role_text` varchar(100) DEFAULT NULL,
+  `percentage` double DEFAULT NULL,
+  PRIMARY KEY (`enrollment_id`,`owner_id`,`role_code`),
+  KEY `ix_facility_ownership_change_owner_owner` (`owner_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `fda_application` (
@@ -941,6 +1033,62 @@ CREATE TABLE `nadac_raw` (
   `otc` varchar(2) DEFAULT NULL,
   `classification` varchar(10) DEFAULT NULL,
   `as_of` date DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `nh_citation` (
+  `ccn` varchar(10) NOT NULL,
+  `kind` varchar(6) NOT NULL,
+  `survey_date` date NOT NULL,
+  `prefix` varchar(2) NOT NULL,
+  `tag` varchar(6) NOT NULL,
+  `cycle` int NOT NULL,
+  `scope_severity` char(1) NOT NULL,
+  `corrected` varchar(80) DEFAULT NULL,
+  `correction_date` date DEFAULT NULL,
+  `complaint` tinyint NOT NULL,
+  `infection_control` tinyint NOT NULL,
+  PRIMARY KEY (`ccn`,`kind`,`survey_date`,`prefix`,`tag`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `nh_deficiency_count` (
+  `ccn` varchar(10) NOT NULL,
+  `kind` varchar(6) NOT NULL,
+  `cycle` int NOT NULL,
+  `scope_severity` char(1) NOT NULL,
+  `deficiencies` int NOT NULL,
+  `complaint` int NOT NULL,
+  PRIMARY KEY (`ccn`,`kind`,`cycle`,`scope_severity`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `nh_deficiency_tag` (
+  `prefix` varchar(2) NOT NULL,
+  `tag` varchar(6) NOT NULL,
+  `category` varchar(120) DEFAULT NULL,
+  `description` varchar(600) DEFAULT NULL,
+  PRIMARY KEY (`prefix`,`tag`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `nh_penalty` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `ccn` varchar(10) NOT NULL,
+  `penalty_date` date DEFAULT NULL,
+  `penalty_type` varchar(40) DEFAULT NULL,
+  `fine_amount` double DEFAULT NULL,
+  `denial_start` date DEFAULT NULL,
+  `denial_days` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_nh_penalty_ccn` (`ccn`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `nh_survey` (
+  `ccn` varchar(10) NOT NULL,
+  `kind` varchar(6) NOT NULL,
+  `survey_date` date NOT NULL,
+  `cycle` int NOT NULL,
+  `deficiencies` int NOT NULL,
+  `complaint` int NOT NULL,
+  `most_severe` char(1) DEFAULT NULL,
+  PRIMARY KEY (`ccn`,`kind`,`survey_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `npi_history` (
