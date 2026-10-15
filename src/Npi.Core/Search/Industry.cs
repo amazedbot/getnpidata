@@ -149,7 +149,7 @@ public static class IndustryCsv
     private static string Money(double value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
     public static Task<long> WriteCompaniesAsync(IAsyncEnumerable<CompanyExportRow> rows, Stream output, string siteBase, CancellationToken ct) =>
-        WriteAsync(rows, output, CompanyHeader, c =>
+        WriteRowsAsync(rows, output, CompanyHeader, c =>
         [
             c.Id, c.Name, c.OtherNames?.Replace(" | ", "; ", StringComparison.Ordinal), c.State, c.Country, Money(c.General), Money(c.Research),
             Money(c.OwnershipInvested), Money(c.OwnershipValue), c.Providers?.ToString(CultureInfo.InvariantCulture),
@@ -158,14 +158,15 @@ public static class IndustryCsv
         ], ct);
 
     public static Task<long> WriteProductsAsync(IAsyncEnumerable<ProductExportRow> rows, Stream output, string siteBase, CancellationToken ct) =>
-        WriteAsync(rows, output, ProductHeader, p =>
+        WriteRowsAsync(rows, output, ProductHeader, p =>
         [
             p.Name, p.Kind, p.Category, p.Ndc, p.DeviceId, p.Year.ToString(CultureInfo.InvariantCulture), Money(p.Amount),
             p.Records.ToString(CultureInfo.InvariantCulture), p.Companies.ToString(CultureInfo.InvariantCulture), p.Providers.ToString(CultureInfo.InvariantCulture),
             $"{siteBase}/product/{Uri.EscapeDataString(p.Slug)}",
         ], ct);
 
-    private static async Task<long> WriteAsync<T>(IAsyncEnumerable<T> rows, Stream output, string[] header, Func<T, string?[]> values, CancellationToken ct)
+    /// <summary>Rows as CSV with a header, UTF-8 with BOM; the number of rows written.</summary>
+    public static async Task<long> WriteRowsAsync<T>(IAsyncEnumerable<T> rows, Stream output, string[] header, Func<T, string?[]> values, CancellationToken ct)
     {
         await using var writer = new StreamWriter(output, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), 1 << 16, leaveOpen: true);
         await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);

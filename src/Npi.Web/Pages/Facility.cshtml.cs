@@ -39,14 +39,15 @@ public class FacilityModel(OrganizationService organizations, IOptions<MapOption
 
     public string Name => CityCatalog.TitleCase(Facility.Name);
 
-    /// <summary>"Acute care hospital", "Nursing home", "Home health agency", "Hospice".</summary>
+    /// <summary>"Acute care hospital", "Nursing home", "Home health agency", "Hospice", "Rural health clinic", "Dialysis facility" ….</summary>
     public string KindName => Facility.Kind switch
     {
-        "hospital" => Facility.Type is { } type ? Singular(type) : "Hospital",
+        "hospital" => Facility.Type is { } type ? (Profile.CertificationOnly ? type : Singular(type)) : "Hospital",
         "nursing_home" => "Nursing home",
         "home_health" => "Home health agency",
         "hospice" => "Hospice",
-        _ => "Facility",
+        // Only in the Provider of Services file: the kind its CMS number stands for, else its type.
+        _ => Facility.Type ?? FacilityTypes.Get(Facility.Kind).Singular,
     };
 
     /// <summary>"Acute care hospital in West Islip, NY with an emergency department; 812 clinicians list an affiliation with it."</summary>
@@ -74,6 +75,11 @@ public class FacilityModel(OrganizationService organizations, IOptions<MapOption
             if (clinicians > 0)
             {
                 text += clinicians == 1 ? "; 1 clinician lists an affiliation with it" : $"; {clinicians.ToString("N0", CultureInfo.InvariantCulture)} clinicians list an affiliation with it";
+            }
+
+            if (Profile.Certification is { Active: false } ended)
+            {
+                text += ". Its Medicare certification ended" + (ended.TerminationDate is { } d ? " on " + d.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) : "");
             }
 
             return text + ".";

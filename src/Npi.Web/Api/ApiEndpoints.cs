@@ -106,6 +106,28 @@ public static class ApiEndpoints
             .WithDescription("Every row of /products/{slug}/prescribers, largest payments first, streamed. UTF-8 with BOM.")
             .Produces(StatusCodes.Status200OK, contentType: "text/csv");
 
+        api.MapGet("/facilities", DirectoryEndpoints.SearchFacilitiesAsync)
+            .WithName("SearchFacilities").WithTags("Facilities")
+            .WithSummary("Medicare-certified facilities")
+            .WithDescription($"Hospitals, nursing homes, home health agencies, hospices, FQHCs, rural health clinics, dialysis facilities, surgery centers and other facilities certified by Medicare (CMS Provider of Services file and Care Compare), by CCN. q = a CCN, a ZIP, or words of the name or city; type = {string.Join(" | ", FacilityTypes.All.Select(t => t.Code))}; state = a two-letter code; minRating / maxRating = 1–5 stars (the type's CMS rating; halves count down); status = {string.Join(" | ", FacilityFilter.Statuses)} (default active); sort = {string.Join(" | ", FacilityFilter.Sorts)}, \"-\" first for descending (default name); pageSize 1–{FacilityFilter.MaxPageSize} (default {FacilityFilter.DefaultPageSize}). Latitude and longitude are the centre of the facility's ZIP code.");
+
+        api.MapGet("/facilities.csv", DirectoryEndpoints.FacilitiesCsvAsync)
+            .WithName("ExportFacilitiesCsv").WithTags("Facilities")
+            .WithSummary("Matching facilities, as CSV")
+            .WithDescription("Same filters as /facilities (paging ignored), every row with a link to its page. UTF-8 with BOM.")
+            .Produces(StatusCodes.Status200OK, contentType: "text/csv").ProducesValidationProblem();
+
+        api.MapGet("/groups", DirectoryEndpoints.SearchGroupsAsync)
+            .WithName("SearchGroups").WithTags("Groups")
+            .WithSummary("Medicare group practices")
+            .WithDescription($"Medicare groups by PAC ID with their active clinicians (reassigned to the group in Medicare enrollment or listed with it in Care Compare), the organization NPIs enrolled under them and their group MIPS score. q = a PAC ID, an NPI (the groups it is enrolled as or bills through) or words of the name; state = a two-letter code; minClinicians / maxClinicians; sort = {string.Join(" | ", GroupFilter.Sorts)}, \"-\" first for descending (default {GroupFilter.DefaultSort}); pageSize 1–{GroupFilter.MaxPageSize} (default {GroupFilter.DefaultPageSize}).");
+
+        api.MapGet("/groups.csv", DirectoryEndpoints.GroupsCsvAsync)
+            .WithName("ExportGroupsCsv").WithTags("Groups")
+            .WithSummary("Matching Medicare groups, as CSV")
+            .WithDescription("Same filters as /groups (paging ignored), every row with a link to its page. UTF-8 with BOM.")
+            .Produces(StatusCodes.Status200OK, contentType: "text/csv").ProducesValidationProblem();
+
         api.MapGet("/taxonomy/categories", () => TypedResults.Ok(TaxonomyCatalog.GetCategories()))
             .WithName("ListCategories").WithTags("Lookups").WithSummary("Plain specialty categories")
             .WithDescription("The site's plain specialty categories (\"Doctors (MD, DO)\", \"Dentists\" …), in display order. Each groups NUCC taxonomy codes; pass one as the category search parameter.")

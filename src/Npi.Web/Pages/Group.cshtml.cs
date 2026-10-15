@@ -9,9 +9,12 @@ namespace Npi.Web.Pages;
 /// /group/{pacId}: a Medicare group practice (docs/PRODUCT_PLAN.md step 1.5): who it is, the organization NPIs enrolled under it,
 /// and its clinicians by specialty, with a list and an export.
 /// </summary>
-public class GroupModel(OrganizationService organizations) : PageModel
+public class GroupModel(OrganizationService organizations, OrganizationDirectory directory) : PageModel
 {
     public GroupProfile Group { get; private set; } = null!;
+
+    /// <summary>The group in the Groups &amp; organizations list (its group MIPS score); null while that list is being built.</summary>
+    public GroupSummary? Listing { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(string pacId, [FromQuery] int page, CancellationToken ct)
     {
@@ -21,6 +24,7 @@ public class GroupModel(OrganizationService organizations) : PageModel
         }
 
         Group = group;
+        Listing = directory.PeekGroup(group.PacId);
         return Page();
     }
 

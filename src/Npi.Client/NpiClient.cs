@@ -225,6 +225,24 @@ public sealed class NpiClient : IDisposable
         return await ReadJsonAsync<ProductPrescriberPage>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>One page of Medicare-certified facilities (hospitals, nursing homes, clinics …) matching <paramref name="search"/>.</summary>
+    /// <exception cref="NpiApiException">Invalid filters (see <see cref="NpiApiException.Errors"/>), rate limit, or another API error.</exception>
+    public Task<FacilityPage> SearchFacilitiesAsync(FacilitySearch search, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<FacilityPage>("api/v1/facilities" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), cancellationToken);
+
+    /// <summary>Streams every facility matching <paramref name="search"/> as CSV into <paramref name="destination"/> (paging ignored).</summary>
+    public Task DownloadFacilitiesCsvAsync(FacilitySearch search, Stream destination, CancellationToken cancellationToken = default) =>
+        DownloadAsync("api/v1/facilities.csv" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), destination, cancellationToken);
+
+    /// <summary>One page of Medicare group practices matching <paramref name="search"/>, largest first unless sorted otherwise.</summary>
+    /// <exception cref="NpiApiException">Invalid filters (see <see cref="NpiApiException.Errors"/>), rate limit, or another API error.</exception>
+    public Task<GroupPage> SearchGroupsAsync(GroupSearch search, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<GroupPage>("api/v1/groups" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), cancellationToken);
+
+    /// <summary>Streams every group matching <paramref name="search"/> as CSV into <paramref name="destination"/> (paging ignored).</summary>
+    public Task DownloadGroupsCsvAsync(GroupSearch search, Stream destination, CancellationToken cancellationToken = default) =>
+        DownloadAsync("api/v1/groups.csv" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), destination, cancellationToken);
+
     /// <summary>States and territories.</summary>
     public Task<IReadOnlyList<StateInfo>> GetStatesAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<StateInfo>>("api/v1/states", cancellationToken);
@@ -265,6 +283,19 @@ public sealed class NpiClient : IDisposable
         {
             _http.Dispose();
         }
+    }
+
+    private async Task DownloadAsync(string path, Stream destination, CancellationToken cancellationToken)
+    {
+        if (destination is null)
+        {
+            throw new ArgumentNullException(nameof(destination));
+        }
+
+        using var response = await SendAsync(path, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response).ConfigureAwait(false);
+        using var body = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        await body.CopyToAsync(destination, 81920, cancellationToken).ConfigureAwait(false);
     }
 
     private static string Query(ProviderSearch search) =>

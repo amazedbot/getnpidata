@@ -27,7 +27,23 @@ public sealed record GroupProfile(string PacId, string Name, string? State, bool
 
 /// <summary>A Medicare-certified facility, by its CCN: its ratings, the NPIs it bills under and the clinicians affiliated with it.</summary>
 public sealed record FacilityProfile(CertifiedFacility Facility, string? Address, string? Zip, double? Latitude, double? Longitude,
-    IReadOnlyList<OrganizationNpi> BillingNpis, ClinicianList Clinicians);
+    IReadOnlyList<OrganizationNpi> BillingNpis, ClinicianList Clinicians)
+{
+    /// <summary>Its certification in CMS's Provider of Services file; null when the file doesn't list the CCN.</summary>
+    public FacilityCertification? Certification { get; init; }
+
+    /// <summary>
+    /// True for a facility only the Provider of Services file lists (an FQHC, rural health clinic, dialysis facility, surgery center,
+    /// a closed facility …): no Care Compare ratings, ownership or phone.
+    /// </summary>
+    public bool CertificationOnly { get; init; }
+}
+
+/// <summary>
+/// A facility's certification in CMS's Provider of Services file (docs/PRODUCT_PLAN.md step 3.6): active, or ended on
+/// <see cref="TerminationDate"/> for <see cref="TerminationReason"/>.
+/// </summary>
+public sealed record FacilityCertification(bool Active, DateOnly? TerminationDate, string? TerminationReason);
 
 /// <summary>A Medicare group an organization NPI is enrolled as, with its clinician count.</summary>
 public sealed record OrganizationGroup(string PacId, string Name, int Clinicians);
@@ -50,13 +66,16 @@ public sealed class OrganizationService(string connectionString)
 
     private sealed record CodeCount(string? Code, long Clinicians);
 
+    private sealed record PosRow(string? Name, string? Address, string? City, string? State, string? Zip5, long Active, string? TerminationCode,
+        DateTime? TerminationDate);
+
     private sealed record NpiRow(string Npi, sbyte EntityType, string? LastName, string? FirstName, string? MiddleName, string? NameSuffix,
         string? OrgName, string? PrimaryTaxonomyCode, string? City, string? State);
 
     public static bool IsPacId(string? id) => id is { Length: 10 } && id.All(char.IsAsciiDigit);
 
-    /// <summary>A CCN: six letters or digits (hospitals, nursing homes, home health, hospices).</summary>
-    public static bool IsCcn(string? id) => id is { Length: 6 } && id.All(char.IsAsciiLetterOrDigit);
+    /// <summary>A CCN: six letters or digits (hospitals, nursing homes, home health, hospices …), or ten (surgery centers).</summary>
+    public static bool IsCcn(string? id) => id is { Length: 6 or 10 } && id.All(char.IsAsciiLetterOrDigit);
 
     public async Task<GroupProfile?> GetGroupAsync(string pacId, int page, CancellationToken ct)
     {
@@ -104,18 +123,43 @@ public sealed class OrganizationService(string connectionString)
                   UNION ALL SELECT ccn, 'home_health' FROM cms_home_health WHERE ccn = @id
                   UNION ALL SELECT ccn, 'hospice' FROM cms_hospice WHERE ccn = @id) f
             """, "1 = 1", new { id = ccn }, ct);
-        if (facility.Count == 0)
+        var pos = await connection.QueryFirstOrDefaultAsync<PosRow>(new CommandDefinition(
+            """
+            SELECT name AS Name, address AS Address, city AS City, state AS State, zip5 AS Zip5, CAST(active AS SIGNED) AS Active,
+                   termination_code AS TerminationCode, termination_date AS TerminationDate
+            FROM cms_pos_facility WHERE ccn = @id
+            """, new { id = ccn }, cancellationToken: ct));
+        CertifiedFacility found;
+        (string? Address, string? Zip) place;
+        if (facility.Count > 0)
+        {
+            found = facility[0];
+            place = await connection.QueryFirstOrDefaultAsync<(string? Address, string? Zip)>(new CommandDefinition(
+                """
+                SELECT COALESCE(h.address, n.address, hh.address, hs.address), COALESCE(h.zip, n.zip, hh.zip, hs.zip)
+                FROM (SELECT @id AS ccn) f
+                LEFT JOIN cms_hospital h ON h.ccn = f.ccn LEFT JOIN cms_nursing_home n ON n.ccn = f.ccn
+                LEFT JOIN cms_home_health hh ON hh.ccn = f.ccn LEFT JOIN cms_hospice hs ON hs.ccn = f.ccn
+                """, new { id = ccn }, cancellationToken: ct));
+        }
+        else if (pos?.Name is { } posName)
+        {
+            // Only in the Provider of Services file (FQHCs, rural health clinics, dialysis facilities, surgery centers, closed
+            // facilities …): its type from the enrollment that links it to an NPI, else from its number range.
+            var enrolledAs = await connection.ExecuteScalarAsync<string?>(new CommandDefinition(
+                "SELECT MIN(kind) FROM cms_facility_npi WHERE ccn = @id", new { id = ccn }, cancellationToken: ct));
+            var (rangeType, rangeKind) = FacilityTypes.FromCcn(ccn);
+            var type = FacilityTypes.Find(enrolledAs)?.Code ?? rangeType;
+            var affiliated = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(DISTINCT npi) FROM cc_facility_affiliation WHERE ccn = @id", new { id = ccn }, cancellationToken: ct));
+            found = new CertifiedFacility(ccn, type, posName, type == rangeType ? rangeKind : null, null, pos.City, pos.State, null, null, null, null, null,
+                null, null, (int)affiliated);
+            place = (pos.Address, pos.Zip5);
+        }
+        else
         {
             return null;
         }
-
-        var place = await connection.QueryFirstOrDefaultAsync<(string? Address, string? Zip)>(new CommandDefinition(
-            """
-            SELECT COALESCE(h.address, n.address, hh.address, hs.address), COALESCE(h.zip, n.zip, hh.zip, hs.zip)
-            FROM (SELECT @id AS ccn) f
-            LEFT JOIN cms_hospital h ON h.ccn = f.ccn LEFT JOIN cms_nursing_home n ON n.ccn = f.ccn
-            LEFT JOIN cms_home_health hh ON hh.ccn = f.ccn LEFT JOIN cms_hospice hs ON hs.ccn = f.ccn
-            """, new { id = ccn }, cancellationToken: ct));
         var billing = await NpisAsync(connection, "SELECT DISTINCT npi FROM cms_facility_npi WHERE ccn = @id", ccn, ct);
 
         // On the map: the primary practice address of a billing NPI, else the centre of the facility's ZIP.
@@ -133,7 +177,14 @@ public sealed class OrganizationService(string connectionString)
         }
 
         var clinicians = await ClinicianListAsync(connection, FacilityNpis, ccn, page, ct);
-        return new FacilityProfile(facility[0], place.Address, place.Zip, point?.Lat, point?.Lon, billing, clinicians);
+        // A Care Compare listing is a facility certified now, whatever an older Provider of Services row says.
+        var active = facility.Count > 0 || pos?.Active == 1;
+        return new FacilityProfile(found, place.Address, place.Zip, point?.Lat, point?.Lon, billing, clinicians)
+        {
+            Certification = pos is null ? null : new FacilityCertification(active, active || pos.TerminationDate is not { } ended ? null : DateOnly.FromDateTime(ended),
+                active ? null : FacilityTypes.TerminationReason(pos.TerminationCode)),
+            CertificationOnly = facility.Count == 0,
+        };
     }
 
     /// <summary>The Medicare groups an organization NPI is enrolled as, largest first.</summary>
