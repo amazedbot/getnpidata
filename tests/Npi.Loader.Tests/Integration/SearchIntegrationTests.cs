@@ -1170,7 +1170,8 @@ public sealed class SearchIntegrationTests : IDisposable
                 COPY (SELECT {'primary': 'ATLANTIC SPINE CARE'} AS names,
                              [{'freeform': '5 ATLANTIC AVE', 'postcode': '11201', 'locality': 'BROOKLYN'}] AS addresses,
                              {'xmin': -73.9950, 'ymin': 40.6905, 'xmax': -73.9950, 'ymax': 40.6905} AS bbox,
-                             0.9 AS confidence, 'open' AS operating_status, [{'update_time': '2026-05-01T00:00:00.000Z'}] AS sources)
+                             0.9 AS confidence, 'open' AS operating_status,
+                             [{'dataset': 'meta', 'update_time': '2026-05-01T00:00:00.000Z'}, {'dataset': 'Overture', 'update_time': '2026-09-17T22:52:12Z'}] AS sources)
                   TO '{{places}}/part-0.parquet' (FORMAT parquet);
                 """;
             command.ExecuteNonQuery();
@@ -1186,7 +1187,8 @@ public sealed class SearchIntegrationTests : IDisposable
         var full = await matcher.RefreshAsync(_ct);
         Assert.Equal(new OvertureRefresh("2026-09-23.1", true, 5, 3), full);
         Assert.Equal(["address", "address", "place"], (await db.QueryAsync<string>("SELECT source FROM address_point ORDER BY source")).ToArray());
-        Assert.Equal("ATLANTIC SPINE CARE", await db.ScalarAsync<string>("SELECT name FROM address_place"));
+        Assert.Equal(("ATLANTIC SPINE CARE", "meta 2026-05-01", new DateTime(2026, 5, 1)), // Overture's own row is no source
+            (await db.QueryAsync<(string, string, DateTime)>("SELECT name, sources, updated FROM address_place")).Single());
         Assert.Equal(5L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM overture_checked WHERE `release` = '2026-09-23.1'"));
         Assert.Equal("2026-09-23.1", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'overture_full'"));
         Assert.Null(await matcher.RefreshAsync(_ct)); // the same release, and the projection hasn't changed since
@@ -1370,6 +1372,32 @@ public sealed class SearchIntegrationTests : IDisposable
         await quality.BuildAsync(_ct, allowIncremental: false);
         Assert.Equal(QualityActivity.CareCompare,
             (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
+
+        // An open listing counts only when a source that keeps up with the business backs it (owner, 2026-10-15): D's name listed
+        // open on a business registration (BrightQuery) alone is no sign of operation; on Meta it is, but a record 10+ years old with
+        // only a listing is to check, not current.
+        async Task<(QualityReason Reasons, QualityActivity Activity)> DAsync()
+        {
+            await quality.BuildAsync(_ct, allowIncremental: false);
+            var d = (await db.QueryAsync<(int, short)>("SELECT reasons, activity FROM provider_quality WHERE npi = @D", new { D })).Single();
+            return ((QualityReason)d.Item1, (QualityActivity)d.Item2);
+        }
+
+        await db.ExecuteAsync(
+            """
+            UPDATE address_place SET operating_status = 'open', sources = 'BrightQuery 2026-09-17' WHERE name = 'Smith Jones Dental';
+            UPDATE provider SET last_update_date = '2012-05-01' WHERE npi = @D;
+            """, new { D });
+        var registered = await DAsync();
+        Assert.Equal(QualityActivity.None, registered.Activity);
+        Assert.Equal(QualityReason.NoActivity | QualityReason.NotUpdated10Years, registered.Reasons & (QualityReason.NoActivity | QualityReason.NotUpdated10Years | QualityReason.ListedClosed));
+        await db.ExecuteAsync("UPDATE address_place SET sources = 'BrightQuery 2026-09-17;meta 2026-09-14' WHERE name = 'Smith Jones Dental'");
+        var listed = await DAsync();
+        Assert.Equal(QualityActivity.MapListing, listed.Activity);
+        Assert.Equal(QualityReason.ListingOnly, listed.Reasons & (QualityReason.ListingOnly | QualityReason.NoActivity));
+        Assert.Contains("Only a map listing shows it open", RecordQuality.ShortReasons(listed.Reasons));
+        await db.ExecuteAsync("UPDATE provider SET last_update_date = '2024-05-01' WHERE npi = @D", new { D });
+        Assert.Equal(QualityReason.None, (await DAsync()).Reasons & QualityReason.ListingOnly); // a recent record keeps the listing as its sign
     }
 
     [Fact]

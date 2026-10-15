@@ -36,6 +36,7 @@ CREATE TABLE `address_place` (
   `addr_key` char(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   `name` varchar(255) NOT NULL,
   `operating_status` varchar(20) DEFAULT NULL,
+  `sources` varchar(255) DEFAULT NULL,
   `updated` date DEFAULT NULL,
   `release` varchar(40) NOT NULL,
   PRIMARY KEY (`addr_key`,`name`)

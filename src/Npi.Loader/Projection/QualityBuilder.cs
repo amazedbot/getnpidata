@@ -72,8 +72,9 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     internal const string PoBox = "(^|[^A-Z])(P[ .]*O[ .]*BOX|POST OFFICE BOX)([^A-Z]|$)";
 
     /// <summary>
-    /// Organizations matched by address and name (<see cref="BusinessNames"/>) to a business Overture lists at the address (open: a sign
-    /// of operation; only permanently closed: <see cref="QualityReason.ListedClosed"/>) and to a terminated certified facility in the
+    /// Organizations matched by address and name (<see cref="BusinessNames"/>) to a business Overture lists at the address (open and
+    /// confirmed by a source that keeps up with the business, <see cref="BusinessListing"/>: a sign of operation; only permanently
+    /// closed: <see cref="QualityReason.ListedClosed"/>; open on an unconfirming source alone: neither) and to a terminated certified facility in the
     /// Provider of Services file at the same street address (<see cref="QualityReason.FacilityClosed"/>, unless the organization holds a
     /// current certified facility, and only when its NPI predates the termination). Ownership changes (code 07) aren't closures.
     /// </summary>
@@ -94,9 +95,10 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             return w;
         }
 
-        await foreach (var row in connection.QueryUnbufferedAsync<(string Npi, string OrgName, string PlaceName, string? Status)>(
+        var unconfirmed = new HashSet<string>(StringComparer.Ordinal);
+        await foreach (var row in connection.QueryUnbufferedAsync<(string Npi, string OrgName, string PlaceName, string? Status, string? Sources, string Release)>(
                            """
-                           SELECT o.`npi`, o.`name`, ap.`name`, ap.`operating_status`
+                           SELECT o.`npi`, o.`name`, ap.`name`, ap.`operating_status`, ap.`sources`, ap.`release`
                            FROM `provider` p JOIN `provider_location` l ON l.`npi` = p.`npi`
                            JOIN `address_place` ap ON ap.`addr_key` = l.`addr_key`
                            JOIN `provider_org_name` o ON o.`npi` = p.`npi`
@@ -105,7 +107,18 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         {
             if (BusinessNames.Same(Words(row.OrgName), Words(row.PlaceName)))
             {
-                (row.Status == "permanently_closed" ? closed : open).Add(row.Npi);
+                if (row.Status == "permanently_closed")
+                {
+                    closed.Add(row.Npi);
+                }
+                else if (BusinessListing.Confirms(row.Sources, row.Release))
+                {
+                    open.Add(row.Npi);
+                }
+                else
+                {
+                    unconfirmed.Add(row.Npi);
+                }
             }
         }
 
@@ -186,8 +199,9 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             $"INSERT INTO `{flags}` (`npi`, `bits`) SELECT b.`npi`, {(int)QualityReason.FacilityClosed} FROM `{businesses}` b " +
             $"LEFT JOIN `{activity}` a ON a.`npi` = b.`npi` WHERE b.`kind` = 3 AND (a.`npi` IS NULL OR a.`bits` & {(int)QualityActivity.CertifiedFacility} = 0) " +
             $"ON DUPLICATE KEY UPDATE `{flags}`.`bits` = `{flags}`.`bits` | {(int)QualityReason.FacilityClosed}", commandTimeout: 0, cancellationToken: ct));
-        log.Information("Record quality: {Open:N0} organizations listed as open businesses, {Closed:N0} only as permanently closed, {Facility:N0} at a closed certified facility",
-            open.Count, closed.Except(open).Count(), facilityClosed.Count);
+        log.Information("Record quality: {Open:N0} organizations listed as open businesses, {Unconfirmed:N0} more listed only by a source that doesn't confirm it, " +
+                        "{Closed:N0} only as permanently closed, {Facility:N0} at a closed certified facility",
+            open.Count, unconfirmed.Except(open).Count(), closed.Except(open).Count(), facilityClosed.Count);
     }
 
     /// <summary>True when the projection (in full) or one of the <see cref="Inputs"/> was rebuilt since the labels were, or NPIs are queued.</summary>
@@ -374,6 +388,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                     IF(p.`last_update_date` < @old5, {I(QualityReason.NotUpdated5Years)}, 0)
                     | IF(p.`last_update_date` < @old10, {I(QualityReason.NotUpdated10Years)}, 0)
                     | IF(a.`npi` IS NULL, {I(QualityReason.NoActivity)}, 0)
+                    | IF(a.`bits` = {(int)QualityActivity.MapListing} AND p.`last_update_date` < @old10, {I(QualityReason.ListingOnly)}, 0)
                     | IF(l.`zip5` IS NOT NULL AND COALESCE(m.`source`, 'zip') = 'zip', {I(QualityReason.NotMapped)}, 0)
                     | IF(UPPER(COALESCE(l.`address1`, '')) REGEXP @poBox, {I(QualityReason.PoBox)}, 0)
                     | IF(COALESCE(l.`phone`, p.`phone`) IS NULL, {I(QualityReason.NoPhone)}, 0)

@@ -16,6 +16,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 - ~~**A:** nationwide lists and exports: no filter required, category alone, `quality` / `addressType` alone, the ready-made file of every provider rebuilt by the loader, Excel over its limit refused with a note, the pager says how many pages can be browsed~~ (2026-10-14, PRs #83 and #84)
 - ~~**B:** the map's filters laid out like the search page's, one "Search in this area" button, a clear message when the area is too large~~ (2026-10-15)
 - ~~**C:** the map's area as a list and a CSV (a `bbox` filter in the list, the exports, the API and the client)~~ (2026-10-15)
+- ~~**Listings that confirm** (owner, 2026-10-15): an open Overture listing is a sign of practice only when a confirming source backs it; a 10+ year old record with only a listing is Check~~ (2026-10-15)
 
 ## Next, in order
 
