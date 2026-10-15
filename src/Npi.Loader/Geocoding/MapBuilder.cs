@@ -15,13 +15,23 @@ namespace Npi.Loader.Geocoding;
 /// (each point's taxonomy codes by 0.1° grid cell, for specialty map searches). Staging + RENAME of both together,
 /// so the map page never sees a half-built table. Its build time is kept in <c>reference_data</c> (source <c>provider_map</c>:
 /// <c>loaded_at</c> the last full build, <c>checked_at</c> the last update of any kind). After an incremental projection, or
-/// when addresses were geocoded or placed since, only those providers' rows are replaced (<see cref="BuilderPending"/>).
+/// when addresses were geocoded or placed since, only those providers' rows are replaced (<see cref="BuilderPending"/>), unless
+/// they are more than <see cref="IncrementalShare"/> of the providers: then everything is rebuilt (speed item 17).
 /// <c>provider_map_credential</c> (credential × cell) is shared with <see cref="CredentialBuilder"/>: a full map build fills it,
 /// and so does an update when the credentials were rebuilt in full without filling it (<see cref="CredentialBuilder.MapCellsOwedSql"/>).
 /// </summary>
 public sealed class MapBuilder(Database database, ILogger log, double minRowRatio)
 {
     public const string Source = "provider_map";
+
+    /// <summary>
+    /// Above this share of the providers to update, a full build (staging + RENAME, ~24 min on full data) is quicker than
+    /// replacing their rows in the live tables (8.6M providers took 61 min after a full Overture pass; speed item 17).
+    /// </summary>
+    public const double IncrementalLimit = 0.10;
+
+    /// <summary>The largest batch, as a share of the providers, updated in place (tests set it).</summary>
+    public double IncrementalShare { get; init; } = IncrementalLimit;
 
     private static string FillSql(string target, string locations) =>
         $"""
@@ -114,7 +124,7 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
                 // The credentials were rebuilt in full and left provider_map_credential to the map: it is filled once, after the
                 // points moved, so the update leaves the batch's credential cells alone.
                 var cellsOwed = await CredentialBuilder.MapCellsOwedAsync(connection, ct);
-                long rows;
+                long? rows;
                 try
                 {
                     rows = await BuildQueuedAsync(connection, watch, credentialCells: !cellsOwed, ct);
@@ -124,12 +134,16 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
                     await BuilderPending.DropBatchAsync(connection, BuilderPending.Map);
                 }
 
-                if (cellsOwed)
+                // Null: too many providers to update in place, so the full build below (it fills the credential cells too).
+                if (rows is { } updated)
                 {
-                    await CredentialBuilder.FillMapCellsAsync(connection, minRowRatio, log, ct);
-                }
+                    if (cellsOwed)
+                    {
+                        await CredentialBuilder.FillMapCellsAsync(connection, minRowRatio, log, ct);
+                    }
 
-                return rows;
+                    return updated;
+                }
             }
 
             return await BuildLockedAsync(connection, watch, ct);
@@ -176,14 +190,34 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
     /// specialty and credential cells; those providers are queued for record quality (the "not mapped" reason).
     /// </summary>
     /// <param name="credentialCells">Replace the providers' provider_map_credential rows too (false: the caller refills that table).</param>
-    private async Task<long> BuildQueuedAsync(MySqlConnection connection, Stopwatch watch, bool credentialCells, CancellationToken ct)
+    /// <returns>The points written, or null when the batch is too large to update in place (nothing was changed).</returns>
+    private async Task<long?> BuildQueuedAsync(MySqlConnection connection, Stopwatch watch, bool credentialCells, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         var (batch, queued) = await BuilderPending.TakeAsync(connection, BuilderPending.Map, ct);
         var since = await connection.ExecuteScalarAsync<DateTime>(new CommandDefinition(
             "SELECT `checked_at` FROM `reference_data` WHERE `source` = @source", new { source = Source }, cancellationToken: ct));
-        var placed = await BuilderPending.AddAsync(connection, batch,
-            $"SELECT DISTINCT l.`npi` FROM `provider_location` l JOIN ({ChangedAddresses}) a ON a.`addr_key` = l.`addr_key`", ct, new { since });
+
+        // Speed item 17: more than the limit to update, and a full build is quicker. The providers at the changed addresses are
+        // added up to one past the limit (MySQL stops reading once it has that many distinct NPIs), so a batch of nearly every
+        // provider (a full Overture pass with SkipMapBuild, then run) costs no more than a weekly's.
+        var providers = await Database.CountAsync(connection, "provider", ct);
+        var limit = (long)Math.Floor(providers * IncrementalShare);
+        long placed = 0;
+        if (queued <= limit)
+        {
+            placed = await BuilderPending.AddAsync(connection, batch,
+                $"SELECT DISTINCT l.`npi` FROM `provider_location` l JOIN ({ChangedAddresses}) a ON a.`addr_key` = l.`addr_key` LIMIT @cap",
+                ct, new { since, cap = limit + 1 });
+        }
+
+        if (queued + placed > limit)
+        {
+            log.Information(
+                "provider_map: {Batch:N0}{More} providers to update ({Queued:N0} queued, the rest at addresses geocoded or placed since the last update), more than {Share:P0} of {Providers:N0}: rebuilding in full",
+                queued + placed, queued > limit ? "" : " or more", queued, IncrementalShare, providers);
+            return null;
+        }
 
         await using var tx = await connection.BeginTransactionAsync(ct);
         Task<int> RunAsync(string sql) => connection.ExecuteAsync(new CommandDefinition(sql, transaction: tx, commandTimeout: 0, cancellationToken: ct));

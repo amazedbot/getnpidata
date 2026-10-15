@@ -68,7 +68,6 @@ Fixes the owner found (2026-10-14), one pull request each:
 ## Not scheduled
 
 - ~~Speed item 16: build the loader to its own output folder, so loader changes never wait on stopping the site~~ done by the scripts of 2026-10-14 (checked 2026-10-15): the site runs from `.run/site`, the loader from `.run/loader`, so with the site up `dotnet build getnpidata.sln` and publishing the loader both succeed. Left as is: `loader.ps1` republishes into the `.run/loader` it runs from, so a rebuild while another loader run is going fails (`-NoBuild` works); one loader runs at a time.
-- Speed item 17 (found 2026-10-15): the map builds in full when its incremental batch is a large share of the map. After a full Overture pass the incremental path re-placed 8.6M providers in 61 min, where a full build takes ~24 min.
 
 ## Done
 
@@ -92,6 +91,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 
 **Speed work:**
 - ~~Item 9: zips streamed instead of extracted~~ (2026-10-15: FL's PROF_ALL.txt goes from its zip entry straight into the license filter, 955 MB no longer written, 56–62 s → 32–37 s; the Census Gazetteer text parsed as it unzips; CA extracts only its .accdb, which the Access driver needs as a file, and deletes a copied-out snapshot at once; NPPES, openFDA and the NBER history already streamed; the deactivation .xlsx stays in memory, a few MB, ExcelDataReader needs to seek)
+- ~~Item 17 (found 2026-10-15): the map builds in full when its update would replace more than 10% of the providers~~ (2026-10-15: after a full Overture pass the update had re-placed 8.6M providers in 61 min, where a full build takes ~24 min; the batch is counted while it is gathered and stops one past the limit, so the check costs nothing on a weekly; timing in the next combined run)
 - ~~Small fixes: an unneeded `using` in `FdaProductSource.cs` removed; CLAUDE.md no longer listed `deploy/register-task.ps1`~~ (2026-10-14)
 - ~~Phase 3: the NY and CA Medicaid enrolled-provider lists~~ (2026-10-14: 544,718 enrollments, a sign of current practice and a line on the profile; Stale −36,249, Check −23,433, Current +59,682)
 - ~~Phase 3 step 3.2: the change recorder widened~~ (2026-10-14: phone, secondary locations, every taxonomy, other names; licenses, board actions, exclusions and opt-outs as they start, end or change; 3,991 license changes recorded on the first reload)

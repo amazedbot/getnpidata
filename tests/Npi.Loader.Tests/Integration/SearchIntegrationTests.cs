@@ -380,12 +380,12 @@ public sealed class SearchIntegrationTests : IDisposable
                     new("areas", null, async c => await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(c, full)),
                 ], parallel: 3, Logger.None, _ct));
                 Assert.Equal(full ? 1L : 0L, await db.ScalarAsync<long>(CredentialBuilder.MapCellsOwedSql)); // a full build left them to the map
-                await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+                await new MapBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 }.BuildAsync(_ct, full);
             }
             else
             {
                 await Credentials().BuildAsync(_ct, full);
-                await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+                await new MapBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 }.BuildAsync(_ct, full);
                 await new AddressTypeBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
                 await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
             }
@@ -472,7 +472,7 @@ public sealed class SearchIntegrationTests : IDisposable
         await new AddressGeocoder(db.Database, census, Logger.None, batchSize: 10, parallelism: 1) { Delays = [] }.GeocodePendingAsync(maxBatches: 0, _ct);
         // No row check: the steps below keep changing one provider's credential, so a full build has fewer raw values than the last.
         var credentials = new CredentialBuilder(db.Database, Logger.None, 0);
-        var map = new MapBuilder(db.Database, Logger.None, 0);
+        var map = new MapBuilder(db.Database, Logger.None, 0) { IncrementalShare = 10 };
         async Task<string?> FilledByAsync() =>
             await db.ScalarAsync<string?>("SELECT version FROM reference_data WHERE source = @source", new { source = CredentialBuilder.MapCellsSource });
         async Task AssertCurrentAsync(string filledBy)
@@ -546,6 +546,72 @@ public sealed class SearchIntegrationTests : IDisposable
             new { A, builder = BuilderPending.Credentials });
         await credentials.BuildAsync(_ct);
         await AssertCurrentAsync("filled on its own");
+    }
+
+    // Speed item 17: a map update of more than MapBuilder.IncrementalShare of the providers (the queued NPIs plus those at addresses
+    // geocoded or placed since) is a full build instead; either way the tables equal a full build's, and the follow-up state too.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_large_map_update_is_a_full_build_with_the_same_result(bool large)
+    {
+        await using var db = await SeededAsync();
+        var census = new CensusGeocoder(new HttpClient(new FakeCensus()), "https://census.test/batch", "Public_AR_Current");
+        await new AddressGeocoder(db.Database, census, Logger.None, batchSize: 10, parallelism: 1) { Delays = [] }.GeocodePendingAsync(maxBatches: 0, _ct);
+        var credentials = new CredentialBuilder(db.Database, Logger.None, 0.95);
+        await credentials.BuildAsync(_ct, full: true);
+        await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
+
+        // A queued; E's address placed at its building after the map's last update; the credentials rebuilt in full, leaving their
+        // map cells to the map (as in run). A marker load time shows whether the map was built in full.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO builder_pending (builder, npi) VALUES (@map, @A);
+            UPDATE address_geocode SET geocoded_at = geocoded_at - INTERVAL 1 DAY; -- well before the map (DATETIME rounds to the second)
+            INSERT INTO address_point (addr_key, source, lat, lon, matched, `release`, matched_at)
+            SELECT addr_key, 'address', 40.9331, -73.1452, '200 MAIN ST', '2026-09-23.1',
+                   (SELECT checked_at FROM reference_data WHERE source = 'provider_map') -- placed at the last update counts too
+            FROM provider_location WHERE npi = @E;
+            UPDATE reference_data SET loaded_at = '2099-01-01' WHERE source = 'provider_map';
+            """, new { map = BuilderPending.Map, A, E });
+        await credentials.BuildAsync(_ct, full: true, leaveMapCells: true);
+        await db.ExecuteAsync("DELETE FROM quality_pending");
+        var checkedAt = await db.ScalarAsync<DateTime>("SELECT checked_at FROM reference_data WHERE source = 'provider_map'");
+
+        // The batch: A, plus every other provider at E's address. The limit sits just above it, or just below.
+        var atAddress = await db.ScalarAsync<long>(
+            """
+            SELECT COUNT(DISTINCT l.npi) FROM provider_location l
+            JOIN (SELECT addr_key FROM provider_location WHERE npi = @E) a ON a.addr_key = l.addr_key WHERE l.npi <> @A
+            """, new { A, E });
+        Assert.True(atAddress >= 1);
+        var providers = await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider");
+        var map = new MapBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = (1 + atAddress + (large ? -0.5 : 0.5)) / providers };
+        Assert.True(await map.IsStaleAsync(_ct));
+        await map.BuildAsync(_ct);
+
+        Assert.Equal(large, await db.ScalarAsync<DateTime>("SELECT loaded_at FROM reference_data WHERE source = 'provider_map'") != new DateTime(2099, 1, 1));
+        Assert.True(await db.ScalarAsync<DateTime>("SELECT checked_at FROM reference_data WHERE source = 'provider_map'") >= checkedAt);
+        Assert.False(await map.IsStaleAsync(_ct));
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM builder_pending WHERE builder = @map", new { map = BuilderPending.Map }));
+        Assert.Equal(0L, await db.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'map_batch'"));
+        // An update queues its providers for the record quality; a full build makes it relabel everyone instead.
+        Assert.Equal(large ? 0L : 1 + atAddress, await db.ScalarAsync<long>("SELECT COUNT(*) FROM quality_pending"));
+        Assert.Equal(await ExpectedMapCellsAsync(db), await MapCellsAsync(db));
+        Assert.Equal(0L, await db.ScalarAsync<long>(CredentialBuilder.MapCellsOwedSql));
+        Assert.Equal(large ? "filled by the map" : "filled on its own",
+            await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = @source", new { source = CredentialBuilder.MapCellsSource }));
+        string[] tables = ["provider_map", "provider_map_specialty", "provider_map_credential"];
+        var built = await ProjectionSnapshotAsync(db, tables);
+        Assert.Equal([(40.9331, -73.1452)], await db.QueryAsync<(double, double)>("SELECT lat, lon FROM provider_map WHERE npi = @E", new { E }));
+
+        await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
+        var full = await ProjectionSnapshotAsync(db, tables);
+        foreach (var table in tables)
+        {
+            Assert.Equal(full[table], built[table]);
+        }
     }
 
     // Every row of each projection table (or the given ones) as text (all columns but AUTO_INCREMENT ids), sorted.
