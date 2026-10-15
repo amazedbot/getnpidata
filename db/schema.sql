@@ -67,6 +67,55 @@ CREATE TABLE `animals` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `area_history_location` (
+  `npi` char(10) NOT NULL,
+  `state` varchar(5) NOT NULL,
+  `zip5` char(5) NOT NULL DEFAULT '',
+  PRIMARY KEY (`npi`,`state`,`zip5`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `area_history_meta` (
+  `id` tinyint NOT NULL,
+  `derived_from` date DEFAULT NULL,
+  `tracked_from` date DEFAULT NULL,
+  `changes_from` date DEFAULT NULL,
+  `as_of_month` date DEFAULT NULL,
+  `last_change_id` bigint NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `area_month_event` (
+  `area_type` varchar(6) NOT NULL,
+  `area_id` varchar(5) NOT NULL,
+  `month` date NOT NULL,
+  `kind` varchar(12) NOT NULL,
+  `npi` char(10) NOT NULL,
+  PRIMARY KEY (`area_type`,`area_id`,`month`,`kind`,`npi`),
+  KEY `ix_area_month_event_month` (`month`,`kind`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `area_month_stat` (
+  `area_type` varchar(6) NOT NULL,
+  `area_id` varchar(5) NOT NULL,
+  `category` varchar(80) NOT NULL DEFAULT '',
+  `subcategory` varchar(80) NOT NULL DEFAULT '',
+  `month` date NOT NULL,
+  `basis` tinyint NOT NULL,
+  `providers` int DEFAULT NULL,
+  `new_providers` int DEFAULT NULL,
+  `deactivated` int DEFAULT NULL,
+  `moved_in` int DEFAULT NULL,
+  `moved_out` int DEFAULT NULL,
+  `specialty_changes` int DEFAULT NULL,
+  `license_changes` int DEFAULT NULL,
+  `exclusion_changes` int DEFAULT NULL,
+  `quality_current` int DEFAULT NULL,
+  `quality_check` int DEFAULT NULL,
+  `quality_stale` int DEFAULT NULL,
+  PRIMARY KEY (`area_type`,`area_id`,`category`,`subcategory`,`month`),
+  KEY `ix_area_month_stat_month` (`month`,`area_type`,`category`,`subcategory`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `area_provider_count` (
   `area_type` varchar(6) NOT NULL,
   `area_id` varchar(5) NOT NULL,

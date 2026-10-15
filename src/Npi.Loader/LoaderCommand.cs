@@ -14,6 +14,7 @@ public enum LoaderCommand
     AddressTypes,
     Quality,
     Areas,
+    AreaHistory,
     Geocode,
     Overture,
     Publish,
@@ -41,6 +42,7 @@ public static class LoaderCommandLine
         ["address-types"] = LoaderCommand.AddressTypes,
         ["quality"] = LoaderCommand.Quality,
         ["areas"] = LoaderCommand.Areas,
+        ["area-history"] = LoaderCommand.AreaHistory,
         ["geocode"] = LoaderCommand.Geocode,
         ["overture"] = LoaderCommand.Overture,
         ["publish"] = LoaderCommand.Publish,
@@ -71,6 +73,8 @@ public static class LoaderCommandLine
                            changed its data); the site serves it for an export with no filter
           areas            Recount the providers per area (US, states, counties) and specialty for the area pages
           directories      Rebuild the facility, Medicare group and organization tables of the directory pages
+          area-history [full] Update the monthly area figures (moves, new and deactivated NPIs, changes);
+                           with "full", compare every provider's locations, not only the queued ones
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses
           overture [area]  Place practice addresses at their building with Overture Maps data (address
@@ -110,6 +114,17 @@ public static class LoaderCommandLine
             }
 
             return new LoaderInvocation(command, ["changed"]);
+        }
+
+        if (command == LoaderCommand.AreaHistory && rest.Length == 1)
+        {
+            if (!string.Equals(rest[0], "full", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Command 'area-history' takes only the word 'full' (compare every provider's locations), or nothing.";
+                return null;
+            }
+
+            return new LoaderInvocation(command, ["full"]);
         }
 
         if (command == LoaderCommand.Overture && rest.Length == 1 && rest[0].Length == 2 && rest[0].All(char.IsAsciiLetter))

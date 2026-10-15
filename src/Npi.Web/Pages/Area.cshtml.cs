@@ -11,10 +11,14 @@ namespace Npi.Web.Pages;
 /// /area, /area/{state}, /area/{state}/{county FIPS} (docs/PRODUCT_PLAN.md step 1.6): how many providers an area has, per
 /// 100,000 people against the state and the US, by specialty, with sub-areas, shortage areas, cities, hospitals and recorded
 /// changes; every number links to the list behind it. <c>?category=&amp;subcategory=</c> narrows it to a plain specialty.
+/// At the top (step 3.3): a map of the states or counties coloured by a statistic, and the area's figures month by month.
 /// </summary>
-public class AreaModel(AreaProfileService areas, IOptions<MapOptions> mapOptions) : PageModel
+public class AreaModel(AreaProfileService areas, AreaHistoryService history, IOptions<MapOptions> mapOptions) : PageModel
 {
     public AreaProfile Area { get; private set; } = null!;
+
+    /// <summary>The area's monthly figures for the chosen category (step 3.3); null before the loader first built them.</summary>
+    public AreaHistory? History { get; private set; }
 
     public StaticMap? Map { get; private set; }
 
@@ -34,6 +38,7 @@ public class AreaModel(AreaProfileService areas, IOptions<MapOptions> mapOptions
         }
 
         Area = area;
+        History = await history.GetAsync(area.Type == "us" ? null : area.State, area.Type == "county" ? area.Id : null, area.Selected.Category, ct);
 
         Map = mapOptions.Value.Enabled && area.Cities.Count > 0
             ? StaticMap.Create(area.Cities.Select((c, i) => (Label: (i + 1).ToString(CultureInfo.InvariantCulture), c.Latitude, c.Longitude))
@@ -138,4 +143,103 @@ public class AreaModel(AreaProfileService areas, IOptions<MapOptions> mapOptions
 
     public double? ParentRate(AreaCount c) =>
         Area.ParentSpecialties.FirstOrDefault(p => p.Category == c.Category && p.Subcategory == c.Subcategory)?.Per100k;
+
+    /// <summary>The list behind a monthly count: /area[/{state}[/{county}]]/changes?kind=&amp;month= (new NPIs keep the category).</summary>
+    public string ChangesLink(string kind, DateOnly month)
+    {
+        var path = Area.Type switch { "county" => $"/area/{Area.State}/{Area.Id}/changes", "state" => $"/area/{Area.State}/changes", _ => "/area/changes" };
+        var link = $"{path}?kind={kind}&month={AreaHistoryMath.MonthKey(month)}";
+        return kind == AreaChangeKinds.New && Area.Selected.Category.Length > 0 ? link + "&category=" + Uri.EscapeDataString(Area.Selected.Category) : link;
+    }
+
+    /// <summary>
+    /// The month the tiles show: the latest complete month with the recorded counts (moves; deactivations for the US), else the
+    /// as-of month so far.
+    /// </summary>
+    public AreaMonth? TileMonth => History?.Months is { Count: > 0 } months
+        ? months.LastOrDefault(m => !m.Partial && (Area.Type == "us" ? m.Deactivated : m.MovedIn) is not null) ?? months[^1]
+        : null;
+
+    /// <summary>"In September 2026 in Suffolk County, NY: 87 new NPIs, 3 deactivated, 12 moved in and 9 moved out."</summary>
+    public string HistorySentence
+    {
+        get
+        {
+            if (TileMonth is not { } m)
+            {
+                return "";
+            }
+
+            static string N(int value) => value.ToString("N0", CultureInfo.InvariantCulture);
+            var parts = new List<string>();
+            if (m.NewProviders is { } issued)
+            {
+                parts.Add($"{N(issued)} new NPI{(issued == 1 ? "" : "s")}{(Area.Selected.Category.Length > 0 ? $" ({Who.ToLowerInvariant()})" : "")}");
+            }
+
+            if (m.Deactivated is { } deactivated)
+            {
+                parts.Add($"{N(deactivated)} deactivated");
+            }
+
+            if (m.MovedIn is { } movedIn)
+            {
+                parts.Add($"{N(movedIn)} moved in");
+            }
+
+            if (m.MovedOut is { } movedOut)
+            {
+                parts.Add($"{N(movedOut)} moved out");
+            }
+
+            var list = parts.Count <= 1 ? string.Concat(parts) : string.Join(", ", parts[..^1]) + " and " + parts[^1];
+            return parts.Count == 0 ? "" : $"In {AreaHistoryMath.MonthName(m.Month)}{(m.Partial ? " (so far)" : "")} in {Place}: {list}.";
+        }
+    }
+
+    /// <summary>The series the chart offers (with the property the script reads), in order; moves only below the US.</summary>
+    public IEnumerable<(string Key, string Label)> ChartSeries =>
+        new[]
+        {
+            ("newProviders", "New NPIs"), ("deactivated", "Deactivated"), ("movedIn", "Moved in"), ("movedOut", "Moved out"),
+            ("netChange", "Net change"), ("providers", "Providers"), ("quality", "Record quality"),
+        }.Where(s => Area.Type != "us" || s.Item1 is not ("movedIn" or "movedOut"));
+
+    /// <summary>"since October 2026"; "" when the series hasn't started.</summary>
+    public static string Since(DateOnly? month) => month is { } m ? "since " + AreaHistoryMath.MonthName(m) : "not yet";
+
+    /// <summary>The map's view: the US page draws states (or every county), a state or county page its state's counties.</summary>
+    public string MapLevel => Area.Type == "us" ? "state" : "county";
+
+    /// <summary>"1,234", "—" for unknown, with a sign for a change ("+12", "−3").</summary>
+    public static string Count(int? value, bool withSign = false) =>
+        value is not { } v ? "—" : withSign && v > 0 ? "+" + v.ToString("N0", CultureInfo.InvariantCulture)
+        : withSign && v < 0 ? "−" + (-v).ToString("N0", CultureInfo.InvariantCulture) : v.ToString("N0", CultureInfo.InvariantCulture);
+
+    /// <summary>"62% current · 18% check · 20% stale", or "—".</summary>
+    public static string QualityMix(AreaMonth m)
+    {
+        if (AreaHistoryMath.QualityShare(m.QualityCurrent, m.QualityCurrent, m.QualityCheck, m.QualityStale) is not { } current)
+        {
+            return "—";
+        }
+
+        static string P(double? v) => (v ?? 0).ToString("0", CultureInfo.InvariantCulture) + "%";
+        return $"{P(current)} current · {P(AreaHistoryMath.QualityShare(m.QualityCheck, m.QualityCurrent, m.QualityCheck, m.QualityStale))} check · "
+               + $"{P(AreaHistoryMath.QualityShare(m.QualityStale, m.QualityCurrent, m.QualityCheck, m.QualityStale))} stale";
+    }
+
+    /// <summary>The monthly figures for the chart script (camelCase JSON, months as yyyy-MM).</summary>
+    public object ChartData => new
+    {
+        type = Area.Type,
+        category = Area.Selected.Category,
+        months = (History?.Months ?? []).Select(m => new
+        {
+            month = AreaHistoryMath.MonthKey(m.Month), m.Partial, m.Basis, m.Providers, m.NewProviders, m.Deactivated, m.MovedIn, m.MovedOut, m.NetChange,
+            m.QualityCurrent, m.QualityCheck, m.QualityStale,
+        }),
+        derivedFrom = History?.Coverage.DerivedFrom is { } d ? AreaHistoryMath.MonthKey(d) : null,
+        trackedFrom = History?.Coverage.TrackedFrom is { } t ? AreaHistoryMath.MonthKey(t) : null,
+    };
 }

@@ -272,6 +272,65 @@ public sealed class NpiClient : IDisposable
         return await ReadJsonAsync<CountyFacts>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// An area's figures month by month: the US (no <paramref name="state"/>), a state, or a county of it (5-digit FIPS); with
+    /// <paramref name="category"/> (a plain specialty category) the provider counts and new NPIs are for it. Null when the area is unknown.
+    /// </summary>
+    /// <exception cref="NpiApiException">400 when the category is unknown.</exception>
+    public async Task<AreaHistory?> GetAreaHistoryAsync(string? state = null, string? county = null, string? category = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (county is not null && string.IsNullOrWhiteSpace(state))
+        {
+            throw new ArgumentException("A county needs its state.", nameof(state));
+        }
+
+        var path = string.IsNullOrWhiteSpace(state) ? "api/v1/areas/us/history"
+            : string.IsNullOrWhiteSpace(county) ? $"api/v1/areas/{Segment(state!, nameof(state))}/history"
+            : $"api/v1/areas/{Segment(state!, nameof(state))}/{Segment(county!, nameof(county))}/history";
+        using var response = await SendAsync(path + (string.IsNullOrWhiteSpace(category) ? "" : "?category=" + Uri.EscapeDataString(category!.Trim())),
+            cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<AreaHistory>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// One statistic for every state (<paramref name="level"/> "state") or county ("county"; only <paramref name="state"/>'s when
+    /// given): per100k, providers, new, newPer100k, net, movedIn, movedOut, deactivated or stale; <paramref name="month"/> for the
+    /// monthly ones (default: the data's as-of month).
+    /// </summary>
+    /// <exception cref="NpiApiException">400 with the parameter in <see cref="NpiApiException.Errors"/> when one is invalid.</exception>
+    public Task<AreaMapData> GetAreaMapAsync(string level, string stat = "per100k", string? state = null, string? category = null,
+        string? subcategory = null, DateTime? month = null, CancellationToken cancellationToken = default)
+    {
+        var query = new List<string> { "level=" + Uri.EscapeDataString(level ?? ""), "stat=" + Uri.EscapeDataString(stat ?? "") };
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            query.Add("state=" + Uri.EscapeDataString(state!.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            query.Add("category=" + Uri.EscapeDataString(category!.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(subcategory))
+        {
+            query.Add("subcategory=" + Uri.EscapeDataString(subcategory!.Trim()));
+        }
+
+        if (month is { } m)
+        {
+            query.Add("month=" + m.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return GetJsonAsync<AreaMapData>("api/v1/areas/map?" + string.Join("&", query), cancellationToken);
+    }
+
     /// <summary>Data as-of date, source files and reference versions.</summary>
     public Task<ApiMeta> GetMetaAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<ApiMeta>("api/v1/meta", cancellationToken);

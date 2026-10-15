@@ -1685,6 +1685,138 @@ public sealed class CountyShortage
     public int? MaxScore { get; set; }
 }
 
+/// <summary>An area's figures month by month (GET /api/v1/areas/…/history).</summary>
+public sealed class AreaHistory
+{
+    /// <summary>us, state or county.</summary>
+    public string Type { get; set; } = "";
+
+    /// <summary>US, the state code, or the 5-digit county FIPS.</summary>
+    public string Id { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? State { get; set; }
+
+    /// <summary>The plain specialty category the provider counts and new NPIs are for; empty for every provider.</summary>
+    public string Category { get; set; } = "";
+
+    /// <summary>Every month, oldest first.</summary>
+    public IReadOnlyList<AreaMonth> Months { get; set; } = [];
+
+    public AreaHistoryCoverage Coverage { get; set; } = new();
+}
+
+/// <summary>
+/// One month of an area's figures. Providers and new NPIs are for the requested category; the rest for every provider. Null =
+/// not known for that month (before its series starts; moves aren't counted for the US).
+/// </summary>
+public sealed class AreaMonth
+{
+    /// <summary>The first day of the month.</summary>
+    public DateTime Month { get; set; }
+
+    /// <summary>Active providers with a practice location there at the month's last count.</summary>
+    public int? Providers { get; set; }
+
+    /// <summary>NPIs issued in the month whose holders practise there.</summary>
+    public int? NewProviders { get; set; }
+
+    /// <summary>NPIs deactivated in the month (the US by CMS's date; states and counties by where they practised).</summary>
+    public int? Deactivated { get; set; }
+
+    /// <summary>Providers who added a first practice location there.</summary>
+    public int? MovedIn { get; set; }
+
+    /// <summary>Providers who dropped their last practice location there.</summary>
+    public int? MovedOut { get; set; }
+
+    public int? SpecialtyChanges { get; set; }
+
+    public int? LicenseChanges { get; set; }
+
+    /// <summary>OIG exclusions and Medicare opt-outs starting, renewing or ending.</summary>
+    public int? ExclusionChanges { get; set; }
+
+    /// <summary>The record-quality mix at the month's last count.</summary>
+    public int? QualityCurrent { get; set; }
+
+    public int? QualityCheck { get; set; }
+
+    public int? QualityStale { get; set; }
+
+    /// <summary>Providers at the month's last count minus the month before; null unless both were counted.</summary>
+    public int? NetChange { get; set; }
+
+    /// <summary>True for the data's as-of month, which is still filling.</summary>
+    public bool Partial { get; set; }
+
+    /// <summary>derived (worked out from today's data), recorded (as the loads arrived) or archive (past NPPES files).</summary>
+    public string Basis { get; set; } = "";
+}
+
+/// <summary>The first month of each series of an area history.</summary>
+public sealed class AreaHistoryCoverage
+{
+    /// <summary>New NPIs (and US deactivations) worked out from today's data from this month.</summary>
+    public DateTime? DerivedFrom { get; set; }
+
+    /// <summary>Provider counts, moves, deactivations by place and the record-quality mix, recorded from this month.</summary>
+    public DateTime? TrackedFrom { get; set; }
+
+    /// <summary>Specialty, license and exclusion changes from the change log, from this month.</summary>
+    public DateTime? ChangesFrom { get; set; }
+
+    public DateTime? AsOfMonth { get; set; }
+
+    public DateTime? AsOfDate { get; set; }
+}
+
+/// <summary>One statistic for every state or county (GET /api/v1/areas/map).</summary>
+public sealed class AreaMapData
+{
+    /// <summary>state or county.</summary>
+    public string Level { get; set; } = "";
+
+    /// <summary>The state whose counties these are; null for every state or county.</summary>
+    public string? State { get; set; }
+
+    public string Stat { get; set; } = "";
+
+    public string StatLabel { get; set; } = "";
+
+    public string Category { get; set; } = "";
+
+    public string Subcategory { get; set; } = "";
+
+    /// <summary>The month of a monthly statistic.</summary>
+    public DateTime? Month { get; set; }
+
+    /// <summary>The months a monthly statistic can be asked for, newest first.</summary>
+    public IReadOnlyList<DateTime> Months { get; set; } = [];
+
+    public IReadOnlyList<AreaMapValue> Values { get; set; } = [];
+}
+
+/// <summary>A state or county on a map.</summary>
+public sealed class AreaMapValue
+{
+    /// <summary>The state code or the 5-digit county FIPS.</summary>
+    public string Id { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string? State { get; set; }
+
+    /// <summary>The statistic's value; null when not known.</summary>
+    public double? Value { get; set; }
+
+    public long? Population { get; set; }
+
+    /// <summary>HRSA shortage areas in force in a county: PC, DH, MH.</summary>
+    public IReadOnlyList<string> Shortages { get; set; } = [];
+}
+
 /// <summary>Where the served data comes from.</summary>
 public sealed class ApiMeta
 {

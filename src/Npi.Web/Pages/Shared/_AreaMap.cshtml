@@ -1,0 +1,57 @@
+@model Npi.Web.Pages.AreaModel
+@using Npi.Core.Search
+@{
+    // The area map (docs/PRODUCT_PLAN.md step 3.3): states or counties coloured by a statistic, drawn by js/area-map.js with D3
+    // from the Census shapes in /maps. Without JavaScript the tables further down list the same areas.
+    var a = Model.Area;
+    var months = Model.History is { } h ? AreaHistoryService.MonthsOf(h.Coverage) : [];
+    var where = a.Type switch { "county" => $"the counties of {Npi.Core.Search.GeographyCatalog.StateName(a.State!)}", "state" => $"the counties of {a.Name}", _ => "the states" };
+}
+<section class="card area-map-card" aria-labelledby="amap-h">
+    <div class="card-head">
+        <h2 id="amap-h">Map of @where</h2>
+    </div>
+    <div id="area-choropleth" class="choropleth" data-level="@Model.MapLevel" data-state="@(a.Type == "us" ? "" : a.State)" data-county="@(a.Type == "county" ? a.Id : "")"
+         data-category="@a.Selected.Category" data-subcategory="@a.Selected.Subcategory" data-shapes="/maps/us-counties.topo.json" data-values="/area/map.json">
+        <form class="choropleth-controls" hidden>
+            <label>Colour by
+                <select name="stat">
+                    @foreach (var s in AreaMapStats.All)
+                    {
+                        <option value="@s.Stat" data-monthly="@(s.Monthly ? "1" : "0")">@s.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="month-control">Month
+                <select name="month">
+                    @foreach (var m in months)
+                    {
+                        <option value="@AreaHistoryMath.MonthKey(m)">@AreaHistoryMath.MonthName(m)@(m == Model.History?.Coverage.AsOfMonth ? " (so far)" : "")</option>
+                    }
+                </select>
+            </label>
+            @if (a.Type == "us")
+            {
+                <fieldset class="segmented">
+                    <legend>Show</legend>
+                    <label><input type="radio" name="level" value="state" checked /> States</label>
+                    <label><input type="radio" name="level" value="county" /> Counties</label>
+                </fieldset>
+            }
+            <label class="shortage-control">Shortage areas
+                <select name="shortage">
+                    <option value="">Not shown</option>
+                    <option value="PC">Primary care</option>
+                    <option value="DH">Dental</option>
+                    <option value="MH">Mental health</option>
+                </select>
+            </label>
+        </form>
+        <div class="choropleth-canvas"></div>
+        <div class="choropleth-tip" role="status" hidden></div>
+        <div class="choropleth-legend"></div>
+        <p class="choropleth-summary" aria-live="polite"></p>
+        <noscript><p>The map needs JavaScript. The tables below list every @(a.Type == "us" ? "state" : "county") with its numbers.</p></noscript>
+    </div>
+    <p class="src">Shapes: US Census Bureau cartographic boundary files (2025; Connecticut by its planning regions, as HUD and the Census count it now). Alaska, Hawaii and Puerto Rico are drawn as insets; Guam, the Virgin Islands, American Samoa and the Northern Mariana Islands are in the tables only. Colours group the areas into fifths; hover or focus an area for its numbers, select it to open its page. Shortage areas (hatched): HRSA Health Professional Shortage Areas in force.</p>
+</section>

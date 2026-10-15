@@ -17,12 +17,13 @@ public static class BuilderPending
     public const string AddressTypes = "address_types";
     public const string Areas = "areas";
     public const string Map = "map";
+    public const string AreaHistory = "area_history";
 
     /// <summary>
     /// Every builder fed by the projection's queue: <c>run</c> calls the first three side by side (<see cref="BuilderSteps"/>),
-    /// then the map. Each takes and empties only its own rows.
+    /// then the map, then the area history. Each takes and empties only its own rows.
     /// </summary>
-    public static readonly IReadOnlyList<string> Builders = [Credentials, AddressTypes, Areas, Map];
+    public static readonly IReadOnlyList<string> Builders = [Credentials, AddressTypes, Areas, Map, AreaHistory];
 
     /// <summary>The <c>reference_data</c> source whose <c>loaded_at</c> is the last full projection build.</summary>
     public const string ProjectionSource = "projection";

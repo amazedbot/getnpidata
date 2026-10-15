@@ -49,6 +49,19 @@ public sealed class DatasetScheduleIntegrationTests : IDisposable
         }
 
         public int Index(string e) => Events.ToList().IndexOf(e);
+
+        /// <summary>
+        /// Holds a load until <paramref name="target"/> run at once (or <paramref name="limit"/> passes), so the overlap doesn't
+        /// depend on how quickly a busy machine starts the next source.
+        /// </summary>
+        public async Task OverlapAsync(int target, TimeSpan limit, CancellationToken ct)
+        {
+            var until = DateTime.UtcNow + limit;
+            while (MaxRunning < target && DateTime.UtcNow < until)
+            {
+                await Task.Delay(20, ct);
+            }
+        }
     }
 
     /// <summary>Replaces <paramref name="Table"/> (one the record quality queues) with rows for <paramref name="Npis"/>, or fails.</summary>
@@ -69,6 +82,7 @@ public sealed class DatasetScheduleIntegrationTests : IDisposable
             timeline.Start(name, heavy);
             try
             {
+                await timeline.OverlapAsync(3, TimeSpan.FromSeconds(3), ct);
                 await Task.Delay(150, ct);
                 if (fail)
                 {

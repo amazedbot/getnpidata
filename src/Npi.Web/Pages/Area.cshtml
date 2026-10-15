@@ -12,6 +12,13 @@
 
 @section Scripts {
     <script src="~/js/search.js" asp-append-version="true" defer></script>
+    @* D3 and topojson-client for the map and the monthly chart (step 3.3), pinned with SRI like Leaflet on /map. *@
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"
+            integrity="sha512-vc58qvvBdrDR4etbxMdlTt4GBQk1qjvyORR2nrsPsFPyrs+/u5c3+1Ct6upOgdZoIl7eq6k3a1UPDSNAQi/32A==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"
+            integrity="sha512-F6LRbyw1ZdEE2Lfw8JXPeqsPkl4gl3ZdjxfQ+TA9CwJuZTB+N5DANb0qQtENki+X3IMAVJnRsc3NTgBH3zcorA==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+    <script src="~/js/area-map.js" asp-append-version="true" defer></script>
+    <script src="~/js/area-history.js" asp-append-version="true" defer></script>
 }
 
 <div class="profile area">
@@ -70,6 +77,9 @@
         <a class="button secondary" href="@Model.ExportLink" download>Export all @a.Selected.Providers.ToString("N0", CultureInfo.InvariantCulture) (CSV)</a>
         <a class="button secondary" href="@Model.MapLink">Open the map</a>
     </p>
+
+    <partial name="_AreaMap" model="Model" />
+    <partial name="_AreaHistory" model="Model" />
 
     @if (a.Type == "county")
     {
