@@ -202,10 +202,11 @@ button.secondary:hover, .button.secondary:hover { background: var(--panel); colo
 [hidden] { display: none !important; }
 .results-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
-/* Map search page (Stage 5.5 item 10): map beside the table on wide screens, above it on narrow ones. */
-.map-filters details > summary { cursor: pointer; font-weight: 600; padding: 0.25rem 0; }
-.map-filters details[open] > summary { margin-bottom: 0.5rem; }
-.map-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin: 1rem 0; }
+/* Map search page (Stage 5.5 item 10): the search page's filter column, then the map with its table below it, or beside it on very wide
+   screens. */
+.map-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+#map-status { margin: 0 0 0.5rem; min-height: 1.5em; }
+#map-status.warn { color: var(--warn); border: 1px solid var(--warn); border-radius: var(--radius); padding: 0.4rem 0.75rem; background: var(--surface); }
 .map-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
 .area-map { height: 60vh; min-height: 18rem; border: 1px solid var(--border); border-radius: var(--radius); }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0.4rem 0 0; }
@@ -220,11 +221,11 @@ button.secondary:hover, .button.secondary:hover { background: var(--panel); colo
 #area-table td.num { text-align: right; white-space: nowrap; }
 #area-table tr.highlight td { background: var(--panel); }
 @media (min-width: 70rem) {
-    .map-layout { grid-template-columns: minmax(0, 3fr) minmax(24rem, 2fr); align-items: start; }
     .area-map { height: calc(100vh - 14rem); }
     .area-results { display: flex; flex-direction: column; max-height: calc(100vh - 10rem); }
     .area-table-wrap { overflow-y: auto; }
 }
+@media (min-width: 110rem) { .map-col { grid-template-columns: minmax(0, 3fr) minmax(24rem, 2fr); align-items: start; } }
 /* Leaflet tooltips and popups: dark text on their white boxes. */
 .leaflet-container .pin-content { color: #17231F; font-size: 0.8rem; }
 .leaflet-container .pin-content ul { margin: 0.25rem 0 0; padding-left: 1.1rem; max-height: 14rem; overflow-y: auto; }
