@@ -169,6 +169,8 @@ public static class ApiEndpoints
 
         api.MapAreaApi();
 
+        api.MapOwnershipApi();
+
         api.MapGet("/meta", GetMetaAsync)
             .WithName("GetMeta").WithTags("Meta").WithSummary("Data versions")
             .WithDescription("As-of date, source files and reference data versions of the data being served.").CacheOutput(CachePolicy);

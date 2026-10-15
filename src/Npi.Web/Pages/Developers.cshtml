@@ -33,6 +33,12 @@
             ("GET", "/products?name= · /products/{slug}", "Drugs and devices named in those payments, with FDA and Medicare data"),
             ("GET", "/products/{slug}/prescribers · .csv", "Paid providers who prescribe it (Medicare Part D)"),
         ]),
+        ("Facilities and owners", [
+            ("GET", "/facilities?… · /groups?… · .csv", "Medicare-certified facilities and Medicare groups, filtered and paged, or as CSV"),
+            ("GET", "/facilities/{ccn}/ownership", "Who owns and runs a facility, and its ownership changes since 2016"),
+            ("GET", "/facilities/{ccn}/inspections", "A nursing home's inspections, citations, fines and payment denials"),
+            ("GET", "/owners?q= · /owners/{id}", "Facility owners by name or CMS ID, and every facility one owns or runs"),
+        ]),
         ("Freshness", [
             ("GET", "/meta", "The data's as-of date and the source files and versions"),
         ]),

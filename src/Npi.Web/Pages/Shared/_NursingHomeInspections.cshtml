@@ -1,0 +1,147 @@
+@using Npi.Core.Search
+@model NursingHomeInspections
+@{
+    var i = Model;
+    var latest = OwnershipView.Cycle(i, InspectionSeverity.Health, 1);
+    var harm = i.Counts.Where(c => c.Kind == InspectionSeverity.Health && InspectionSeverity.IsHarm(c.ScopeSeverity)).Sum(c => c.Deficiencies);
+    var fines = i.Penalties.Where(p => p.Fine is > 0).ToList();
+    var denials = i.Penalties.Where(p => p.PaymentDenialStart is not null || p.Fine is null).ToList();
+    var lastHealth = i.Surveys.FirstOrDefault(s => s.Kind == InspectionSeverity.Health);
+    var cycles = i.Counts.Select(c => c.Cycle).Where(c => c > 0).Distinct().Order().ToList();
+    var grid = OwnershipView.Grid(i, InspectionSeverity.Health);
+}
+
+<section class="card" id="inspections" aria-labelledby="insp-h">
+    <h2 id="insp-h">Inspections and penalties</h2>
+    @if (latest.Harm > 0 || fines.Count > 0)
+    {
+        <p class="error" role="note">
+            @if (latest.Harm > 0){<text>Its latest standard inspection cycle found @latest.Harm deficienc@(latest.Harm == 1 ? "y" : "ies") that harmed residents or put them in immediate jeopardy. </text>}
+            @if (fines.Count > 0){<text>CMS fined it @fines.Count time@(fines.Count == 1 ? "" : "s") in the last three years.</text>}
+        </p>
+    }
+    <div class="tiles">
+        <div class="tile">
+            <span class="label">Health deficiencies</span>
+            <strong>@Format.Number(latest.Total)</strong>
+            <span class="small">latest inspection cycle@(lastHealth is null ? "" : ", last inspected " + OwnershipView.Date(lastHealth.Date))</span>
+        </div>
+        <div class="tile">
+            <span class="label">Harm or immediate jeopardy</span>
+            <strong class="@(harm > 0 ? "bad" : null)">@Format.Number(harm)</strong>
+            <span class="small">health deficiencies G–L, last three cycles</span>
+        </div>
+        <div class="tile">
+            <span class="label">Fines</span>
+            <strong class="@(fines.Count > 0 ? "bad" : null)">@(fines.Count > 0 ? Format.Money(i.FinesTotal) : "None")</strong>
+            <span class="small">@(fines.Count > 0 ? $"{fines.Count} fine{(fines.Count == 1 ? "" : "s")}, last three years" : "in the last three years")</span>
+        </div>
+        <div class="tile">
+            <span class="label">Payment denials</span>
+            <strong class="@(denials.Count > 0 ? "bad" : null)">@(denials.Count > 0 ? Format.Number(denials.Count) : "None")</strong>
+            <span class="small">Medicare stopped paying for new admissions</span>
+        </div>
+    </div>
+
+    @if (cycles.Count > 0)
+    {
+        <h3>Deficiencies by inspection cycle</h3>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Deficiencies by inspection cycle</caption>
+                <thead><tr><th scope="col">Cycle</th><th scope="col">Health</th><th scope="col">Of them harm or jeopardy</th><th scope="col">From complaints</th><th scope="col">Fire safety</th></tr></thead>
+                <tbody>
+                    @foreach (var c in cycles)
+                    {
+                        var h = OwnershipView.Cycle(i, InspectionSeverity.Health, c);
+                        var f = OwnershipView.Cycle(i, InspectionSeverity.FireSafety, c);
+                        <tr><td>@(c == 1 ? "1 (latest)" : c.ToString(System.Globalization.CultureInfo.InvariantCulture))</td><td>@h.Total</td><td>@h.Harm</td><td>@h.Complaint</td><td>@f.Total</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <h3>Health deficiencies by scope and severity</h3>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Health deficiencies by scope and severity, last three cycles</caption>
+                <thead><tr><th scope="col">Severity</th>@foreach (var s in InspectionSeverity.Scopes){<th scope="col">@s</th>}</tr></thead>
+                <tbody>
+                    @for (var row = 0; row < 4; row++)
+                    {
+                        <tr>
+                            <th scope="row">@InspectionSeverity.Levels[3 - row]</th>
+                            @for (var scope = 0; scope < 3; scope++)
+                            {
+                                <td class="@(row < 2 && grid[row, scope] > 0 ? "bad" : null)">@grid[row, scope] <span class="small muted">(@OwnershipView.Letter(row, scope))</span></td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (i.Citations.Count > 0)
+    {
+        <h3>The most serious and the newest citations</h3>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Citations</caption>
+                <thead><tr><th scope="col">Inspected</th><th scope="col">Deficiency</th><th scope="col">Scope and severity</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                    @foreach (var c in i.Citations.OrderByDescending(c => c.ScopeSeverity, StringComparer.Ordinal).ThenByDescending(c => c.SurveyDate))
+                    {
+                        <tr>
+                            <td>@OwnershipView.Date(c.SurveyDate)<br /><span class="small muted">@InspectionSeverity.KindName(c.Kind)@(c.Complaint ? ", complaint" : "")</span></td>
+                            <td><span class="mono">@c.Tag</span> @c.Description@if (c.Category is { } cat){<br /><span class="small muted">@cat</span>}</td>
+                            <td class="@(InspectionSeverity.IsHarm(c.ScopeSeverity) ? "bad" : null)">@InspectionSeverity.Describe(c.ScopeSeverity)</td>
+                            <td>@c.Status@(c.CorrectionDate is { } fixedOn ? " (" + OwnershipView.Date(fixedOn) + ")" : "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (i.Penalties.Count > 0)
+    {
+        <h3>Fines and payment denials (@i.Penalties.Count)</h3>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Penalties</caption>
+                <thead><tr><th scope="col">Date</th><th scope="col">Penalty</th><th scope="col">Amount or length</th></tr></thead>
+                <tbody>
+                    @foreach (var p in i.Penalties)
+                    {
+                        <tr>
+                            <td>@OwnershipView.Date(p.Date)</td>
+                            <td>@p.Type</td>
+                            <td>@(p.Fine is { } fine ? Format.Money(fine) : p.PaymentDenialDays is { } days ? $"{days} days from {OwnershipView.Date(p.PaymentDenialStart)}" : "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (i.Surveys.Count > 0)
+    {
+        <details>
+            <summary>Every inspection (@i.Surveys.Count)</summary>
+            <ul class="link-list">
+                @foreach (var s in i.Surveys)
+                {
+                    <li>@OwnershipView.Date(s.Date) · @InspectionSeverity.KindName(s.Kind) · @s.Deficiencies deficienc@(s.Deficiencies == 1 ? "y" : "ies")@(s.Complaint > 0 ? $" ({s.Complaint} from complaints)" : "")@(s.MostSevere is { } m ? $", most serious {m}" : "")</li>
+                }
+            </ul>
+        </details>
+    }
+
+    <p class="src">
+        Medicare Care Compare: Health Deficiencies, Fire Safety Deficiencies and Penalties@(i.UpdatedOn is { } u ? ", updated by CMS on " + OwnershipView.Date(u, "MMMM d, yyyy") : "").
+        State inspectors survey every nursing home about once a year and after complaints; cycle 1 is the latest standard inspection and the
+        complaint inspections since. A to L rate each deficiency: A–C potential for minimal harm, D–F more than minimal, G–I actual harm,
+        J–L immediate jeopardy; within each, isolated, a pattern or widespread.
+    </p>
+</section>

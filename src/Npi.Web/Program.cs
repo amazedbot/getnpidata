@@ -31,6 +31,7 @@ builder.Services.AddSingleton(_ => new CredentialCatalog(connectionString));
 builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRequiredService<TaxonomyCatalog>(), sp.GetRequiredService<CredentialCatalog>()));
 builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new OrganizationService(connectionString));
+builder.Services.AddSingleton(_ => new OwnershipService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
@@ -192,15 +193,33 @@ app.MapGet("/group/{pacId}/raw.json", async (string pacId, HttpContext http, Org
     return Results.Json(group);
 });
 
-app.MapGet("/facility/{ccn}/raw.json", async (string ccn, HttpContext http, OrganizationService organizations, CancellationToken ct) =>
+app.MapGet("/facility/{ccn}/raw.json", async (string ccn, HttpContext http, OrganizationService organizations, OwnershipService ownership, CancellationToken ct) =>
 {
     if (await organizations.GetFacilityAsync(ccn, 1, ct) is not { } facility)
     {
         return Results.NotFound();
     }
 
+    // With its owners, ownership changes and (nursing homes) inspections (step 3.6 part 2).
+    facility = facility with
+    {
+        Ownership = await ownership.GetFacilityOwnershipAsync(facility.Facility.Ccn, ct),
+        Inspections = Npi.Web.Pages.FacilityModel.IsNursingHome(facility.Facility) ? await ownership.GetInspectionsAsync(facility.Facility.Ccn, ct) : null,
+    };
     http.Response.Headers.ContentDisposition = $"attachment; filename=\"facility_{facility.Facility.Ccn}.json\"";
     return Results.Json(facility);
+});
+
+// A facility owner's record (step 3.6 part 2), as the API returns it.
+app.MapGet("/owner/{id}/raw.json", async (string id, HttpContext http, OwnershipService ownership, CancellationToken ct) =>
+{
+    if (await ownership.GetOwnerAsync(id, ct) is not { } owner)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"owner_{owner.Owner.Id}.json\"";
+    return Results.Json(owner);
 });
 
 app.MapGet("/group/{pacId}/clinicians.csv", (string pacId, HttpContext http, OrganizationService organizations, SearchService search, CancellationToken ct) =>

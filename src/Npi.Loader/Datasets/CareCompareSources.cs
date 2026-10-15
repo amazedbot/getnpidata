@@ -150,7 +150,8 @@ public sealed class NursingHomeSource : DatasetSource
 
 /// <summary>
 /// CMS Hospital, Skilled Nursing Facility, Home Health Agency and Hospice Enrollments: which organization NPI holds
-/// which CCN (Stage 5.5 items 4b and 14). The files are Windows-1252, and all feed cms_facility_npi, so they are one source.
+/// which CCN (Stage 5.5 items 4b and 14). The files are Windows-1252, and all feed cms_facility_npi, so they are one source. Each
+/// enrollment (ID, CCN, associate ID) also goes to cms_facility_enrollment, which joins the owners to facilities (step 3.6 part 2).
 /// </summary>
 public sealed class FacilityEnrollmentSource : DatasetSource
 {
@@ -169,12 +170,22 @@ public sealed class FacilityEnrollmentSource : DatasetSource
 
     public override string Name => "cms_facility_enrollments";
 
-    private static readonly CsvColumn[] Columns = [new("NPI", "npi", CsvValue.Npi), new("CCN", "ccn")];
+    private static readonly CsvColumn[] Columns =
+    [
+        new("NPI", "npi", CsvValue.Npi), new("CCN", "ccn"), new("ENROLLMENT ID", "enrollment_id"), new("ASSOCIATE ID", "associate_id"),
+        new("ORGANIZATION NAME", "org_name"), new("ENROLLMENT STATE", "state"),
+    ];
+
+    /// <summary>
+    /// Added to the version when what a load keeps changes, so the next run reloads the same files: "enrollments" = the enrollment
+    /// IDs and associate IDs kept in cms_facility_enrollment for the owners (step 3.6 part 2).
+    /// </summary>
+    public const string Layout = "enrollments";
 
     public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
     {
         var releases = await FindAllAsync(context, ct);
-        return new DatasetRelease(string.Join(" | ", releases.Select(r => r.Release.Version)), releases[0].Release.Url);
+        return new DatasetRelease(string.Join(" | ", releases.Select(r => r.Release.Version)) + " | " + Layout, releases[0].Release.Url);
     }
 
     public override async Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct)
@@ -195,19 +206,33 @@ public sealed class FacilityEnrollmentSource : DatasetSource
             {
                 await Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{raw}`", ct);
                 await Database.ExecuteAsync(connection,
-                    $"CREATE TABLE `{raw}` (`ccn` VARCHAR(10) NULL, `npi` CHAR(10) NULL, `kind` VARCHAR(20) NOT NULL) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
-                    ct);
+                    $"""
+                    CREATE TABLE `{raw}` (`ccn` VARCHAR(10) NULL, `npi` CHAR(10) NULL, `kind` VARCHAR(20) NOT NULL, `enrollment_id` VARCHAR(40) NULL,
+                      `associate_id` VARCHAR(20) NULL, `org_name` VARCHAR(255) NULL, `state` VARCHAR(10) NULL)
+                    DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                    """, ct);
                 foreach (var (path, kind) in files)
                 {
                     await CsvTableLoader.LoadAsync(connection, path, raw, Columns, ct, "latin1", new Dictionary<string, string> { ["kind"] = kind });
                 }
 
-                var counts = await TableSwap.ReplaceAsync(connection, ["cms_facility_npi"], context.Options.MinRowRatio, () =>
-                    Database.ExecuteAsync(connection,
+                var counts = await TableSwap.ReplaceAsync(connection, ["cms_facility_npi", "cms_facility_enrollment"], context.Options.MinRowRatio, async () =>
+                {
+                    await Database.ExecuteAsync(connection,
                         $"""
                         INSERT INTO `cms_facility_npi_staging` (`ccn`, `npi`, `kind`)
                         SELECT `ccn`, `npi`, MIN(`kind`) FROM `{raw}` WHERE `ccn` IS NOT NULL AND `npi` IS NOT NULL GROUP BY `ccn`, `npi`
-                        """, ct), ct);
+                        """, ct);
+                    // One row per enrollment (the owners files list owners by it; step 3.6 part 2); associate IDs as ten digits.
+                    await Database.ExecuteAsync(connection,
+                        $"""
+                        INSERT INTO `cms_facility_enrollment_staging` (`enrollment_id`, `kind`, `ccn`, `npi`, `associate_id`, `org_name`, `state`)
+                        SELECT `enrollment_id`, MIN(`kind`), MAX(`ccn`), MAX(`npi`),
+                          MAX(IF(`associate_id` REGEXP '^[0-9]+$' AND CHAR_LENGTH(`associate_id`) <= 10, LPAD(`associate_id`, 10, '0'), NULL)),
+                          LEFT(MAX(`org_name`), 200), MAX(IF(CHAR_LENGTH(`state`) = 2, `state`, NULL))
+                        FROM `{raw}` WHERE `enrollment_id` IS NOT NULL AND CHAR_LENGTH(`enrollment_id`) <= 20 GROUP BY `enrollment_id`
+                        """, ct);
+                }, ct);
                 return counts["cms_facility_npi"];
             }
             finally

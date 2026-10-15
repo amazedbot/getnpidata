@@ -254,6 +254,48 @@ public sealed class NpiClient : IDisposable
     public Task DownloadGroupsCsvAsync(GroupSearch search, Stream destination, CancellationToken cancellationToken = default) =>
         DownloadAsync("api/v1/groups.csv" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), destination, cancellationToken);
 
+    /// <summary>Who owns and runs a facility (by CCN) and its ownership changes, or null when CMS lists neither.</summary>
+    public async Task<FacilityOwnership?> GetFacilityOwnershipAsync(string ccn, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync($"api/v1/facilities/{Segment(ccn, nameof(ccn))}/ownership", cancellationToken).ConfigureAwait(false);
+        return response.StatusCode == HttpStatusCode.NotFound ? null : await ReadJsonAsync<FacilityOwnership>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>A nursing home's inspections and penalties (by CCN), or null when Care Compare lists none.</summary>
+    public async Task<NursingHomeInspections?> GetNursingHomeInspectionsAsync(string ccn, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync($"api/v1/facilities/{Segment(ccn, nameof(ccn))}/inspections", cancellationToken).ConfigureAwait(false);
+        return response.StatusCode == HttpStatusCode.NotFound ? null : await ReadJsonAsync<NursingHomeInspections>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Owners of Medicare-certified facilities, those owning the most first. <paramref name="q"/>: part of a name, or a CMS associate
+    /// ID; <paramref name="type"/>: organization or individual; <paramref name="kind"/>: an owner type such as private_equity or reit.
+    /// </summary>
+    public Task<OwnerPage> SearchOwnersAsync(string? q = null, string? type = null, string? kind = null, int page = 1, int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new List<string>();
+        foreach (var (key, value) in new[] { ("q", q), ("type", type), ("kind", kind) })
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                query.Add(key + "=" + Uri.EscapeDataString(value!.Trim()));
+            }
+        }
+
+        query.Add("page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        query.Add("pageSize=" + pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return GetJsonAsync<OwnerPage>("api/v1/owners?" + string.Join("&", query), cancellationToken);
+    }
+
+    /// <summary>One facility owner by its CMS associate ID, or null when it is unknown.</summary>
+    public async Task<OwnerDetail?> GetOwnerAsync(string id, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync("api/v1/owners/" + Segment(id, nameof(id)), cancellationToken).ConfigureAwait(false);
+        return response.StatusCode == HttpStatusCode.NotFound ? null : await ReadJsonAsync<OwnerDetail>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>States and territories.</summary>
     public Task<IReadOnlyList<StateInfo>> GetStatesAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync<IReadOnlyList<StateInfo>>("api/v1/states", cancellationToken);

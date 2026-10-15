@@ -89,6 +89,13 @@
     </section>
     }
 
+    @if (Model.Inspections is { } inspections)
+    {
+        <partial name="_NursingHomeInspections" model="inspections" />
+    }
+
+    <partial name="_FacilityOwnership" model="new FacilityOwnershipSection(Model.Ownership, FacilityModel.IsNursingHome(f) ? Npi.Core.Search.FacilityTypes.NursingHome : f.Kind)" />
+
     <div class="profile-row">
         <div class="grow">
             <partial name="_ClinicianList" model="Model.Clinicians" />

@@ -72,13 +72,19 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cc_hcahps", "2026-07-22 HCAHPS-Hospital.csv"), ("cc_home_health", "2026-05-27 HH_Provider_Jul2026.csv"),
              ("cc_hospices", "2026-08-19 Hospice_General-Information_Aug2026_2.csv | 2026-08-07 Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv"),
              ("cc_hospitals", "2026-07-22 Hospital_General_Information.csv"), ("cc_mips", "PY 2024 2026-08-18 ec_score_file.csv"),
+             ("cc_nursing_home_inspections", "2026-09-30 NH_HealthCitations_Sep2026.csv | 2026-09-30 NH_FireSafetyCitations_Sep2026.csv | 2026-09-30 NH_Penalties_Sep2026.csv"),
              ("cc_nursing_homes", "2026-09-30 NH_ProviderInfo_Sep2026.csv"),
              ("census_county_population", "vintage 2025"), ("cms_dme_suppliers", "2024-12-31 mup_dme_ry26_p05_v10_dy24_supr.csv"),
              ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"
                  + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"
-                 + " | 2026-07-17 FQHC_Enrollments_2026.07.17.csv | 2026-07-17 RHC_Enrollments_2026.07.17.csv"),
+                 + " | 2026-07-17 FQHC_Enrollments_2026.07.17.csv | 2026-07-17 RHC_Enrollments_2026.07.17.csv | enrollments"),
+             ("cms_facility_owners", "2026-08-31 Hospital_All_Owners_2026.07.31_update.csv | 2026-08-31 SNF_All_Owners_2026.07.31_update.csv"
+                 + " | 2026-09-30 HHA_All_Owners_2026.07.17.csv | 2026-09-30 Hospice_All_Owners_2026.07.17.csv"
+                 + " | 2026-09-30 FQHC_All_Owners_2026.07.17.csv | 2026-09-30 RHC_All_Owners_2026.07.17.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_otp_providers", "2026-10-03 OPIOID_TREATMENT_PROGRAM_PROVIDERS_10052026.csv"),
+             ("cms_ownership_changes", "2026-06-30 Hospital_CHOW_2026.07.17.csv | 2026-06-30 SNF_CHOW_2026.07.17.csv"
+                 + " | 2026-06-30 Hospital_CHOW_Owners_2026.07.17.csv | 2026-06-30 SNF_CHOW_Owners_2026.07.17.csv"),
              ("cms_part_d_by_provider", "2024-12-31 mup_dpr_dy24_npi.csv"), ("cms_physician_by_provider", "2024-12-31 MUP_PHY_D24_Prov.csv"),
              ("cms_physician_by_service", "2024-12-31 MUP_PHY_D24_Prov_Svc.csv"),
              ("cms_provider_of_services", "2026-06-30 Hospital_and_other.DATA.Q2_2026.csv | 2026-06-30 POS_iQIES.DATA.Q2_2026.csv"),
@@ -678,6 +684,103 @@ public sealed class DatasetIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Facility_owners_ownership_changes_and_inspections_load_and_read_back()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO provider (npi, entity_type, org_name, sort_name, primary_taxonomy_code) VALUES ('1000000061', 2, 'SAMPLE HEALTH HOLDINGS LLC', 'SAMPLE HEALTH HOLDINGS LLC', NULL);
+            INSERT INTO medicare_enrollment (npi, enrollment_id, pac_id, org_name) VALUES ('1000000061', 'O20990101000001', '0244144871', 'SAMPLE HEALTH HOLDINGS LLC');
+            INSERT INTO directory_facility (ccn, type, name, city, state, active, billing_npis) VALUES
+              ('330045', 'hospital', 'GOOD SAMARITAN HOSPITAL', 'WEST ISLIP', 'NY', 1, 1), ('335001', 'nursing_home', 'SMITHTOWN CENTER FOR REHAB', 'SMITHTOWN', 'NY', 1, 1);
+            """);
+        var server = new FakeSources();
+        var clock = new FakeClock();
+        foreach (var source in new[] { "cms_facility_enrollments", "cms_facility_owners", "cms_ownership_changes", "cc_nursing_home_inspections" })
+        {
+            Assert.True(await Loader(db, server, clock).RefreshAsync(force: false, only: source, _ct), source);
+        }
+
+        // Enrollments by ID with their associate IDs; the hospice without a CCN kept.
+        Assert.Equal([("O20020101000001", "hospital", "330045", "1234567891"), ("O20020101000005", "hospice", null, "1234567895"),
+                ("O20020813000023", "rhc", "353982", "0042127045")],
+            (await db.QueryAsync<(string, string, string?, string)>("SELECT enrollment_id, kind, ccn, associate_id FROM cms_facility_enrollment ORDER BY enrollment_id"))
+                .Where(e => e.Item1 is "O20020101000001" or "O20020101000005" or "O20020813000023"));
+
+        // Owners: Windows-1252 read as such, leading zeros restored, names put together, owner kinds kept, the row without a role dropped.
+        Assert.Equal(14L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM facility_owner"));
+        Assert.Equal(("SAMPLE HOSPITAL PARTNERS, LP", "SAMPLE PARTNERS \u2013 NY", 100.0, "private_equity,for_profit", new DateTime(2026, 8, 31)),
+            (await db.QueryAsync<(string, string, double, string, DateTime)>(
+                "SELECT name, dba_name, percentage, owner_kinds, period_end FROM facility_owner WHERE enrollment_id = 'O20020101000001' AND owner_id = '0446239073'")).Single());
+        Assert.Equal(("JANE Q EXAMPLE", "I", "BOARD CHAIR", new DateTime(1995, 7, 7)), (await db.QueryAsync<(string, string, string, DateTime)>(
+            "SELECT name, owner_type, title, association_date FROM facility_owner WHERE owner_id = '0749197705'")).Single());
+        Assert.Equal(("0446168215", new DateTime(2022, 1, 1), "non_profit,corporation"), (await db.QueryAsync<(string, DateTime, string)>(
+            "SELECT owner_id, association_date, owner_kinds FROM facility_owner WHERE enrollment_id = 'O20020101000003' AND role_code = '43'")).Single());
+        Assert.Equal("private_equity,parent_company,trust", await db.ScalarAsync<string>(
+            "SELECT owner_kinds FROM facility_owner WHERE enrollment_id = 'O20020101000002' AND owner_id = '0446239073'"));
+        // One row per owner: listed for three enrollments, with an ownership interest in each.
+        Assert.Equal((3, 3), (await db.QueryAsync<(int, int)>("SELECT facilities, owned FROM facility_owner_entity WHERE owner_id = '0244144871'")).Single());
+
+        // Ownership changes: the sellers' owners in an ownership or control role only (the officer is left out, the buyer's owners too).
+        Assert.Equal([("330045", "330045", "CH", new DateTime(2018, 6, 1)), ("330045", "330888", "AM", new DateTime(2025, 12, 28)), ("335001", "335001", "CH", new DateTime(2023, 10, 11))],
+            await db.QueryAsync<(string, string, string, DateTime)>("SELECT buyer_ccn, seller_ccn, chow_type_code, effective_date FROM facility_ownership_change ORDER BY buyer_ccn, effective_date"));
+        Assert.Equal([("O20000101000099", "0555555555", "34"), ("O20111230000151", "0666666666", "43")],
+            await db.QueryAsync<(string, string, string)>("SELECT enrollment_id, owner_id, role_code FROM facility_ownership_change_owner ORDER BY enrollment_id"));
+
+        // Inspections: counts by cycle and scope and severity, every survey, the ten most serious and ten newest citations, the tags once.
+        Assert.Equal([("fire", 1, "F", 1, 0), ("fire", 2, "C", 1, 0), ("health", 1, "D", 1, 0), ("health", 1, "J", 1, 1), ("health", 2, "E", 1, 0), ("health", 3, "G", 1, 1)],
+            await db.QueryAsync<(string, int, string, int, int)>(
+                "SELECT kind, cycle, scope_severity, deficiencies, complaint FROM nh_deficiency_count WHERE ccn = '335001' ORDER BY kind, cycle, scope_severity"));
+        Assert.Equal(11L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM nh_citation WHERE ccn = '335003'")); // the K and the ten newest of twelve D
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM nh_citation WHERE ccn = '335003' AND survey_date < '2025-03-01' AND scope_severity = 'D'"));
+        Assert.Equal(2L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM nh_deficiency_tag WHERE tag = '0689' OR tag = '0345'"));
+
+        var ownership = new OwnershipService(db.ConnectionString);
+        var hospital = (await ownership.GetFacilityOwnershipAsync("330045", _ct))!;
+        Assert.Equal(("O20020101000001", "GOOD SAMARITAN HOSPITAL", "1234567891", new DateOnly(2026, 8, 31)),
+            (hospital.EnrollmentId, hospital.LegalName, hospital.AssociateId, hospital.OwnersAsOf));
+        // Owners first, the largest stake first; then control; officers last.
+        Assert.Equal([("0446239073", "owner", 100.0), ("0244144871", "owner", 80.0), ("0244144871", "control", null), ("0749197705", "officer", null)],
+            hospital.Owners.Select(o => (o.OwnerId, o.RoleGroup, o.Percentage)));
+        Assert.Equal(["private_equity", "for_profit"], hospital.Owners[0].Kinds);
+        Assert.Equal(("Acquisition or merger", "330888", "OLD NAME HOSPITAL, INC."), (hospital.Changes[0].Type, hospital.Changes[0].SellerCcn, hospital.Changes[0].SellerName));
+        var before = hospital.Changes[1].PreviousOwners.Single();
+        Assert.Equal(("0555555555", "OLD SAMARITAN PARENT INC", "Direct owner (5% or more)", 100.0), (before.OwnerId, before.Name, before.Role, before.Percentage));
+
+        var holdings = (await ownership.GetOwnerAsync("244144871", _ct))!; // leading zero optional
+        Assert.Equal(("0244144871", true, 3, 3), (holdings.Owner.Id, holdings.Owner.IsOrganization, holdings.Owner.Facilities, holdings.Owner.Owned));
+        Assert.Equal([("330045", "GOOD SAMARITAN HOSPITAL", "hospital"), ("335001", "SMITHTOWN CENTER FOR REHAB", "nursing_home"), (null, "NOT ENROLLED HOSPITAL", "hospital")],
+            holdings.Facilities.Select(f => (f.Ccn, f.Name, f.Type)).OrderBy(f => f.Ccn ?? "z", StringComparer.Ordinal));
+        Assert.Equal(["1000000061"], holdings.Npis.Select(n => n.Npi)); // by its associate ID = PAC ID, not by name
+        var former = (await ownership.GetOwnerAsync("0555555555", _ct))!; // only a previous owner
+        Assert.Equal((0, "OLD SAMARITAN PARENT INC"), (former.Owner.Facilities, former.Owner.Name));
+        Assert.Equal(new DateOnly(2018, 6, 1), Assert.Single(former.Changes).EffectiveDate);
+        Assert.Null(await ownership.GetOwnerAsync("9999999999", _ct));
+
+        var search = await ownership.SearchOwnersAsync("sample", OwnershipService.TypeOrganization, "private_equity", 1, 50, _ct);
+        Assert.Equal(["0446239073"], search.Items.Select(o => o.Id));
+        Assert.Equal("0244144871", (await ownership.SearchOwnersAsync(null, null, null, 1, 1, _ct)).Items[0].Id); // owning the most first
+
+        var inspections = (await ownership.GetInspectionsAsync("335001", _ct))!;
+        Assert.Equal((new DateOnly(2026, 9, 30), 182968.0, 1), (inspections.UpdatedOn, inspections.FinesTotal, inspections.PaymentDenials));
+        Assert.Equal(("F0689", "J", true), (inspections.Citations[0].Tag, inspections.Citations[0].ScopeSeverity, inspections.Citations[0].Complaint));
+        Assert.StartsWith("Ensure that a nursing home area", inspections.Citations[0].Description, StringComparison.Ordinal);
+        Assert.Equal(5, inspections.Surveys.Count); // health on three dates, fire safety on two
+        Assert.Null(await ownership.GetInspectionsAsync("330045", _ct));
+
+        // Unchanged a day later: the versions are probed, no file is downloaded again and the rows stay.
+        clock.Advance(TimeSpan.FromDays(1));
+        server.Requests.Clear();
+        foreach (var source in new[] { "cms_facility_owners", "cms_ownership_changes", "cc_nursing_home_inspections" })
+        {
+            Assert.True(await Loader(db, server, clock).RefreshAsync(force: false, only: source, _ct), source);
+        }
+
+        Assert.DoesNotContain(server.Requests, r => r.Contains("/files/", StringComparison.Ordinal));
+        Assert.Equal(14L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM facility_owner"));
+    }
+
+    [Fact]
     public async Task Unchanged_datasets_are_not_downloaded_again()
     {
         await using var db = await TestDatabase.CreateAsync();
@@ -700,6 +803,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "HEAD https://oig.test/UPDATED.csv", "https://cms.test/data.json", "https://pdc.test/items/mj5m-pzi6", "https://pdc.test/items/27ea-46a8",
                 "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py", "https://pdc.test/items/dgck-syfz", "https://pdc.test/items/6jpm-sxkc",
                 "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8", "https://fda.test/download.json", "https://fda.test/download.json",
+                "https://pdc.test/items/r5ix-sfxw", "https://pdc.test/items/ifjz-ge4w", "https://pdc.test/items/g6vv-u9sr",
             }.Order(StringComparer.Ordinal),
             server.Requests.Order(StringComparer.Ordinal)); // HRSA, Census, Open Payments and most FDA files are checked weekly; FDA's shortage list and adverse event export dates daily
 
@@ -782,6 +886,9 @@ public sealed class DatasetIntegrationTests : IDisposable
             ["https://pdc.test/items/6jpm-sxkc"] = ("2026-05-27", "HH_Provider_Jul2026.csv"),
             ["https://pdc.test/items/yc9t-dgbk"] = ("2026-08-19", "Hospice_General-Information_Aug2026_2.csv"),
             ["https://pdc.test/items/gxki-hrr8"] = ("2026-08-07", "Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv"),
+            ["https://pdc.test/items/r5ix-sfxw"] = ("2026-09-30", "NH_HealthCitations_Sep2026.csv"),
+            ["https://pdc.test/items/ifjz-ge4w"] = ("2026-09-30", "NH_FireSafetyCitations_Sep2026.csv"),
+            ["https://pdc.test/items/g6vv-u9sr"] = ("2026-09-30", "NH_Penalties_Sep2026.csv"),
         };
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -919,6 +1026,19 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://cms.test/files/Hospice_Enrollments_2026.07.17.csv" => "datasets/hospice_enrollments_sample.csv",
                 "https://cms.test/files/FQHC_Enrollments_2026.07.17.csv" => "datasets/fqhc_enrollments_sample.csv",
                 "https://cms.test/files/RHC_Enrollments_2026.07.17.csv" => "datasets/rhc_enrollments_sample.csv",
+                "https://cms.test/files/Hospital_All_Owners_2026.07.31_update.csv" => "datasets/hospital_all_owners_sample.csv",
+                "https://cms.test/files/SNF_All_Owners_2026.07.31_update.csv" => "datasets/snf_all_owners_sample.csv",
+                "https://cms.test/files/HHA_All_Owners_2026.07.17.csv" => "datasets/hha_all_owners_sample.csv",
+                "https://cms.test/files/Hospice_All_Owners_2026.07.17.csv" => "datasets/hospice_all_owners_sample.csv",
+                "https://cms.test/files/FQHC_All_Owners_2026.07.17.csv" => "datasets/fqhc_all_owners_sample.csv",
+                "https://cms.test/files/RHC_All_Owners_2026.07.17.csv" => "datasets/rhc_all_owners_sample.csv",
+                "https://cms.test/files/Hospital_CHOW_2026.07.17.csv" => "datasets/hospital_chow_sample.csv",
+                "https://cms.test/files/Hospital_CHOW_Owners_2026.07.17.csv" => "datasets/hospital_chow_owners_sample.csv",
+                "https://cms.test/files/SNF_CHOW_2026.07.17.csv" => "datasets/snf_chow_sample.csv",
+                "https://cms.test/files/SNF_CHOW_Owners_2026.07.17.csv" => "datasets/snf_chow_owners_sample.csv",
+                "https://pdc.test/files/NH_HealthCitations_Sep2026.csv" => "datasets/nh_health_deficiencies_sample.csv",
+                "https://pdc.test/files/NH_FireSafetyCitations_Sep2026.csv" => "datasets/nh_fire_safety_deficiencies_sample.csv",
+                "https://pdc.test/files/NH_Penalties_Sep2026.csv" => "datasets/nh_penalties_sample.csv",
                 "https://cms.test/files/OPIOID_TREATMENT_PROGRAM_PROVIDERS_10052026.csv" => "datasets/otp_sample.csv",
                 "https://cms.test/files/revalidation_base.csv" => "datasets/revalidation_sample.csv",
                 "https://cms.test/files/mup_dme_ry26_p05_v10_dy24_supr.csv" => "datasets/dme_supplier_sample.csv",

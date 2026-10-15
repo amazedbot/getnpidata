@@ -371,6 +371,182 @@
    ]
   },
   {
+   "title": "Hospital All Owners : 2026-07-01",
+   "modified": "2026-07-27",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-07-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospital_All_Owners_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Hospital All Owners : 2026-08-01",
+   "modified": "2026-09-29",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-08-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospital_All_Owners_2026.07.31_update.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Skilled Nursing Facility All Owners : 2026-08-01",
+   "modified": "2026-09-29",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-08-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/SNF_All_Owners_2026.07.31_update.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Home Health Agency All Owners : 2026-07-01",
+   "modified": "2026-08-19",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-09-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/HHA_All_Owners_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Hospice All Owners : 2026-07-01",
+   "modified": "2026-08-19",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-09-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospice_All_Owners_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Federally Qualified Health Center All Owners : 2026-07-01",
+   "modified": "2026-07-27",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-09-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/FQHC_All_Owners_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Rural Health Clinic All Owners : 2026-07-01",
+   "modified": "2026-07-27",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-09-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/RHC_All_Owners_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Hospital Change of Ownership : 2026-04-01",
+   "modified": "2026-08-19",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-06-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospital_CHOW_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Hospital Change of Ownership - Owner Information : 2026-04-01",
+   "modified": "2026-08-19",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-06-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/Hospital_CHOW_Owners_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Skilled Nursing Facility Change of Ownership : 2026-04-01",
+   "modified": "2026-08-24",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-06-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/SNF_CHOW_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Skilled Nursing Facility Change of Ownership - Owner Information : 2026-04-01",
+   "modified": "2026-07-27",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-06-30"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/SNF_CHOW_Owners_2026.07.17.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
    "title": "Opioid Treatment Program Providers : 2026-10-01",
    "modified": "2026-08-01",
    "temporal": [

@@ -13,11 +13,17 @@ public sealed record RatingTile(string Label, double? Stars, string? Value, stri
 /// /facility/{ccn}: a Medicare-certified hospital, nursing home, home health agency or hospice (docs/PRODUCT_PLAN.md step 1.5):
 /// how CMS rates it, the clinicians affiliated with it, where it is and the NPIs it bills under.
 /// </summary>
-public class FacilityModel(OrganizationService organizations, IOptions<MapOptions> mapOptions) : PageModel
+public class FacilityModel(OrganizationService organizations, OwnershipService ownership, IOptions<MapOptions> mapOptions) : PageModel
 {
     public FacilityProfile Profile { get; private set; } = null!;
 
     public StaticMap? Map { get; private set; }
+
+    /// <summary>Who owns and runs it and its ownership changes (CMS All Owners and Change of Ownership files); null when CMS lists neither.</summary>
+    public FacilityOwnership? Ownership { get; private set; }
+
+    /// <summary>A nursing home's inspections and penalties (Care Compare); null for other facilities or when none are listed.</summary>
+    public NursingHomeInspections? Inspections { get; private set; }
 
     public string Attribution => mapOptions.Value.Attribution;
 
@@ -29,6 +35,8 @@ public class FacilityModel(OrganizationService organizations, IOptions<MapOption
         }
 
         Profile = profile;
+        Ownership = await ownership.GetFacilityOwnershipAsync(profile.Facility.Ccn, ct);
+        Inspections = IsNursingHome(profile.Facility) ? await ownership.GetInspectionsAsync(profile.Facility.Ccn, ct) : null;
         Map = mapOptions.Value.Enabled && profile.Latitude is { } lat && profile.Longitude is { } lon
             ? StaticMap.Create([("1", lat, lon, false)], mapOptions.Value.TileUrl)
             : null;
@@ -36,6 +44,10 @@ public class FacilityModel(OrganizationService organizations, IOptions<MapOption
     }
 
     public CertifiedFacility Facility => Profile.Facility;
+
+    /// <summary>A nursing home by its Care Compare listing or its CMS number (also a Medicaid-only nursing facility).</summary>
+    public static bool IsNursingHome(CertifiedFacility facility) =>
+        facility.Kind == FacilityTypes.NursingHome || FacilityTypes.FromCcn(facility.Ccn).Type == FacilityTypes.NursingHome;
 
     public string Name => CityCatalog.TitleCase(Facility.Name);
 
