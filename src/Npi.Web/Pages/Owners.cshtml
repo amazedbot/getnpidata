@@ -10,7 +10,7 @@
     <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a> › <a href="/facilities">Facilities &amp; hospitals</a></nav>
     <div>
         <h1>Facility owners</h1>
-        <p class="lede">The companies and people CMS lists as owners and managers of Medicare-certified hospitals, nursing homes, home health agencies, hospices, health centers and rural clinics. Find one to see every facility it owns or runs.</p>
+        <p class="lede">The companies and other organizations CMS lists as owners and managers of Medicare-certified hospitals, nursing homes, home health agencies, hospices, health centers and rural clinics. Find one to see every facility it owns or runs. People who own or run a facility are named on that facility's page only.</p>
     </div>
 
     <form method="get" action="/owners" class="directory-filters" role="search">
@@ -18,14 +18,7 @@
             <label for="q">Name or CMS associate ID</label>
             <input id="q" name="q" type="search" value="@Model.Q" maxlength="@OwnershipService.MaxQueryLength" placeholder="e.g. Lifepoint" />
         </div>
-        <div class="field narrow">
-            <label for="type">Owner</label>
-            <select id="type" name="type">
-                <option value="">Organizations and people</option>
-                <option value="@OwnershipService.TypeOrganization" selected="@(Model.Type == OwnershipService.TypeOrganization)">Organizations</option>
-                <option value="@OwnershipService.TypeIndividual" selected="@(Model.Type == OwnershipService.TypeIndividual)">People</option>
-            </select>
-        </div>
+
         <div class="field">
             <label for="kind">Kind of owner</label>
             <select id="kind" name="kind">
@@ -45,12 +38,12 @@
 
     <section class="card" aria-labelledby="list-h">
         <div class="card-head">
-            <h2 id="list-h">@Format.Number(r.TotalCount) @(r.TotalCount == 1 ? "owner" : "owners")@(Model.Q is { } q ? $" matching “{q}”" : ""), those owning the most facilities first</h2>
+            <h2 id="list-h">@Format.Number(r.TotalCount) @(r.TotalCount == 1 ? "organization" : "organizations")@(Model.Q is { } q ? $" matching “{q}”" : ""), those owning the most facilities first</h2>
             <a class="small" href="@Model.ApiUrl">As JSON (API)</a>
         </div>
         @if (r.Items.Count == 0)
         {
-            <p>No owner matches. Try part of the name, or a CMS associate ID (up to 10 digits).</p>
+            <p>No organization matches. Try part of the name, or a CMS associate ID (up to 10 digits).</p>
         }
         else
         {
@@ -64,7 +57,10 @@
                             <tr>
                                 <td>
                                     <a href="/owner/@o.Id">@OwnershipView.DisplayName(o.Name)</a>
-                                    <br /><span class="small muted">@string.Join(" · ", new[] { o.IsOrganization ? "Organization" : "Person" }.Concat(o.Kinds.Take(3).Select(k => OwnerKinds.Label(k) ?? k)))</span>
+                                    @if (o.Kinds.Count > 0)
+                                    {
+                                        <br /><span class="small muted">@string.Join(" · ", o.Kinds.Take(3).Select(k => OwnerKinds.Label(k) ?? k))</span>
+                                    }
                                 </td>
                                 <td>@OwnershipView.Place(o.City, o.State)</td>
                                 <td>@Format.Number(o.Facilities)</td>
@@ -83,6 +79,6 @@
                 </nav>
             }
         }
-        <p class="src">CMS All Owners files of hospitals, skilled nursing facilities, home health agencies, hospices, FQHCs and rural health clinics. "Facilities" counts the facilities an owner is listed for in any role (owner, manager, officer or director), "Owns" those with an ownership interest. People are listed as CMS publishes them, without addresses.</p>
+        <p class="src">CMS All Owners files of hospitals, skilled nursing facilities, home health agencies, hospices, FQHCs and rural health clinics. "Facilities" counts the facilities an owner is listed for in any role (owner, manager, officer or director), "Owns" those with an ownership interest. People (officers, managing employees, individual owners) are not listed here.</p>
     </section>
 </div>

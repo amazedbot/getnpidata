@@ -269,14 +269,14 @@ public sealed class NpiClient : IDisposable
     }
 
     /// <summary>
-    /// Owners of Medicare-certified facilities, those owning the most first. <paramref name="q"/>: part of a name, or a CMS associate
-    /// ID; <paramref name="type"/>: organization or individual; <paramref name="kind"/>: an owner type such as private_equity or reit.
+    /// Organizations owning Medicare-certified facilities, those owning the most first (people are not listed).
+    /// <paramref name="q"/>: part of a name, or a CMS associate ID; <paramref name="kind"/>: an owner type such as private_equity or reit.
     /// </summary>
-    public Task<OwnerPage> SearchOwnersAsync(string? q = null, string? type = null, string? kind = null, int page = 1, int pageSize = 50,
+    public Task<OwnerPage> SearchOwnersAsync(string? q = null, string? kind = null, int page = 1, int pageSize = 50,
         CancellationToken cancellationToken = default)
     {
         var query = new List<string>();
-        foreach (var (key, value) in new[] { ("q", q), ("type", type), ("kind", kind) })
+        foreach (var (key, value) in new[] { ("q", q), ("kind", kind) })
         {
             if (!string.IsNullOrWhiteSpace(value))
             {
@@ -289,7 +289,7 @@ public sealed class NpiClient : IDisposable
         return GetJsonAsync<OwnerPage>("api/v1/owners?" + string.Join("&", query), cancellationToken);
     }
 
-    /// <summary>One facility owner by its CMS associate ID, or null when it is unknown.</summary>
+    /// <summary>One organization owning facilities by its CMS associate ID, or null when it is unknown or a person's.</summary>
     public async Task<OwnerDetail?> GetOwnerAsync(string id, CancellationToken cancellationToken = default)
     {
         using var response = await SendAsync("api/v1/owners/" + Segment(id, nameof(id)), cancellationToken).ConfigureAwait(false);

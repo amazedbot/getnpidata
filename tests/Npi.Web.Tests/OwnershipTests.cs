@@ -47,7 +47,6 @@ public class OwnershipTests
     }
 
     [Theory]
-    [InlineData("/api/v1/owners?type=company", "type")]
     [InlineData("/api/v1/owners?kind=pirate", "kind")]
     [InlineData("/api/v1/owners?page=0", "page")]
     [InlineData("/api/v1/owners?pageSize=500", "pageSize")]
@@ -74,19 +73,20 @@ public class OwnershipTests
     [Fact]
     public void Owners_are_grouped_once_per_group_with_their_roles_joined()
     {
-        FacilityOwner Row(string id, bool org, string name, string code, double? pct) =>
+        FacilityOwner Row(string? id, bool org, string name, string code, double? pct) =>
             new(id, org, name, null, null, code, OwnerRoles.Label(code, null), OwnerRoles.Group(code), pct, new DateOnly(2020, 1, 1), [], "BRENTWOOD", "TN");
 
         var groups = OwnershipView.Groups(
         [
-            Row("0000000003", false, "JANE Q EXAMPLE", "41", null), Row("0000000001", true, "SAMPLE HOLDINGS LLC", "35", 80),
+            Row(null, false, "JANE Q EXAMPLE", "41", null), Row("0000000001", true, "SAMPLE HOLDINGS LLC", "35", 80),
             Row("0000000001", true, "SAMPLE HOLDINGS LLC", "43", null), Row("0000000002", true, "SAMPLE PARTNERS LP", "34", 100),
-            Row("0000000003", false, "JANE Q EXAMPLE", "40", null),
+            Row(null, false, "JANE Q EXAMPLE", "40", null),
         ]);
         Assert.Equal([OwnerRoles.Owner, OwnerRoles.Control, OwnerRoles.Officer], groups.Select(g => g.Group));
         Assert.Equal([("Sample Partners LP", "100%"), ("Sample Holdings LLC", "80%")], groups[0].Lines.Select(l => (l.Name, OwnershipView.Share(l.Percentage))));
         Assert.Equal("Brentwood, TN", groups[0].Lines[0].Place);
-        Assert.Equal("Corporate director; Corporate officer", Assert.Single(groups[2].Lines).Roles);
+        // A person has no ID (no page of their own): their roles are joined by name.
+        Assert.Equal(("Corporate director; Corporate officer", (string?)null), (Assert.Single(groups[2].Lines).Roles, groups[2].Lines[0].OwnerId));
     }
 
     [Fact]

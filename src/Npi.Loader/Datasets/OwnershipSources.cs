@@ -8,9 +8,10 @@ namespace Npi.Loader.Datasets;
 /// <summary>
 /// Who owns and runs each Medicare-certified facility (docs/PRODUCT_PLAN.md step 3.6 part 2): the data.cms.gov "All Owners" files of
 /// hospitals, skilled nursing facilities, home health agencies, hospices, FQHCs and rural health clinics (each ~10–55 MB, one row per
-/// enrollment, owner and role; Latin-1; the newest release by its period). → facility_owner and facility_owner_entity, replaced
-/// together. Owners join to facilities by enrollment ID through cms_facility_enrollment when a page is read, so a reload of either
-/// side needs nothing else.
+/// enrollment, owner and role; Latin-1; the newest release by its period). → facility_owner (every owner, people too, for the
+/// facility pages) and facility_owner_entity (organizations only: the owner list and pages; people are shown by name and role on the
+/// facility pages alone, owner 2026-10-15), replaced together. Owners join to facilities by enrollment ID through
+/// cms_facility_enrollment when a page is read, so a reload of either side needs nothing else.
 /// </summary>
 public sealed class FacilityOwnerSource : DatasetSource
 {
@@ -103,6 +104,7 @@ public sealed class FacilityOwnerSource : DatasetSource
                           MAX(`owner_kinds`), COUNT(DISTINCT `enrollment_id`),
                           COUNT(DISTINCT CASE WHEN `role_code` IN ({CodeList(OwnerRoles.OwnershipCodes)}) THEN `enrollment_id` END)
                         FROM `facility_owner_staging` GROUP BY `owner_id`
+                        HAVING MIN(`owner_type`) = 'O'
                         """, ct);
                 }, ct, log: context.Log);
                 loaded = true;

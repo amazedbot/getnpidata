@@ -213,13 +213,14 @@ public class ClientTests
         // The server binds the list's parameters as handler arguments; the client must send each of them by the same name.
         static string[] ServerParameters(string method) =>
             [.. typeof(Npi.Web.Api.DirectoryEndpoints).GetMethod(method)!.GetParameters()
-                .Where(p => p.ParameterType == typeof(string) || p.ParameterType == typeof(int?)).Select(p => p.Name!)];
+                .Where(p => p.ParameterType == typeof(string) || p.ParameterType == typeof(int?) || p.ParameterType == typeof(bool?)).Select(p => p.Name!)];
 
         static string[] Keys(string query) => [.. QueryHelpers.ParseQuery(query).Keys];
 
         var facilities = new FacilitySearch
         {
-            Q = "good samaritan", Type = "hospital", State = "NY", MinRating = 3, MaxRating = 5, Status = "all", Sort = "-rating", Page = 2, PageSize = 100,
+            Q = "good samaritan", Type = "hospital", State = "NY", MinRating = 3, MaxRating = 5, Status = "all", OwnershipChangedWithinYears = 3,
+            HasPenalties = true, Sort = "-rating", Page = 2, PageSize = 100,
         };
         Assert.Equal(ServerParameters(nameof(Npi.Web.Api.DirectoryEndpoints.SearchFacilitiesAsync)), Keys(facilities.ToQueryString()));
         Assert.Equal("?q=good%20samaritan&type=hospital", new FacilitySearch { Q = " good samaritan ", Type = "hospital", State = " " }.ToQueryString());
@@ -371,9 +372,9 @@ public class ClientTests
         Assert.Null(await npi.GetNursingHomeInspectionsAsync("x", Ct));
         Assert.Null(await npi.GetOwnerAsync("abc", Ct));
 
-        var bad = await Assert.ThrowsAsync<NpiApiException>(() => npi.SearchOwnersAsync(type: "company", kind: "pirate", pageSize: 500, cancellationToken: Ct));
+        var bad = await Assert.ThrowsAsync<NpiApiException>(() => npi.SearchOwnersAsync(kind: "pirate", pageSize: 500, cancellationToken: Ct));
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
-        Assert.Equal(["kind", "pageSize", "type"], bad.Errors.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["kind", "pageSize"], bad.Errors.Keys.Order(StringComparer.Ordinal));
     }
 
     [Fact]

@@ -16,16 +16,9 @@
 
     <section class="card profile-head" aria-labelledby="who">
         <div class="head-row">
-            <svg class="avatar-lg org" role="img" aria-label="@(o.IsOrganization ? "Organization" : "Person")" viewBox="0 0 104 104">
+            <svg class="avatar-lg org" role="img" aria-label="Organization" viewBox="0 0 104 104">
                 <circle cx="52" cy="52" r="52" class="bg" />
-                @if (o.IsOrganization)
-                {
-                    <path d="M28 80V34h28v46M56 80V50h20v30M36 44h12M36 56h12M36 68h12" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
-                }
-                else
-                {
-                    <circle cx="52" cy="40" r="14" class="org-fg" /><path d="M26 82c4-16 14-24 26-24s22 8 26 24" class="org-fg" />
-                }
+                <path d="M28 80V34h28v46M56 80V50h20v30M36 44h12M36 56h12M36 68h12" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
             </svg>
             <div class="head-main">
                 <h1 id="who">@Model.Name</h1>

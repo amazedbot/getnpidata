@@ -32,7 +32,7 @@
                         {
                             <tr>
                                 <td>
-                                    <a href="/owner/@l.OwnerId">@l.Name</a>@if (l.DoingBusinessAs is { } dba && !string.Equals(dba, l.Name, StringComparison.OrdinalIgnoreCase)){<span class="muted"> (doing business as @dba)</span>}
+                                    @if (l.OwnerId is { } ownerId){<a href="/owner/@ownerId">@l.Name</a>}else{@l.Name}@if (l.DoingBusinessAs is { } dba && !string.Equals(dba, l.Name, StringComparison.OrdinalIgnoreCase)){<span class="muted"> (doing business as @dba)</span>}
                                     @if (l.Title is { } title){<br /><span class="small muted">@title</span>}
                                     @if (l.Kinds.Count > 0 || l.Place is not null)
                                     {
@@ -54,7 +54,7 @@
         }
         <p class="src">
             CMS @(TypeName(Model.FacilityType)) All Owners file (Medicare enrollment @o.EnrollmentId)@(o.OwnersAsOf is { } asOf ? ", data as of " + OwnershipView.Date(asOf, "MMMM d, yyyy") : "").
-            Owners of 5% or more must be listed; an indirect owner owns the facility through another company. Each name opens every facility CMS lists it for.
+            Owners of 5% or more must be listed; an indirect owner owns the facility through another company. Each organization's name opens every facility CMS lists it for; people are named here only.
         </p>
     }
 </section>
@@ -86,7 +86,7 @@
                             @for (var i = 0; i < c.PreviousOwners.Count && i < 6; i++)
                             {
                                 var p = c.PreviousOwners[i];
-                                @(i > 0 ? "; " : "")<a href="/owner/@p.OwnerId">@OwnershipView.DisplayName(p.Name)</a>@($" ({p.Role.ToLowerInvariant()}{(p.Percentage is > 0 ? ", " + OwnershipView.Share(p.Percentage) : "")})")
+                                @(i > 0 ? "; " : "")@if (p.OwnerId is { } previousId){<a href="/owner/@previousId">@OwnershipView.DisplayName(p.Name)</a>}else{@OwnershipView.DisplayName(p.Name)}@($" ({p.Role.ToLowerInvariant()}{(p.Percentage is > 0 ? ", " + OwnershipView.Share(p.Percentage) : "")})")
                             }
                             @(c.PreviousOwners.Count > 6 ? $" and {c.PreviousOwners.Count - 6} more" : "")</span>
                         }

@@ -29,8 +29,11 @@ public sealed class FacilityOwnership
 /// <summary>One owner, managing party, officer or director of a facility, in one role.</summary>
 public sealed class FacilityOwner
 {
-    /// <summary>The owner's CMS associate ID (ten digits), the same across every facility; pass it to <see cref="NpiClient.GetOwnerAsync"/>.</summary>
-    public string OwnerId { get; set; } = "";
+    /// <summary>
+    /// An organization's CMS associate ID (ten digits), the same across every facility; pass it to <see cref="NpiClient.GetOwnerAsync"/>.
+    /// Null for a person, who is given by name, title and role only.
+    /// </summary>
+    public string? OwnerId { get; set; }
 
     public bool IsOrganization { get; set; }
 
@@ -99,7 +102,8 @@ public sealed class OwnershipChange
 /// <summary>An owner of the seller before a change of ownership.</summary>
 public sealed class PreviousOwner
 {
-    public string OwnerId { get; set; } = "";
+    /// <summary>An organization's CMS associate ID; null for a person.</summary>
+    public string? OwnerId { get; set; }
 
     public bool IsOrganization { get; set; }
 
@@ -126,13 +130,14 @@ public sealed class OwnerPage
     public int TotalCount { get; set; }
 }
 
-/// <summary>A facility owner: <see cref="Facilities"/> = facilities listed for in any role, <see cref="Owned"/> = with an ownership interest.</summary>
+/// <summary>
+/// An organization owning or running facilities: <see cref="Facilities"/> = facilities listed for in any role, <see cref="Owned"/> =
+/// with an ownership interest. People are not listed.
+/// </summary>
 public sealed class OwnerSummary
 {
     /// <summary>CMS associate ID (ten digits).</summary>
     public string Id { get; set; } = "";
-
-    public bool IsOrganization { get; set; }
 
     public string Name { get; set; } = "";
 

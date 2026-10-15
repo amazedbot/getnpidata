@@ -21,7 +21,7 @@ Rules:
 |---|---|
 | [`nppes/`](nppes/README.md) | NPPES raw data, load bookkeeping and the NPPES history: 9 files (001, 002, 003, 004 …) |
 | [`reference/`](reference/README.md) | Reference data: 6 files (006, 007, 008, 009 …) |
-| [`search/`](search/README.md) | Search projection and search features: 18 files (011, 012, 013, 014 …) |
+| [`search/`](search/README.md) | Search projection and search features: 19 files (011, 012, 013, 014 …) |
 | [`map/`](map/README.md) | Map, geocoding and buildings: 11 files (046, 047, 048, 049 …) |
 | [`cms/`](cms/README.md) | CMS and OIG datasets: 27 files (022, 023, 024, 025 …) |
 | [`areas/`](areas/README.md) | Area facts: 7 files (037, 038, 039, 040 …) |

@@ -6,16 +6,15 @@ using Npi.Core.Search;
 namespace Npi.Web.Pages;
 
 /// <summary>
-/// /owners: the owners of Medicare-certified facilities (docs/PRODUCT_PLAN.md step 3.6 part 2), by name or CMS associate ID, with
-/// filters for organizations or people and for the owner types CMS marks (private equity, REIT …); those owning the most first.
+/// /owners: the organizations owning Medicare-certified facilities (docs/PRODUCT_PLAN.md step 3.6 part 2), by name or CMS associate
+/// ID, with a filter for the owner types CMS marks (private equity, REIT …); those owning the most first. People are not listed
+/// (owner, 2026-10-15): they appear by name and role on the facility pages only.
 /// </summary>
 public class OwnersModel(OwnershipService ownership) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public string? Q { get; set; }
 
-    [BindProperty(SupportsGet = true)]
-    public string? Type { get; set; }
 
     [BindProperty(SupportsGet = true)]
     public string? Kind { get; set; }
@@ -33,23 +32,22 @@ public class OwnersModel(OwnershipService ownership) : PageModel
     {
         PageNumber = int.TryParse(Request.Query["page"], NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0 ? number : 1;
         Q = string.IsNullOrWhiteSpace(Q) ? null : Q.Trim();
-        Type = string.IsNullOrWhiteSpace(Type) ? null : Type.Trim().ToLowerInvariant();
         Kind = string.IsNullOrWhiteSpace(Kind) ? null : Kind.Trim().ToLowerInvariant();
-        var errors = OwnershipService.Validate(Q, Type, Kind, PageNumber, OwnershipService.DefaultPageSize);
+        var errors = OwnershipService.Validate(Q, Kind, PageNumber, OwnershipService.DefaultPageSize);
         if (errors.Count > 0)
         {
             // A bad filter shows the error and the whole list.
             Errors = errors;
-            (Q, Type, Kind, PageNumber) = (null, null, null, 1);
+            (Q, Kind, PageNumber) = (null, null, 1);
         }
 
-        Result = await ownership.SearchOwnersAsync(Q, Type, Kind, PageNumber, OwnershipService.DefaultPageSize, ct);
+        Result = await ownership.SearchOwnersAsync(Q, Kind, PageNumber, OwnershipService.DefaultPageSize, ct);
     }
 
     public string PageUrl(int page) =>
-        "/owners" + Query(("q", Q), ("type", Type), ("kind", Kind), ("page", page > 1 ? page.ToString(CultureInfo.InvariantCulture) : null));
+        "/owners" + Query(("q", Q), ("kind", Kind), ("page", page > 1 ? page.ToString(CultureInfo.InvariantCulture) : null));
 
-    public string ApiUrl => "/api/v1/owners" + Query(("q", Q), ("type", Type), ("kind", Kind));
+    public string ApiUrl => "/api/v1/owners" + Query(("q", Q), ("kind", Kind));
 
     private static string Query(params (string Key, string? Value)[] parts)
     {

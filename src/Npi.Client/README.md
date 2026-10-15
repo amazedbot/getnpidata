@@ -30,8 +30,8 @@ await npi.DownloadProvidersCsvAsync(new ProviderSearch { Classification = "Chiro
 | `GetProductPrescribersAsync(slug, sort, page, pageSize)` | `GET /api/v1/products/{slug}/prescribers` (null if none) |
 | `GetFacilityOwnershipAsync(ccn)` | `GET /api/v1/facilities/{ccn}/ownership` (null if CMS lists none) |
 | `GetNursingHomeInspectionsAsync(ccn)` | `GET /api/v1/facilities/{ccn}/inspections` (null if none) |
-| `SearchOwnersAsync(q, type, kind, page, pageSize)` | `GET /api/v1/owners` |
-| `GetOwnerAsync(id)` | `GET /api/v1/owners/{id}` (null if unknown) |
+| `SearchOwnersAsync(q, kind, page, pageSize)` | `GET /api/v1/owners` (organizations only) |
+| `GetOwnerAsync(id)` | `GET /api/v1/owners/{id}` (null if unknown or a person's ID) |
 | `GetClassificationsAsync()` / `GetSpecializationsAsync(c)` | `GET /api/v1/taxonomy/classifications[/{c}/specializations]` |
 | `GetStatesAsync()` / `GetCountiesAsync(st)` / `GetCitiesAsync(st, county)` | `GET /api/v1/states[/{st}/counties]`, `GET /api/v1/states/{st}/cities?county=` |
 | `GetMetaAsync()` | `GET /api/v1/meta` |

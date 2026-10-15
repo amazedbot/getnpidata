@@ -4,7 +4,7 @@ using Npi.Core.Search;
 namespace Npi.Web.Pages;
 
 /// <summary>One owner in a group of the facility page's "Who owns it": every role it holds in that group in one line.</summary>
-public sealed record OwnerLine(string OwnerId, bool IsOrganization, string Name, string? DoingBusinessAs, string? Title, string Roles, double? Percentage,
+public sealed record OwnerLine(string? OwnerId, bool IsOrganization, string Name, string? DoingBusinessAs, string? Title, string Roles, double? Percentage,
     DateOnly? Since, IReadOnlyList<string> Kinds, string? Place);
 
 /// <summary>The facility page's ownership sections: what CMS lists (null: nothing) and the facility's type (changes exist for hospitals and nursing homes only).</summary>
@@ -26,7 +26,8 @@ public static class OwnershipView
             .GroupBy(o => o.RoleGroup)
             .OrderBy(g => OwnerRoles.Order(g.Key))
             .Select(g => (g.Key, (IReadOnlyList<OwnerLine>)[.. g
-                .GroupBy(o => o.OwnerId, StringComparer.Ordinal)
+                // A person has no ID here (owner, 2026-10-15): their roles in a group are joined by name.
+                .GroupBy(o => o.OwnerId ?? "person:" + o.Name, StringComparer.Ordinal)
                 .Select(o =>
                 {
                     var first = o.First();

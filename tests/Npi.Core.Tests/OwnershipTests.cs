@@ -81,9 +81,9 @@ public class OwnershipTests
     [Fact]
     public void Owner_filters_are_checked_by_parameter()
     {
-        Assert.Empty(OwnershipService.Validate("lifepoint", "Organization", "REIT", 1, 50));
-        var errors = OwnershipService.Validate(new string('x', OwnershipService.MaxQueryLength + 1), "company", "pirate", 0, 500);
-        Assert.Equal(["kind", "page", "pageSize", "q", "type"], errors.Keys.Order(StringComparer.Ordinal));
+        Assert.Empty(OwnershipService.Validate("lifepoint", "REIT", 1, 50));
+        var errors = OwnershipService.Validate(new string('x', OwnershipService.MaxQueryLength + 1), "pirate", 0, 500);
+        Assert.Equal(["kind", "page", "pageSize", "q"], errors.Keys.Order(StringComparer.Ordinal));
     }
 
     [Fact]

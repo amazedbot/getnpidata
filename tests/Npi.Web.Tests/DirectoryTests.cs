@@ -24,7 +24,9 @@ public class DirectoryTests
             new("330888", "OLD NAME HOSPITAL", "10 COURT ST", "BROOKLYN", "NY", "11201", false, "07", new DateOnly(2020, 1, 1)),
         ],
         [new(FacilityTypes.Hospital, "330045", "GOOD SAMARITAN HOSPITAL", null, "WEST ISLIP", "NY", "11795", null, "Acute Care Hospitals", null, null, 3)],
-        [], new Dictionary<string, (double Lat, double Lon)> { ["11795"] = (40.7, -73.3) }));
+        [], new Dictionary<string, (double Lat, double Lon)> { ["11795"] = (40.7, -73.3) },
+        new Dictionary<string, DateOnly> { ["330045"] = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-6) },
+        new Dictionary<string, FacilityDirectory.FacilityPenalties> { ["331850"] = new(2, 12500.5, DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-2)) }));
 
     internal static OrganizationDirectory Organizations() => new(
         [new("1000000001", "BIG HEALTH GROUP", "NY", 1200, 3, true, 91.25, 2024), new("1000000002", "SMALL PRACTICE LLC", "NY", 4, 1, null, null, null)],
@@ -79,6 +81,17 @@ public class DirectoryTests
 
         using var search = JsonDocument.Parse(await client.GetStringAsync("/api/v1/facilities?q=samaritan", Ct));
         Assert.Equal(3.0, search.RootElement.GetProperty("items")[0].GetProperty("rating").GetDouble());
+
+        // Changed ownership recently, has penalties.
+        using var changed = JsonDocument.Parse(await client.GetStringAsync("/api/v1/facilities?ownershipChangedWithinYears=1", Ct));
+        var item = Assert.Single(changed.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(("330045", DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-6).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)),
+            (item.GetProperty("ccn").GetString(), item.GetProperty("lastOwnershipChange").GetString()));
+        using var fined = JsonDocument.Parse(await client.GetStringAsync("/api/v1/facilities?hasPenalties=true", Ct));
+        var penalized = Assert.Single(fined.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(("331850", 2, 12500.5), (penalized.GetProperty("ccn").GetString(), penalized.GetProperty("penalties").GetInt32(), penalized.GetProperty("fines").GetDouble()));
+        Assert.Contains("331850,HEALTHY COMMUNITY CENTER", await client.GetStringAsync("/facilities.csv?hasPenalties=true", Ct), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/facilities?hasPenalties=maybe", Ct)).StatusCode);
     }
 
     [Theory]
@@ -87,6 +100,7 @@ public class DirectoryTests
     [InlineData("/api/v1/facilities?status=open", "status")]
     [InlineData("/api/v1/facilities?sort=beds", "sort")]
     [InlineData("/api/v1/facilities?pageSize=500", "pageSize")]
+    [InlineData("/api/v1/facilities?ownershipChangedWithinYears=20", "ownershipChangedWithinYears")]
     [InlineData("/api/v1/facilities.csv?state=New%20York", "state")]
     [InlineData("/api/v1/groups?minClinicians=10&maxClinicians=2", "maxClinicians")]
     [InlineData("/api/v1/groups?sort=size", "sort")]
@@ -165,6 +179,12 @@ public class DirectoryTests
         Assert.Equal("descending", model.AriaSort("rating"));
         Assert.Equal("/map?category=Hospitals&state=NY", model.MapUrl);
         Assert.Equal("Hospitals in New York", model.ListTitle);
+
+        var owners = new FacilitiesModel(null!, Options.Create(new MapOptions())) { Type = "nursing_home", OwnershipChangedWithinYears = 3, HasPenalties = true };
+        Assert.Equal("/facilities?type=nursing_home&ownershipChangedWithinYears=3&hasPenalties=true", owners.ListUrl());
+        Assert.Equal("/facilities?type=nursing_home", owners.ListUrl(ownershipChanged: null, penalties: null));
+        Assert.Equal("/facilities?type=nursing_home&ownershipChangedWithinYears=3&hasPenalties=true&sort=-fines", owners.SortUrl("fines")); // largest first
+        Assert.Equal("Nursing homes with a change of ownership in the last 3 years and penalties in the last 3 years", owners.ListTitle);
 
         var name = new FacilitiesModel(null!, Options.Create(new MapOptions())) { Sort = "name" };
         Assert.Equal("/facilities?sort=-name", name.SortUrl("name"));

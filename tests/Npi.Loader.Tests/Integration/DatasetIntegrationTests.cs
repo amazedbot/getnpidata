@@ -720,6 +720,10 @@ public sealed class DatasetIntegrationTests : IDisposable
             "SELECT owner_kinds FROM facility_owner WHERE enrollment_id = 'O20020101000002' AND owner_id = '0446239073'"));
         // One row per owner: listed for three enrollments, with an ownership interest in each.
         Assert.Equal((3, 3), (await db.QueryAsync<(int, int)>("SELECT facilities, owned FROM facility_owner_entity WHERE owner_id = '0244144871'")).Single());
+        // The owner list holds organizations only: people are named on the facility pages alone (owner, 2026-10-15).
+        Assert.Equal(0L, await db.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM facility_owner_entity WHERE owner_type <> 'O' OR owner_id IN (SELECT owner_id FROM facility_owner WHERE owner_type = 'I')"));
+        Assert.True(await db.ScalarAsync<long>("SELECT COUNT(*) FROM facility_owner WHERE owner_type = 'I'") >= 5);
 
         // Ownership changes: the sellers' owners in an ownership or control role only (the officer is left out, the buyer's owners too).
         Assert.Equal([("330045", "330045", "CH", new DateTime(2018, 6, 1)), ("330045", "330888", "AM", new DateTime(2025, 12, 28)), ("335001", "335001", "CH", new DateTime(2023, 10, 11))],
@@ -740,15 +744,18 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(("O20020101000001", "GOOD SAMARITAN HOSPITAL", "1234567891", new DateOnly(2026, 8, 31)),
             (hospital.EnrollmentId, hospital.LegalName, hospital.AssociateId, hospital.OwnersAsOf));
         // Owners first, the largest stake first; then control; officers last.
-        Assert.Equal([("0446239073", "owner", 100.0), ("0244144871", "owner", 80.0), ("0244144871", "control", null), ("0749197705", "officer", null)],
+        // A person: name, title and role only, no associate ID or place (no page of their own).
+        Assert.Equal([("0446239073", "owner", 100.0), ("0244144871", "owner", 80.0), ("0244144871", "control", null), (null, "officer", null)],
             hospital.Owners.Select(o => (o.OwnerId, o.RoleGroup, o.Percentage)));
+        var person = hospital.Owners[^1];
+        Assert.Equal(("JANE Q EXAMPLE", "BOARD CHAIR", false, (string?)null, (string?)null), (person.Name, person.Title, person.IsOrganization, person.City, person.State));
         Assert.Equal(["private_equity", "for_profit"], hospital.Owners[0].Kinds);
         Assert.Equal(("Acquisition or merger", "330888", "OLD NAME HOSPITAL, INC."), (hospital.Changes[0].Type, hospital.Changes[0].SellerCcn, hospital.Changes[0].SellerName));
         var before = hospital.Changes[1].PreviousOwners.Single();
         Assert.Equal(("0555555555", "OLD SAMARITAN PARENT INC", "Direct owner (5% or more)", 100.0), (before.OwnerId, before.Name, before.Role, before.Percentage));
 
         var holdings = (await ownership.GetOwnerAsync("244144871", _ct))!; // leading zero optional
-        Assert.Equal(("0244144871", true, 3, 3), (holdings.Owner.Id, holdings.Owner.IsOrganization, holdings.Owner.Facilities, holdings.Owner.Owned));
+        Assert.Equal(("0244144871", 3, 3), (holdings.Owner.Id, holdings.Owner.Facilities, holdings.Owner.Owned));
         Assert.Equal([("330045", "GOOD SAMARITAN HOSPITAL", "hospital"), ("335001", "SMITHTOWN CENTER FOR REHAB", "nursing_home"), (null, "NOT ENROLLED HOSPITAL", "hospital")],
             holdings.Facilities.Select(f => (f.Ccn, f.Name, f.Type)).OrderBy(f => f.Ccn ?? "z", StringComparer.Ordinal));
         Assert.Equal(["1000000061"], holdings.Npis.Select(n => n.Npi)); // by its associate ID = PAC ID, not by name
@@ -756,10 +763,17 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal((0, "OLD SAMARITAN PARENT INC"), (former.Owner.Facilities, former.Owner.Name));
         Assert.Equal(new DateOnly(2018, 6, 1), Assert.Single(former.Changes).EffectiveDate);
         Assert.Null(await ownership.GetOwnerAsync("9999999999", _ct));
+        // People have no page: officers, an individual owner with a stake, the owners of a home health agency and an FQHC.
+        foreach (var personId in new[] { "0749197705", "0345726113", "6406101245", "547500936" })
+        {
+            Assert.Null(await ownership.GetOwnerAsync(personId, _ct));
+        }
 
-        var search = await ownership.SearchOwnersAsync("sample", OwnershipService.TypeOrganization, "private_equity", 1, 50, _ct);
+        var search = await ownership.SearchOwnersAsync("sample", "private_equity", 1, 50, _ct);
         Assert.Equal(["0446239073"], search.Items.Select(o => o.Id));
-        Assert.Equal("0244144871", (await ownership.SearchOwnersAsync(null, null, null, 1, 1, _ct)).Items[0].Id); // owning the most first
+        Assert.Equal("0244144871", (await ownership.SearchOwnersAsync(null, null, 1, 1, _ct)).Items[0].Id); // owning the most first
+        Assert.Empty((await ownership.SearchOwnersAsync("example", null, 1, 50, _ct)).Items); // people's names find nothing
+        Assert.Empty((await ownership.SearchOwnersAsync("749197705", null, 1, 50, _ct)).Items); // nor their IDs
 
         var inspections = (await ownership.GetInspectionsAsync("335001", _ct))!;
         Assert.Equal((new DateOnly(2026, 9, 30), 182968.0, 1), (inspections.UpdatedOn, inspections.FinesTotal, inspections.PaymentDenials));

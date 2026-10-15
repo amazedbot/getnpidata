@@ -5,8 +5,9 @@ using Npi.Core.Search;
 namespace Npi.Web.Pages;
 
 /// <summary>
-/// /owner/{id}: an owner of Medicare-certified facilities by its CMS associate ID (docs/PRODUCT_PLAN.md step 3.6 part 2): the
-/// facilities it owns, controls or manages, and, matched by that ID only, the NPIs, facility and group it is itself.
+/// /owner/{id}: an organization owning Medicare-certified facilities, by its CMS associate ID (docs/PRODUCT_PLAN.md step 3.6 part 2):
+/// the facilities it owns, controls or manages, and, matched by that ID only, the NPIs, facility and group it is itself. A person's
+/// ID answers 404: people are named on the facility pages only (owner, 2026-10-15).
 /// </summary>
 public class OwnerModel(OwnershipService ownership) : PageModel
 {
@@ -32,7 +33,7 @@ public class OwnerModel(OwnershipService ownership) : PageModel
     {
         get
         {
-            var text = Owner.IsOrganization ? "Organization" : "Person";
+            var text = "Organization";
             if (Owner.Facilities == 0)
             {
                 return text + " listed as an owner of a facility before a change of ownership.";

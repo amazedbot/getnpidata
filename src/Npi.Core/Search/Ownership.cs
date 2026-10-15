@@ -7,15 +7,19 @@ namespace Npi.Core.Search;
 /// <summary>
 /// One owner, officer or managing party of a facility's Medicare enrollment (CMS "All Owners" files, docs/PRODUCT_PLAN.md step 3.6):
 /// <see cref="OwnerId"/> is CMS's associate ID (the PECOS associate control ID, the PAC ID Care Compare uses), the same for that
-/// owner across every facility. <see cref="RoleGroup"/> is one of <see cref="OwnerRoles"/>' groups; <see cref="Percentage"/> is
-/// the stake CMS lists (often none for officers and managers). <see cref="Kinds"/> are the owner types CMS marks (organizations
-/// only): codes of <see cref="OwnerKinds"/>, e.g. private_equity, reit.
+/// owner across every facility, and its /owner/{id} page; null for a person, who is shown by name and role only (no ID, place or
+/// page that would link one person's roles across facilities; owner, 2026-10-15). <see cref="RoleGroup"/> is one of
+/// <see cref="OwnerRoles"/>' groups; <see cref="Percentage"/> is the stake CMS lists (often none for officers and managers).
+/// <see cref="Kinds"/> are the owner types CMS marks (organizations only): codes of <see cref="OwnerKinds"/>, e.g. private_equity, reit.
 /// </summary>
-public sealed record FacilityOwner(string OwnerId, bool IsOrganization, string Name, string? DoingBusinessAs, string? Title, string RoleCode, string Role,
+public sealed record FacilityOwner(string? OwnerId, bool IsOrganization, string Name, string? DoingBusinessAs, string? Title, string RoleCode, string Role,
     string RoleGroup, double? Percentage, DateOnly? Since, IReadOnlyList<string> Kinds, string? City, string? State);
 
-/// <summary>An owner of the seller before an ownership change (CMS "Change of Ownership - Owner Information").</summary>
-public sealed record PreviousOwner(string OwnerId, bool IsOrganization, string Name, string RoleCode, string Role, string RoleGroup, double? Percentage);
+/// <summary>
+/// An owner of the seller before an ownership change (CMS "Change of Ownership - Owner Information"); <see cref="OwnerId"/> is null
+/// for a person, as in <see cref="FacilityOwner"/>.
+/// </summary>
+public sealed record PreviousOwner(string? OwnerId, bool IsOrganization, string Name, string RoleCode, string Role, string RoleGroup, double? Percentage);
 
 /// <summary>
 /// A change of ownership CMS recorded for a facility (CMS "Change of Ownership" files, 2016 on): the buyer took over the seller's
@@ -35,10 +39,11 @@ public sealed record FacilityOwnership(string Ccn, string? EnrollmentId, string?
     IReadOnlyList<FacilityOwner> Owners, DateOnly? ChangesAsOf, IReadOnlyList<OwnershipChange> Changes);
 
 /// <summary>
-/// An owner in the owner list: <see cref="Facilities"/> = the facility enrollments it is listed for in any role, <see cref="Owned"/> =
-/// those it holds an ownership interest in.
+/// An organization in the owner list: <see cref="Facilities"/> = the facility enrollments it is listed for in any role,
+/// <see cref="Owned"/> = those it holds an ownership interest in. People (officers, managing employees, individual owners) have no
+/// entry: they are shown only by name and role on the facilities' own pages (owner, 2026-10-15).
 /// </summary>
-public sealed record OwnerSummary(string Id, bool IsOrganization, string Name, string? DoingBusinessAs, string? City, string? State,
+public sealed record OwnerSummary(string Id, string Name, string? DoingBusinessAs, string? City, string? State,
     IReadOnlyList<string> Kinds, int Facilities, int Owned);
 
 /// <summary>A page of owners.</summary>
@@ -54,8 +59,8 @@ public sealed record OwnerRole(string RoleCode, string Role, string RoleGroup, d
 public sealed record OwnerFacility(string? Ccn, string EnrollmentId, string Type, string Name, string? City, string? State, bool? Active, IReadOnlyList<OwnerRole> Roles);
 
 /// <summary>
-/// An owner's page (/owner/{id}): the facilities it owns or runs, and, matched by its associate ID only (never by name), the NPIs
-/// it is enrolled in Medicare under (<see cref="Npis"/>, organizations only), the facilities it is itself (<see cref="EnrolledAs"/>),
+/// An organization owner's page (/owner/{id}): the facilities it owns or runs, and, matched by its associate ID only (never by name),
+/// the NPIs it is enrolled in Medicare under (<see cref="Npis"/>), the facilities it is itself (<see cref="EnrolledAs"/>),
 /// its Medicare group page (<see cref="GroupPacId"/>) and the ownership changes it was the buyer or seller in.
 /// </summary>
 public sealed record OwnerDetail(OwnerSummary Owner, DateOnly? AsOf, IReadOnlyList<OwnerFacility> Facilities, IReadOnlyList<OrganizationNpi> Npis,
@@ -247,8 +252,6 @@ public sealed class OwnershipService(string connectionString)
     /// <summary>The <c>reference_data</c> source of the nursing home inspections (its version starts with CMS's update date).</summary>
     public const string InspectionsSource = "cc_nursing_home_inspections";
 
-    public const string TypeOrganization = "organization";
-    public const string TypeIndividual = "individual";
 
     private sealed record EnrollmentRow(string EnrollmentId, string? OrgName, string? AssociateId);
 
@@ -291,7 +294,7 @@ public sealed class OwnershipService(string connectionString)
     }
 
     /// <summary>The checks /owners and /api/v1/owners make; empty when the filter is fine.</summary>
-    public static Dictionary<string, string[]> Validate(string? q, string? type, string? kind, int page, int pageSize)
+    public static Dictionary<string, string[]> Validate(string? q, string? kind, int page, int pageSize)
     {
         var errors = new Dictionary<string, string[]>();
         if (q?.Trim().Length > MaxQueryLength)
@@ -299,10 +302,6 @@ public sealed class OwnershipService(string connectionString)
             errors["q"] = [$"At most {MaxQueryLength} characters."];
         }
 
-        if (!string.IsNullOrWhiteSpace(type) && type.Trim().ToLowerInvariant() is not (TypeOrganization or TypeIndividual))
-        {
-            errors["type"] = [$"One of {TypeOrganization}, {TypeIndividual}."];
-        }
 
         if (!string.IsNullOrWhiteSpace(kind) && !OwnerKinds.IsKnown(kind.Trim().ToLowerInvariant()))
         {
@@ -323,39 +322,36 @@ public sealed class OwnershipService(string connectionString)
     }
 
     /// <summary>
-    /// Owners whose name or doing-business-as name contains <paramref name="q"/> (any part, case- and accent-insensitive) or whose
-    /// associate ID it is; every owner when it's empty. Those owning the most facilities first.
+    /// Organizations whose name or doing-business-as name contains <paramref name="q"/> (any part, case- and accent-insensitive) or
+    /// whose associate ID it is; every owning organization when it's empty. Those owning the most facilities first. People are never
+    /// listed (owner, 2026-10-15: facility_owner_entity holds organizations only).
     /// </summary>
-    public async Task<OwnerPage> SearchOwnersAsync(string? q, string? type, string? kind, int page, int pageSize, CancellationToken ct)
+    public async Task<OwnerPage> SearchOwnersAsync(string? q, string? kind, int page, int pageSize, CancellationToken ct)
     {
-        if (Validate(q, type, kind, page, pageSize) is { Count: > 0 } errors)
+        if (Validate(q, kind, page, pageSize) is { Count: > 0 } errors)
         {
             throw new ArgumentException(string.Join(" ", errors.Select(e => $"{e.Key}: {string.Join(" ", e.Value)}")));
         }
 
         var text = q?.Trim() ?? "";
-        var conditions = new List<string>();
+        var conditions = new List<string> { "e.owner_type = 'O'" };
         if (text.Length > 0)
         {
             conditions.Add(NormalizeOwnerId(text) is null ? "(e.name LIKE @like OR e.dba_name LIKE @like)" : "(e.owner_id = @id OR e.name LIKE @like)");
         }
 
-        if (!string.IsNullOrWhiteSpace(type))
-        {
-            conditions.Add("e.owner_type = @ownerType");
-        }
 
         if (!string.IsNullOrWhiteSpace(kind))
         {
             conditions.Add("FIND_IN_SET(@kind, e.owner_kinds) > 0");
         }
 
-        var where = conditions.Count == 0 ? "" : "WHERE " + string.Join(" AND ", conditions);
+        var where = "WHERE " + string.Join(" AND ", conditions);
         var parameters = new
         {
             like = "%" + SearchQuery.Prefix(text),
             id = NormalizeOwnerId(text),
-            ownerType = type?.Trim().ToLowerInvariant() == TypeIndividual ? "I" : "O",
+
             kind = kind?.Trim().ToLowerInvariant(),
             offset = (page - 1) * pageSize,
             pageSize,
@@ -373,7 +369,10 @@ public sealed class OwnershipService(string connectionString)
         return new OwnerPage([.. rows.Select(Summary)], page, pageSize, total);
     }
 
-    /// <summary>One owner by its associate ID, or null when no facility lists it.</summary>
+    /// <summary>
+    /// One organization owner by its associate ID, or null when no facility lists it or CMS lists it as a person anywhere: people
+    /// are shown only by name and role on the facility pages, never with a page of their own (owner, 2026-10-15).
+    /// </summary>
     public async Task<OwnerDetail?> GetOwnerAsync(string id, CancellationToken ct)
     {
         if (NormalizeOwnerId(id) is not { } ownerId)
@@ -386,19 +385,24 @@ public sealed class OwnershipService(string connectionString)
             """
             SELECT owner_id AS OwnerId, owner_type AS OwnerType, name AS Name, dba_name AS DbaName, city AS City, state AS State,
                    owner_kinds AS OwnerKinds, facilities AS Facilities, owned AS Owned
-            FROM facility_owner_entity WHERE owner_id = @id
+            FROM facility_owner_entity WHERE owner_id = @id AND owner_type = 'O'
             """, new { id = ownerId }, cancellationToken: ct));
         // An owner only of a facility it sold (a previous owner in a change of ownership): its page lists those changes.
         if (entity is null && await connection.QueryFirstOrDefaultAsync<PreviousRow>(new CommandDefinition(
                 """
                 SELECT enrollment_id AS EnrollmentId, owner_id AS OwnerId, owner_type AS OwnerType, name AS Name, role_code AS RoleCode,
                        role_text AS RoleText, percentage AS Percentage
-                FROM facility_ownership_change_owner WHERE owner_id = @id ORDER BY name IS NULL, enrollment_id LIMIT 1
+                FROM facility_ownership_change_owner WHERE owner_id = @id AND owner_type = 'O' ORDER BY name IS NULL, enrollment_id LIMIT 1
                 """, new { id = ownerId }, cancellationToken: ct)) is { } former)
         {
             entity = new EntityRow(former.OwnerId, former.OwnerType, OwnerName(former.Name, former.OwnerId), null, null, null, null, 0, 0);
         }
-        if (entity is null)
+        // No page for an associate ID CMS lists as a person anywhere, whatever another row says.
+        if (entity is null || await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                """
+                SELECT EXISTS (SELECT 1 FROM facility_owner WHERE owner_id = @id AND owner_type = 'I')
+                    OR EXISTS (SELECT 1 FROM facility_ownership_change_owner WHERE owner_id = @id AND owner_type = 'I')
+                """, new { id = ownerId }, cancellationToken: ct)) != 0)
         {
             return null;
         }
@@ -432,38 +436,31 @@ public sealed class OwnershipService(string connectionString)
             .ToList();
         var asOf = owned.Max(r => r.PeriodEnd);
 
-        var isOrganization = entity.OwnerType == "O";
-        IReadOnlyList<OrganizationNpi> npis = [];
-        IReadOnlyList<OwnerFacility> enrolledAs = [];
-        string? group = null;
-        if (isOrganization)
-        {
-            // By the associate ID only: the NPIs enrolled under it (Medicare enrollment), the facilities it is, its group page.
-            npis = (await connection.QueryAsync<NpiRow>(new CommandDefinition(
-                    """
-                    SELECT p.npi AS Npi, p.entity_type AS EntityType, p.last_name AS LastName, p.first_name AS FirstName, p.middle_name AS MiddleName,
-                           p.name_suffix AS NameSuffix, p.org_name AS OrgName, p.primary_taxonomy_code AS PrimaryTaxonomyCode, l.city AS City, l.state AS State
-                    FROM (SELECT DISTINCT npi FROM medicare_enrollment WHERE pac_id = @id) m
-                    JOIN provider p ON p.npi = m.npi AND p.entity_type = 2
-                    LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
-                    ORDER BY p.sort_name LIMIT 100
-                    """, new { id = ownerId }, cancellationToken: ct)))
-                .Select(r => new OrganizationNpi(r.Npi, ProviderNames.Display(r.EntityType, r.LastName, r.FirstName, r.MiddleName, r.NameSuffix, r.OrgName),
-                    PlainSpecialty(r.PrimaryTaxonomyCode), r.City, r.State))
-                .ToList();
-            enrolledAs = (await connection.QueryAsync<SelfRow>(new CommandDefinition(
-                    """
-                    SELECT e.enrollment_id AS EnrollmentId, e.kind AS Kind, e.ccn AS Ccn, e.org_name AS OrgName, e.state AS State, d.name AS DirName,
-                           d.city AS DirCity, d.state AS DirState, d.type AS DirType, CAST(d.active AS SIGNED) AS DirActive
-                    FROM cms_facility_enrollment e LEFT JOIN directory_facility d ON d.ccn = e.ccn
-                    WHERE e.associate_id = @id ORDER BY e.ccn
-                    """, new { id = ownerId }, cancellationToken: ct)))
-                .Select(r => new OwnerFacility(r.Ccn, r.EnrollmentId, r.DirType ?? r.Kind, r.DirName ?? r.OrgName ?? r.EnrollmentId, r.DirCity, r.DirState ?? r.State,
-                    r.DirActive is null ? null : r.DirActive != 0, []))
-                .ToList();
-            group = await connection.ExecuteScalarAsync<string?>(new CommandDefinition(
-                "SELECT pac_id FROM directory_group WHERE pac_id = @id", new { id = ownerId }, cancellationToken: ct));
-        }
+        // By the associate ID only: the NPIs enrolled under it (Medicare enrollment), the facilities it is, its group page.
+        var npis = (await connection.QueryAsync<NpiRow>(new CommandDefinition(
+                """
+                SELECT p.npi AS Npi, p.entity_type AS EntityType, p.last_name AS LastName, p.first_name AS FirstName, p.middle_name AS MiddleName,
+                       p.name_suffix AS NameSuffix, p.org_name AS OrgName, p.primary_taxonomy_code AS PrimaryTaxonomyCode, l.city AS City, l.state AS State
+                FROM (SELECT DISTINCT npi FROM medicare_enrollment WHERE pac_id = @id) m
+                JOIN provider p ON p.npi = m.npi AND p.entity_type = 2
+                LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
+                ORDER BY p.sort_name LIMIT 100
+                """, new { id = ownerId }, cancellationToken: ct)))
+            .Select(r => new OrganizationNpi(r.Npi, ProviderNames.Display(r.EntityType, r.LastName, r.FirstName, r.MiddleName, r.NameSuffix, r.OrgName),
+                PlainSpecialty(r.PrimaryTaxonomyCode), r.City, r.State))
+            .ToList();
+        var enrolledAs = (await connection.QueryAsync<SelfRow>(new CommandDefinition(
+                """
+                SELECT e.enrollment_id AS EnrollmentId, e.kind AS Kind, e.ccn AS Ccn, e.org_name AS OrgName, e.state AS State, d.name AS DirName,
+                       d.city AS DirCity, d.state AS DirState, d.type AS DirType, CAST(d.active AS SIGNED) AS DirActive
+                FROM cms_facility_enrollment e LEFT JOIN directory_facility d ON d.ccn = e.ccn
+                WHERE e.associate_id = @id ORDER BY e.ccn
+                """, new { id = ownerId }, cancellationToken: ct)))
+            .Select(r => new OwnerFacility(r.Ccn, r.EnrollmentId, r.DirType ?? r.Kind, r.DirName ?? r.OrgName ?? r.EnrollmentId, r.DirCity, r.DirState ?? r.State,
+                r.DirActive is null ? null : r.DirActive != 0, []))
+            .ToList();
+        var group = await connection.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT pac_id FROM directory_group WHERE pac_id = @id", new { id = ownerId }, cancellationToken: ct));
 
         // The changes it was the buyer or the seller in, or an owner of the seller before.
         var changes = await ChangesAsync(connection,
@@ -501,9 +498,11 @@ public sealed class OwnershipService(string connectionString)
         }
 
         var list = owners
-            .Select(o => new FacilityOwner(o.OwnerId, o.OwnerType == "O", OwnerName(o.Name, o.OwnerId), o.DbaName, o.Title, o.RoleCode,
-                OwnerRoles.Label(o.RoleCode, o.RoleText), OwnerRoles.Group(o.RoleCode), o.Percentage, Date(o.AssociationDate), OwnerKinds.Parse(o.OwnerKinds),
-                o.City, o.State))
+            .Select(o => o.OwnerType == "O"
+                ? new FacilityOwner(o.OwnerId, true, OwnerName(o.Name, o.OwnerId), o.DbaName, o.Title, o.RoleCode, OwnerRoles.Label(o.RoleCode, o.RoleText),
+                    OwnerRoles.Group(o.RoleCode), o.Percentage, Date(o.AssociationDate), OwnerKinds.Parse(o.OwnerKinds), o.City, o.State)
+                : new FacilityOwner(null, false, PersonName(o.Name), null, o.Title, o.RoleCode, OwnerRoles.Label(o.RoleCode, o.RoleText),
+                    OwnerRoles.Group(o.RoleCode), o.Percentage, Date(o.AssociationDate), [], null, null))
             // Each group in the page's order; the largest stake, organizations and then names first within it.
             .OrderBy(o => OwnerRoles.Order(o.RoleGroup))
             .ThenByDescending(o => o.Percentage ?? -1)
@@ -606,7 +605,8 @@ public sealed class OwnershipService(string connectionString)
                 r.SellerEnrollmentId is null
                     ? []
                     : bySeller[r.SellerEnrollmentId]
-                        .Select(p => new PreviousOwner(p.OwnerId, p.OwnerType == "O", OwnerName(p.Name, p.OwnerId), p.RoleCode, OwnerRoles.Label(p.RoleCode, p.RoleText),
+                        .Select(p => new PreviousOwner(p.OwnerType == "O" ? p.OwnerId : null, p.OwnerType == "O",
+                            p.OwnerType == "O" ? OwnerName(p.Name, p.OwnerId) : PersonName(p.Name), p.RoleCode, OwnerRoles.Label(p.RoleCode, p.RoleText),
                             OwnerRoles.Group(p.RoleCode), p.Percentage))
                         .OrderBy(p => OwnerRoles.Order(p.RoleGroup)).ThenByDescending(p => p.Percentage ?? -1)
                         .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
@@ -615,9 +615,11 @@ public sealed class OwnershipService(string connectionString)
     }
 
     private static OwnerSummary Summary(EntityRow e) =>
-        new(e.OwnerId, e.OwnerType == "O", OwnerName(e.Name, e.OwnerId), e.DbaName, e.City, e.State, OwnerKinds.Parse(e.OwnerKinds), e.Facilities, e.Owned);
+        new(e.OwnerId, OwnerName(e.Name, e.OwnerId), e.DbaName, e.City, e.State, OwnerKinds.Parse(e.OwnerKinds), e.Facilities, e.Owned);
 
     private static string OwnerName(string? name, string id) => string.IsNullOrWhiteSpace(name) ? "Owner " + id : name.Trim();
+
+    private static string PersonName(string? name) => string.IsNullOrWhiteSpace(name) ? "Name not listed" : name.Trim();
 
     private static DateOnly? Date(DateTime? value) => value is { } d ? DateOnly.FromDateTime(d) : null;
 
