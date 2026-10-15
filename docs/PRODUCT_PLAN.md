@@ -225,7 +225,14 @@ Each phase lists its goals, scope, data, and how we'll know it worked.
 - **Scope:** the site on Azure behind a password, deployed by GitHub Actions, and **the nightly load running in Azure on a schedule, not on the owner's PC** (owner, 2026-10-12): Azure downloads the source files, loads them, builds the projection and refreshes the datasets itself. The design (where the loader runs, a database large enough for the raw data, the DuckDB-based Overture and FEMA steps) and its cost estimate come first. The PC stays the development and test environment.
 - **When:** only when a feature needs it; the owner is asked first, with a cost estimate. Not needed yet (owner, 2026-10-13).
 - **Data:** nothing new.
-- **Worked when:** the test copy serves every page within the Phase 1 speed targets, the nightly load in Azure succeeds 7 days in a row, and the monthly cost matches the estimate.
+- **Admin console (owner, 2026-10-15; before release, built with this phase):** a web-based console for a few named admins, running everything in Docker. Whether production moves to containers (a Docker host in Azure that Portainer manages) or stays on App Service + Azure Database for MySQL is decided here, with the cost estimate.
+  - **Containers:** Docker images and a compose stack for the site, the loader and MySQL, managed with **Portainer Community Edition** (free): start, stop, restart, logs, resource use, image updates. Every Portainer user is a full admin; finer roles (Business Edition) are paid and not planned.
+  - **Database:** **CloudBeaver** (free community edition) next to it: browse tables, run SQL, export; read and write, one account per admin, each with their own MySQL login (not the site's read-only login nor the loader's).
+  - **Loader:** see the loader's runs (command, start, end, result, timings per step, the log) and start one (`run`, `project`, `datasets <name>` …) from the console; loader runs as containers Portainer starts, or an admin page in our own site, whichever the design picks.
+  - **Site settings:** an admin page in our own site for the API key switch (`Api:RequireKey`), the keys themselves and the rate limit, instead of editing environment variables.
+  - **Access:** a few admins with their own accounts and HTTPS; never open without a login. How sign-in works (Portainer's and CloudBeaver's own logins, or one sign-in in front of all of them) is part of the design.
+  - **Audit log:** who did what and when: console sign-ins, loader runs started, settings and key changes, and the admin logins' database changes (MySQL audit), kept for review.
+- **Worked when:** the test copy serves every page within the Phase 1 speed targets, the nightly load in Azure succeeds 7 days in a row, the monthly cost matches the estimate, and the admins can manage the containers, query the database, start and follow a loader run and change the API settings from the console, with each action in the audit log.
 
 ### Phase 3: Data quality signals and change history
 
@@ -440,6 +447,7 @@ tiers; pay-as-you-go verification; data licensing; custom area reports. Sponsore
 - 2026-10-15: an open business listing counts as a sign of practice only when a confirming source backs it (Meta, store locators and listing services, or a Bing/Foursquare record seen within 3 years); a 10+ year old record with only a listing is Check.
 - 2026-10-15: the owner approved the step 3.6 sources Claude judges best: All Owners and Change of Ownership, more Care Compare facility types and hospital measures, nursing home deficiencies and penalties, Medicare inpatient/outpatient by provider, HIFLD hospitals, HRSA health center sites and 340B, the MSSP ACO files and the AHRQ compendium (built after the pages); HCRIS cost reports, Form 990s and UDS later.
 - 2026-10-15: step 3.3 becomes part of Areas: an analytical, statistics-based Areas section (country, state, county for now) with changes over time, a JavaScript map with statistics to the county level and shortage areas, going back in time once step 3.4's NBER history is in. Step 3.7's sources (Florida's Provider Master List, the national T-MSIS enrollment segments and Medicaid spending files) are approved; not to be added yet.
+- 2026-10-15: before release, a web-based admin console with everything in Docker: Portainer Community Edition for the containers, CloudBeaver for the database (read and write, an account per admin), loader runs and site settings (API keys, rate limit) from the console, a few admins, an audit log; built with Phase 2, which decides whether production runs in containers.
 - 2026-10-13: [TODO.md](TODO.md) is the working to-do list, kept up to date with each decision; this document stays the full plan.
 
 ## 7. Loader speed work (owner, 2026-10-13)
