@@ -120,11 +120,11 @@ public static partial class NppesHistoryReader
         var locationEntry = zip.Entries.Where(e => IsLocationEntry(e.FullName)).MaxBy(e => e.Length);
         if (locationEntry is not null)
         {
-            using var locationStream = locationEntry.Open();
+            using var locationStream = new UnpackedStream(locationEntry.Open(), locationEntry.FullName);
             locations = ReadLocations(locationStream, dictionary, ct);
         }
 
-        using var stream = entry.Open();
+        using var stream = new UnpackedStream(entry.Open(), entry.FullName);
         return Read(stream, entry.FullName, dictionary, onRow, ct, locations);
     }
 
@@ -586,4 +586,54 @@ public static partial class NppesHistoryReader
     public static string Describe(HistoryFileSummary summary) =>
         string.Create(CultureInfo.InvariantCulture,
             $"{summary.EntryName}: {summary.Columns} columns, {summary.Rows:N0} rows ({summary.DeactivatedRows:N0} deactivated){(summary.HasLocations ? $", {summary.SecondaryRows:N0} secondary locations" : "")}");
+}
+
+/// <summary>
+/// A zip whose CSV can't be unpacked: the copy itself is damaged (NBER's March 2011 copy fails 755 MB into its 3.9 GB CSV, the
+/// same in .NET, Python and unzip), so reading it again won't help. <see cref="HistoryBuilder"/> records the month as one
+/// without a file and goes on with the next.
+/// </summary>
+public sealed class DamagedArchiveException(string message, Exception inner) : IOException(message, inner);
+
+// A zip entry's stream that reports broken compressed data as a DamagedArchiveException, with how far it got.
+internal sealed class UnpackedStream(Stream inner, string entryName) : Stream
+{
+    private long _read;
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => _read; set => throw new NotSupportedException(); }
+
+    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+    public override int Read(Span<byte> buffer)
+    {
+        try
+        {
+            var read = inner.Read(buffer);
+            _read += read;
+            return read;
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new DamagedArchiveException($"{entryName} can't be unpacked after {_read:N0} bytes ({ex.Message})", ex);
+        }
+    }
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            inner.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
 }
