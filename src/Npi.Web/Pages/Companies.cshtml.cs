@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Npi.Core.Search;
@@ -12,8 +13,11 @@ public class CompaniesModel(CompanyService companies) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Name { get; set; }
 
-    [BindProperty(SupportsGet = true, Name = "page")]
-    public int PageNumber { get; set; } = 1;
+    /// <summary>
+    /// The list's page, read from the query string in <c>OnGetAsync</c>: a property bound by the name "page" got Razor Pages'
+    /// own route value of that name (the page's path) instead, so every page showed page 1.
+    /// </summary>
+    public int PageNumber { get; private set; } = 1;
 
     public CompanyPage Result { get; private set; } = null!;
 
@@ -29,7 +33,7 @@ public class CompaniesModel(CompanyService companies) : PageModel
             Name = null;
         }
 
-        PageNumber = Math.Max(1, PageNumber);
+        PageNumber = int.TryParse(Request.Query["page"], NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0 ? number : 1;
         Result = await companies.SearchAsync(Name, PageNumber, PageSize, ct);
     }
 
