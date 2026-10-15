@@ -76,6 +76,15 @@ public static class StateLicenseFilter
     public static async Task<(long Read, long Kept)> FilterAsync(string source, string target, StateLicenseSource.StateDataset dataset, LicenseKeys keys,
         CancellationToken ct)
     {
+        await using var stream = File.OpenRead(source);
+        return await FilterAsync(stream, Path.GetFileName(source), target, dataset, keys, ct);
+    }
+
+    /// <summary>The same, reading the rows from a stream (a dropped file's zip entry, never extracted); <paramref name="name"/> is for messages.</summary>
+    /// <returns>The rows read and the rows kept.</returns>
+    public static async Task<(long Read, long Kept)> FilterAsync(Stream source, string name, string target, StateLicenseSource.StateDataset dataset,
+        LicenseKeys keys, CancellationToken ct)
+    {
         var licenseHeader = dataset.Columns.First(c => c.Column == "license_number").Header;
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
@@ -110,7 +119,7 @@ public static class StateLicenseFilter
         var column = header is null ? -1 : Array.FindIndex(header, h => string.Equals(Clean(h), licenseHeader, StringComparison.OrdinalIgnoreCase));
         if (column < 0)
         {
-            throw new InvalidDataException($"{Path.GetFileName(source)} has no column '{licenseHeader}'; the source changed its format.");
+            throw new InvalidDataException($"{name} has no column '{licenseHeader}'; the source changed its format.");
         }
 
         foreach (var field in header!)

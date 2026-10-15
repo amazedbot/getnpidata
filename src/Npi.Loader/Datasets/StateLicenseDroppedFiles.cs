@@ -197,6 +197,10 @@ public sealed partial record CaliforniaDataset() : DroppedStateDataset("CA", "ca
             yield break;
         }
 
+        // The Access driver (OLE DB) reads only a real file, so the one .accdb used is extracted (458 MB in the 2026-09-29
+        // snapshot), and nothing else: not the data dictionary beside it, not the other snapshots. A snapshot inside the big
+        // zip of snapshots is a zip itself, which can only be opened from a seekable file: it's copied out first and deleted
+        // as soon as its database is out (speed item 9).
         var work = Path.Combine(context.Options.ResolvedWorkFolder, "datasets", "state_ca");
         Directory.CreateDirectory(work);
         try
@@ -218,6 +222,11 @@ public sealed partial record CaliforniaDataset() : DroppedStateDataset("CA", "ca
                             ?? throw new InvalidDataException($"The California snapshot {newest.Date} has no .accdb database.");
                 database = Path.Combine(work, "physicians.accdb");
                 entry.ExtractToFile(database, overwrite: true);
+            }
+
+            if (newest.Entry is not null)
+            {
+                File.Delete(snapshot);
             }
 
             context.Log.Information("State licenses CA: reading snapshot {Date}", newest.Date);

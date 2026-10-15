@@ -35,8 +35,38 @@ public sealed class StateLicenseSource : DatasetSource
         /// <summary>The current version, or null when the dataset isn't available (a dropped file that isn't there).</summary>
         public abstract Task<string?> VersionAsync(DatasetContext context, CancellationToken ct);
 
-        /// <summary>The file to load, and whether to delete it afterwards (downloads and extractions yes, dropped files no).</summary>
+        /// <summary>The file to load, and whether to delete it afterwards (downloads and assembled lists yes, dropped files no).</summary>
         public abstract Task<(string Path, bool Delete)> FetchAsync(DatasetContext context, CancellationToken ct);
+
+        /// <summary>
+        /// The rows to filter, as a stream: by default the file <see cref="FetchAsync"/> gives (deleted when the stream is
+        /// disposed, if it should be). A dropped file is read straight from the file or its zip entry instead (speed item 9).
+        /// </summary>
+        public virtual async Task<StateFile> OpenAsync(DatasetContext context, CancellationToken ct)
+        {
+            var (path, delete) = await FetchAsync(context, ct);
+            return new StateFile(Path.GetFileName(path), File.OpenRead(path), delete ? () => File.Delete(path) : null);
+        }
+    }
+
+    /// <summary>A dataset's rows opened for reading; disposing it closes the stream, then runs the cleanup (delete a download, close a zip).</summary>
+    public sealed class StateFile(string name, Stream stream, Action? cleanup = null) : IAsyncDisposable
+    {
+        public string Name => name;
+
+        public Stream Stream => stream;
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await stream.DisposeAsync();
+            }
+            finally
+            {
+                cleanup?.Invoke();
+            }
+        }
     }
 
     /// <summary>A Socrata open-data dataset, exported as CSV with only the mapped columns (the headers are the field names).</summary>
@@ -84,8 +114,8 @@ public sealed class StateLicenseSource : DatasetSource
 
     /// <summary>
     /// A file the owner downloads from a board that requires a sign-in, saved under
-    /// <see cref="LoaderOptions.StateLicenseFilesFolder"/>\&lt;State&gt;\<see cref="FileName"/>. A .zip is read from its
-    /// <see cref="ZipEntry"/> (extracted to the work folder first). Its version is the file's time and size.
+    /// <see cref="LoaderOptions.StateLicenseFilesFolder"/>\&lt;State&gt;\<see cref="FileName"/>. A .zip is read straight from
+    /// its <see cref="ZipEntry"/>, never extracted. Its version is the file's time and size.
     /// </summary>
     public sealed record DroppedFileDataset(string State, string Source, string FileName, string Kind, IReadOnlyList<CsvColumn> Columns,
         string? ZipEntry = null, char Separator = ',') : StateDataset(State, Source, Kind, Columns)
@@ -103,46 +133,176 @@ public sealed class StateLicenseSource : DatasetSource
         }
 
         /// <summary>
-        /// Copies the file (or its zip entry) to the work folder as clean rows: these exports don't quote fields, so a stray
-        /// double quote (FL has "DE as a suffix) is changed to a single quote, as NPPES does, and a row whose field count
-        /// differs from the header's (a separator inside a value, 27 of 3.7M FL rows) is left out and counted in the log.
+        /// The clean rows (<see cref="DroppedFileRowStream"/>), read straight from the file or its zip entry while the filter reads
+        /// them: nothing is extracted or copied to the work folder (speed item 9; FL's PROF_ALL.txt is 959 MB unzipped).
         /// </summary>
-        public override async Task<(string Path, bool Delete)> FetchAsync(DatasetContext context, CancellationToken ct)
+        public override Task<StateFile> OpenAsync(DatasetContext context, CancellationToken ct)
         {
             var path = PathIn(context);
+            if (ZipEntry is null)
+            {
+                return Task.FromResult(new StateFile(FileName, Rows(context, File.OpenRead(path))));
+            }
+
+            var zip = ZipFile.OpenRead(path);
+            try
+            {
+                var entry = zip.GetEntry(ZipEntry) ?? throw new InvalidDataException($"{FileName} has no entry {ZipEntry}.");
+                return Task.FromResult(new StateFile(FileName, Rows(context, entry.Open()), zip.Dispose));
+            }
+            catch
+            {
+                zip.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>The clean rows written to a file in the work folder: the same bytes <see cref="OpenAsync"/> streams.</summary>
+        public override async Task<(string Path, bool Delete)> FetchAsync(DatasetContext context, CancellationToken ct)
+        {
             var target = Path.Combine(context.Options.ResolvedWorkFolder, "datasets", $"state_{Source}_{Kind}.txt");
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            using var zip = ZipEntry is null ? null : ZipFile.OpenRead(path);
-            var entry = zip is null ? null : zip.GetEntry(ZipEntry!) ?? throw new InvalidDataException($"{FileName} has no entry {ZipEntry}.");
-            await using var source = entry is null ? File.OpenRead(path) : entry.Open();
-            using var reader = new StreamReader(source, System.Text.Encoding.UTF8);
-            await using (var writer = new StreamWriter(target, false, new System.Text.UTF8Encoding(false)) { NewLine = "\n" })
+            await using (var file = await OpenAsync(context, ct))
+            await using (var output = File.Create(target))
             {
-                var (fields, skipped) = (-1, 0);
-                while (await reader.ReadLineAsync(ct) is { } read)
-                {
-                    var line = read.EndsWith(Separator) ? read[..^1] : read; // FL ends lines with a separator (PROF_ALL: rows only)
-                    var count = line.Count(c => c == Separator) + 1;
-                    if (fields < 0)
-                    {
-                        fields = count;
-                    }
-                    else if (count != fields)
-                    {
-                        skipped++;
-                        continue;
-                    }
-
-                    await writer.WriteLineAsync(line.Replace('"', '\''));
-                }
-
-                if (skipped > 0)
-                {
-                    context.Log.Warning("State licenses {State}: {Skipped:N0} rows of {File} have the wrong number of fields; left out", State, skipped, FileName);
-                }
+                await file.Stream.CopyToAsync(output, ct);
             }
 
             return (target, true);
+        }
+
+        private DroppedFileRowStream Rows(DatasetContext context, Stream source) => new(source, Separator, skipped =>
+        {
+            if (skipped > 0)
+            {
+                context.Log.Warning("State licenses {State}: {Skipped:N0} rows of {File} have the wrong number of fields; left out", State, skipped, FileName);
+            }
+        });
+    }
+
+    /// <summary>
+    /// A dropped file's rows, cleaned as they are read: these exports don't quote fields, so a stray double quote (FL has "DE
+    /// as a suffix) is changed to a single quote, as NPPES does; one trailing separator is dropped (FL ends its rows with
+    /// one); and a row whose field count differs from the header's (a separator inside a value, 27 of 3.7M FL rows) is left
+    /// out and counted (<paramref name="onEnd"/> gets the count once, at the end). The source is read as UTF-8 and the rows
+    /// come out as UTF-8 without a byte order mark, each ending in "\n".
+    /// </summary>
+    public sealed class DroppedFileRowStream(Stream source, char separator, Action<int> onEnd) : Stream
+    {
+        private readonly StreamReader _reader = new(source, System.Text.Encoding.UTF8);
+        private byte[] _line = new byte[4096];
+        private int _offset;
+        private int _length;
+        private int _fields = -1;
+        private int _skipped;
+        private bool _ended;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            while (_offset == _length)
+            {
+                if (!Next(_reader.ReadLine()))
+                {
+                    return 0;
+                }
+            }
+
+            return Copy(buffer);
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            while (_offset == _length)
+            {
+                if (!Next(await _reader.ReadLineAsync(cancellationToken)))
+                {
+                    return 0;
+                }
+            }
+
+            return Copy(buffer.Span);
+        }
+
+        private int Copy(Span<byte> buffer)
+        {
+            var n = Math.Min(buffer.Length, _length - _offset);
+            _line.AsSpan(_offset, n).CopyTo(buffer);
+            _offset += n;
+            return n;
+        }
+
+        // Takes the next source line: false at the end; otherwise the clean row (none for a row left out) is ready to copy.
+        private bool Next(string? read)
+        {
+            (_offset, _length) = (0, 0);
+            if (read is null)
+            {
+                if (!_ended)
+                {
+                    _ended = true;
+                    onEnd(_skipped);
+                }
+
+                return false;
+            }
+
+            var line = read.EndsWith(separator) ? read[..^1] : read;
+            var count = line.Count(c => c == separator) + 1;
+            if (_fields < 0)
+            {
+                _fields = count;
+            }
+            else if (count != _fields)
+            {
+                _skipped++;
+                return true;
+            }
+
+            var clean = line.Replace('"', '\'');
+            var needed = System.Text.Encoding.UTF8.GetMaxByteCount(clean.Length) + 1;
+            if (_line.Length < needed)
+            {
+                _line = new byte[Math.Max(needed, _line.Length * 2)];
+            }
+
+            _length = System.Text.Encoding.UTF8.GetBytes(clean, _line);
+            _line[_length++] = (byte)'\n';
+            return true;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _reader.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
     }
 
@@ -401,23 +561,14 @@ public sealed class StateLicenseSource : DatasetSource
             for (var i = 0; i < datasets.Count; i++)
             {
                 var dataset = datasets[i];
-                var (path, delete) = await dataset.FetchAsync(context, ct);
                 // Numbered: two of a state's datasets can share a source and kind (MD's two lists).
                 var filtered = Path.Combine(context.Options.ResolvedWorkFolder, "datasets", $"state_{dataset.Source}_{dataset.Kind}_{i}_filtered.csv");
-                try
-                {
-                    prepared.Add(new PreparedFile(dataset, filtered));
-                    var (read, kept) = await StateLicenseFilter.FilterAsync(path, filtered, dataset, keys, ct);
-                    context.Log.Information("State licenses {State} ({Kind}): {Read:N0} rows read, {Kept:N0} with a license number NPPES lists",
-                        state, dataset.Kind, read, kept);
-                }
-                finally
-                {
-                    if (delete)
-                    {
-                        File.Delete(path);
-                    }
-                }
+                Directory.CreateDirectory(Path.GetDirectoryName(filtered)!);
+                await using var file = await dataset.OpenAsync(context, ct); // a download is deleted when it's closed, after the filter
+                prepared.Add(new PreparedFile(dataset, filtered));
+                var (read, kept) = await StateLicenseFilter.FilterAsync(file.Stream, file.Name, filtered, dataset, keys, ct);
+                context.Log.Information("State licenses {State} ({Kind}): {Read:N0} rows read, {Kept:N0} with a license number NPPES lists",
+                    state, dataset.Kind, read, kept);
             }
 
             return prepared;
