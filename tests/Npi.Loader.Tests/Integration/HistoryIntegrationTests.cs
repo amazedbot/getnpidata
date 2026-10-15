@@ -280,9 +280,9 @@ public sealed class HistoryIntegrationTests : IDisposable
 
         // Loaded as a monthly and counted by the projection and the area counts (what the recorded series takes each month) …
         using var http = new HttpClient();
-        Assert.Equal(0, await new LoaderApp(new LoaderOptions { WorkFolder = folder, LogFolder = folder }, db.Database, http, Logger.None).LoadFileAsync(zip, _ct));
-        await new ProjectionBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
-        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        Assert.Equal(0, await new LoaderApp(new LoaderOptions { WorkFolder = folder, LogFolder = folder }, db.Database, http, TestLog.Warnings).LoadFileAsync(zip, _ct));
+        await new ProjectionBuilder(db.Database, TestLog.Warnings, 0.95).BuildAsync(_ct);
+        await new AreaCountBuilder(db.Database, TestLog.Warnings, 0.95).BuildAsync(_ct);
 
         // … and read as the archive's month: the same providers in every area and category.
         var january = new HistoryFile(new DateOnly(2026, 1, 1), Path.GetFileName(zip), new Uri("https://example.test/" + Path.GetFileName(zip)), "cms");
