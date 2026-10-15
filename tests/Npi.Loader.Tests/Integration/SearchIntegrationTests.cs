@@ -468,8 +468,9 @@ public sealed class SearchIntegrationTests : IDisposable
         await using var db = await SeededAsync();
         var census = new CensusGeocoder(new HttpClient(new FakeCensus()), "https://census.test/batch", "Public_AR_Current");
         await new AddressGeocoder(db.Database, census, Logger.None, batchSize: 10, parallelism: 1) { Delays = [] }.GeocodePendingAsync(maxBatches: 0, _ct);
-        var credentials = new CredentialBuilder(db.Database, Logger.None, 0.95);
-        var map = new MapBuilder(db.Database, Logger.None, 0.95);
+        // No row check: the steps below keep changing one provider's credential, so a full build has fewer raw values than the last.
+        var credentials = new CredentialBuilder(db.Database, Logger.None, 0);
+        var map = new MapBuilder(db.Database, Logger.None, 0);
         async Task<string?> FilledByAsync() =>
             await db.ScalarAsync<string?>("SELECT version FROM reference_data WHERE source = @source", new { source = CredentialBuilder.MapCellsSource });
         async Task AssertCurrentAsync(string filledBy)
