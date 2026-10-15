@@ -22,7 +22,7 @@ public sealed record AcoOrganization(string Npi, string OrgName)
 
 /// <summary>
 /// A participant linked to an organization NPI by name: the ACO, the participant's name as CMS lists it, the NPI, and how many share
-/// it; <see cref="HospitalGroup"/> when every one of them is a hospital, with the reason they belong together (<see cref="AcoNames"/>).
+/// it; <see cref="HospitalGroup"/> when they are a hospital and its own NPIs, with the reason they belong together (<see cref="AcoNames"/>).
 /// </summary>
 public sealed record AcoParticipantLink(string AcoId, string Name, string Npi, int Candidates)
 {
@@ -34,8 +34,8 @@ public sealed record AcoParticipantLink(string AcoId, string Name, string Npi, i
 }
 
 /// <summary>
-/// How the participants matched: exactly one organization, 2 to <see cref="AcoNames.MaxCandidates"/>, a hospital group of more (up
-/// to <see cref="AcoNames.MaxHospitalCandidates"/>, all linked), more (not linked), none.
+/// How the participants matched: exactly one organization, 2 to <see cref="AcoNames.MaxCandidates"/>, a hospital and its own NPIs
+/// of more (up to <see cref="AcoNames.MaxHospitalCandidates"/>, all linked), more (not linked), none.
 /// </summary>
 public sealed record AcoMatchCounts(int Participants, int One, int Several, int HospitalGroups, int TooMany, int None);
 
@@ -43,10 +43,11 @@ public sealed record AcoMatchCounts(int Participants, int One, int Several, int 
 /// Links ACO participants (CMS: legal business names only) to active organization NPIs whose NPPES legal business name is the
 /// same name, case, spacing and punctuation aside (<see cref="AcoNames.Key"/>; owner, 2026-10-15). A name shared by up to
 /// <see cref="AcoNames.MaxCandidates"/> organizations links each as a candidate; more, and the participant isn't linked (a common
-/// name such as "FAMILY PRACTICE ASSOCIATES PC" says nothing about which one takes part), unless every one of them is a hospital:
-/// then up to <see cref="AcoNames.MaxHospitalCandidates"/> are linked (a hospital and its subpart NPIs; owner, 2026-10-15), and
-/// the reason they belong together is recorded when there is one: a CCN they all share, or the one parent organization their
-/// subparts name (legal business name, else tax ID).
+/// name such as "FAMILY PRACTICE ASSOCIATES PC" says nothing about which one takes part), unless they are a hospital and its own
+/// NPIs (owner, 2026-10-15): one of them is a hospital and every other one shares that hospital's CCN or names the hospital, or
+/// the hospital's own parent organization, as its parent organization in NPPES (by legal business name or tax ID). Then up to
+/// <see cref="AcoNames.MaxHospitalCandidates"/> are linked (the hospital's clinics, pharmacies, suppliers and groups under its
+/// legal name), with the reason they belong together (<see cref="Grouping"/>).
 /// </summary>
 public static class AcoParticipantMatcher
 {
@@ -96,9 +97,10 @@ public static class AcoParticipantMatcher
         foreach (var (key, members) in byKey)
         {
             var found = named.TryGetValue(key, out var set) ? set.Values.OrderBy(o => o.Npi, StringComparer.Ordinal).ToList() : [];
-            var allHospitals = found.Count > 1 && found.All(o => o.Hospital);
-            var linked = found.Count is > 0 and <= AcoNames.MaxCandidates || (allHospitals && found.Count <= AcoNames.MaxHospitalCandidates);
-            var (groupedBy, groupedValue) = allHospitals && linked ? Grouping(found) : (null, null);
+            var hospital = found.Count is > 1 and <= AcoNames.MaxHospitalCandidates ? FamilyHospital(found) : null;
+            var linked = found.Count is > 0 and <= AcoNames.MaxCandidates || hospital is not null;
+            var (groupedBy, groupedValue) = hospital is not null ? Grouping(found) is { GroupedBy: not null } g ? g : (AcoNames.GroupedByHospital, hospital.OrgName.Trim())
+                : (null, null);
             foreach (var (acoId, name) in members)
             {
                 if (found.Count == 0)
@@ -128,7 +130,7 @@ public static class AcoParticipantMatcher
 
                 links.AddRange(found.Select(o => new AcoParticipantLink(acoId, name, o.Npi, found.Count)
                 {
-                    HospitalGroup = allHospitals, GroupedBy = groupedBy, GroupedValue = groupedValue,
+                    HospitalGroup = hospital is not null, GroupedBy = groupedBy, GroupedValue = groupedValue,
                 }));
             }
         }
@@ -137,8 +139,23 @@ public static class AcoParticipantMatcher
     }
 
     /// <summary>
-    /// Why hospital NPIs of one name belong together: a CCN every one of them is enrolled for; else one parent organization named
-    /// by all but at most one of them (the parent itself names none), by legal business name, else by tax ID; else none.
+    /// The hospital whose own NPIs the others are: a hospital such that every other NPI shares one of its CCNs, or names it (its legal
+    /// name, which is theirs) or its own parent organization as parent organization, by legal business name or tax ID. Hospitals that
+    /// name no parent (the main NPI) are tried first; null when there is none.
+    /// </summary>
+    public static AcoOrganization? FamilyHospital(IReadOnlyList<AcoOrganization> organizations) =>
+        organizations.Where(o => o.Hospital).OrderBy(o => o.ParentName is null && o.ParentTin is null ? 0 : 1).ThenBy(o => o.Npi, StringComparer.Ordinal)
+            .FirstOrDefault(h => organizations.All(o => ReferenceEquals(o, h) || OwnNpi(o, h)));
+
+    private static bool OwnNpi(AcoOrganization o, AcoOrganization hospital) =>
+        o.Ccns.Intersect(hospital.Ccns, StringComparer.OrdinalIgnoreCase).Any()
+        || AcoNames.Key(o.ParentName) is { } parent && (parent == AcoNames.Key(hospital.OrgName) || parent == AcoNames.Key(hospital.ParentName))
+        || Digits(o.ParentTin) is { } tin && tin == Digits(hospital.ParentTin);
+
+    /// <summary>
+    /// Why NPIs of one name belong together: a CCN every one of them is enrolled for; else one parent organization named by all but
+    /// at most one of them (the parent itself names none), by legal business name, else by tax ID; else none. For a hospital and its
+    /// own NPIs that fit none of these (some share its CCN, others name it), the matcher records <see cref="AcoNames.GroupedByHospital"/>.
     /// </summary>
     public static (string? GroupedBy, string? GroupedValue) Grouping(IReadOnlyList<AcoOrganization> organizations)
     {

@@ -176,7 +176,7 @@ public sealed class HealthSystemLink
 /// <summary>
 /// An ACO participant by legal business name, as CMS lists it, with the active organization NPIs whose NPPES legal business name is
 /// the same name (case, spacing and punctuation aside): one is a link, several are candidates; a name shared by more than 5 lists none,
-/// unless they are all hospitals (then up to 50).
+/// unless they are a hospital and its own NPIs (then up to 50).
 /// </summary>
 public sealed class AcoParticipant
 {
@@ -187,10 +187,10 @@ public sealed class AcoParticipant
     /// <summary>"name" when <see cref="Organizations"/> isn't empty: a name match, not an identifier.</summary>
     public string? MatchedBy { get; set; }
 
-    /// <summary>Every NPI of the name is a hospital (a hospital and its subparts; up to 50 are listed instead of 5).</summary>
+    /// <summary>A hospital and its own NPIs: every other NPI of the name shares its CCN or names it, or its parent, as parent organization (up to 50 listed instead of 5).</summary>
     public bool HospitalGroup { get; set; }
 
-    /// <summary>Why a hospital group's NPIs belong together: "ccn" (a shared CCN, <see cref="GroupedValue"/>), "parent" (the same parent organization, <see cref="GroupedValue"/> = its legal name), "parent_tin" (the same parent tax ID), or null.</summary>
+    /// <summary>Why a hospital group's NPIs belong together: "ccn" (a shared CCN, <see cref="GroupedValue"/>), "parent" (the same parent organization, <see cref="GroupedValue"/> = its legal name), "parent_tin" (the same parent tax ID), "hospital" (some share the hospital's CCN, others name it; <see cref="GroupedValue"/> = its legal name), or null.</summary>
     public string? GroupedBy { get; set; }
 
     public string? GroupedValue { get; set; }
@@ -228,10 +228,10 @@ public sealed class AcoMembership
     /// <summary>Always "name".</summary>
     public string MatchedBy { get; set; } = "name";
 
-    /// <summary>Every NPI of the name is a hospital (a hospital and its subparts; up to 50 are listed instead of 5).</summary>
+    /// <summary>A hospital and its own NPIs: every other NPI of the name shares its CCN or names it, or its parent, as parent organization (up to 50 listed instead of 5).</summary>
     public bool HospitalGroup { get; set; }
 
-    /// <summary>Why a hospital group's NPIs belong together: "ccn" (a shared CCN, <see cref="GroupedValue"/>), "parent" (the same parent organization, <see cref="GroupedValue"/> = its legal name), "parent_tin" (the same parent tax ID), or null.</summary>
+    /// <summary>Why a hospital group's NPIs belong together: "ccn" (a shared CCN, <see cref="GroupedValue"/>), "parent" (the same parent organization, <see cref="GroupedValue"/> = its legal name), "parent_tin" (the same parent tax ID), "hospital" (some share the hospital's CCN, others name it; <see cref="GroupedValue"/> = its legal name), or null.</summary>
     public string? GroupedBy { get; set; }
 
     public string? GroupedValue { get; set; }

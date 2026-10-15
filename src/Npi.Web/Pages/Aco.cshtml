@@ -48,7 +48,7 @@
                     so a participant is linked to an organization NPI only when its NPPES legal business name is the same name (case, spacing and
                     punctuation aside): a <strong>name match</strong>. @Format.Number(linked) of @Format.Number(d.Participants.Count) are linked. When up to
                     @(Npi.Core.Search.AcoNames.MaxCandidates) organizations share the name, all are listed as candidates; when more do, the name isn't linked,
-                    unless they are all hospitals (a hospital and its subpart NPIs): then up to @(Npi.Core.Search.AcoNames.MaxHospitalCandidates) are listed.
+                    unless they are a hospital and its own NPIs (each shares the hospital's CCN or names it, or its parent, as parent organization in NPPES): then up to @(Npi.Core.Search.AcoNames.MaxHospitalCandidates) are listed.
                 </p>
                 <ul class="link-list columns aco-participants">
                     @foreach (var x in d.Participants)
@@ -66,7 +66,7 @@
                                 @x.Name
                                 if (x.HospitalGroup)
                                 {
-                                    <span class="pill plain name-match" title="Matched by name: @x.Organizations.Count active hospital NPIs have this legal business name, typically a hospital and its subparts. @(reason ?? "Nothing in NPPES or CMS's enrollments ties them together, so they may be different hospitals.")">name match · hospital, @x.Organizations.Count NPIs</span>
+                                    <span class="pill plain name-match" title="Matched by name: @x.Organizations.Count active organization NPIs have this legal business name: a hospital and its own clinics, pharmacies, suppliers and groups. @reason">name match · hospital, @x.Organizations.Count NPIs</span>
                                     @if (reason is not null){<span class="muted small"> @reason</span>}
                                 }
                                 else

@@ -52,7 +52,7 @@ public sealed class SystemsIntegrationTests : IDisposable
               ('1000000129', 2, NULL, NULL, 'DESERT FAMILY PRACTICE PLLC', 'DESERT FAMILY PRACTICE PLLC'),
               ('1000000137', 2, NULL, NULL, 'Desert Family Practice, P.L.L.C.', 'DESERT FAMILY PRACTICE, P.L.L.C.'),
               ('1000000145', 2, NULL, NULL, 'GOOD SAMARITAN', 'GOOD SAMARITAN'),
-              -- A hospital and five subparts of its name (more than 5, all hospitals: linked), the subparts naming it as their parent.
+              -- A hospital and five of its own NPIs (more than 5: linked), naming it as their parent; one is its rural health clinic.
               ('1000000200', 2, NULL, NULL, 'GOOD SAMARITAN HOSPITAL', 'GOOD SAMARITAN HOSPITAL'),
               ('1000000201', 2, NULL, NULL, 'Good Samaritan Hospital', 'GOOD SAMARITAN HOSPITAL'),
               ('1000000202', 2, NULL, NULL, 'GOOD SAMARITAN HOSPITAL', 'GOOD SAMARITAN HOSPITAL'),
@@ -61,7 +61,7 @@ public sealed class SystemsIntegrationTests : IDisposable
               ('1000000205', 2, NULL, NULL, 'GOOD SAMARITAN HOSPITAL', 'GOOD SAMARITAN HOSPITAL');
             INSERT INTO provider_taxonomy (npi, slot, taxonomy_code, is_primary) VALUES
               ('1000000200', 1, '282N00000X', 1), ('1000000201', 1, '273R00000X', 1), ('1000000202', 1, '282N00000X', 1),
-              ('1000000203', 1, '282N00000X', 1), ('1000000204', 1, '283X00000X', 1), ('1000000205', 1, '282N00000X', 1);
+              ('1000000203', 1, '282N00000X', 1), ('1000000204', 1, '283X00000X', 1), ('1000000205', 1, '261QR1300X', 1);
             INSERT INTO provider_profile (npi, parent_org_name) VALUES
               ('1000000201', 'GOOD SAMARITAN HOSPITAL'), ('1000000202', 'Good Samaritan Hospital'), ('1000000203', 'GOOD SAMARITAN HOSPITAL'),
               ('1000000204', 'GOOD SAMARITAN HOSPITAL'), ('1000000205', 'GOOD SAMARITAN HOSPITAL');

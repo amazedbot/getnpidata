@@ -26,8 +26,8 @@
                 <li>
                     In ACO <a href="/aco/@Uri.EscapeDataString(m.AcoId)">@m.AcoName</a> (@m.ProgramYear)
                     @{ var reason = Npi.Core.Search.AcoNames.GroupReason(m.GroupedBy, m.GroupedValue); }
-                    <span class="pill plain name-match" title="Matched by name: CMS lists the participant as “@m.ParticipantName” without an NPI or tax ID, and this is the NPPES legal business name of @(m.Candidates == 1 ? "only this active organization" : m.HospitalGroup ? $"{m.Candidates} active hospital NPIs (a hospital and its subparts), this one among them" : $"{m.Candidates} active organizations, this one among them").@(reason is null ? "" : " " + reason)">name match</span>
-                    @if (m.HospitalGroup && reason is not null){<span class="muted small"> One of @m.Candidates hospital NPIs of this name. @reason</span>}
+                    <span class="pill plain name-match" title="Matched by name: CMS lists the participant as “@m.ParticipantName” without an NPI or tax ID, and this is the NPPES legal business name of @(m.Candidates == 1 ? "only this active organization" : m.HospitalGroup ? $"{m.Candidates} active NPIs of a hospital and its own clinics and groups, this one among them" : $"{m.Candidates} active organizations, this one among them").@(reason is null ? "" : " " + reason)">name match</span>
+                    @if (m.HospitalGroup && reason is not null){<span class="muted small"> One of @m.Candidates NPIs of a hospital and its own clinics and groups under this name. @reason</span>}
                 </li>
             }
         </ul>

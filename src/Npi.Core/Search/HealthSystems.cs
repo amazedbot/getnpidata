@@ -371,7 +371,7 @@ public sealed record AcoParticipantMatch(string Npi, string Name, string? City, 
 /// <summary>
 /// An ACO participant as CMS lists it (legal business name) and the active organization NPIs with exactly that legal name
 /// (<see cref="AcoNames.Key"/>): one is a link, two to <see cref="AcoNames.MaxCandidates"/> are candidates, more are not linked,
-/// unless every one is a hospital (<see cref="HospitalGroup"/>, up to <see cref="AcoNames.MaxHospitalCandidates"/>).
+/// unless they are a hospital and its own NPIs (<see cref="HospitalGroup"/>, up to <see cref="AcoNames.MaxHospitalCandidates"/>).
 /// <see cref="MatchedBy"/> is "name" whenever <see cref="Organizations"/> isn't empty: CMS publishes no identifier to match by.
 /// <see cref="GroupedBy"/> / <see cref="GroupedValue"/>: why the NPIs of a hospital group belong together (see <see cref="AcoNames"/>).
 /// </summary>
@@ -389,7 +389,7 @@ public sealed record AcoParticipant(string Name, IReadOnlyList<AcoParticipantMat
 /// <summary>
 /// An organization NPI's place in an ACO, found by name (<see cref="MatchedBy"/> = "name"): the participant's name as CMS lists it,
 /// and how many active organizations share it (<see cref="Candidates"/>: 1 = the only one). <see cref="HospitalGroup"/>: every
-/// one of them is a hospital (a hospital and its subpart NPIs), with <see cref="GroupedBy"/> / <see cref="GroupedValue"/> as on
+/// they are a hospital and its own NPIs (its clinics, pharmacies, suppliers and groups under its legal name), with <see cref="GroupedBy"/> / <see cref="GroupedValue"/> as on
 /// <see cref="AcoParticipant"/>.
 /// </summary>
 public sealed record AcoMembership(string AcoId, string AcoName, int ProgramYear, string ParticipantName, string Npi, int Candidates)
@@ -411,15 +411,16 @@ public sealed record AcoMembership(string AcoId, string AcoName, int ProgramYear
 /// </summary>
 public static class AcoNames
 {
-    /// <summary>A name shared by more active organizations than this is not linked at all, unless they are all hospitals.</summary>
+    /// <summary>A name shared by more active organizations than this is not linked at all, unless they are a hospital and its own NPIs.</summary>
     public const int MaxCandidates = 5;
 
     /// <summary>
-    /// A name shared only by hospitals (a NUCC 27 hospital unit or 28 hospital taxonomy, or CMS's enrollment of the NPI as a hospital)
-    /// links up to this many (owner, 2026-10-15): a hospital may register an NPI per subpart (psychiatric or rehabilitation unit,
-    /// swing beds) under its own legal name. 50 is the owner's suggested ceiling; in a 300-name sample of the 2026 participants the
-    /// names that include a hospital had 2–15 NPIs (one health system's name 78), so 50 is well above a hospital and its units
-    /// while a name shared by more is treated as common.
+    /// A name shared by a hospital (a NUCC 27 hospital unit or 28 hospital taxonomy, or CMS's enrollment of the NPI as a hospital) and
+    /// its own NPIs links up to this many (owner, 2026-10-15): every other NPI of the name shares the hospital's CCN or names the
+    /// hospital, or its parent organization, as parent organization in NPPES: its clinics, pharmacies, suppliers and groups under its
+    /// legal name. 50 is the owner's ceiling; in a 300-name sample of the 2026 participants the names that include a hospital had
+    /// 2–15 NPIs (one health system's name 78), so 50 is well above a hospital and its own NPIs while a name shared by more is
+    /// treated as common.
     /// </summary>
     public const int MaxHospitalCandidates = 50;
 
@@ -434,12 +435,19 @@ public static class AcoNames
     /// <summary>Its subparts name the same parent organization tax ID (not stored or shown).</summary>
     public const string GroupedByParentTin = "parent_tin";
 
+    /// <summary>
+    /// They are a hospital's own NPIs, some sharing its CCN and others naming it as parent organization (<c>grouped_value</c> = the
+    /// hospital's legal business name).
+    /// </summary>
+    public const string GroupedByHospital = "hospital";
+
     /// <summary>"They share CCN 330045." / "They name the same parent organization, X." / "… the same parent tax ID."; null otherwise.</summary>
     public static string? GroupReason(string? groupedBy, string? groupedValue) => groupedBy switch
     {
         GroupedByCcn => $"They share Medicare CCN {groupedValue}.",
         GroupedByParent => string.IsNullOrEmpty(groupedValue) ? "They name the same parent organization." : $"They name the same parent organization, {groupedValue}.",
         GroupedByParentTin => "They name the same parent organization tax ID.",
+        GroupedByHospital => $"They are the hospital's own NPIs: each shares its CCN or names {groupedValue} as its parent organization.",
         _ => null,
     };
 

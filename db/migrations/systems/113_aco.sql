@@ -9,11 +9,13 @@
 --   aco_participant_npi the active organization NPIs whose NPPES legal business name is the participant's name, compared
 --                       after folding case, spacing and punctuation only (owner, 2026-10-15): a NAME match, shown as one.
 --                       candidates = how many organizations have that name; a name shared by more than 5 is not linked,
---                       unless every one of them is a hospital (a 27/28 NUCC hospital or hospital unit taxonomy, or enrolled
---                       by CMS as a hospital): then up to 50 (a hospital and its subpart NPIs; hospital_group = 1).
---                       grouped_by says why such NPIs belong together: 'ccn' (they share a CCN, grouped_value), 'parent' (the
---                       subparts name the same parent organization, grouped_value = its legal business name) or 'parent_tin'
---                       (the same parent tax ID, not stored); NULL when none applies.
+--                       unless they are a hospital (a 27/28 NUCC hospital or hospital unit taxonomy, or enrolled by CMS as a
+--                       hospital) and its own NPIs: every other one shares the hospital's CCN or names the hospital, or its
+--                       parent organization, as parent organization in NPPES. Then up to 50 (hospital_group = 1; owner,
+--                       2026-10-15). grouped_by says why they belong together: 'ccn' (they share a CCN, grouped_value),
+--                       'parent' (the same parent organization, grouped_value = its legal business name), 'parent_tin' (the
+--                       same parent tax ID, not stored) or 'hospital' (some share its CCN, others name it; grouped_value =
+--                       the hospital's legal name); NULL when none applies.
 --                       Built by the loader with the directory tables (DirectoryBuilder), after each projection.
 --   aco_snf_affiliate   the skilled nursing facilities the ACO works with under the 3-day rule waiver, by legal business name
 --                       (no CCN in the file)

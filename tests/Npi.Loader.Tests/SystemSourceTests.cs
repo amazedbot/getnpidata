@@ -309,47 +309,61 @@ public sealed class SystemSourceTests : IDisposable
     }
 
     [Fact]
-    public void A_hospital_and_its_subparts_link_up_to_50_with_the_reason_they_belong_together()
+    public void A_hospital_and_its_own_npis_link_up_to_50_with_the_reason_they_belong_together()
     {
         (string, string)[] participants =
         [
             ("A9001", "GOOD SAMARITAN HOSPITAL"), ("A9001", "SHORE MEDICAL CENTER"), ("A9002", "ST JOSEPH HOSPITAL"), ("A9002", "VALLEY HOSPITAL"),
-            ("A9003", "LAKE CLINIC PC"), ("A9003", "RIVER HOSPITAL"),
+            ("A9003", "LAKE CLINIC PC"), ("A9003", "RIVER HOSPITAL"), ("A9004", "MERCY HOSPITAL"), ("A9004", "COUNTY MEDICAL CENTER"),
         ];
-        static AcoOrganization Hospital(string npi, string name, string? ccn = null, string? parent = null, string? tin = null) =>
-            new(npi, name) { Hospital = true, Ccns = ccn is null ? [] : [ccn], ParentName = parent, ParentTin = tin };
+        static AcoOrganization Org(string npi, string name, bool hospital = true, string? ccn = null, string? parent = null, string? tin = null) =>
+            new(npi, name) { Hospital = hospital, Ccns = ccn is null ? [] : [ccn], ParentName = parent, ParentTin = tin };
 
         var organizations = new List<AcoOrganization>();
-        // Twelve hospital NPIs of one name, all enrolled for CCN 330045: one hospital and its subparts.
-        organizations.AddRange(Enumerable.Range(0, 12).Select(i => Hospital($"30000000{i:00}", "Good Samaritan Hospital", "330045")));
-        // Eight: the hospital (no parent) and seven subparts naming it as their parent.
-        organizations.Add(Hospital("3100000000", "SHORE MEDICAL CENTER"));
-        organizations.AddRange(Enumerable.Range(1, 7).Select(i => Hospital($"31000000{i:00}", "SHORE MEDICAL CENTER", parent: "Shore Medical Center")));
-        // 51 hospitals of a common name: not linked.
-        organizations.AddRange(Enumerable.Range(0, 51).Select(i => Hospital($"32000000{i:00}", "ST JOSEPH HOSPITAL")));
-        // Seven hospitals naming the same parent tax ID only (one with none).
-        organizations.AddRange(Enumerable.Range(0, 7).Select(i => Hospital($"33000000{i:00}", "VALLEY HOSPITAL", tin: i == 0 ? null : "12-3456789")));
-        // Six of a name, one of them not a hospital: the limit of 5 applies.
-        organizations.AddRange(Enumerable.Range(0, 5).Select(i => Hospital($"34000000{i:00}", "LAKE CLINIC PC")));
-        organizations.Add(new AcoOrganization("3400000099", "LAKE CLINIC PC"));
-        // Six hospitals with nothing in common: linked, with no reason given.
-        organizations.AddRange(Enumerable.Range(0, 6).Select(i => Hospital($"35000000{i:00}", "RIVER HOSPITAL", $"33{i:0000}", $"PARENT {i}")));
+        // Twelve hospital NPIs of one name, all enrolled for CCN 330045.
+        organizations.AddRange(Enumerable.Range(0, 12).Select(i => Org($"30000000{i:00}", "Good Samaritan Hospital", ccn: "330045")));
+        // The hospital (no parent) and seven subparts naming it as their parent.
+        organizations.Add(Org("3100000000", "SHORE MEDICAL CENTER"));
+        organizations.AddRange(Enumerable.Range(1, 7).Select(i => Org($"31000000{i:00}", "SHORE MEDICAL CENTER", parent: "Shore Medical Center")));
+        // 51 of a name: more than 50, not linked.
+        organizations.AddRange(Enumerable.Range(0, 51).Select(i => Org($"32000000{i:00}", "ST JOSEPH HOSPITAL", ccn: "330200")));
+        // Seven hospital NPIs naming the same parent tax ID.
+        organizations.AddRange(Enumerable.Range(0, 7).Select(i => Org($"33000000{i:00}", "VALLEY HOSPITAL", tin: "12-3456789")));
+        // Six of a name with no hospital among them: the limit of 5 applies.
+        organizations.AddRange(Enumerable.Range(0, 6).Select(i => Org($"34000000{i:00}", "LAKE CLINIC PC", hospital: false, parent: "LAKE CLINIC PC")));
+        // Six hospitals with nothing tying them together: not linked.
+        organizations.AddRange(Enumerable.Range(0, 6).Select(i => Org($"35000000{i:00}", "RIVER HOSPITAL", ccn: $"33{i:0000}", parent: $"PARENT {i}")));
+        // A hospital and seven of its clinics, pharmacy and groups (not hospitals) naming it as parent organization.
+        organizations.Add(Org("3600000000", "MERCY HOSPITAL", ccn: "330300"));
+        organizations.AddRange(Enumerable.Range(1, 7).Select(i => Org($"36000000{i:00}", "Mercy Hospital", hospital: false, parent: "MERCY HOSPITAL")));
+        // A hospital, three clinics enrolled for its CCN and three naming it: linked as the hospital's own NPIs.
+        organizations.Add(Org("3700000000", "COUNTY MEDICAL CENTER", ccn: "330400"));
+        organizations.AddRange(Enumerable.Range(1, 3).Select(i => Org($"37000000{i:00}", "COUNTY MEDICAL CENTER", hospital: false, ccn: "330400")));
+        organizations.AddRange(Enumerable.Range(4, 3).Select(i => Org($"37000000{i:00}", "COUNTY MEDICAL CENTER", hospital: false, parent: "County Medical Center")));
 
         var (links, counts) = AcoParticipantMatcher.Match(participants, organizations);
-        Assert.Equal(new AcoMatchCounts(6, 0, 0, 4, 2, 0), counts);
+        Assert.Equal(new AcoMatchCounts(8, 0, 0, 5, 3, 0), counts);
         var byName = links.GroupBy(l => l.Name).ToDictionary(g => g.Key, g => g.ToList());
-        Assert.Equal(["GOOD SAMARITAN HOSPITAL", "RIVER HOSPITAL", "SHORE MEDICAL CENTER", "VALLEY HOSPITAL"], byName.Keys.Order(StringComparer.Ordinal));
-        Assert.Equal((12, 12, true, "ccn", "330045"), (byName["GOOD SAMARITAN HOSPITAL"].Count, byName["GOOD SAMARITAN HOSPITAL"][0].Candidates,
-            byName["GOOD SAMARITAN HOSPITAL"][0].HospitalGroup, byName["GOOD SAMARITAN HOSPITAL"][0].GroupedBy, byName["GOOD SAMARITAN HOSPITAL"][0].GroupedValue));
+        Assert.Equal(["COUNTY MEDICAL CENTER", "GOOD SAMARITAN HOSPITAL", "MERCY HOSPITAL", "SHORE MEDICAL CENTER", "VALLEY HOSPITAL"],
+            byName.Keys.Order(StringComparer.Ordinal));
+        Assert.All(links, l => Assert.True(l.HospitalGroup));
+        Assert.Equal((12, 12, "ccn", "330045"), (byName["GOOD SAMARITAN HOSPITAL"].Count, byName["GOOD SAMARITAN HOSPITAL"][0].Candidates,
+            byName["GOOD SAMARITAN HOSPITAL"][0].GroupedBy, byName["GOOD SAMARITAN HOSPITAL"][0].GroupedValue));
         Assert.All(byName["SHORE MEDICAL CENTER"], l => Assert.Equal((8, "parent", "Shore Medical Center"), (l.Candidates, l.GroupedBy, l.GroupedValue)));
         Assert.All(byName["VALLEY HOSPITAL"], l => Assert.Equal(("parent_tin", (string?)null), (l.GroupedBy, l.GroupedValue)));
-        Assert.All(byName["RIVER HOSPITAL"], l => Assert.Equal((true, (string?)null), (l.HospitalGroup, l.GroupedBy)));
+        Assert.All(byName["MERCY HOSPITAL"], l => Assert.Equal((8, "parent", "MERCY HOSPITAL"), (l.Candidates, l.GroupedBy, l.GroupedValue)));
+        Assert.All(byName["COUNTY MEDICAL CENTER"], l => Assert.Equal((7, "hospital", "COUNTY MEDICAL CENTER"), (l.Candidates, l.GroupedBy, l.GroupedValue)));
 
-        // Two hospital NPIs of a name are candidates as before, with their reason; two subparts naming different parents have none.
-        Assert.Equal(("ccn", "330045"), AcoParticipantMatcher.Grouping([Hospital("1", "A", "330045"), Hospital("2", "A", "330045")]));
-        Assert.Equal((null, null), AcoParticipantMatcher.Grouping([Hospital("1", "A", parent: "X"), Hospital("2", "A", parent: "Y")]));
-        Assert.Equal((null, null), AcoParticipantMatcher.Grouping([Hospital("1", "A"), Hospital("2", "A"), Hospital("3", "A", parent: "A")])); // two without
+        // Two NPIs of a name are candidates either way; a hospital and one of its own NPIs carry the reason.
+        Assert.Equal("3600000000", AcoParticipantMatcher.FamilyHospital([Org("3600000000", "M", ccn: "330300"), Org("3600000001", "M", hospital: false, ccn: "330300")])!.Npi);
+        Assert.Null(AcoParticipantMatcher.FamilyHospital([Org("1", "A"), Org("2", "A", hospital: false)])); // the clinic names no parent, shares no CCN
+        // A subpart of a system names the system as parent: the clinics naming the same system belong to it too.
+        Assert.NotNull(AcoParticipantMatcher.FamilyHospital([Org("1", "A", parent: "SYSTEM"), Org("2", "A", hospital: false, parent: "System")]));
+        Assert.Equal(("ccn", "330045"), AcoParticipantMatcher.Grouping([Org("1", "A", ccn: "330045"), Org("2", "A", ccn: "330045")]));
+        Assert.Equal((null, null), AcoParticipantMatcher.Grouping([Org("1", "A", parent: "X"), Org("2", "A", parent: "Y")]));
+        Assert.Equal((null, null), AcoParticipantMatcher.Grouping([Org("1", "A"), Org("2", "A"), Org("3", "A", parent: "A")])); // two without
         Assert.Equal("They share Medicare CCN 330045.", AcoNames.GroupReason("ccn", "330045"));
+        Assert.Contains("names MERCY HOSPITAL as its parent organization", AcoNames.GroupReason("hospital", "MERCY HOSPITAL"), StringComparison.Ordinal);
         Assert.Null(AcoNames.GroupReason(null, null));
     }
 
