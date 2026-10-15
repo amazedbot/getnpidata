@@ -348,8 +348,12 @@ public sealed class SearchIntegrationTests : IDisposable
         "specialty_code_category", "area_provider_count", "provider_map", "provider_map_specialty", "provider_quality", "quality_search",
     ];
 
-    [Fact]
-    public async Task The_builders_after_an_incremental_projection_equal_a_full_rebuild()
+    // sideBySide: as run builds them (speed item 13): credentials, address types and area counts at once, the credentials leaving
+    // provider_map_credential to the map built after them. Otherwise one after another, each keeping its own tables current.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_builders_after_an_incremental_projection_equal_a_full_rebuild(bool sideBySide)
     {
         await using var db = await SeededAsync();
         var census = new CensusGeocoder(new HttpClient(new FakeCensus()), "https://census.test/batch", "Public_AR_Current");
@@ -366,11 +370,34 @@ public sealed class SearchIntegrationTests : IDisposable
         CredentialBuilder Credentials() => new(db.Database, Logger.None, 0.95, minListed: 2);
         async Task BuildAllAsync(bool full)
         {
-            await Credentials().BuildAsync(_ct, full);
-            await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
-            await new AddressTypeBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
-            await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+            if (sideBySide)
+            {
+                Assert.True(await BuilderSteps.RunAsync(
+                [
+                    new("credentials", null, c => Credentials().BuildAsync(c, full, leaveMapCells: true)),
+                    new("address types", null, async c => await new AddressTypeBuilder(db.Database, Logger.None, 0.95).BuildAsync(c, full)),
+                    new("areas", null, async c => await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(c, full)),
+                ], parallel: 3, Logger.None, _ct));
+                Assert.Equal(full ? 1L : 0L, await db.ScalarAsync<long>(CredentialBuilder.MapCellsOwedSql)); // a full build left them to the map
+                await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+            }
+            else
+            {
+                await Credentials().BuildAsync(_ct, full);
+                await new MapBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+                await new AddressTypeBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+                await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full);
+            }
+
             await new QualityBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 }.BuildAsync(_ct, allowIncremental: !full);
+            Assert.Equal(await ExpectedMapCellsAsync(db), await MapCellsAsync(db));
+            Assert.Equal(0L, await db.ScalarAsync<long>(CredentialBuilder.MapCellsOwedSql));
+            if (full)
+            {
+                // Side by side filled once, by the map; one after another by both (the credentials' fill replaced by the map's).
+                Assert.Equal("filled by the map", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = @source",
+                    new { source = CredentialBuilder.MapCellsSource }));
+            }
         }
 
         await BuildAllAsync(full: true);
@@ -420,6 +447,100 @@ public sealed class SearchIntegrationTests : IDisposable
         {
             Assert.Equal(full[table], incremental[table]);
         }
+    }
+
+    // provider_map_credential as ProjectionSnapshotAsync writes it, and as it should be: every credential of a provider at each of
+    // its map points' cells.
+    private static async Task<IReadOnlyList<string>> MapCellsAsync(TestDatabase db) =>
+        (await ProjectionSnapshotAsync(db, [CredentialBuilder.MapCellsSource]))[CredentialBuilder.MapCellsSource];
+
+    private static Task<IReadOnlyList<string>> ExpectedMapCellsAsync(TestDatabase db) => db.QueryAsync<string>(
+        """
+        SELECT CONCAT_WS('|', HEX(x.credential), HEX(x.cell), HEX(x.npi)) AS r
+        FROM (SELECT DISTINCT c.credential, CAST(FLOOR((m.lat + 90) * 10) * 3600 + FLOOR((m.lon + 180) * 10) AS SIGNED) AS cell, m.npi
+              FROM provider_map m JOIN provider_credential c ON c.npi = m.npi) x
+        ORDER BY r
+        """);
+
+    [Fact]
+    public async Task Map_credential_cells_are_kept_by_whichever_builder_runs_last()
+    {
+        await using var db = await SeededAsync();
+        var census = new CensusGeocoder(new HttpClient(new FakeCensus()), "https://census.test/batch", "Public_AR_Current");
+        await new AddressGeocoder(db.Database, census, Logger.None, batchSize: 10, parallelism: 1) { Delays = [] }.GeocodePendingAsync(maxBatches: 0, _ct);
+        var credentials = new CredentialBuilder(db.Database, Logger.None, 0.95);
+        var map = new MapBuilder(db.Database, Logger.None, 0.95);
+        async Task<string?> FilledByAsync() =>
+            await db.ScalarAsync<string?>("SELECT version FROM reference_data WHERE source = @source", new { source = CredentialBuilder.MapCellsSource });
+        async Task AssertCurrentAsync(string filledBy)
+        {
+            Assert.Equal(await ExpectedMapCellsAsync(db), await MapCellsAsync(db));
+            Assert.Equal(0L, await db.ScalarAsync<long>(CredentialBuilder.MapCellsOwedSql));
+            Assert.Equal(filledBy, await FilledByAsync());
+        }
+
+        // The map before any credentials, then the credentials command alone: it fills the cells itself.
+        await map.BuildAsync(_ct, full: true);
+        Assert.Empty(await MapCellsAsync(db));
+        await credentials.BuildAsync(_ct, full: true);
+        Assert.NotEmpty(await MapCellsAsync(db));
+        await AssertCurrentAsync("filled by the credentials");
+        Assert.False(await map.IsStaleAsync(_ct));
+
+        // A full credential build that leaves them to the map (run): owed, untouched; a map update then fills them on their own.
+        var before = await MapCellsAsync(db);
+        await db.ExecuteAsync("UPDATE provider SET credential = 'D.O.' WHERE npi = @B", new { B });
+        await credentials.BuildAsync(_ct, full: true, leaveMapCells: true);
+        Assert.Equal(1L, await db.ScalarAsync<long>(CredentialBuilder.MapCellsOwedSql));
+        Assert.Null(await FilledByAsync());
+        Assert.Equal(before, await MapCellsAsync(db));
+        Assert.True(await map.IsStaleAsync(_ct));
+        await map.BuildAsync(_ct);
+        await AssertCurrentAsync("filled on its own");
+        Assert.False(await map.IsStaleAsync(_ct));
+
+        // The same before a full map build: filled once, with the new points.
+        await db.ExecuteAsync("UPDATE provider SET credential = 'D.C.' WHERE npi = @B", new { B });
+        await credentials.BuildAsync(_ct, full: true, leaveMapCells: true);
+        await map.BuildAsync(_ct, full: true);
+        await AssertCurrentAsync("filled by the map");
+
+        // A map update after geocoding alone (E's address placed at its building): the moved providers' cells follow.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO address_point (addr_key, source, lat, lon, matched, `release`, matched_at)
+            SELECT addr_key, 'address', 40.9331, -73.1452, '200 MAIN ST', '2026-09-23.1', UTC_TIMESTAMP() + INTERVAL 1 SECOND FROM provider_location WHERE npi = @E
+            """, new { E });
+        Assert.True(await map.IsStaleAsync(_ct));
+        await map.BuildAsync(_ct);
+        await AssertCurrentAsync("filled by the map");
+
+        // Incremental credentials with no map after them (project): the batch's cells replaced at the points the map has.
+        var loadedAt = await db.ScalarAsync<DateTime>("SELECT loaded_at FROM reference_data WHERE source = @source", new { source = CredentialBuilder.Source });
+        await db.ExecuteAsync(
+            "UPDATE provider SET credential = 'N.P.' WHERE npi = @A; INSERT INTO builder_pending (builder, npi) VALUES (@builder, @A)",
+            new { A, builder = BuilderPending.Credentials });
+        await credentials.BuildAsync(_ct);
+        Assert.Equal(loadedAt, await db.ScalarAsync<DateTime>("SELECT loaded_at FROM reference_data WHERE source = @source", new { source = CredentialBuilder.Source }));
+        await AssertCurrentAsync("filled by the map");
+
+        // Incremental credentials before the map (run): no cells for the NPIs the map is about to update; the map adds them.
+        await db.ExecuteAsync(
+            "UPDATE provider SET credential = 'P.A.' WHERE npi = @A; INSERT INTO builder_pending (builder, npi) VALUES (@credentials, @A), (@map, @A)",
+            new { A, credentials = BuilderPending.Credentials, map = BuilderPending.Map });
+        await credentials.BuildAsync(_ct, leaveMapCells: true);
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_map_credential WHERE npi = @A", new { A }));
+        await map.BuildAsync(_ct);
+        await AssertCurrentAsync("filled by the map");
+        Assert.NotEqual(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM provider_map_credential WHERE npi = @A", new { A }));
+
+        // Incremental credentials while the cells are owed and no map follows: refilled in full at the end.
+        await credentials.BuildAsync(_ct, full: true, leaveMapCells: true);
+        await db.ExecuteAsync(
+            "UPDATE provider SET credential = 'R.N.' WHERE npi = @A; INSERT INTO builder_pending (builder, npi) VALUES (@builder, @A)",
+            new { A, builder = BuilderPending.Credentials });
+        await credentials.BuildAsync(_ct);
+        await AssertCurrentAsync("filled on its own");
     }
 
     // Every row of each projection table (or the given ones) as text (all columns but AUTO_INCREMENT ids), sorted.

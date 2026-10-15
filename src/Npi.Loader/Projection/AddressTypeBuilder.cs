@@ -214,6 +214,7 @@ public sealed class AddressTypeBuilder(Database database, ILogger log, double mi
         await connection.ExecuteAsync(new CommandDefinition("UPDATE `reference_data` SET `checked_at` = UTC_TIMESTAMP() WHERE `source` = @source",
             new { source = Source }, tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
+        await BuilderPending.CleanAsync(connection, null, ct);
         await CountProvidersAsync(connection, ct);
         log.Information("Practice address types: {Addresses:N0} addresses relabelled for {Queued:N0} queued providers in {Seconds:N0}s",
             addresses, queued, watch.Elapsed.TotalSeconds);

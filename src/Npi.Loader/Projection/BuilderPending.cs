@@ -18,7 +18,10 @@ public static class BuilderPending
     public const string Areas = "areas";
     public const string Map = "map";
 
-    /// <summary>Every builder fed by the projection's queue, in the order <c>run</c> calls them.</summary>
+    /// <summary>
+    /// Every builder fed by the projection's queue: <c>run</c> calls the first three side by side (<see cref="BuilderSteps"/>),
+    /// then the map. Each takes and empties only its own rows.
+    /// </summary>
     public static readonly IReadOnlyList<string> Builders = [Credentials, AddressTypes, Areas, Map];
 
     /// <summary>The <c>reference_data</c> source whose <c>loaded_at</c> is the last full projection build.</summary>
@@ -117,14 +120,15 @@ public static class BuilderPending
     public static Task<int> AddAsync(MySqlConnection connection, string table, string selectNpis, CancellationToken ct, object? param = null) =>
         connection.ExecuteAsync(new CommandDefinition($"INSERT IGNORE INTO `{table}` (`npi`) {selectNpis}", param, commandTimeout: 0, cancellationToken: ct));
 
-    /// <summary>Removes the batch's NPIs from the builder's queue (in the builder's transaction) and drops snapshots nobody needs.</summary>
-    public static async Task DoneAsync(MySqlConnection connection, string builder, MySqlTransaction tx, CancellationToken ct)
-    {
-        await connection.ExecuteAsync(new CommandDefinition(
+    /// <summary>
+    /// Removes the batch's NPIs from the builder's queue, in the builder's transaction. The builder drops the snapshots nobody
+    /// needs any more after its commit (<see cref="CleanAsync"/> without a transaction): builders run side by side (speed item
+    /// 13), and a cleanup inside each one's transaction locked every snapshot row the others were reading (a deadlock).
+    /// </summary>
+    public static Task DoneAsync(MySqlConnection connection, string builder, MySqlTransaction tx, CancellationToken ct) =>
+        connection.ExecuteAsync(new CommandDefinition(
             $"DELETE p FROM `builder_pending` p JOIN `{BatchTable(builder)}` b ON b.`npi` = p.`npi` WHERE p.`builder` = @builder",
             new { builder }, tx, commandTimeout: 0, cancellationToken: ct));
-        await CleanAsync(connection, tx, ct);
-    }
 
     /// <summary>A full build of one builder: its queue is done.</summary>
     public static async Task ClearAsync(MySqlConnection connection, string builder, CancellationToken ct)
@@ -136,8 +140,45 @@ public static class BuilderPending
     public static Task DropBatchAsync(MySqlConnection connection, string builder) =>
         Database.ExecuteAsync(connection, $"DROP TABLE IF EXISTS `{BatchTable(builder)}`", CancellationToken.None);
 
-    /// <summary>Drops the snapshots of NPIs no builder (nor record quality) still has to update.</summary>
+    /// <summary>
+    /// Drops the snapshots of NPIs no builder (nor record quality) still has to update: inside <paramref name="tx"/> (record
+    /// quality, which runs alone), or else in a READ COMMITTED transaction of its own, one cleanup at a time. That reads the
+    /// queues without locking them and keeps locks only on the rows it deletes, which no builder running alongside reads (their
+    /// NPIs are still queued); at most it waits for a builder's transaction to commit. A cleanup that waits 10 minutes for
+    /// another, or loses a lock conflict, is left to the next one (the next builder, record quality or incremental projection).
+    /// </summary>
     public static async Task CleanAsync(MySqlConnection connection, MySqlTransaction? tx, CancellationToken ct)
+    {
+        if (tx is not null)
+        {
+            await CleanInAsync(connection, tx, ct);
+            return;
+        }
+
+        if (await connection.ExecuteScalarAsync<long?>(new CommandDefinition(
+                "SELECT GET_LOCK(CONCAT('getnpidata.', DATABASE(), '.builder_clean'), 600)", cancellationToken: ct)) != 1)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var own = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
+            await CleanInAsync(connection, own, ct);
+            await own.CommitAsync(ct);
+        }
+        catch (MySqlException ex) when (BuilderSteps.IsLockConflict(ex))
+        {
+            // Left to the next cleanup: the caller's own work is committed.
+        }
+        finally
+        {
+            await connection.ExecuteScalarAsync<long?>(new CommandDefinition(
+                "SELECT RELEASE_LOCK(CONCAT('getnpidata.', DATABASE(), '.builder_clean'))", cancellationToken: CancellationToken.None));
+        }
+    }
+
+    private static async Task CleanInAsync(MySqlConnection connection, MySqlTransaction tx, CancellationToken ct)
     {
         const string unused = "NOT EXISTS (SELECT 1 FROM `builder_pending` p WHERE p.`npi` = o.`npi`) AND NOT EXISTS (SELECT 1 FROM `quality_pending` q WHERE q.`npi` = o.`npi`)";
         await connection.ExecuteAsync(new CommandDefinition($"DELETE o FROM `builder_old_location` o WHERE {unused}", transaction: tx, commandTimeout: 0, cancellationToken: ct));

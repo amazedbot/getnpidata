@@ -282,6 +282,7 @@ public sealed class AreaCountBuilder(Database database, ILogger log, double minR
         await connection.ExecuteAsync(new CommandDefinition("UPDATE `reference_data` SET `checked_at` = UTC_TIMESTAMP() WHERE `source` = @source",
             new { source = Source }, tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
+        await BuilderPending.CleanAsync(connection, null, ct);
         log.Information("Area counts: {Queued:N0} queued providers, {Changed:N0} counts changed, in {Seconds:N0}s", queued, changed, watch.Elapsed.TotalSeconds);
         return changed;
     }
