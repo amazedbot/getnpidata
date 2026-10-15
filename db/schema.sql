@@ -81,6 +81,9 @@ CREATE TABLE `area_history_meta` (
   `changes_from` date DEFAULT NULL,
   `as_of_month` date DEFAULT NULL,
   `last_change_id` bigint NOT NULL DEFAULT '0',
+  `archive_from` date DEFAULT NULL,
+  `archive_to` date DEFAULT NULL,
+  `any_location_from` date DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -729,6 +732,41 @@ CREATE TABLE `gender_codes` (
   PRIMARY KEY (`gender_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `history_area_count` (
+  `area_type` varchar(6) NOT NULL,
+  `area_id` varchar(5) NOT NULL,
+  `category` varchar(80) NOT NULL,
+  `providers` int NOT NULL,
+  PRIMARY KEY (`area_type`,`area_id`,`category`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `history_period` (
+  `period` date NOT NULL,
+  `status` varchar(10) NOT NULL,
+  `source` varchar(8) DEFAULT NULL,
+  `file_name` varchar(200) DEFAULT NULL,
+  `source_url` varchar(400) DEFAULT NULL,
+  `file_date` date DEFAULT NULL,
+  `bytes` bigint DEFAULT NULL,
+  `columns_count` smallint DEFAULT NULL,
+  `rows_read` int DEFAULT NULL,
+  `deactivated_rows` int DEFAULT NULL,
+  `active` int DEFAULT NULL,
+  `versions` int DEFAULT NULL,
+  `new_npis` int DEFAULT NULL,
+  `gone` int DEFAULT NULL,
+  `zip_unmatched` int DEFAULT NULL,
+  `zip_unmatched_providers` int DEFAULT NULL,
+  `stats_done` tinyint NOT NULL DEFAULT '0',
+  `locations` tinyint NOT NULL DEFAULT '0',
+  `secondary_rows` int DEFAULT NULL,
+  `started_at` datetime DEFAULT NULL,
+  `completed_at` datetime DEFAULT NULL,
+  `seconds` int DEFAULT NULL,
+  `error` text,
+  PRIMARY KEY (`period`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `hrsa_shortage_raw` (
   `discipline` varchar(2) NOT NULL,
   `hpsa_id` varchar(20) DEFAULT NULL,
@@ -903,6 +941,46 @@ CREATE TABLE `nadac_raw` (
   `otc` varchar(2) DEFAULT NULL,
   `classification` varchar(10) DEFAULT NULL,
   `as_of` date DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `npi_history` (
+  `npi` int unsigned NOT NULL,
+  `from_period` date NOT NULL,
+  `to_period` date DEFAULT NULL,
+  `status` tinyint NOT NULL,
+  `entity_type` tinyint DEFAULT NULL,
+  `state` varchar(40) DEFAULT NULL,
+  `zip5` char(5) DEFAULT NULL,
+  `country` char(2) DEFAULT NULL,
+  `primary_taxonomy` varchar(10) DEFAULT NULL,
+  `taxonomy_set` int unsigned DEFAULT NULL,
+  `location_set` int unsigned DEFAULT NULL,
+  `enumeration_date` date DEFAULT NULL,
+  `last_update_date` date DEFAULT NULL,
+  `deactivation_date` date DEFAULT NULL,
+  `reactivation_date` date DEFAULT NULL,
+  PRIMARY KEY (`npi`,`from_period`),
+  KEY `ix_npi_history_from` (`from_period`),
+  KEY `ix_npi_history_enumeration` (`enumeration_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `npi_history_location_set` (
+  `set_id` int unsigned NOT NULL,
+  `state` varchar(5) NOT NULL,
+  `zip5` char(5) NOT NULL DEFAULT '',
+  PRIMARY KEY (`set_id`,`state`,`zip5`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `npi_history_set_category` (
+  `set_id` int unsigned NOT NULL,
+  `category` varchar(80) NOT NULL,
+  PRIMARY KEY (`set_id`,`category`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `npi_history_taxonomy_set` (
+  `id` int unsigned NOT NULL,
+  `codes` varchar(200) NOT NULL,
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `npidata` (

@@ -79,7 +79,14 @@ public sealed class NpiClient : IDisposable
     }
 
     /// <summary>Looks up many NPIs at once (up to 1,000 per call; larger lists are sent in batches). One row per requested NPI, in order.</summary>
-    public async Task<IReadOnlyList<LookupRow>> LookupProvidersAsync(IEnumerable<string> npis, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<LookupRow>> LookupProvidersAsync(IEnumerable<string> npis, CancellationToken cancellationToken = default) =>
+        LookupProvidersAsync(npis, null, cancellationToken);
+
+    /// <summary>
+    /// Looks up many NPIs at once and, with <paramref name="changedSince"/>, what changed for each after that date
+    /// (<see cref="LookupRow.Changes"/>).
+    /// </summary>
+    public async Task<IReadOnlyList<LookupRow>> LookupProvidersAsync(IEnumerable<string> npis, DateTime? changedSince, CancellationToken cancellationToken = default)
     {
         if (npis is null)
         {
@@ -91,7 +98,11 @@ public sealed class NpiClient : IDisposable
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_baseAddress, "api/v1/providers/lookup"))
             {
-                Content = new StringContent(JsonSerializer.Serialize(new { npis = batch.ToList() }, Json), System.Text.Encoding.UTF8, "application/json"),
+                Content = new StringContent(
+                    changedSince is { } since
+                        ? JsonSerializer.Serialize(new { npis = batch.ToList(), changedSince = since.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) }, Json)
+                        : JsonSerializer.Serialize(new { npis = batch.ToList() }, Json),
+                    System.Text.Encoding.UTF8, "application/json"),
             };
             if (_apiKey is not null)
             {

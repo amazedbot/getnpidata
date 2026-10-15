@@ -54,6 +54,37 @@ public class VerifyPageTests
     }
 
     [Fact]
+    public void Changed_since_adds_a_pill_a_tab_and_the_lines_of_what_changed()
+    {
+        var since = new DateOnly(2020, 1, 1);
+        var moved = Active() with
+        {
+            ChangedSince = since,
+            Changes =
+            [
+                new HistoryChange(new DateOnly(2021, 5, 9), HistoryChangeKinds.Moved, "Primary practice location: NY 11735 → NY 11201"),
+                new HistoryChange(new DateOnly(2021, 5, 9), HistoryChangeKinds.Updated, "Updated in NPPES on May 1, 2021"),
+                new HistoryChange(new DateOnly(2026, 10, 14), "license_renewed", "State license renewed: 2026-11-30 → 2028-11-30"),
+            ],
+        };
+        Assert.Equal([("Active", "ok"), ("Changed since Jan 1, 2020: moved, record updated, state license renewed", "warn")], VerifyModel.Results(moved));
+        Assert.Equal(["May 2021: Primary practice location: NY 11735 → NY 11201", "May 2021: Updated in NPPES on May 1, 2021",
+            "Oct 2026: State license renewed: 2026-11-30 → 2028-11-30"], VerifyModel.ChangeLines(moved));
+        Assert.True(VerifyModel.InTab("changed", moved));
+
+        var unchanged = Active() with { ChangedSince = since, Changes = [] };
+        Assert.Equal([("Active", "ok"), ("No change since Jan 1, 2020", null)], VerifyModel.Results(unchanged));
+        Assert.False(VerifyModel.InTab("changed", unchanged));
+        var deactivated = new LookupRow("1003000126", LookupStatus.Deactivated, null)
+        {
+            DeactivationDate = new DateOnly(2025, 3, 1), ChangedSince = since,
+            Changes = [new HistoryChange(new DateOnly(2025, 3, 9), HistoryChangeKinds.Deactivated, "Deactivated on March 1, 2025")],
+        };
+        Assert.Equal([("Deactivated on March 1, 2025", "alert"), ("Changed since Jan 1, 2020: deactivated", "warn")], VerifyModel.Results(deactivated));
+        Assert.Empty(VerifyModel.ChangeLines(Active()));
+    }
+
+    [Fact]
     public void Record_quality_gets_its_own_tab_pill_and_badge()
     {
         var row = Active();

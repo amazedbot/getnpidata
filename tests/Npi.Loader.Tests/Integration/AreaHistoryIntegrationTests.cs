@@ -219,6 +219,46 @@ public sealed class AreaHistoryIntegrationTests : IDisposable
         await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
     }
 
+    [Fact]
+    public async Task The_archive_s_months_are_kept_and_the_recorded_series_wins_from_its_first_month()
+    {
+        // The NPPES archive (step 3.4, basis 3) loaded first, through October 2026, the month the recorded series will start in.
+        await using var db = await SeededAsync("archive");
+        var Dec2021 = new DateTime(2021, 12, 1);
+        await db.ExecuteAsync(
+            """
+            INSERT INTO area_month_stat (area_type, area_id, category, subcategory, month, basis, providers, new_providers) VALUES
+              ('us', 'US', '', '', '2021-12-01', 3, 7, 2), ('county', '36103', '', '', '2026-08-01', 3, 1, 1), ('us', 'US', '', '', '2026-10-01', 3, 9, 1);
+            INSERT INTO area_history_meta (id, archive_from, archive_to) VALUES (1, '2007-11-01', '2026-10-01');
+            """);
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        await History(db).BuildAsync(_ct);
+
+        // Before October the archive's figures stay and nothing is derived over them; from October the recorded ones win.
+        Assert.Equal(3, await Stat(db, "us", "US", "", Dec2021, "basis"));
+        Assert.Equal(7, await Stat(db, "us", "US", "", Dec2021, "providers"));
+        Assert.Equal(3, await Stat(db, "county", Suffolk, "", Aug, "basis"));
+        Assert.Null(await Stat(db, "county", Suffolk, ChiroCategory, Aug, "new_providers"));    // no derived row in an archive month
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM area_month_stat WHERE basis = 1"));
+        Assert.Equal(2, await Stat(db, "us", "US", "", Oct, "basis"));
+        Assert.Equal(4, await Stat(db, "us", "US", "", Oct, "providers"));
+        Assert.Equal((new DateTime(2007, 11, 1), new DateTime(2026, 10, 1)), (await db.QueryAsync<(DateTime, DateTime)>(
+            "SELECT archive_from, archive_to FROM area_history_meta WHERE id = 1")).Single());
+
+        // The site: the archive shown up to September, then the recorded month; no net change across the join.
+        var us = (await new AreaHistoryService(db.ConnectionString).GetAsync(null, null, null, _ct))!;
+        Assert.Equal((new DateOnly(2007, 11, 1), new DateOnly(2026, 9, 1)), (us.Coverage.ArchiveFrom, us.Coverage.ArchiveTo));
+        Assert.Equal((AreaHistoryMath.Archive, AreaHistoryMath.Recorded), (us.Months[^2].Basis, us.Months[^1].Basis));
+        Assert.Null(us.Months[^1].NetChange);
+        Assert.Equal(new DateOnly(2007, 11, 1), us.Months[0].Month);
+
+        // A later build (a new month) keeps them too.
+        await db.ExecuteAsync("UPDATE data_version SET as_of_date = '2026-11-03' WHERE id = 1");
+        await History(db).BuildAsync(_ct);
+        Assert.Equal(7, await Stat(db, "us", "US", "", Dec2021, "providers"));
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM area_month_stat WHERE basis = 1"));
+    }
+
     private static Task<int?> Stat(TestDatabase db, string type, string id, string category, DateTime month, string column) =>
         db.ScalarAsync<int?>(
             $"SELECT `{column}` FROM area_month_stat WHERE area_type = @type AND area_id = @id AND category = @category AND subcategory = '' AND month = @month",

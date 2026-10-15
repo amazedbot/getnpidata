@@ -11,7 +11,9 @@ namespace Npi.Web.Pages;
 /// <summary>
 /// Verify NPIs (docs/PRODUCT_PLAN.md step 1.7; the bulk lookup of CLAUDE.md §7 Stage 5.5 item 8): paste NPIs or upload a
 /// CSV, text or Excel file, see a summary (active, deactivated with the date, excluded, opted out, not found, invalid),
-/// filter the rows, and download every row as CSV or Excel. Served at <c>/verify</c> and <c>/lookup</c>.
+/// filter the rows, and download every row as CSV or Excel. Served at <c>/verify</c> and <c>/lookup</c>. With "Changed since"
+/// (docs/PRODUCT_PLAN.md step 3.4) each row also says what changed after that date, from the archived monthly NPPES files and
+/// the changes recorded since October 2026, with a tab and download columns for it.
 /// </summary>
 [RequestSizeLimit(MaxUploadBytes + 2_000_000)]
 public partial class VerifyModel(SearchService search) : PageModel
@@ -28,8 +30,12 @@ public partial class VerifyModel(SearchService search) : PageModel
     public static readonly IReadOnlyList<(string Key, string Label)> Tabs =
     [
         ("attention", "Needs attention"), ("all", "All"), ("active", "Active"), ("deactivated", "Deactivated"), ("excluded", "Excluded (OIG)"),
-        ("optedout", "Opted out of Medicare"), ("stale", "Stale record"), ("check", "Record to check"), ("notfound", "Not found"), ("invalid", "Invalid"),
+        ("optedout", "Opted out of Medicare"), ("stale", "Stale record"), ("check", "Record to check"), ("changed", "Changed since"), ("notfound", "Not found"),
+        ("invalid", "Invalid"),
     ];
+
+    /// <summary>The earliest "changed since" date accepted: the archive's first file is from November 2007.</summary>
+    public static readonly DateOnly EarliestChangedSince = new(2005, 1, 1);
 
     static VerifyModel() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // old .xls files
 
@@ -56,6 +62,10 @@ public partial class VerifyModel(SearchService search) : PageModel
 
     [BindProperty(Name = "p")]
     public int PageNumber { get; set; } = 1;
+
+    /// <summary>Optional: say what changed for each NPI after this date.</summary>
+    [BindProperty]
+    public DateOnly? ChangedSince { get; set; }
 
     public string? Error { get; private set; }
 
@@ -120,19 +130,20 @@ public partial class VerifyModel(SearchService search) : PageModel
         }
 
         var name = $"npi_verify_{DateTime.UtcNow:yyyyMMdd}";
+        var withChanges = ChangedSince is not null;
         try
         {
             if (excel)
             {
                 // The zip writer needs a seekable stream; 50,000 rows fit in memory.
                 using var buffer = new MemoryStream();
-                await ProviderXlsx.WriteLookupAsync(LookupAllAsync(npis, ct), buffer, ct);
+                await ProviderXlsx.WriteLookupAsync(LookupAllAsync(npis, ct), buffer, ct, withChanges);
                 return File(buffer.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name + ".xlsx");
             }
 
             Response.ContentType = "text/csv; charset=utf-8";
             Response.Headers.ContentDisposition = $"attachment; filename=\"{name}.csv\"";
-            await ProviderCsv.WriteLookupAsync(LookupAllAsync(npis, ct), Response.Body, ct);
+            await ProviderCsv.WriteLookupAsync(LookupAllAsync(npis, ct), Response.Body, ct, withChanges);
         }
         catch (Exception) when (ct.IsCancellationRequested)
         {
@@ -152,6 +163,7 @@ public partial class VerifyModel(SearchService search) : PageModel
         "optedout" => row.Provider?.Flags.OptedOutOfMedicare == true,
         "stale" => row.Provider?.Quality?.Label == QualityLabel.Stale,
         "check" => row.Provider?.Quality?.Label == QualityLabel.Check,
+        "changed" => row.Changes is { Count: > 0 },
         "notfound" => row.Status == LookupStatus.NotFound,
         "invalid" => row.Status == LookupStatus.Invalid,
         _ => true,
@@ -168,7 +180,7 @@ public partial class VerifyModel(SearchService search) : PageModel
             case LookupStatus.NotFound:
                 return [("Not found in NPPES", "warn")];
             case LookupStatus.Deactivated:
-                return [(row.DeactivationDate is { } d ? "Deactivated on " + Day(d) : "Deactivated", "alert")];
+                return [(row.DeactivationDate is { } d ? "Deactivated on " + Day(d) : "Deactivated", "alert"), .. ChangedResult(row)];
         }
 
         var flags = row.Provider!.Flags;
@@ -201,8 +213,27 @@ public partial class VerifyModel(SearchService search) : PageModel
             results.Add(("Can order and refer", null));
         }
 
+        results.AddRange(ChangedResult(row));
         return results;
     }
+
+    // "Changed since [date]: moved, specialty" or "No change since [date]" when the check was asked for.
+    private static IEnumerable<(string Text, string? Style)> ChangedResult(LookupRow row)
+    {
+        if (row is not { ChangedSince: { } since, Changes: { } changes })
+        {
+            yield break;
+        }
+
+        var day = since.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
+        yield return changes.Count == 0
+            ? ($"No change since {day}", null)
+            : ($"Changed since {day}: {string.Join(", ", changes.Select(c => HistoryChangeKinds.Brief(c.Kind)).Distinct(StringComparer.Ordinal))}", "warn");
+    }
+
+    /// <summary>The changes of a row in words, oldest first ("March 2019: Primary practice location: … → …").</summary>
+    public static IReadOnlyList<string> ChangeLines(LookupRow row) =>
+        row.Changes is { } changes ? [.. changes.Select(c => c.On.ToString("MMM yyyy", CultureInfo.InvariantCulture) + ": " + c.Text)] : [];
 
     /// <summary>The NPIs of the request: the carried list, else every 10-digit number pasted or in the file. Sets <see cref="Error"/>.</summary>
     private async Task<IReadOnlyList<string>?> GatherAsync(CancellationToken ct)
@@ -247,6 +278,12 @@ public partial class VerifyModel(SearchService search) : PageModel
         if (npis.Count > MaxNpis)
         {
             Error = $"{npis.Count:N0} NPIs found; the limit is {MaxNpis:N0} per check.";
+            return null;
+        }
+
+        if (ChangedSince is { } since && (since < EarliestChangedSince || since > DateOnly.FromDateTime(DateTime.UtcNow)))
+        {
+            Error = "Choose a \"changed since\" date between January 2005 and today.";
             return null;
         }
 
@@ -315,7 +352,7 @@ public partial class VerifyModel(SearchService search) : PageModel
     {
         foreach (var batch in npis.Chunk(SearchService.MaxLookupBatch))
         {
-            foreach (var row in await search.LookupAsync(batch, ct))
+            foreach (var row in await search.LookupAsync(batch, ChangedSince, ct))
             {
                 yield return row;
             }

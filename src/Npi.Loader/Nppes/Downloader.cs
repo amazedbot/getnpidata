@@ -10,9 +10,10 @@ namespace Npi.Loader.Nppes;
 /// Never reports success for a failed download (legacy defect #4).
 /// </summary>
 public sealed class Downloader(HttpClient http, ILogger log, int attempts = 4, TimeSpan? firstRetryDelay = null, int parts = 1,
-    long partMinBytes = Datasets.FileDownloader.DefaultPartMinBytes)
+    long partMinBytes = Datasets.FileDownloader.DefaultPartMinBytes, TimeSpan? maxRetryDelay = null)
 {
     private readonly TimeSpan _firstRetryDelay = firstRetryDelay ?? TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _maxRetryDelay = maxRetryDelay ?? TimeSpan.MaxValue;
 
     /// <returns>The full path of the verified zip.</returns>
     public async Task<string> DownloadAsync(Uri url, string fileName, string workFolder, CancellationToken ct)
@@ -50,7 +51,8 @@ public sealed class Downloader(HttpClient http, ILogger log, int attempts = 4, T
                     throw new IOException($"Downloading {url} failed after {attempts} attempts: {ex.Message}", ex);
                 }
 
-                var delay = _firstRetryDelay * Math.Pow(4, attempt - 1);
+                var growing = _firstRetryDelay * Math.Pow(4, attempt - 1);
+                var delay = growing < _maxRetryDelay ? growing : _maxRetryDelay;
                 log.Warning(ex, "Download attempt {Attempt}/{Attempts} of {File} failed; retrying in {Delay}", attempt, attempts, fileName, delay);
                 await Task.Delay(delay, ct);
             }

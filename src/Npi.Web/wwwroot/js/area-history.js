@@ -89,7 +89,7 @@
                 .attr('y', function (m) { return y2(Math.max(0, value(m, series) || 0)); })
                 .attr('height', function (m) { return Math.abs(y2(value(m, series) || 0) - y2(0)); })
                 .attr('fill', function (m) { return (value(m, series) || 0) < 0 ? error : accent; })
-                .attr('fill-opacity', function (m) { return m.partial ? 0.45 : m.basis === 'derived' ? 0.7 : 1; })
+                .attr('fill-opacity', function (m) { return m.partial ? 0.45 : m.basis === 'derived' ? 0.7 : m.basis === 'archive' ? 0.85 : 1; })
                 .append('title').text(function (m) {
                     var v = value(m, series);
                     return label(m.month) + (m.partial ? ' (so far)' : '') + ': ' + (v === null || v === undefined ? 'not counted' : v.toLocaleString('en-US'));
@@ -97,8 +97,11 @@
             svg.append('g').attr('transform', 'translate(' + margin.left + ',0)').call(d3.axisLeft(y2).ticks(4, 's'));
             svg.append('line').attr('x1', margin.left).attr('x2', width - margin.right).attr('y1', y2(0)).attr('y2', y2(0)).attr('stroke', muted);
             var first = months[0].month;
+            var archived = data.archiveFrom && data.archiveTo && first <= data.archiveTo;
             note.textContent = names[series] + ' from ' + label(first) + '.'
-                + (data.trackedFrom && first < data.trackedFrom ? ' Paler columns (before ' + label(data.trackedFrom) + ') are worked out from today\'s data.' : '')
+                + (archived ? ' To ' + label(data.archiveTo) + ': from the archived monthly NPPES files (CMS NPPES; historical copies via NBER)'
+                    + (data.anyLocationFrom && first < data.anyLocationFrom ? ', by primary practice location before ' + label(data.anyLocationFrom) + ' and by every practice location from then.' : '.') : '')
+                + (data.trackedFrom && first < data.trackedFrom && !archived ? ' Paler columns (before ' + label(data.trackedFrom) + ') are worked out from today\'s data.' : '')
                 + (months[months.length - 1].partial ? ' The last column is the month so far.' : '');
         }
 

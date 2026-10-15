@@ -50,12 +50,12 @@ public static class ApiEndpoints
         api.MapPost("/providers/lookup", LookupAsync)
             .WithName("LookupProviders").WithTags("Providers")
             .WithSummary("Look up many NPIs at once")
-            .WithDescription($"Up to {SearchService.MaxLookupBatch} NPIs per request. Every requested NPI comes back once, in order, with status found, notFound (unknown or deactivated) or invalid (format or check digit).");
+            .WithDescription($"Up to {SearchService.MaxLookupBatch} NPIs per request. Every requested NPI comes back once, in order, with status found, deactivated (with its date), notFound or invalid (format or check digit). With \"changedSince\": \"YYYY-MM-DD\" each found or deactivated NPI also lists what changed after that date (changes: on, kind, text), from the archived monthly NPPES files (CMS NPPES; historical copies via NBER) and the changes recorded since October 2026; an empty list means nothing did.");
 
         api.MapPost("/providers/lookup.csv", LookupCsvAsync)
             .WithName("LookupProvidersCsv").WithTags("Providers")
             .WithSummary("Look up many NPIs at once, as CSV")
-            .WithDescription("Same request as /providers/lookup; the summary columns plus Requested NPI and Lookup Status.")
+            .WithDescription("Same request as /providers/lookup; the summary columns plus Requested NPI and Lookup Status, and with changedSince the Changed Since and Changes columns.")
             .Produces(StatusCodes.Status200OK, contentType: "text/csv").ProducesValidationProblem();
 
         api.MapGet("/providers/{npi}", GetProviderAsync)
@@ -203,7 +203,7 @@ public static class ApiEndpoints
     private static async Task<Results<Ok<LookupResponse>, ValidationProblem>> LookupAsync(LookupRequest? request, SearchService search, CancellationToken ct) =>
         ValidateLookup(request) is { } errors
             ? TypedResults.ValidationProblem(errors)
-            : TypedResults.Ok(new LookupResponse(await search.LookupAsync(request!.Npis!, ct)));
+            : TypedResults.Ok(new LookupResponse(await search.LookupAsync(request!.Npis!, request.ChangedSince, ct)));
 
     private static async Task<IResult> LookupCsvAsync(LookupRequest? request, HttpContext http, SearchService search, CancellationToken ct)
     {
@@ -212,10 +212,10 @@ public static class ApiEndpoints
             return Results.ValidationProblem(errors);
         }
 
-        var rows = await search.LookupAsync(request!.Npis!, ct);
+        var rows = await search.LookupAsync(request!.Npis!, request.ChangedSince, ct);
         http.Response.ContentType = "text/csv; charset=utf-8";
         http.Response.Headers.ContentDisposition = $"attachment; filename=\"npi_lookup_{DateTime.UtcNow:yyyyMMdd}.csv\"";
-        await ProviderCsv.WriteLookupAsync(rows.ToAsyncEnumerable(), http.Response.Body, ct);
+        await ProviderCsv.WriteLookupAsync(rows.ToAsyncEnumerable(), http.Response.Body, ct, withChanges: request.ChangedSince is not null);
         return Results.Empty;
     }
 
@@ -390,7 +390,8 @@ public sealed record ApiMeta(
 }
 
 /// <summary>POST /api/v1/providers/lookup body.</summary>
-public sealed record LookupRequest(IReadOnlyList<string>? Npis);
+/// <param name="ChangedSince">Optional (docs/PRODUCT_PLAN.md step 3.4): also say what changed for each NPI after this date.</param>
+public sealed record LookupRequest(IReadOnlyList<string>? Npis, DateOnly? ChangedSince = null);
 
 /// <summary>POST /api/v1/providers/lookup response: one row per requested NPI, in request order.</summary>
 public sealed record LookupResponse(IReadOnlyList<LookupRow> Items);

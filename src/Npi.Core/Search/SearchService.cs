@@ -282,7 +282,13 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
     /// Bulk lookup (Stage 5.5 item 8): every requested NPI in the given order (duplicates removed), with its
     /// summary when it is an active provider. Invalid NPIs (format or check digit) are reported, not looked up.
     /// </summary>
-    public async Task<IReadOnlyList<LookupRow>> LookupAsync(IReadOnlyList<string> npis, CancellationToken ct)
+    public Task<IReadOnlyList<LookupRow>> LookupAsync(IReadOnlyList<string> npis, CancellationToken ct) => LookupAsync(npis, null, ct);
+
+    /// <summary>
+    /// Bulk lookup with "changed since" (docs/PRODUCT_PLAN.md step 3.4): each active or deactivated NPI also carries what changed
+    /// after <paramref name="changedSince"/> (<see cref="LookupRow.Changes"/>), read in one query per table for the batch.
+    /// </summary>
+    public async Task<IReadOnlyList<LookupRow>> LookupAsync(IReadOnlyList<string> npis, DateOnly? changedSince, CancellationToken ct)
     {
         if (npis.Count > MaxLookupBatch)
         {
@@ -293,6 +299,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         var valid = requested.Where(InputFormats.HasValidCheckDigit).ToList();
         var found = new Dictionary<string, ProviderSummary>(StringComparer.Ordinal);
         Dictionary<string, DateTime?> deactivated = new(StringComparer.Ordinal), excludedSince = new(StringComparer.Ordinal), optOutEnds = new(StringComparer.Ordinal);
+        IReadOnlyDictionary<string, IReadOnlyList<HistoryChange>> changes = new Dictionary<string, IReadOnlyList<HistoryChange>>();
         if (valid.Count > 0)
         {
             await using var connection = await OpenAsync(ct);
@@ -320,7 +327,13 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
                 found.Values.Where(p => p.Flags.Excluded).Select(p => p.Npi).ToList());
             await DatesAsync(optOutEnds, $"SELECT o.npi, MAX(o.end_date) FROM medicare_opt_out o WHERE o.npi IN @npis AND {EnrichmentSql.ActiveOptOut} GROUP BY o.npi",
                 found.Values.Where(p => p.Flags.OptedOutOfMedicare).Select(p => p.Npi).ToList());
+            if (changedSince is { } since)
+            {
+                changes = await ProviderHistoryReader.ChangesSinceAsync(connection, [.. found.Keys, .. deactivated.Keys], since, ct);
+            }
         }
+
+        IReadOnlyList<HistoryChange>? ChangesOf(string npi) => changedSince is null ? null : changes.GetValueOrDefault(npi) ?? [];
 
         static DateOnly? Day(Dictionary<string, DateTime?> dates, string npi) =>
             dates.TryGetValue(npi, out var d) && d is { } date ? DateOnly.FromDateTime(date) : null;
@@ -328,10 +341,13 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         return requested.Select(n => !InputFormats.HasValidCheckDigit(n)
                 ? new LookupRow(n, LookupStatus.Invalid, null)
                 : found.TryGetValue(n, out var p)
-                    ? new LookupRow(n, LookupStatus.Found, p) { ExclusionDate = Day(excludedSince, n), OptOutEndDate = Day(optOutEnds, n) }
+                    ? new LookupRow(n, LookupStatus.Found, p)
+                    {
+                        ExclusionDate = Day(excludedSince, n), OptOutEndDate = Day(optOutEnds, n), ChangedSince = changedSince, Changes = ChangesOf(n),
+                    }
                     : deactivated.ContainsKey(n)
-                        ? new LookupRow(n, LookupStatus.Deactivated, null) { DeactivationDate = Day(deactivated, n) }
-                        : new LookupRow(n, LookupStatus.NotFound, null))
+                        ? new LookupRow(n, LookupStatus.Deactivated, null) { DeactivationDate = Day(deactivated, n), ChangedSince = changedSince, Changes = ChangesOf(n) }
+                        : new LookupRow(n, LookupStatus.NotFound, null) { ChangedSince = changedSince })
             .ToList();
     }
 

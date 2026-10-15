@@ -86,7 +86,11 @@
     }
 
     <p class="src">
-        @if (Model.Kind is AreaChangeKinds.MovedIn or AreaChangeKinds.MovedOut or AreaChangeKinds.Deactivated && a.Type != "us")
+        @if (a.Coverage.InArchive(Model.Month))
+        {
+            <text>From the archived monthly NPPES files (CMS NPPES; historical copies via NBER, <a href="https://doi.org/10.60592/bjwk-8n62">doi.org/10.60592/bjwk-8n62</a>): the month's file compared with the one before, by every practice location from September 2018 (the first file listing secondary ones; that month's moves compare primary locations only) and by primary practice location before; new NPIs are those first listed then, by their enumeration date. The names and places shown are today's. </text>
+        }
+        else if (Model.Kind is AreaChangeKinds.MovedIn or AreaChangeKinds.MovedOut or AreaChangeKinds.Deactivated && a.Type != "us")
         {
             <text>Recorded by comparing each NPPES update's practice locations with the previous ones; a move counts in the month of the provider's NPPES update (or the first month still open). </text>
         }

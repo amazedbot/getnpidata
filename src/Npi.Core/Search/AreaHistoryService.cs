@@ -23,7 +23,8 @@ public sealed class AreaHistoryService(string connectionString)
     private const string InCategorySql =
         "EXISTS (SELECT 1 FROM provider_taxonomy t JOIN specialty_code_category m ON m.code = t.taxonomy_code WHERE t.npi = p.npi AND m.category = @category)";
 
-    private sealed record MetaRow(DateTime? DerivedFrom, DateTime? TrackedFrom, DateTime? ChangesFrom, DateTime? AsOfMonth);
+    private sealed record MetaRow(DateTime? DerivedFrom, DateTime? TrackedFrom, DateTime? ChangesFrom, DateTime? AsOfMonth, DateTime? ArchiveFrom, DateTime? ArchiveTo,
+        DateTime? AnyLocationFrom);
 
     private sealed record Row(string Category, DateTime Month, sbyte Basis, int? Providers, int? NewProviders, int? Deactivated, int? MovedIn,
         int? MovedOut, int? SpecialtyChanges, int? LicenseChanges, int? ExclusionChanges, int? QualityCurrent, int? QualityCheck, int? QualityStale);
@@ -92,11 +93,21 @@ public sealed class AreaHistoryService(string connectionString)
     private static async Task<AreaHistoryCoverage> CoverageAsync(MySqlConnection connection, CancellationToken ct)
     {
         var meta = await connection.QuerySingleOrDefaultAsync<MetaRow>(new CommandDefinition(
-            "SELECT derived_from AS DerivedFrom, tracked_from AS TrackedFrom, changes_from AS ChangesFrom, as_of_month AS AsOfMonth FROM area_history_meta WHERE id = 1",
-            cancellationToken: ct));
+            """
+            SELECT derived_from AS DerivedFrom, tracked_from AS TrackedFrom, changes_from AS ChangesFrom, as_of_month AS AsOfMonth,
+                   archive_from AS ArchiveFrom, archive_to AS ArchiveTo, any_location_from AS AnyLocationFrom
+            FROM area_history_meta WHERE id = 1
+            """, cancellationToken: ct));
         var asOf = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition("SELECT as_of_date FROM data_version WHERE id = 1", cancellationToken: ct));
         static DateOnly? D(DateTime? d) => d is { } v ? DateOnly.FromDateTime(v) : null;
-        return new AreaHistoryCoverage(D(meta?.DerivedFrom), D(meta?.TrackedFrom), D(meta?.ChangesFrom), D(meta?.AsOfMonth), D(asOf));
+        // The archive's months end where the recorded series starts (its figures win from there).
+        var archiveTo = D(meta?.ArchiveTo) is { } to && D(meta?.TrackedFrom) is { } tracked && to >= tracked ? tracked.AddMonths(-1) : D(meta?.ArchiveTo);
+        return new AreaHistoryCoverage(D(meta?.DerivedFrom), D(meta?.TrackedFrom), D(meta?.ChangesFrom), D(meta?.AsOfMonth), D(asOf))
+        {
+            ArchiveFrom = archiveTo is null ? null : D(meta?.ArchiveFrom),
+            ArchiveTo = archiveTo,
+            AnyLocationFrom = archiveTo is null ? null : D(meta?.AnyLocationFrom),
+        };
     }
 
     /// <summary>The months a monthly statistic can be shown for, newest first.</summary>
@@ -107,7 +118,7 @@ public sealed class AreaHistoryService(string connectionString)
             return [];
         }
 
-        var first = coverage.DerivedFrom ?? coverage.TrackedFrom ?? last;
+        var first = coverage.ArchiveFrom ?? coverage.DerivedFrom ?? coverage.TrackedFrom ?? last;
         var months = new List<DateOnly>();
         for (var m = last; m >= first; m = m.AddMonths(-1))
         {
@@ -183,8 +194,11 @@ public sealed class AreaHistoryService(string connectionString)
                     """, new { when = when.ToDateTime(TimeOnly.MinValue), before = when.AddMonths(-1).ToDateTime(TimeOnly.MinValue), level, cat },
                     cancellationToken: ct)))
                 .ToLookup(r => r.Id, StringComparer.OrdinalIgnoreCase);
-            var tracked = coverage.TrackedFrom is { } t && when >= t;
-            var derived = coverage.DerivedFrom is { } d && when >= d;
+            var archived = coverage.InArchive(when);
+            // In the archive, moves are known for the months with a file (any area's row has a provider count), after the first.
+            var compared = archived && when > coverage.ArchiveFrom && rows.Any(g => g.Any(r => r.Category.Length == 0 && DateOnly.FromDateTime(r.Month) == when && r.Providers is not null));
+            var tracked = archived ? compared : coverage.TrackedFrom is { } t && when >= t;
+            var derived = archived || coverage.DerivedFrom is { } d && when >= d;
             foreach (var area in areas)
             {
                 var own = rows[area.Id].ToList();
@@ -198,9 +212,10 @@ public sealed class AreaHistoryService(string connectionString)
                     AreaMapStats.New or AreaMapStats.NewPer100k when derived => sel?.NewProviders ?? 0,
                     AreaMapStats.MovedIn when tracked => all?.MovedIn ?? 0,
                     AreaMapStats.MovedOut when tracked => all?.MovedOut ?? 0,
-                    AreaMapStats.Deactivated when tracked => all?.Deactivated ?? 0,
+                    AreaMapStats.Deactivated when tracked || archived => all?.Deactivated ?? 0,
                     AreaMapStats.Stale => AreaHistoryMath.QualityShare(all?.QualityStale, all?.QualityCurrent, all?.QualityCheck, all?.QualityStale),
-                    AreaMapStats.Net => Providers(when) is { } now && Providers(when.AddMonths(-1)) is { } before ? now - before : null,
+                    AreaMapStats.Net => Providers(when) is { } now && Providers(when.AddMonths(-1)) is { } before
+                                        && coverage.EveryLocation(when) == coverage.EveryLocation(when.AddMonths(-1)) ? now - before : null,
                     _ => null,
                 };
             }
@@ -240,6 +255,71 @@ public sealed class AreaHistoryService(string connectionString)
         _ => ("area_month_event e WHERE e.area_type = @type AND e.area_id = @id AND e.month = @month AND e.kind = @kind", "e.npi"),
     };
 
+    // An archived version (alias x of npi_history) counts in the area: as the loader's HistoryAreaStats places it (its primary
+    // practice location or, from the files that list them, a secondary one; a state of at most 5 characters; counties by today's
+    // HUD crosswalk). primaryOnly: the primary location alone (the moves of the month the definition changes).
+    private static string InArchiveAreaSql(string type, string x, bool primaryOnly = false)
+    {
+        var primary = type switch
+        {
+            "county" => $"({x}.state IS NOT NULL AND CHAR_LENGTH({x}.state) <= 5 AND EXISTS (SELECT 1 FROM zip_county z WHERE z.zip5 = {x}.zip5 AND z.county_fips = @id))",
+            "state" => $"COALESCE({x}.state = @id, 0)",
+            _ => $"{x}.state IS NOT NULL",
+        };
+        if (primaryOnly)
+        {
+            return primary;
+        }
+
+        var secondary = type switch
+        {
+            "county" => $"EXISTS (SELECT 1 FROM npi_history_location_set l JOIN zip_county z ON z.zip5 = l.zip5 WHERE l.set_id = {x}.location_set AND z.county_fips = @id)",
+            "state" => $"EXISTS (SELECT 1 FROM npi_history_location_set l WHERE l.set_id = {x}.location_set AND l.state = @id)",
+            _ => $"{x}.location_set IS NOT NULL",
+        };
+        return $"({primary} OR {secondary})";
+    }
+
+    // The providers behind a count in a month from the NPPES archive (step 3.4), read from npi_history: the versions that month's
+    // file started (@p, its data date) and the ones they replaced. New NPIs: first versions, active, issued in the month.
+    private static (string From, string Npi) ArchiveListSql(string type, string kind, bool category, bool definitionStep = false)
+    {
+        const string pair = "npi_history n JOIN npi_history o ON o.npi = n.npi AND o.to_period = n.from_period WHERE n.from_period = @p";
+        const string both = "n.status = 0 AND o.status = 0";
+        var from = kind switch
+        {
+            AreaChangeKinds.New =>
+                "npi_history n WHERE n.enumeration_date >= @month AND n.enumeration_date < @next AND n.enumeration_date >= @archiveFrom AND n.status = 0 "
+                + "AND NOT EXISTS (SELECT 1 FROM npi_history e WHERE e.npi = n.npi AND e.from_period < n.from_period) AND " + InArchiveAreaSql(type, "n")
+                + (category ? " AND EXISTS (SELECT 1 FROM npi_history_set_category c WHERE c.set_id = n.taxonomy_set AND c.category = @category)" : ""),
+            AreaChangeKinds.Deactivated => $"{pair} AND n.status <> 0 AND o.status = 0 AND {InArchiveAreaSql(type, "o")}",
+            AreaChangeKinds.MovedIn => $"{pair} AND {both} AND {InArchiveAreaSql(type, "n", definitionStep)} AND NOT {InArchiveAreaSql(type, "o", definitionStep)}",
+            AreaChangeKinds.MovedOut => $"{pair} AND {both} AND {InArchiveAreaSql(type, "o", definitionStep)} AND NOT {InArchiveAreaSql(type, "n", definitionStep)}",
+            AreaChangeKinds.Specialty => $"{pair} AND {both} AND NOT (n.primary_taxonomy <=> o.primary_taxonomy) AND {InArchiveAreaSql(type, "n", definitionStep)}",
+            _ => "npi_history n WHERE FALSE",
+        };
+        return (from, "CAST(n.npi AS CHAR)");
+    }
+
+    // The list's SQL and parameters for a month: the archive's for its months, else the recorded or derived lists.
+    private static async Task<((string From, string Npi) Sql, object Param)> ListAsync(MySqlConnection connection, string type, string id, string kind,
+        DateOnly month, string category, int page, CancellationToken ct)
+    {
+        var coverage = await CoverageAsync(connection, ct);
+        if (!coverage.InArchive(month))
+        {
+            return (ListSql(type, kind, category.Length > 0), Param(type, id, kind, month, category, page));
+        }
+
+        var p = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
+            "SELECT file_date FROM history_period WHERE period = @month AND status = 'Completed'", new { month = month.ToDateTime(TimeOnly.MinValue) },
+            cancellationToken: ct));
+        var param = new DynamicParameters(Param(type, id, kind, month, category, page));
+        param.Add("p", p);
+        param.Add("archiveFrom", coverage.ArchiveFrom!.Value.ToDateTime(TimeOnly.MinValue));
+        return (ArchiveListSql(type, kind, category.Length > 0, coverage.DefinitionStep() == month), param);
+    }
+
     /// <summary>True when the area has lists of that kind (the US counts no moves).</summary>
     public static bool HasKind(string type, string kind) =>
         AreaChangeKinds.IsKnown(kind) && !(type == "us" && kind is AreaChangeKinds.MovedIn or AreaChangeKinds.MovedOut);
@@ -258,11 +338,10 @@ public sealed class AreaHistoryService(string connectionString)
         }
 
         var cat = kind == AreaChangeKinds.New ? SpecialtyCategories.Default.Find(category)?.Name ?? "" : "";
-        var (from, npi) = ListSql(type, kind, cat.Length > 0);
         page = Math.Max(1, page);
-        var param = Param(type, id, kind, month, cat, page);
         await using var connection = new MySqlConnection(connectionString);
         await connection.OpenAsync(ct);
+        var ((from, npi), param) = await ListAsync(connection, type, id, kind, month, cat, page, ct);
         var total = await connection.ExecuteScalarAsync<long>(new CommandDefinition($"SELECT COUNT(*) FROM {from}", param, cancellationToken: ct));
         var npis = (await connection.QueryAsync<string>(new CommandDefinition(
             $"SELECT {npi} FROM {from} ORDER BY {npi} LIMIT @limit OFFSET @offset", param, cancellationToken: ct))).ToList();
@@ -278,11 +357,11 @@ public sealed class AreaHistoryService(string connectionString)
         }
 
         var cat = kind == AreaChangeKinds.New ? SpecialtyCategories.Default.Find(category)?.Name ?? "" : "";
-        var (from, npi) = ListSql(type, kind, cat.Length > 0);
         await using var connection = new MySqlConnection(connectionString);
         await connection.OpenAsync(ct);
+        var ((from, npi), param) = await ListAsync(connection, type, id, kind, month, cat, 1, ct);
         return (await connection.QueryAsync<string>(new CommandDefinition(
-            $"SELECT {npi} FROM {from} ORDER BY {npi}", Param(type, id, kind, month, cat, 1), commandTimeout: 120, cancellationToken: ct))).ToList();
+            $"SELECT {npi} FROM {from} ORDER BY {npi}", param, commandTimeout: 120, cancellationToken: ct))).ToList();
     }
 
     private static object Param(string type, string id, string kind, DateOnly month, string category, int page) => new

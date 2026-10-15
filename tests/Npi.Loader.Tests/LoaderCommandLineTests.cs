@@ -75,6 +75,19 @@ public class LoaderCommandLineTests
     }
 
     [Fact]
+    public void History_takes_a_month_discover_or_measure_with_zips()
+    {
+        Assert.Equal((LoaderCommand.History, 0), (LoaderCommandLine.Parse(["history"], out _)!.Command, LoaderCommandLine.Parse(["history"], out _)!.Arguments.Count));
+        Assert.Equal(["2016-12"], LoaderCommandLine.Parse(["history", "2016-12"], out _)!.Arguments);
+        Assert.Equal(["discover"], LoaderCommandLine.Parse(["history", "Discover"], out _)!.Arguments);
+        Assert.Equal(["measure", "a.zip", "b.zip"], LoaderCommandLine.Parse(["history", "measure", "a.zip", "b.zip"], out _)!.Arguments);
+        Assert.Null(LoaderCommandLine.Parse(["history", "measure"], out var error));
+        Assert.Contains("measure", error, StringComparison.Ordinal);
+        Assert.Null(LoaderCommandLine.Parse(["history", "2016-13"], out _));
+        Assert.Null(LoaderCommandLine.Parse(["history", "2016-12", "2017-01"], out _));
+    }
+
+    [Fact]
     public void Geocode_takes_an_optional_county_fips()
     {
         Assert.Equal([], LoaderCommandLine.Parse(["geocode"], out _)?.Arguments);

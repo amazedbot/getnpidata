@@ -13,7 +13,31 @@
         <h1 id="status">NPI <span class="mono">@Model.Npi</span></h1>
         <p><span class="pill alert">@(Model.DeactivationDate is { } d ? "Deactivated on " + d.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) : "Deactivated")</span></p>
         <p>This NPI is no longer active in the national provider registry (NPPES). NPPES publishes nothing else about a deactivated NPI,
-            so we can't show its name, specialty or address. Claims or prescriptions under it shouldn't be accepted.</p>
+            so we can't show its name. Claims or prescriptions under it shouldn't be accepted.</p>
+        @if (Model.LastKnown is { } last && Model.DeactivatedHistory is { } dh)
+        {
+            <h2>Last known record</h2>
+            <dl class="facts">
+                <dt>Practice location</dt><dd>@(last.Practice?.ToString() ?? "not listed")</dd>
+                @if (last.SecondaryLocations.Count > 0)
+                {
+                    <dt>Other practice locations</dt><dd>@string.Join("; ", last.SecondaryLocations)</dd>
+                }
+                <dt>Primary specialty</dt><dd>@(last.PrimarySpecialty ?? "not listed")</dd>
+                <dt>Entity type</dt><dd>@(last.EntityType == 2 ? "Organization" : last.EntityType == 1 ? "Individual" : "not listed")</dd>
+                @if (last.EnumerationDate is { } issuedOn)
+                {
+                    <dt>NPI issued</dt><dd>@issuedOn.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>
+                }
+                @if (last.LastUpdateDate is { } updated)
+                {
+                    <dt>Last updated</dt><dd>@updated.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>
+                }
+                <dt>Listed as such</dt><dd>@last.ListedFrom.ToString("MMMM yyyy", CultureInfo.InvariantCulture)@(last.ListedTo is { } until ? " to " + until.ToString("MMMM yyyy", CultureInfo.InvariantCulture) : "")</dd>
+            </dl>
+            <p class="src">From the archived monthly NPPES files (@ProviderHistory.Attribution, <a href="@ProviderHistory.Doi">doi.org/10.60592/bjwk-8n62</a>),
+                @AreaHistoryMath.MonthName(dh.ArchiveFrom) to @AreaHistoryMath.MonthName(dh.ArchiveTo): the last month the NPI was listed as active.</p>
+        }
         <p class="muted">Confirm in the official <a href="https://npiregistry.cms.hhs.gov/search?number=@Model.Npi">NPPES NPI Registry</a>.
             If the provider has a new NPI, <a href="/search">search by name</a>.</p>
     </section>
@@ -643,6 +667,58 @@
                 </table>
             </div>
             <p class="src">Tracked since October 2026: NPPES changes from the weekly files; state licenses and board actions, OIG exclusions and Medicare opt-outs from each reload of those lists (since October 14, 2026).</p>
+        </section>
+    }
+
+    @if (p.History is { Versions.Count: > 0 } past)
+    {
+        <section class="card" id="history" aria-labelledby="hist-h">
+            <h2 id="hist-h">Over the years</h2>
+            <p>@(past.InFirstFile
+                    ? $"In the archived NPPES files since the first one ({AreaHistoryMath.MonthName(past.ArchiveFrom)})"
+                    : $"First listed in the {past.FirstListed.ToString("MMMM yyyy", CultureInfo.InvariantCulture)} file")@(past.Versions.Count == 1
+                    ? ", with no change in its location, specialty or status since."
+                    : $"; {past.Versions.Count - 1} change{(past.Versions.Count == 2 ? "" : "s")} seen from one monthly file to the next up to {AreaHistoryMath.MonthName(past.ArchiveTo)}.")</p>
+            @{
+                void Version(ProviderHistoryVersion v)
+                {
+                    <li>
+                        <strong title="@v.Source">@v.ListedFrom.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</strong>
+                        <ul>
+                            @foreach (var c in v.Changes)
+                            {
+                                <li>@c.Text</li>
+                            }
+                        </ul>
+                        @if (v.MonthsWithoutFileBefore.Count > 0)
+                        {
+                            <span class="muted">No file survives for @string.Join(", ", v.MonthsWithoutFileBefore.Select(AreaHistoryMath.MonthName)), so it may date from then.</span>
+                        }
+                    </li>
+                }
+            }
+            <ol class="history-list" reversed>
+                @foreach (var v in past.Versions.Take(ProviderModel.HistoryShown))
+                {
+                    Version(v);
+                }
+            </ol>
+            @if (past.Versions.Count > ProviderModel.HistoryShown)
+            {
+                <details>
+                    <summary>Show all @past.Versions.Count versions</summary>
+                    <ol class="history-list" reversed start="@(past.Versions.Count - ProviderModel.HistoryShown)">
+                        @foreach (var v in past.Versions.Skip(ProviderModel.HistoryShown))
+                        {
+                            Version(v);
+                        }
+                    </ol>
+                </details>
+            }
+            <p class="src">From the archived monthly NPPES files, @AreaHistoryMath.MonthName(past.ArchiveFrom) to @AreaHistoryMath.MonthName(past.ArchiveTo)
+                (@ProviderHistory.Attribution before June 2015, <a href="@ProviderHistory.Doi">doi.org/10.60592/bjwk-8n62</a>), each compared with the one before:
+                the primary practice location (and from @(past.SecondaryFrom is { } sf ? AreaHistoryMath.MonthName(sf) : "September 2018") the other practice locations),
+                the specialties, the status and the dates. A change is dated by the first file that shows it. Changes since then are under Changes.</p>
         </section>
     }
 

@@ -205,6 +205,44 @@ public class AreaModel(AreaProfileService areas, AreaHistoryService history, IOp
             ("netChange", "Net change"), ("providers", "Providers"), ("quality", "Record quality"),
         }.Where(s => Area.Type != "us" || s.Item1 is not ("movedIn" or "movedOut"));
 
+    /// <summary>
+    /// The archive's months without a file (no provider count for the area), as "December 2007, January 2008 – April 2008, …";
+    /// empty when none or no archive.
+    /// </summary>
+    public string ArchiveGaps
+    {
+        get
+        {
+            if (History is not { Coverage: { ArchiveFrom: { } from, ArchiveTo: { } to } } h)
+            {
+                return "";
+            }
+
+            var counted = h.Months.Where(m => m.Providers is not null).Select(m => m.Month).ToHashSet();
+            var runs = new List<(DateOnly First, DateOnly Last)>();
+            for (var m = from; m <= to; m = m.AddMonths(1))
+            {
+                if (counted.Contains(m))
+                {
+                    continue;
+                }
+
+                if (runs.Count > 0 && runs[^1].Last.AddMonths(1) == m)
+                {
+                    runs[^1] = (runs[^1].First, m);
+                }
+                else
+                {
+                    runs.Add((m, m));
+                }
+            }
+
+            return string.Join(", ", runs.Select(r => r.First == r.Last
+                ? AreaHistoryMath.MonthName(r.First)
+                : $"{AreaHistoryMath.MonthName(r.First)} – {AreaHistoryMath.MonthName(r.Last)}"));
+        }
+    }
+
     /// <summary>"since October 2026"; "" when the series hasn't started.</summary>
     public static string Since(DateOnly? month) => month is { } m ? "since " + AreaHistoryMath.MonthName(m) : "not yet";
 
@@ -240,6 +278,9 @@ public class AreaModel(AreaProfileService areas, AreaHistoryService history, IOp
             m.QualityCurrent, m.QualityCheck, m.QualityStale,
         }),
         derivedFrom = History?.Coverage.DerivedFrom is { } d ? AreaHistoryMath.MonthKey(d) : null,
+        archiveFrom = History?.Coverage.ArchiveFrom is { } af ? AreaHistoryMath.MonthKey(af) : null,
+        archiveTo = History?.Coverage.ArchiveTo is { } at ? AreaHistoryMath.MonthKey(at) : null,
+        anyLocationFrom = History?.Coverage.DefinitionStep() is { } step ? AreaHistoryMath.MonthKey(step) : null,
         trackedFrom = History?.Coverage.TrackedFrom is { } t ? AreaHistoryMath.MonthKey(t) : null,
     };
 }
