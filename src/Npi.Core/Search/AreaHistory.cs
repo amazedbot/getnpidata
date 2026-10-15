@@ -21,7 +21,20 @@ public sealed record AreaMonth(DateOnly Month, int? Providers, int? NewProviders
 }
 
 /// <summary>The first month of each series (null before the history was first built) and the data's as-of date.</summary>
-public sealed record AreaHistoryCoverage(DateOnly? DerivedFrom, DateOnly? TrackedFrom, DateOnly? ChangesFrom, DateOnly? AsOfMonth, DateOnly? AsOfDate);
+public sealed record AreaHistoryCoverage(DateOnly? DerivedFrom, DateOnly? TrackedFrom, DateOnly? ChangesFrom, DateOnly? AsOfMonth, DateOnly? AsOfDate)
+{
+    /// <summary>
+    /// The first month of the figures from the archived monthly NPPES files (docs/PRODUCT_PLAN.md step 3.4: CMS NPPES, historical
+    /// copies via NBER), counted by primary practice location; null when the archive isn't loaded.
+    /// </summary>
+    public DateOnly? ArchiveFrom { get; init; }
+
+    /// <summary>The archive's last month shown: the month before the recorded series starts, or its newest file.</summary>
+    public DateOnly? ArchiveTo { get; init; }
+
+    /// <summary>True for a month whose figures come from the archive.</summary>
+    public bool InArchive(DateOnly month) => ArchiveFrom is { } from && ArchiveTo is { } to && month >= from && month <= to;
+}
 
 /// <summary>An area's monthly figures, oldest month first.</summary>
 public sealed record AreaHistory(string Type, string Id, string Name, string? State, string Category, IReadOnlyList<AreaMonth> Months,
@@ -120,7 +133,7 @@ public static class AreaHistoryMath
     {
         var all = rows.Where(r => r.Category.Length == 0).ToDictionary(r => r.Month);
         var selected = category.Length == 0 ? all : rows.Where(r => r.Category == category).ToDictionary(r => r.Month);
-        var starts = new[] { coverage.DerivedFrom, coverage.TrackedFrom, coverage.ChangesFrom }.OfType<DateOnly>()
+        var starts = new[] { coverage.ArchiveFrom, coverage.DerivedFrom, coverage.TrackedFrom, coverage.ChangesFrom }.OfType<DateOnly>()
             .Concat(rows.Select(r => r.Month)).ToList();
         if (starts.Count == 0)
         {
@@ -134,6 +147,7 @@ public static class AreaHistoryMath
 
         var months = new List<AreaMonth>();
         int? previousProviders = null;
+        var previousArchived = false;
         for (var m = first; m <= last; m = m.AddMonths(1))
         {
             all.TryGetValue(m, out var a);
@@ -142,28 +156,34 @@ public static class AreaHistoryMath
             int? providers = counted ? s?.Providers ?? 0 : null;
             int? Count(Func<StatRow, int?> value, bool known) => known ? (a is null ? 0 : value(a) ?? 0) : a is null ? null : value(a);
             var tracked = From(m, coverage.TrackedFrom);
+            // The archive (step 3.4): new NPIs and deactivations every month (a month without a file gets them from the next one);
+            // moves and specialty changes in the months with a file, after the first.
+            var archived = coverage.InArchive(m);
+            var compared = archived && counted && m > coverage.ArchiveFrom;
             var basis = (a ?? s)?.Basis switch
             {
                 3 => Archive,
                 2 => Recorded,
                 1 => Derived,
-                _ => tracked ? Recorded : Derived,
+                _ => archived ? Archive : tracked ? Recorded : Derived,
             };
             months.Add(new AreaMonth(m, providers,
-                From(m, coverage.DerivedFrom) ? s?.NewProviders ?? 0 : s?.NewProviders,
-                Count(r => r.Deactivated, us ? From(m, coverage.DerivedFrom) : tracked),
-                us ? null : Count(r => r.MovedIn, tracked),
-                us ? null : Count(r => r.MovedOut, tracked),
-                Count(r => r.SpecialtyChanges, From(m, coverage.ChangesFrom)),
+                archived || From(m, coverage.DerivedFrom) ? s?.NewProviders ?? 0 : s?.NewProviders,
+                archived ? a?.Deactivated ?? 0 : Count(r => r.Deactivated, us ? From(m, coverage.DerivedFrom) : tracked),
+                us ? null : archived ? (compared ? a?.MovedIn ?? 0 : null) : Count(r => r.MovedIn, tracked),
+                us ? null : archived ? (compared ? a?.MovedOut ?? 0 : null) : Count(r => r.MovedOut, tracked),
+                archived ? (compared ? a?.SpecialtyChanges ?? 0 : null) : Count(r => r.SpecialtyChanges, From(m, coverage.ChangesFrom)),
                 Count(r => r.LicenseChanges, From(m, coverage.ChangesFrom)),
                 Count(r => r.ExclusionChanges, From(m, coverage.ChangesFrom)),
                 a?.QualityCurrent, a?.QualityCheck, a?.QualityStale)
             {
-                NetChange = providers is { } now && previousProviders is { } before ? now - before : null,
+                // Not across the archive's end: it counts primary practice locations, the recorded series every practice location.
+                NetChange = providers is { } now && previousProviders is { } before && (previousArchived == archived) ? now - before : null,
                 Partial = coverage.AsOfMonth == m,
                 Basis = basis,
             });
             previousProviders = providers;
+            previousArchived = archived;
         }
 
         return months;

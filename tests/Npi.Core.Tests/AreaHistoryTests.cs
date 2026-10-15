@@ -182,4 +182,48 @@ public class AreaHistoryTests
         Assert.True(AreaMapStats.Get(AreaMapStats.New).Monthly);
         Assert.False(AreaMapStats.Get(AreaMapStats.MovedIn).BySpecialty);
     }
+
+    [Fact]
+    public void Archive_months_come_first_with_gaps_and_no_net_change_across_the_join()
+    {
+        // The archive (step 3.4) from August 2026 to September, a month without a file in between... August, September with a
+        // file, October recorded (by every practice location).
+        var coverage = new AreaHistoryCoverage(null, M(2026, 10), M(2026, 10), M(2026, 10), new DateOnly(2026, 10, 11))
+        {
+            ArchiveFrom = M(2026, 6),
+            ArchiveTo = M(2026, 9),
+        };
+        var rows = new[]
+        {
+            Row("", M(2026, 6), 3, providers: 90, issued: 3, deactivated: 0, movedIn: 0, movedOut: 0, specialty: 0),
+            Row("", M(2026, 7), 3, issued: 2),                                                   // no file: new NPIs only
+            Row("", M(2026, 8), 3, providers: 92, issued: 1, deactivated: 1, movedIn: 2, movedOut: 1, specialty: 1),
+            Row("Dentists", M(2026, 8), 3, providers: 9, issued: 1),
+            Row("", M(2026, 9), 3, providers: 95, deactivated: 0, movedIn: 0, movedOut: 0, specialty: 0),
+            Row("", M(2026, 10), 2, providers: 101, issued: 4, deactivated: 0, movedIn: 1, movedOut: 0),
+        };
+        Assert.True(coverage.InArchive(M(2026, 9)));
+        Assert.False(coverage.InArchive(M(2026, 10)));
+        var months = AreaHistoryMath.Fill(rows, coverage, "county", "");
+        Assert.Equal(5, months.Count);
+        Assert.All(months.Take(4), m => Assert.Equal(AreaHistoryMath.Archive, m.Basis));
+        Assert.Equal(AreaHistoryMath.Recorded, months[4].Basis);
+
+        var (june, july, august, september, october) = (months[0], months[1], months[2], months[3], months[4]);
+        Assert.Equal((90, 3, 0), (june.Providers, june.NewProviders, june.Deactivated));
+        Assert.Null(june.MovedIn);                                                               // the archive's first month: nothing to compare
+        Assert.Equal(((int?)null, 2, 0, (int?)null, (int?)null), (july.Providers, july.NewProviders, july.Deactivated, july.MovedIn, july.SpecialtyChanges));
+        Assert.Null(july.NetChange);
+        Assert.Equal((92, 1, 2, 1, 1), (august.Providers, august.Deactivated, august.MovedIn, august.MovedOut, august.SpecialtyChanges));
+        Assert.Null(august.NetChange);                                                           // July has no count
+        Assert.Equal(3, september.NetChange);
+        Assert.Null(september.LicenseChanges);                                                   // the archive has no license changes
+        Assert.Null(october.NetChange);                                                          // primary location → every location
+        Assert.Equal(1, october.MovedIn);
+
+        var dentists = AreaHistoryMath.Fill(rows, coverage, "county", "Dentists");
+        Assert.Equal((9, 1), (dentists[2].Providers, dentists[2].NewProviders));
+        Assert.Equal(0, dentists[1].NewProviders);                                               // known: 0 in July
+        Assert.Equal(0, dentists[3].Providers);                                                  // a month with a file: none listed
+    }
 }

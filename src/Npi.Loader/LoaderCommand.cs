@@ -22,6 +22,7 @@ public enum LoaderCommand
     Sample,
     Export,
     Directories,
+    History,
 }
 
 /// <summary>A parsed command line: the command plus its positional arguments.</summary>
@@ -50,6 +51,7 @@ public static class LoaderCommandLine
         ["sample"] = LoaderCommand.Sample,
         ["export"] = LoaderCommand.Export,
         ["directories"] = LoaderCommand.Directories,
+        ["history"] = LoaderCommand.History,
     };
 
     public const string Usage = """
@@ -75,6 +77,11 @@ public static class LoaderCommandLine
           directories      Rebuild the facility, Medicare group and organization tables of the directory pages
           area-history [full] Update the monthly area figures (moves, new and deactivated NPIs, changes);
                            with "full", compare every provider's locations, not only the queued ones
+          history [yyyy-MM] Build the NPPES history from the archived monthly files (CMS from June 2015, NBER
+                           before; ~137 GB, each zip deleted after use), up to that month or the newest, and the
+                           area figures back to November 2007; a stopped run goes on where it stopped
+          history discover List where each month's archived file is and the months without one (dry run)
+          history measure <zip> [<zip> …]  Read local monthly zips in order and compare them in memory only
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses
           overture [area]  Place practice addresses at their building with Overture Maps data (address
@@ -125,6 +132,27 @@ public static class LoaderCommandLine
             }
 
             return new LoaderInvocation(command, ["full"]);
+        }
+
+        if (command == LoaderCommand.History && rest.Length >= 1)
+        {
+            if (string.Equals(rest[0], "measure", StringComparison.OrdinalIgnoreCase) && rest.Length >= 2)
+            {
+                return new LoaderInvocation(command, ["measure", .. rest.Skip(1)]);
+            }
+
+            if (rest.Length == 1 && string.Equals(rest[0], "discover", StringComparison.OrdinalIgnoreCase))
+            {
+                return new LoaderInvocation(command, ["discover"]);
+            }
+
+            if (rest.Length == 1 && Npi.Core.Search.AreaHistoryMath.ParseMonth(rest[0]) is not null)
+            {
+                return new LoaderInvocation(command, rest);
+            }
+
+            error = "Command 'history' takes a month (yyyy-MM: process up to it), 'discover', or 'measure' and one or more zip files, or nothing.";
+            return null;
         }
 
         if (command == LoaderCommand.Overture && rest.Length == 1 && rest[0].Length == 2 && rest[0].All(char.IsAsciiLetter))

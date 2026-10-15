@@ -1770,6 +1770,15 @@ public sealed class AreaHistoryCoverage
     public DateTime? AsOfMonth { get; set; }
 
     public DateTime? AsOfDate { get; set; }
+
+    /// <summary>
+    /// The first month of the figures from the archived monthly NPPES files (CMS NPPES; historical copies via NBER), counted by
+    /// primary practice location; null when the archive isn't loaded.
+    /// </summary>
+    public DateTime? ArchiveFrom { get; set; }
+
+    /// <summary>The archive's last month: the month before the recorded series starts.</summary>
+    public DateTime? ArchiveTo { get; set; }
 }
 
 /// <summary>One statistic for every state or county (GET /api/v1/areas/map).</summary>

@@ -51,7 +51,7 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
     // The month an event counts in: its own, else the first open month when its own is frozen, or the as-of month without a date.
     private static string EventMonth(string date) => $"COALESCE(GREATEST({Month(date)}, DATE(@openFrom)), DATE(@asOfMonth))";
 
-    private sealed record Meta(DateTime? DerivedFrom, DateTime? TrackedFrom, DateTime? ChangesFrom, DateTime? AsOfMonth, long LastChangeId);
+    private sealed record Meta(DateTime? DerivedFrom, DateTime? TrackedFrom, DateTime? ChangesFrom, DateTime? AsOfMonth, long LastChangeId, DateTime? ArchiveTo);
 
     /// <summary>True when the projection queued providers, a load changed what the as-of month's snapshots read, the change log grew or the month moved on.</summary>
     public async Task<bool> IsStaleAsync(CancellationToken ct)
@@ -89,7 +89,7 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
         var meta = await connection.QuerySingleOrDefaultAsync<Meta>(new CommandDefinition(
             """
             SELECT `derived_from` AS DerivedFrom, `tracked_from` AS TrackedFrom, `changes_from` AS ChangesFrom, `as_of_month` AS AsOfMonth,
-                   `last_change_id` AS LastChangeId
+                   `last_change_id` AS LastChangeId, `archive_to` AS ArchiveTo
             FROM `area_history_meta` WHERE `id` = 1
             """, cancellationToken: ct));
         // as_of_month is written only when a build's months are in place: a first build that stopped half-way starts again.
@@ -112,6 +112,8 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
             from = from.ToDateTime(TimeOnly.MinValue),
             trackedFrom = trackedFrom.ToDateTime(TimeOnly.MinValue),
             derivedFrom = derivedFrom.ToDateTime(TimeOnly.MinValue),
+            // The months the NPPES archive covers (step 3.4, basis 3) before the recorded series: its rows are kept there.
+            archiveTo = (meta?.ArchiveTo is { } archived ? AreaHistoryMath.MonthOf(archived) : new DateOnly(1000, 1, 1)).ToDateTime(TimeOnly.MinValue),
         });
         Task<int> RunAsync(string sql, MySqlTransaction? tx = null) =>
             connection.ExecuteAsync(new CommandDefinition(sql, param, tx, commandTimeout: 0, cancellationToken: ct));
@@ -360,7 +362,7 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
             $"""
             INSERT INTO `{Stats}` ({keys}, `providers`, `quality_current`, `quality_check`, `quality_stale`)
             SELECT {keys}, `providers`, `quality_current`, `quality_check`, `quality_stale` FROM `area_month_stat`
-            WHERE `month` >= DATE(@from) AND (`providers` IS NOT NULL OR `quality_current` IS NOT NULL)
+            WHERE `month` >= DATE(@from) AND `basis` <> 3 AND (`providers` IS NOT NULL OR `quality_current` IS NOT NULL)
             """, null);
 
         // NPIs issued per month, by where their holders practise now: in total, then per category.
@@ -437,7 +439,9 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
         }
 
         await using var tx = await connection.BeginTransactionAsync(ct);
-        await run(first ? "DELETE FROM `area_month_stat`" : "DELETE FROM `area_month_stat` WHERE `month` >= DATE(@from)", tx);
+        // The archive's rows (basis 3) stay in its months before the recorded series; from the series' first month the recorded figures win.
+        await run(first ? "DELETE FROM `area_month_stat` WHERE `basis` <> 3" : "DELETE FROM `area_month_stat` WHERE `month` >= DATE(@from) AND `basis` <> 3", tx);
+        await run("DELETE FROM `area_month_stat` WHERE `basis` = 3 AND `month` >= DATE(@trackedFrom)", tx);
         await run(
             $"""
             INSERT INTO `area_month_stat` ({keys}, `basis`, `providers`, `new_providers`, `deactivated`, `moved_in`, `moved_out`,
@@ -447,6 +451,7 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
             FROM `{Stats}`
             WHERE COALESCE(`providers`, `new_providers`, `deactivated`, `moved_in`, `moved_out`, `specialty_changes`, `license_changes`,
                            `exclusion_changes`, `quality_current`, `quality_check`, `quality_stale`) IS NOT NULL
+              AND NOT (`month` < DATE(@trackedFrom) AND `month` <= DATE(@archiveTo))
             """, tx);
         await run("UPDATE `area_history_meta` SET `as_of_month` = DATE(@asOfMonth) WHERE `id` = 1", tx);
         await tx.CommitAsync(ct);

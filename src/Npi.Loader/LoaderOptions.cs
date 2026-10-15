@@ -200,6 +200,23 @@ public sealed class LoaderOptions
     /// </summary>
     public int ParallelBuilders { get; set; } = 3;
 
+    /// <summary>Where CMS serves its monthly NPPES files, listed or not (the history, docs/PRODUCT_PLAN.md step 3.4).</summary>
+    public string HistoryCmsBaseUrl { get; set; } = "https://download.cms.gov/nppes/";
+
+    /// <summary>NBER's copies of the older monthly NPPES files (https://doi.org/10.60592/bjwk-8n62).</summary>
+    public string HistoryNberBaseUrl { get; set; } = "https://data.nber.org/";
+
+    /// <summary>Download attempts per archived file: data.nber.org answers 503/504 about half the time.</summary>
+    public int HistoryDownloadAttempts { get; set; } = 8;
+
+    /// <summary>Keep each archived zip after it is read (otherwise deleted at once: the archive is ~137 GB).</summary>
+    public bool HistoryKeepZips { get; set; }
+
+    /// <summary>Download the next archived file while the current one is read (two zips on disk at most, ~2.5 GB).</summary>
+    public bool HistoryPrefetch { get; set; } = true;
+
+    public string ResolvedHistoryFolder => Path.Combine(ResolvedWorkFolder, "history");
+
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");
 
     /// <summary>

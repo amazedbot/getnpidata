@@ -119,6 +119,19 @@
         </details>
 
         <ul class="src history-notes">
+            @if (h.Coverage.ArchiveFrom is { } archiveFrom && h.Coverage.ArchiveTo is { } archiveTo)
+            {
+                <li><strong>@AreaHistoryMath.MonthName(archiveFrom) to @AreaHistoryMath.MonthName(archiveTo)</strong>: from the archived monthly NPPES files
+                    (source: CMS NPPES; historical copies via NBER, <a href="https://doi.org/10.60592/bjwk-8n62">doi.org/10.60592/bjwk-8n62</a>), each compared with the one before.
+                    Providers are counted by their <em>primary</em> practice location, in today's county boundaries; new NPIs by the place where they first appeared,
+                    deactivations where they practised before (until November 2012 a deactivated NPI simply dropped out of the file), moves and specialty changes
+                    between one file and the next. @(Model.ArchiveGaps is { Length: > 0 } gaps ? $"No file survives for {gaps}: those months have new NPIs only, and their other changes count in the next month with a file." : "")
+                    @if (h.Coverage.TrackedFrom is { } joined && joined == archiveTo.AddMonths(1))
+                    {
+                        <text>From @AreaHistoryMath.MonthName(joined) the figures are recorded as the loads arrive and count every practice location, so the provider count steps up there (no net change is shown across that month).</text>
+                    }
+                </li>
+            }
             <li><strong>New NPIs</strong>: NPIs issued in the month whose holders practise here now (@AreaModel.Since(h.Coverage.DerivedFrom)). Months before @(h.Coverage.TrackedFrom is { } tf ? AreaHistoryMath.MonthName(tf) : "the first count") are worked out from today's data, so NPIs deactivated or moved away since aren't in them.</li>
             <li><strong>Deactivated</strong>: @(us ? $"by CMS's deactivation date ({AreaModel.Since(h.Coverage.DerivedFrom)})" : $"providers who practised here when their NPI was deactivated ({AreaModel.Since(h.Coverage.TrackedFrom)}; NPPES publishes no address for a deactivated NPI, so earlier ones can't be placed)").</li>
             @if (!us)

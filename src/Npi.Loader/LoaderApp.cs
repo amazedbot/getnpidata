@@ -3,6 +3,7 @@ using Dapper;
 using Npi.Loader.Datasets;
 using Npi.Loader.Db;
 using Npi.Loader.Geocoding;
+using Npi.Loader.History;
 using Npi.Loader.Load;
 using Npi.Loader.Nppes;
 using Npi.Loader.Projection;
@@ -171,7 +172,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         log.Information("Run finished: {Ok} NPPES file(s) completed, {Failed} failed; reference data {Reference}; datasets {Datasets}; projection {Projection}; map {Map}",
             plan.Files.Count - failures, failures, referenceOk ? "current" : "FAILED", datasetsOk ? "current" : "FAILED", projectionOk ? "current" : "FAILED",
             mapOk ? "current" : "FAILED");
-        return failures == 0 && referenceOk && datasetsOk && projectionOk && mapOk && historyOk ? 0 : 1;
+        return failures == 0 && referenceOk && datasetsOk && projectionOk && mapOk && historyOk && !_historyFailed ? 0 : 1;
     }
 
     /// <summary>
@@ -407,6 +408,45 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         }
     }
 
+    /// <summary>
+    /// The <c>history</c> command (docs/PRODUCT_PLAN.md step 3.4): the NPPES history from the archived monthly files, up to a
+    /// month (yyyy-MM) or the newest; or <c>history measure</c> with local zips, compared in memory only.
+    /// </summary>
+    public async Task<int> HistoryAsync(IReadOnlyList<string> arguments, CancellationToken ct)
+    {
+        var builder = new HistoryBuilder(options, database, http, log);
+        if (arguments.Count > 0 && arguments[0] == "discover")
+        {
+            return await builder.DiscoverAsync(ct);
+        }
+
+        if (arguments.Count > 0 && arguments[0] == "measure")
+        {
+            builder.Measure(arguments.Skip(1).ToList(), ct);
+            return 0;
+        }
+
+        await EnsureReadyAsync(ct);
+        return await builder.RunAsync(arguments.Count > 0 ? Npi.Core.Search.AreaHistoryMath.ParseMonth(arguments[0]) : null, ct) ? 0 : 1;
+    }
+
+    // After run loaded a monthly file: the same zip is added to the NPPES history (step 3.4) when the history has started. A failure
+    // is logged and makes the run exit 1; the history command adds the month later.
+    private async Task TryAppendHistoryAsync(string zipPath, NppesFile file, CancellationToken ct)
+    {
+        try
+        {
+            await new HistoryBuilder(options, database, http, log).AppendMonthlyAsync(zipPath, file, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log.Error(ex, "Adding {File} to the NPPES history failed (Npi.Loader history adds it later)", file.FileName);
+            _historyFailed = true;
+        }
+    }
+
+    private bool _historyFailed;
+
     /// <summary>The <c>export</c> command: write the ready-made file of every active provider now.</summary>
     public async Task<int> ExportAsync(CancellationToken ct)
     {
@@ -493,6 +533,11 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
                 : await new NpiDataLoader(database, log, options.MinRowRatio).LoadAsync(zipPath, file, ct);
             await _downLog.CompleteAsync(file, rows, ct);
             log.Information("Completed {File}: {Rows:N0} rows in {Duration}", file.FileName, rows, Elapsed(started));
+            if (file.Kind == NppesFileKind.Monthly)
+            {
+                await TryAppendHistoryAsync(zipPath, file, ct);
+            }
+
             if (deleteZip)
             {
                 CleanWorkFolder(zipPath);
