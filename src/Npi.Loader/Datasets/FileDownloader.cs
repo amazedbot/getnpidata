@@ -10,7 +10,7 @@ namespace Npi.Loader.Datasets;
 /// its file) is reused when the server says it hasn't changed since (ETag / Last-Modified, kept in <c>{file}.download.json</c>).
 /// </summary>
 public sealed class FileDownloader(HttpClient http, ILogger log, int attempts = 4, TimeSpan? firstRetryDelay = null, int parts = 1,
-    long partMinBytes = FileDownloader.DefaultPartMinBytes)
+    long partMinBytes = FileDownloader.DefaultPartMinBytes, TimeSpan? partRetryDelay = null)
 {
     /// <summary>Smaller files are fetched in one stream.</summary>
     public const long DefaultPartMinBytes = 64L << 20;
@@ -41,7 +41,7 @@ public sealed class FileDownloader(HttpClient http, ILogger log, int attempts = 
             try
             {
                 var started = DateTime.UtcNow;
-                var result = await HttpFileFetch.ToFileAsync(http, url, part, earlier, parts, partMinBytes, ct);
+                var result = await HttpFileFetch.ToFileAsync(http, url, part, earlier, parts, partMinBytes, log, partRetryDelay, ct);
                 if (result.NotModified)
                 {
                     log.Information("{File} is unchanged since it was downloaded; using it again", fileName);
