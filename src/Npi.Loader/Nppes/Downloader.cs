@@ -5,12 +5,12 @@ namespace Npi.Loader.Nppes;
 
 /// <summary>
 /// Downloads NPPES zips to the work folder (CLAUDE.md §7 Stage 1.3): streams to a temporary
-/// <c>.part</c> file (in parallel parts when large and the server allows it, <see cref="HttpFileFetch"/>), checks the length
-/// and that the zip opens, then renames. Retries with backoff.
+/// <c>.part</c> file (in parallel parts when large and the server allows it, <see cref="HttpFileFetch"/>, which falls back to
+/// one stream when the server stops sending ranges), checks the length and that the zip opens, then renames. Retries with backoff.
 /// Never reports success for a failed download (legacy defect #4).
 /// </summary>
 public sealed class Downloader(HttpClient http, ILogger log, int attempts = 4, TimeSpan? firstRetryDelay = null, int parts = 1,
-    long partMinBytes = Datasets.FileDownloader.DefaultPartMinBytes, TimeSpan? maxRetryDelay = null)
+    long partMinBytes = Datasets.FileDownloader.DefaultPartMinBytes, TimeSpan? maxRetryDelay = null, TimeSpan? partRetryDelay = null)
 {
     private readonly TimeSpan _firstRetryDelay = firstRetryDelay ?? TimeSpan.FromSeconds(30);
     private readonly TimeSpan _maxRetryDelay = maxRetryDelay ?? TimeSpan.MaxValue;
@@ -32,7 +32,7 @@ public sealed class Downloader(HttpClient http, ILogger log, int attempts = 4, T
             try
             {
                 var started = DateTime.UtcNow;
-                var bytes = (await HttpFileFetch.ToFileAsync(http, url, part, earlier: null, parts, partMinBytes, ct)).Bytes;
+                var bytes = (await HttpFileFetch.ToFileAsync(http, url, part, earlier: null, parts, partMinBytes, log, partRetryDelay, ct)).Bytes;
 
                 if (!IsValidZip(part))
                 {
