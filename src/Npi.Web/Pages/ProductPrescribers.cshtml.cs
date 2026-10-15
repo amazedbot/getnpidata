@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Npi.Core.Search;
@@ -10,8 +11,11 @@ public class ProductPrescribersModel(ProductService products) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Sort { get; set; }
 
-    [BindProperty(SupportsGet = true, Name = "page")]
-    public int PageNumber { get; set; } = 1;
+    /// <summary>
+    /// The list's page, read from the query string in <c>OnGetAsync</c>: a property bound by the name "page" got Razor Pages'
+    /// own route value of that name (the page's path) instead, so every page showed page 1.
+    /// </summary>
+    public int PageNumber { get; private set; } = 1;
 
     public ProductDetail Product { get; private set; } = null!;
 
@@ -27,7 +31,8 @@ public class ProductPrescribersModel(ProductService products) : PageModel
         }
 
         var product = await products.GetAsync(slug, ct);
-        var page = product is null ? null : await products.PrescribersAsync(slug, Sort, Math.Max(1, PageNumber), ProductService.PrescriberPageSize, ct);
+        PageNumber = int.TryParse(Request.Query["page"], NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0 ? number : 1;
+        var page = product is null ? null : await products.PrescribersAsync(slug, Sort, PageNumber, ProductService.PrescriberPageSize, ct);
         if (product?.Prescribing is null || page is null)
         {
             return NotFound();
