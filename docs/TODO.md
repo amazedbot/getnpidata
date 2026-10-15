@@ -48,8 +48,8 @@ Fixes the owner found (2026-10-14), one pull request each:
 **Actions only the owner can take:**
 - **New York license status:** submit the Office of the Professions' Bulk Verifications Request Form (weekly files of currently registered licensees, free). NY today has board actions only.
 - ~~**Michigan license lists:** download the remaining lists (A–L, Nursing, Pharmacy) into `StateLicenseFilesFolder\MI`~~ done: the folder holds A–L, M–O, Nursing, Pharmacy and P–V, loaded 2026-10-13.
-- **AHRQ Compendium 2023:** download the systems CSV and the hospital, nursing home and home health linkage CSVs into `<data folder>\ahrq-compendium` (ahrq.gov blocks scripts).
-- **HRSA 340B:** download OPAIS's covered entity export once into `<data folder>\hrsa-340b`.
+- ~~**AHRQ Compendium 2023:** download the systems CSV and the hospital, nursing home and home health linkage CSVs into `<data folder>\ahrq-compendium` (ahrq.gov blocks scripts).~~ done: loaded on `workplace` 2026-10-15 (AHRQ 2023, 4 files, 6,680 rows).
+- ~~**HRSA 340B:** download OPAIS's covered entity export once into `<data folder>\hrsa-340b`.~~ done: loaded on `workplace` 2026-10-15 (the export of 2026-10-15, 329,488 rows; 16,056 facilities marked as 340B covered entities).
 
 ## Not needed for now (owner, 2026-10-13)
 
@@ -69,7 +69,6 @@ Fixes the owner found (2026-10-14), one pull request each:
 ## Not scheduled
 
 - ~~Speed item 16: build the loader to its own output folder, so loader changes never wait on stopping the site~~ done by the scripts of 2026-10-14 (checked 2026-10-15): the site runs from `.run/site`, the loader from `.run/loader`, so with the site up `dotnet build getnpidata.sln` and publishing the loader both succeed. Left as is: `loader.ps1` republishes into the `.run/loader` it runs from, so a rebuild while another loader run is going fails (`-NoBuild` works); one loader runs at a time.
-- Speed item 18 (found 2026-10-15): the area history rewrites its last two months (1,186,742 rows, 347 s in `run`) even when nothing it reads changed (0 moves, 0 recorded changes); skip it then.
 
 ## Done
 
@@ -94,6 +93,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 **Speed work:**
 - ~~Fix (found 2026-10-15 in the history run): a download in parts no longer fails when the server stops sending ranges~~ (2026-10-15: a part answered 503, 429 or cut off is asked again up to 3 times; a part answered with the whole file (200), or one that keeps failing, makes that attempt one plain download from scratch; data.nber.org did both, and a December 2012 zip took three attempts and ~6 min)
 - ~~Item 9: zips streamed instead of extracted~~ (2026-10-15: FL's PROF_ALL.txt goes from its zip entry straight into the license filter, 955 MB no longer written, 56–62 s → 32–37 s; the Census Gazetteer text parsed as it unzips; CA extracts only its .accdb, which the Access driver needs as a file, and deletes a copied-out snapshot at once; NPPES, openFDA and the NBER history already streamed; the deactivation .xlsx stays in memory, a few MB, ExcelDataReader needs to seek)
+- ~~Item 18 (found 2026-10-15): the area history skips its rewrite when nothing it reads changed~~ (2026-10-15: it had rewritten its last two months, 1,186,742 rows in 347 s, with 0 moves and 0 recorded changes. It now builds only for queued providers, a full projection, a new as-of month, a change log row of a kind it counts (not a phone or name change), new area counts, record-quality labels that changed (a relabel that changed none no longer counts) or a NUCC, HUD or Census reload; the check took 3–27 ms in a test database, 187 ms with 500,000 uncounted change log rows since the last build; timing in the next combined run)
 - ~~Item 17 (found 2026-10-15): the map builds in full when its update would replace more than 10% of the providers~~ (2026-10-15: after a full Overture pass the update had re-placed 8.6M providers in 61 min, where a full build takes ~24 min; the batch is counted while it is gathered and stops one past the limit, so the check costs nothing on a weekly; timing in the next combined run)
 - ~~Small fixes: an unneeded `using` in `FdaProductSource.cs` removed; CLAUDE.md no longer listed `deploy/register-task.ps1`~~ (2026-10-14)
 - ~~Phase 3: the NY and CA Medicaid enrolled-provider lists~~ (2026-10-14: 544,718 enrollments, a sign of current practice and a line on the profile; Stale −36,249, Check −23,433, Current +59,682)
