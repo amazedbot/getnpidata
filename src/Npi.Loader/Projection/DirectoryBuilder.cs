@@ -13,7 +13,8 @@ namespace Npi.Loader.Projection;
 /// migration 101), so the site reads a few small tables instead of aggregating millions of rows when it starts:
 /// <list type="bullet">
 /// <item><c>directory_facility</c>: every certified facility, the Provider of Services file merged with the Care Compare
-/// listings in C# (<see cref="FacilityDirectory.ReadSourcesAsync"/>, ~130,000 rows);</item>
+/// listings in C# (<see cref="FacilityDirectory.ReadSourcesAsync"/>, ~130,000 rows), with its newest change of ownership and its
+/// nursing home penalties for the list's filters (migration 108);</item>
 /// <item><c>directory_group</c>: every Medicare group with an active clinician (~210,000): clinicians as its page counts them
 /// (reassigned to it or listed with it in Care Compare), organization NPIs enrolled under it, accepts assignment, group MIPS;</item>
 /// <item><c>directory_org_count</c>: active organization NPIs by primary taxonomy, primary practice state and record-quality label;</item>
@@ -33,6 +34,7 @@ public sealed class DirectoryBuilder(Database database, ILogger log, double minR
     [
         "medicare_enrollment", "cc_clinicians", "cc_mips", "cc_hospitals", "cc_nursing_homes", "cc_home_health", "cc_hospices",
         "cms_facility_enrollments", "cms_provider_of_services", "cms_physician_by_provider", "census_gazetteer",
+        "cms_ownership_changes", OwnershipService.InspectionsSource,
     ];
 
     /// <summary>
@@ -116,7 +118,10 @@ public sealed class DirectoryBuilder(Database database, ILogger log, double minR
                 ("beds", typeof(int), f => f.Beds), ("rating", typeof(double), f => f.Rating), ("active", typeof(sbyte), f => (sbyte)(f.Active ? 1 : 0)),
                 ("termination_date", typeof(DateTime), f => f.TerminationDate?.ToDateTime(TimeOnly.MinValue)),
                 ("termination_reason", typeof(string), f => f.TerminationReason), ("billing_npis", typeof(int), f => f.BillingNpis),
-                ("lat", typeof(double), f => f.Latitude), ("lon", typeof(double), f => f.Longitude)), ct);
+                ("lat", typeof(double), f => f.Latitude), ("lon", typeof(double), f => f.Longitude),
+                ("ownership_changed", typeof(DateTime), f => f.LastOwnershipChange?.ToDateTime(TimeOnly.MinValue)),
+                ("penalties", typeof(int), f => f.Penalties), ("fines", typeof(double), f => f.Fines),
+                ("last_penalty", typeof(DateTime), f => f.LastPenalty?.ToDateTime(TimeOnly.MinValue))), ct);
             log.Information("Directories: {Rows:N0} facilities in {Seconds:N1}s", facilities.Count, step.Elapsed.TotalSeconds);
 
             foreach (var (what, sql) in new[] { ("groups", GroupSql), ("organization counts", OrganizationCountSql), ("organization Part B payments", BillingSql) })

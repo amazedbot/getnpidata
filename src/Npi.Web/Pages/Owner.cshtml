@@ -1,0 +1,123 @@
+@page "/owner/{id}"
+@using Npi.Core.Search
+@model OwnerModel
+@{
+    var d = Model.Detail;
+    var o = Model.Owner;
+    ViewData["Title"] = Model.Name;
+}
+
+@section Scripts {
+    <script src="~/js/profile.js" asp-append-version="true" defer></script>
+}
+
+<div class="profile">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a> › <a href="/owners">Facility owners</a></nav>
+
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="Organization" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="52" class="bg" />
+                <path d="M28 80V34h28v46M56 80V50h20v30M36 44h12M36 56h12M36 68h12" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@Model.Name</h1>
+                <p class="summary">@Model.Summary</p>
+                <ul class="pills" aria-label="Owner type">
+                    @foreach (var k in o.Kinds)
+                    {
+                        <li class="pill @(k is "private_equity" or "reit" ? "warn" : "plain")">@OwnerKinds.Label(k)</li>
+                    }
+                    <li class="pill plain">CMS associate ID <span class="mono">&nbsp;@o.Id</span></li>
+                </ul>
+                @if (o.DoingBusinessAs is { } dba && !string.Equals(dba, o.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    <p class="muted">Doing business as @OwnershipView.DisplayName(dba)</p>
+                }
+            </div>
+            <div class="head-actions">
+                <button type="button" class="secondary" data-copy="@o.Id">Copy ID</button>
+                <a class="button" href="/owner/@o.Id/raw.json" download>Download raw data</a>
+            </div>
+        </div>
+        @if (Model.ByType.Count > 0)
+        {
+            <p class="head-facts">
+                @foreach (var (type, count) in Model.ByType)
+                {
+                    <span>@(FacilityTypes.Find(type)?.Plural ?? "Facilities") @Format.Number(count)</span>
+                }
+            </p>
+        }
+    </section>
+
+    @if (d.Facilities.Count > 0)
+    {
+        <section class="card" aria-labelledby="fac-h">
+            <h2 id="fac-h">Facilities (@d.Facilities.Count)</h2>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Facilities this owner is listed for</caption>
+                    <thead><tr><th scope="col">Facility</th><th scope="col">Where</th><th scope="col">Role</th><th scope="col">Share</th><th scope="col">Since</th></tr></thead>
+                    <tbody>
+                        @foreach (var f in d.Facilities)
+                        {
+                            <tr>
+                                <td>
+                                    @if (f.Ccn is { } ccn){<a href="/facility/@ccn">@OwnershipView.DisplayName(f.Name)</a>}else{@OwnershipView.DisplayName(f.Name)}
+                                    <br /><span class="small muted">@OwnershipView.TypeName(f.Type)@(f.Active == false ? " · certification ended" : "")</span>
+                                </td>
+                                <td>@OwnershipView.Place(f.City, f.State)</td>
+                                <td>@string.Join("; ", f.Roles.Select(r => r.Role).Distinct(StringComparer.Ordinal))</td>
+                                <td>@OwnershipView.Share(f.Roles.Max(r => r.Percentage is > 0 ? r.Percentage : null))</td>
+                                <td>@OwnershipView.Date(f.Roles.Min(r => r.Since))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">CMS Hospital, Skilled Nursing Facility, Home Health Agency, Hospice, FQHC and Rural Health Clinic All Owners files@(d.AsOf is { } asOf ? ", data as of " + OwnershipView.Date(asOf, "MMMM d, yyyy") : ""), joined to the facilities by their Medicare enrollment.</p>
+        </section>
+    }
+
+    @if (d.Npis.Count > 0 || d.EnrolledAs.Count > 0 || d.GroupPacId is not null)
+    {
+        <section class="card" aria-labelledby="self-h">
+            <h2 id="self-h">Also in Medicare as</h2>
+            <ul class="link-list">
+                @foreach (var f in d.EnrolledAs.Where(f => f.Ccn is not null))
+                {
+                    <li><a href="/facility/@f.Ccn">@OwnershipView.DisplayName(f.Name)</a> <span class="muted">@OwnershipView.TypeName(f.Type)@(OwnershipView.Place(f.City, f.State) is { } p ? " · " + p : "") · <span class="mono">@f.Ccn</span></span></li>
+                }
+                @if (d.GroupPacId is { } pac)
+                {
+                    <li><a href="/group/@pac">Its Medicare group</a> <span class="muted">· <span class="mono">@pac</span></span></li>
+                }
+                @foreach (var n in d.Npis)
+                {
+                    <li><a href="/provider/@n.Npi">@n.Name</a> <span class="muted">@(n.Specialty)@(n.City is null ? "" : $" · {CityCatalog.TitleCase(n.City)}, {n.State}") · <span class="mono">@n.Npi</span></span></li>
+                }
+            </ul>
+            <p class="src">Matched by its CMS associate ID only (the PECOS ID of its own Medicare enrollments), never by name: Medicare Fee-For-Service Public Provider Enrollment, the facility enrollment files and the Medicare group list.</p>
+        </section>
+    }
+
+    @if (d.Changes.Count > 0)
+    {
+        <section class="card" aria-labelledby="chow-h">
+            <h2 id="chow-h">Ownership changes (@d.Changes.Count)</h2>
+            <ol class="link-list">
+                @foreach (var c in d.Changes)
+                {
+                    var role = c.BuyerId == o.Id ? "bought" : c.SellerId == o.Id ? "sold" : "owned the seller";
+                    <li>
+                        <strong>@OwnershipView.Date(c.EffectiveDate, "MMMM d, yyyy")</strong> · @c.Type of
+                        @if ((c.BuyerCcn ?? c.SellerCcn) is { } ccn){<a href="/facility/@ccn">@OwnershipView.DisplayName(c.BuyerDoingBusinessAs ?? c.BuyerName ?? ccn)</a>}else{@OwnershipView.DisplayName(c.BuyerName ?? "a facility")}
+                        <span class="muted">(@OwnershipView.TypeName(c.Kind)): @OwnershipView.DisplayName(c.SellerName ?? "the seller") to @OwnershipView.DisplayName(c.BuyerName ?? "the buyer"); this owner @role.</span>
+                    </li>
+                }
+            </ol>
+            <p class="src">CMS Hospital and Skilled Nursing Facility Change of Ownership files and their owner information (changes since 2016).</p>
+        </section>
+    }
+</div>

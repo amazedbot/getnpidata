@@ -644,7 +644,12 @@ public sealed class SearchIntegrationTests : IDisposable
               (@A, 2024, 'individual', NULL, NULL, 70);
             INSERT INTO provider_quality (npi, label, reasons, activity) VALUES (@D, 2, 0, 0);
             INSERT INTO medicare_utilization (npi, data_year, payment_amount, beneficiaries) VALUES (@D, 2024, 12345.5, 40), (@A, 2024, 999, 10);
-            """, new { A, B, C, D, E });
+            INSERT INTO facility_ownership_change (kind, chow_type_code, effective_date, buyer_ccn, seller_ccn) VALUES
+              ('hospital', 'CH', '2018-06-01', '330045', '330045'), ('hospital', 'CH', @changed, '330045', '330045'),
+              ('snf', 'CH', '2017-01-01', '335002', '335002');
+            INSERT INTO nh_penalty (ccn, penalty_date, penalty_type, fine_amount, denial_start, denial_days) VALUES
+              ('335002', @fined, 'Fine', 182968, NULL, NULL), ('335002', @fined, 'Payment Denial', NULL, @fined, 30);
+            """, new { A, B, C, D, E, changed = DateTime.UtcNow.Date.AddMonths(-10), fined = DateTime.UtcNow.Date.AddMonths(-3) });
 
         // Before the loader's first build the site says the lists are being prepared (and never aggregates the sources itself).
         using (var early = new FacilityDirectory(db.ConnectionString))
@@ -684,6 +689,12 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(("GOOD SAMARITAN HOSPITAL", "Acute care hospital", 3.0, (double?)null), (hospital.Name, hospital.Kind, hospital.Rating, hospital.Latitude));
         Assert.Equal((120, 2.0), (active.Items[4].Beds, active.Items[4].Rating));
         Assert.Equal(4.5, active.Items[3].Rating);
+        // The newest change of ownership and the penalties per CCN, for the list's filters.
+        Assert.Equal(DateOnly.FromDateTime(DateTime.UtcNow.Date.AddMonths(-10)), hospital.LastOwnershipChange);
+        Assert.Equal((2, 182968.0, DateOnly.FromDateTime(DateTime.UtcNow.Date.AddMonths(-3)), new DateOnly(2017, 1, 1)),
+            (active.Items[4].Penalties, active.Items[4].Fines, active.Items[4].LastPenalty, active.Items[4].LastOwnershipChange));
+        Assert.Equal(["330045"], (await facilities.SearchAsync(new FacilityFilter { OwnershipChangedWithinYears = 1 }, _ct)).Items.Select(f => f.Ccn));
+        Assert.Equal(["335002"], (await facilities.SearchAsync(new FacilityFilter { HasPenalties = true }, _ct)).Items.Select(f => f.Ccn));
         var closed = Assert.Single((await facilities.SearchAsync(new FacilityFilter { Status = "closed" }, _ct)).Items);
         Assert.Equal(("330888", new DateOnly(2020, 1, 1), "Closed or merged"), (closed.Ccn, closed.TerminationDate, closed.TerminationReason));
         var overview = await facilities.GetOverviewAsync(_ct);

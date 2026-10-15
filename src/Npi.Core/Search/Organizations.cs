@@ -37,6 +37,12 @@ public sealed record FacilityProfile(CertifiedFacility Facility, string? Address
     /// a closed facility …): no Care Compare ratings, ownership or phone.
     /// </summary>
     public bool CertificationOnly { get; init; }
+
+    /// <summary>Who owns and runs it and its ownership changes (step 3.6 part 2), when the caller looked them up (the raw data download).</summary>
+    public FacilityOwnership? Ownership { get; init; }
+
+    /// <summary>A nursing home's inspections and penalties (step 3.6 part 2), when the caller looked them up (the raw data download).</summary>
+    public NursingHomeInspections? Inspections { get; init; }
 }
 
 /// <summary>

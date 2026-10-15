@@ -18,3 +18,7 @@ Applied in number order together with the other folders (see [../README.md](../R
 | `085_practice_signals.sql` | Signs of current practice: opioid treatment programs, Medicare revalidation list, equipment suppliers that billed Medicare (Phase 3 step 3.1). |
 | `086_cms_pos_facility.sql` | CMS Provider of Services: every certified facility, active or terminated, for closures (Phase 3 step 3.1). |
 | `100_medicare_history.sql` | Older Medicare years (2013 on): Part B billing and Part D prescribing per NPI and data year, and the file each year was loaded from (Phase 3). |
+| `104_cms_facility_enrollment.sql` | One row per facility Medicare enrollment (ID, CCN, NPI, associate ID), filled with cms_facility_npi, to join owners to facilities (Phase 3 step 3.6 part 2). |
+| `105_facility_owner.sql` | Facility owners from the CMS All Owners files: one row per enrollment, owner and role, and one per owner (step 3.6 part 2). |
+| `106_facility_ownership_change.sql` | Hospital and nursing home changes of ownership since 2016, and the sellers' owners before (step 3.6 part 2). |
+| `107_nursing_home_inspections.sql` | Nursing home health and fire safety deficiencies summarized per CCN (inspections, counts by cycle and scope and severity, the most serious and newest citations, tag wording) and penalties (step 3.6 part 2). |

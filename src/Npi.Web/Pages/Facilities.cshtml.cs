@@ -33,6 +33,12 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
     public string? Status { get; set; }
 
     [BindProperty(SupportsGet = true)]
+    public int? OwnershipChangedWithinYears { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool? HasPenalties { get; set; }
+
+    [BindProperty(SupportsGet = true)]
     public string? Sort { get; set; }
 
     /// <summary>
@@ -76,11 +82,11 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
         var filter = Filter(PageNumber);
         var errors = filter.Validate();
         // A rating that isn't a number (the page number is left to Razor Pages, whose route values also carry a "page").
-        foreach (var key in new[] { nameof(MinRating), nameof(MaxRating) })
+        foreach (var key in new[] { nameof(MinRating), nameof(MaxRating), nameof(OwnershipChangedWithinYears), nameof(HasPenalties) })
         {
             if (ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0)
             {
-                errors[char.ToLowerInvariant(key[0]) + key[1..]] = ["Must be a whole number."];
+                errors[char.ToLowerInvariant(key[0]) + key[1..]] = [key == nameof(HasPenalties) ? "true or false." : "Must be a whole number."];
             }
         }
 
@@ -88,7 +94,8 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
         {
             Errors = errors;
             Q = Type = State = Status = Sort = null;
-            MinRating = MaxRating = null;
+            MinRating = MaxRating = OwnershipChangedWithinYears = null;
+            HasPenalties = null;
             PageNumber = 1;
             filter = Filter(1);
         }
@@ -115,7 +122,11 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
             : null;
     }
 
-    private FacilityFilter Filter(int page) => DirectoryEndpoints.Facilities(Q, Type, State, MinRating, MaxRating, Status, Sort, page);
+    private FacilityFilter Filter(int page) =>
+        DirectoryEndpoints.Facilities(Q, Type, State, MinRating, MaxRating, Status, OwnershipChangedWithinYears, HasPenalties, Sort, page);
+
+    /// <summary>The "Changed ownership" choices, in years.</summary>
+    public static readonly IReadOnlyList<int> OwnershipChangeChoices = [1, 3, 5, 10];
 
     /// <summary>"Hospitals in NY", "Closed nursing homes", "Facilities matching “good samaritan”".</summary>
     public string ListTitle
@@ -133,20 +144,39 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
                 what += " in " + GeographyCatalog.StateName(st.ToUpperInvariant());
             }
 
+            var with = new List<string>();
+            if (OwnershipChangedWithinYears is { } years)
+            {
+                with.Add(years == 1 ? "a change of ownership in the last year" : $"a change of ownership in the last {years} years");
+            }
+
+            if (HasPenalties == true)
+            {
+                with.Add($"penalties in the last {FacilityFilter.PenaltyYears} years");
+            }
+
+            if (with.Count > 0)
+            {
+                what += " with " + string.Join(" and ", with);
+            }
+
             return string.IsNullOrWhiteSpace(Q) ? what : $"{what} matching “{Q.Trim()}”";
         }
     }
 
     /// <summary>The page's query string with some values replaced (null removes one); page 1 is left out.</summary>
     public string ListUrl(string path = "/facilities", string? type = "", string? minRating = "", string? maxRating = "", string? status = "",
-        string? sort = "", int page = 1, string? state = "", string? q = "")
+        string? sort = "", int page = 1, string? state = "", string? q = "", string? ownershipChanged = "", string? penalties = "")
     {
         var values = new (string Key, string? Value)[]
         {
             ("q", q == "" ? Q : q), ("type", type == "" ? Type : type), ("state", state == "" ? State : state),
             ("minRating", minRating == "" ? MinRating?.ToString(CultureInfo.InvariantCulture) : minRating),
             ("maxRating", maxRating == "" ? MaxRating?.ToString(CultureInfo.InvariantCulture) : maxRating),
-            ("status", status == "" ? Status : status), ("sort", sort == "" ? Sort : sort),
+            ("status", status == "" ? Status : status),
+            ("ownershipChangedWithinYears", ownershipChanged == "" ? OwnershipChangedWithinYears?.ToString(CultureInfo.InvariantCulture) : ownershipChanged),
+            ("hasPenalties", penalties == "" ? (HasPenalties == true ? "true" : null) : penalties),
+            ("sort", sort == "" ? Sort : sort),
             ("page", page > 1 ? page.ToString(CultureInfo.InvariantCulture) : null),
         };
         var query = string.Join("&", values.Where(v => !string.IsNullOrWhiteSpace(v.Value)).Select(v => $"{v.Key}={Uri.EscapeDataString(v.Value!.Trim())}"));
@@ -157,8 +187,9 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
     public string SortUrl(string key)
     {
         var current = Sort ?? "name";
-        var next = key == "rating"
-            ? (current == "-rating" ? "rating" : "-rating")
+        // Rating, ownership changes and fines: the highest, newest and largest first.
+        var next = key is "rating" or "ownershipChange" or "fines"
+            ? (current == "-" + key ? key : "-" + key)
             : (current == key ? "-" + key : key);
         return ListUrl(sort: next == "name" ? null : next);
     }
@@ -197,4 +228,7 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
     public static string Stars(double? rating) => rating is { } r ? r.ToString("0.#", CultureInfo.InvariantCulture) + " ★" : "—";
 
     public static string Name(string name) => CityCatalog.TitleCase(name);
+
+    /// <summary>"$182,968" or "".</summary>
+    public static string Dollars(double? amount) => amount is { } a ? a.ToString("$#,0", CultureInfo.InvariantCulture) : "";
 }

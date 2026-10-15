@@ -1,0 +1,115 @@
+@using Npi.Core.Search
+@model FacilityOwnershipSection
+@{
+    var o = Model.Ownership;
+    var groups = o is null ? [] : OwnershipView.Groups(o.Owners);
+}
+
+@if (o is not null || Model.OwnersPublished)
+{
+<section class="card" id="owners" aria-labelledby="owners-h">
+    <h2 id="owners-h">Who owns it</h2>
+    @if (o is null || o.Owners.Count == 0)
+    {
+        <p>CMS lists no owners for this facility's Medicare enrollment.</p>
+    }
+    else
+    {
+        <p class="lede">The owners and managers of its Medicare enrollment@(o.LegalName is { } legal ? $" ({OwnershipView.DisplayName(legal)})" : ""), as the facility reported them to CMS.</p>
+        @foreach (var (group, lines) in groups)
+        {
+            <h3>@OwnerRoles.GroupName(group) (@lines.Count)</h3>
+            @if (group == OwnerRoles.Officer)
+            {
+                @:<details><summary>Show the @lines.Count @(lines.Count == 1 ? "person or company" : "people and companies")</summary>
+            }
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">@OwnerRoles.GroupName(group)</caption>
+                    <thead><tr><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Share</th><th scope="col">Since</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in lines)
+                        {
+                            <tr>
+                                <td>
+                                    @if (l.OwnerId is { } ownerId){<a href="/owner/@ownerId">@l.Name</a>}else{@l.Name}@if (l.DoingBusinessAs is { } dba && !string.Equals(dba, l.Name, StringComparison.OrdinalIgnoreCase)){<span class="muted"> (doing business as @dba)</span>}
+                                    @if (l.Title is { } title){<br /><span class="small muted">@title</span>}
+                                    @if (l.Kinds.Count > 0 || l.Place is not null)
+                                    {
+                                        <br /><span class="small muted">@string.Join(" · ", l.Kinds.Append(l.Place).Where(x => !string.IsNullOrEmpty(x)))</span>
+                                    }
+                                </td>
+                                <td>@l.Roles</td>
+                                <td>@OwnershipView.Share(l.Percentage)</td>
+                                <td>@OwnershipView.Date(l.Since)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (group == OwnerRoles.Officer)
+            {
+                @:</details>
+            }
+        }
+        <p class="src">
+            CMS @(TypeName(Model.FacilityType)) All Owners file (Medicare enrollment @o.EnrollmentId)@(o.OwnersAsOf is { } asOf ? ", data as of " + OwnershipView.Date(asOf, "MMMM d, yyyy") : "").
+            Owners of 5% or more must be listed; an indirect owner owns the facility through another company. Each organization's name opens every facility CMS lists it for; people are named here only.
+        </p>
+    }
+</section>
+}
+
+@if (o?.Changes.Count > 0 || Model.ChangesPublished)
+{
+    <section class="card" id="ownership-changes" aria-labelledby="chow-h">
+        <h2 id="chow-h">Ownership changes@(o?.Changes.Count > 0 ? $" ({o.Changes.Count})" : "")</h2>
+        @if (o is null || o.Changes.Count == 0)
+        {
+            <p>CMS recorded no change of ownership for this facility since 2016.</p>
+        }
+        else
+        {
+            <ol class="link-list">
+                @foreach (var c in o.Changes)
+                {
+                    <li>
+                        <strong>@OwnershipView.Date(c.EffectiveDate, "MMMM d, yyyy")</strong> · @c.Type:
+                        @Party(c.SellerName, c.SellerDoingBusinessAs, c.SellerId) to @Party(c.BuyerName, c.BuyerDoingBusinessAs, c.BuyerId)
+                        @if (c.SellerCcn is { } sccn && c.BuyerCcn is { } bccn && !string.Equals(sccn, bccn, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <span class="small muted">(merged: <a href="/facility/@sccn">@sccn</a> into <a href="/facility/@bccn">@bccn</a>)</span>
+                        }
+                        @if (c.PreviousOwners.Count > 0)
+                        {
+                            <br /><span class="small muted">Owned before by
+                            @for (var i = 0; i < c.PreviousOwners.Count && i < 6; i++)
+                            {
+                                var p = c.PreviousOwners[i];
+                                @(i > 0 ? "; " : "")@if (p.OwnerId is { } previousId){<a href="/owner/@previousId">@OwnershipView.DisplayName(p.Name)</a>}else{@OwnershipView.DisplayName(p.Name)}@($" ({p.Role.ToLowerInvariant()}{(p.Percentage is > 0 ? ", " + OwnershipView.Share(p.Percentage) : "")})")
+                            }
+                            @(c.PreviousOwners.Count > 6 ? $" and {c.PreviousOwners.Count - 6} more" : "")</span>
+                        }
+                    </li>
+                }
+            </ol>
+        }
+        <p class="src">CMS Hospital and Skilled Nursing Facility Change of Ownership files and their owner information (changes since 2016)@(o?.ChangesAsOf is { } cAsOf ? ", data as of " + OwnershipView.Date(cAsOf, "MMMM d, yyyy") : ""). CMS publishes no such file for other kinds of facility.</p>
+    </section>
+}
+
+@functions {
+    private static string TypeName(string type) => type switch
+    {
+        FacilityTypes.Hospital => "Hospital",
+        FacilityTypes.NursingHome => "Skilled Nursing Facility",
+        FacilityTypes.HomeHealth => "Home Health Agency",
+        FacilityTypes.Hospice => "Hospice",
+        FacilityTypes.Fqhc => "Federally Qualified Health Center",
+        FacilityTypes.Rhc => "Rural Health Clinic",
+        _ => "facility",
+    };
+
+    // The buyer and the seller are the enrolled organizations (their associate IDs need not be owners elsewhere): named, not linked.
+    private static string Party(string? name, string? dba, string? id) => OwnershipView.DisplayName(name ?? dba ?? (id is null ? "an unnamed party" : "associate " + id));
+}

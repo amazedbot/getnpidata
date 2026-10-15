@@ -27,7 +27,16 @@ public sealed class FacilitySearch
     /// <summary>active (default), closed or all.</summary>
     public string? Status { get; set; }
 
-    /// <summary>name, city, state, type, rating or closed; "-" first for descending ("-rating" = best first).</summary>
+    /// <summary>1–10: facilities whose ownership changed in that many years (CMS's hospital and nursing home change-of-ownership files).</summary>
+    public int? OwnershipChangedWithinYears { get; set; }
+
+    /// <summary>True: nursing homes fined or denied payment in the last three years.</summary>
+    public bool? HasPenalties { get; set; }
+
+    /// <summary>
+    /// name, city, state, type, rating, closed, ownershipChange or fines; "-" first for descending ("-rating" = best first,
+    /// "-fines" = the largest fines first).
+    /// </summary>
     public string? Sort { get; set; }
 
     public int? Page { get; set; }
@@ -45,6 +54,8 @@ public sealed class FacilitySearch
         q.Add("minRating", MinRating);
         q.Add("maxRating", MaxRating);
         q.Add("status", Status);
+        q.Add("ownershipChangedWithinYears", OwnershipChangedWithinYears);
+        q.Add("hasPenalties", HasPenalties);
         q.Add("sort", Sort);
         q.Add("page", Page);
         q.Add("pageSize", PageSize);
@@ -106,6 +117,8 @@ internal sealed class QueryBuilder
     }
 
     public void Add(string name, int? value) => Add(name, value?.ToString(CultureInfo.InvariantCulture));
+
+    public void Add(string name, bool? value) => Add(name, value is { } b ? (b ? "true" : "false") : null);
 
     public override string ToString() => _sb.ToString();
 }

@@ -109,7 +109,7 @@ public static class ApiEndpoints
         api.MapGet("/facilities", DirectoryEndpoints.SearchFacilitiesAsync)
             .WithName("SearchFacilities").WithTags("Facilities")
             .WithSummary("Medicare-certified facilities")
-            .WithDescription($"Hospitals, nursing homes, home health agencies, hospices, FQHCs, rural health clinics, dialysis facilities, surgery centers and other facilities certified by Medicare (CMS Provider of Services file and Care Compare), by CCN. q = a CCN, a ZIP, or words of the name or city; type = {string.Join(" | ", FacilityTypes.All.Select(t => t.Code))}; state = a two-letter code; minRating / maxRating = 1–5 stars (the type's CMS rating; halves count down); status = {string.Join(" | ", FacilityFilter.Statuses)} (default active); sort = {string.Join(" | ", FacilityFilter.Sorts)}, \"-\" first for descending (default name); pageSize 1–{FacilityFilter.MaxPageSize} (default {FacilityFilter.DefaultPageSize}). Latitude and longitude are the centre of the facility's ZIP code.");
+            .WithDescription($"Hospitals, nursing homes, home health agencies, hospices, FQHCs, rural health clinics, dialysis facilities, surgery centers and other facilities certified by Medicare (CMS Provider of Services file and Care Compare), by CCN. q = a CCN, a ZIP, or words of the name or city; type = {string.Join(" | ", FacilityTypes.All.Select(t => t.Code))}; state = a two-letter code; minRating / maxRating = 1–5 stars (the type's CMS rating; halves count down); status = {string.Join(" | ", FacilityFilter.Statuses)} (default active); ownershipChangedWithinYears = 1–{FacilityFilter.MaxOwnershipChangeYears} (a change of ownership in that many years, from CMS's hospital and nursing home change-of-ownership files; lastOwnershipChange is the newest); hasPenalties = true (nursing homes fined or denied payment in the last {FacilityFilter.PenaltyYears} years; penalties, fines and lastPenalty from Care Compare's penalty file); sort = {string.Join(" | ", FacilityFilter.Sorts)}, \"-\" first for descending (default name); pageSize 1–{FacilityFilter.MaxPageSize} (default {FacilityFilter.DefaultPageSize}). Latitude and longitude are the centre of the facility's ZIP code.");
 
         api.MapGet("/facilities.csv", DirectoryEndpoints.FacilitiesCsvAsync)
             .WithName("ExportFacilitiesCsv").WithTags("Facilities")
@@ -168,6 +168,8 @@ public static class ApiEndpoints
             .CacheOutput(CachePolicy);
 
         api.MapAreaApi();
+
+        api.MapOwnershipApi();
 
         api.MapGet("/meta", GetMetaAsync)
             .WithName("GetMeta").WithTags("Meta").WithSummary("Data versions")

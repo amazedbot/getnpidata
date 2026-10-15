@@ -139,6 +139,52 @@ public class DirectoryTests
     }
 
     [Fact]
+    public async Task Facilities_filter_by_ownership_changes_and_penalties()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var rows = FacilityDirectory.Merge(
+            [
+                new("330045", "GOOD SAMARITAN HOSP", null, "WEST ISLIP", "NY", "11795", true, null, null),
+                new("335001", "ISLAND NURSING", null, "BABYLON", "NY", "11702", true, null, null),
+                new("335003", "BAY NURSING", null, "BABYLON", "NY", "11702", true, null, null),
+                new("335004", "QUIET NURSING", null, "ISLIP", "NY", "11751", true, null, null),
+            ],
+            [], [], new Dictionary<string, (double Lat, double Lon)>(),
+            new Dictionary<string, DateOnly> { ["330045"] = today.AddMonths(-8), ["335001"] = today.AddYears(-4), ["335004"] = today.AddYears(-12) },
+            new Dictionary<string, FacilityDirectory.FacilityPenalties>
+            {
+                ["335001"] = new(3, 182968, today.AddMonths(-5)),
+                ["335003"] = new(1, null, today.AddYears(-1)),        // a payment denial, no fine
+                ["335004"] = new(1, 5000, today.AddYears(-4)),        // older than the three years
+            });
+        Assert.Equal((3, 182968.0, today.AddMonths(-5)), rows.Where(r => r.Ccn == "335001").Select(r => (r.Penalties, r.Fines, r.LastPenalty)).Single());
+        Assert.Equal((0, (double?)null, today.AddMonths(-8)), rows.Where(r => r.Ccn == "330045").Select(r => (r.Penalties, r.Fines, r.LastOwnershipChange)).Single());
+
+        using var directory = new FacilityDirectory(rows);
+        async Task<string[]> Ccns(FacilityFilter filter) => [.. (await directory.SearchAsync(filter, Ct)).Items.Select(i => i.Ccn)];
+
+        Assert.Equal(["330045"], await Ccns(new FacilityFilter { OwnershipChangedWithinYears = 1 }));
+        Assert.Equal(["330045", "335001"], await Ccns(new FacilityFilter { OwnershipChangedWithinYears = 5 }));
+        Assert.Equal(["335003", "335001"], await Ccns(new FacilityFilter { HasPenalties = true }));
+        Assert.Equal(4, (await directory.SearchAsync(new FacilityFilter { HasPenalties = false }, Ct)).TotalCount); // false: no filter
+        Assert.Equal(["335001"], await Ccns(new FacilityFilter { HasPenalties = true, OwnershipChangedWithinYears = 5 }));
+
+        // The largest fines and the newest changes first; those without one last either way.
+        Assert.Equal(["335001", "335004", "335003", "330045"], await Ccns(new FacilityFilter { Sort = "-fines" }));
+        Assert.Equal(["330045", "335001", "335004", "335003"], await Ccns(new FacilityFilter { Sort = "-ownershipChange" }));
+        Assert.Equal(["335004", "335001", "330045", "335003"], await Ccns(new FacilityFilter { Sort = "ownershipchange" }));
+
+        Assert.Equal(["ownershipChangedWithinYears"], new FacilityFilter { OwnershipChangedWithinYears = 11 }.Validate().Keys);
+        Assert.Equal(["ownershipChangedWithinYears"], new FacilityFilter { OwnershipChangedWithinYears = 0 }.Validate().Keys);
+
+        using var output = new MemoryStream();
+        await FacilityCsv.WriteAsync(rows.Where(r => r.Ccn == "335001").ToAsyncEnumerable(), output, "https://example.org", Ct);
+        var text = Encoding.UTF8.GetString(output.ToArray());
+        Assert.Contains("Last Ownership Change,Penalties (3 Years),Fines (3 Years),Page", text, StringComparison.Ordinal);
+        Assert.Contains($",{today.AddYears(-4):yyyy-MM-dd},3,182968,https://example.org/facility/335001", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Facility_totals_and_ratings()
     {
         using var directory = new FacilityDirectory(Facilities());
@@ -243,7 +289,7 @@ public class DirectoryTests
         Assert.Equal(1, await FacilityCsv.WriteAsync(rows, output, "https://example.org", Ct));
         var text = Encoding.UTF8.GetString(output.ToArray());
         Assert.StartsWith("﻿CCN,Facility,Type", text, StringComparison.Ordinal);
-        Assert.Contains("330888,OLD NAME HOSPITAL,Hospital,Short-term hospital,10 COURT ST,BROOKLYN,NY,11201,,,,,Closed,2020-01-01,\"Status change, such as a new owner\",0,https://example.org/facility/330888",
+        Assert.Contains("330888,OLD NAME HOSPITAL,Hospital,Short-term hospital,10 COURT ST,BROOKLYN,NY,11201,,,,,Closed,2020-01-01,\"Status change, such as a new owner\",0,,,,https://example.org/facility/330888",
             text, StringComparison.Ordinal);
 
         using var groups = new MemoryStream();

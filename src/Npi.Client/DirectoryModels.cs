@@ -61,6 +61,17 @@ public sealed class FacilitySummary
     public double? Latitude { get; set; }
 
     public double? Longitude { get; set; }
+
+    /// <summary>The newest change of ownership CMS recorded for the facility as buyer or seller (hospitals and nursing homes, since 2016).</summary>
+    public DateTime? LastOwnershipChange { get; set; }
+
+    /// <summary>A nursing home's fines and payment denials in Care Compare's penalty file (the last three years).</summary>
+    public int Penalties { get; set; }
+
+    /// <summary>The total of those fines, in dollars.</summary>
+    public double? Fines { get; set; }
+
+    public DateTime? LastPenalty { get; set; }
 }
 
 /// <summary>A page of Medicare group practices (/api/v1/groups).</summary>

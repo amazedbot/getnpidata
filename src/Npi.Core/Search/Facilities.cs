@@ -148,7 +148,20 @@ public static class FacilityTypes
 /// </summary>
 public sealed record FacilitySummary(string Ccn, string Type, string TypeName, string? Kind, string Name, string? Address, string? City, string? State,
     string? Zip, string? Phone, string? Ownership, int? Beds, double? Rating, bool Active, DateOnly? TerminationDate, string? TerminationReason,
-    int BillingNpis, double? Latitude, double? Longitude);
+    int BillingNpis, double? Latitude, double? Longitude)
+{
+    /// <summary>The newest change of ownership CMS recorded with this CCN as the buyer or the seller (hospitals and nursing homes, since 2016).</summary>
+    public DateOnly? LastOwnershipChange { get; init; }
+
+    /// <summary>A nursing home's fines and payment denials in Care Compare's penalty file (the last three years).</summary>
+    public int Penalties { get; init; }
+
+    /// <summary>The total of those fines, in dollars (null: no fine).</summary>
+    public double? Fines { get; init; }
+
+    /// <summary>The newest of those penalties.</summary>
+    public DateOnly? LastPenalty { get; init; }
+}
 
 /// <summary>A page of facilities.</summary>
 public sealed record FacilityPage(IReadOnlyList<FacilitySummary> Items, int Page, int PageSize, int TotalCount);
@@ -166,6 +179,9 @@ public sealed record FacilityOverview(int Active, int Closed, int States, IReadO
 /// The facility list's filters, as the page and /api/v1/facilities take them. <see cref="Q"/>: a CCN, a ZIP, or words of the name
 /// or city (every word must appear). <see cref="MinRating"/>/<see cref="MaxRating"/> (1–5) keep rated facilities only, a star
 /// level counting halves down (maxRating=1 keeps 1 and 1.5 stars). <see cref="Status"/>: active (default), closed or all.
+/// <see cref="OwnershipChangedWithinYears"/> (1–10) keeps facilities whose ownership changed in that many years before today
+/// (CMS's change-of-ownership files: hospitals and nursing homes); <see cref="HasPenalties"/> true keeps nursing homes fined or
+/// denied payment in the last <see cref="PenaltyYears"/> years (false: no filter).
 /// </summary>
 public sealed record FacilityFilter
 {
@@ -176,10 +192,16 @@ public sealed record FacilityFilter
     public const string StatusClosed = "closed";
     public const string StatusAll = "all";
 
+    public const int MaxOwnershipChangeYears = 10;
+    public const int PenaltyYears = 3;
+
     public static readonly IReadOnlyList<string> Statuses = [StatusActive, StatusClosed, StatusAll];
 
-    /// <summary>Sort keys; "-" first is descending. "rating" sorts the unrated last either way; "closed" is the termination date.</summary>
-    public static readonly IReadOnlyList<string> Sorts = ["name", "city", "state", "type", "rating", "closed"];
+    /// <summary>
+    /// Sort keys; "-" first is descending. "rating" sorts the unrated last either way; "closed" is the termination date,
+    /// "ownershipChange" the newest change of ownership and "fines" the total of a nursing home's fines, those without one last.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Sorts = ["name", "city", "state", "type", "rating", "closed", "ownershipChange", "fines"];
 
     public string? Q { get; init; }
 
@@ -192,6 +214,10 @@ public sealed record FacilityFilter
     public int? MaxRating { get; init; }
 
     public string? Status { get; init; }
+
+    public int? OwnershipChangedWithinYears { get; init; }
+
+    public bool? HasPenalties { get; init; }
 
     public string? Sort { get; init; }
 
@@ -235,6 +261,11 @@ public sealed record FacilityFilter
         if (!string.IsNullOrWhiteSpace(Status) && !Statuses.Contains(Status.Trim(), StringComparer.OrdinalIgnoreCase))
         {
             errors["status"] = [$"One of {string.Join(", ", Statuses)}."];
+        }
+
+        if (OwnershipChangedWithinYears is < 1 or > MaxOwnershipChangeYears)
+        {
+            errors["ownershipChangedWithinYears"] = [$"1–{MaxOwnershipChangeYears} years."];
         }
 
         if (!string.IsNullOrWhiteSpace(Sort) && !Sorts.Contains(Sort.Trim().TrimStart('-'), StringComparer.OrdinalIgnoreCase))
@@ -349,6 +380,12 @@ public sealed class FacilityDirectory : IDisposable
             "closed" => descending
                 ? rows.OrderBy(r => r.TerminationDate is null).ThenByDescending(r => r.TerminationDate)
                 : rows.OrderBy(r => r.TerminationDate is null).ThenBy(r => r.TerminationDate),
+            "ownershipchange" => descending
+                ? rows.OrderBy(r => r.LastOwnershipChange is null).ThenByDescending(r => r.LastOwnershipChange)
+                : rows.OrderBy(r => r.LastOwnershipChange is null).ThenBy(r => r.LastOwnershipChange),
+            "fines" => descending
+                ? rows.OrderBy(r => r.Fines is null).ThenByDescending(r => r.Fines)
+                : rows.OrderBy(r => r.Fines is null).ThenBy(r => r.Fines),
             _ => descending ? rows.OrderByDescending(r => r.Name, byName) : rows.OrderBy(r => r.Name, byName),
         };
         return key is "name" or "" ? ordered.ThenBy(r => r.Ccn, StringComparer.Ordinal) : ordered.ThenBy(r => r.Name, byName).ThenBy(r => r.Ccn, StringComparer.Ordinal);
@@ -442,12 +479,17 @@ public sealed class FacilityDirectory : IDisposable
             var type = FacilityTypes.Find(filter.Type)?.Code;
             var state = string.IsNullOrWhiteSpace(filter.State) ? null : filter.State.Trim().ToUpperInvariant();
             var status = (filter.Status?.Trim() ?? FacilityFilter.StatusActive).ToLowerInvariant();
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            DateOnly? changedSince = filter.OwnershipChangedWithinYears is { } years ? today.AddYears(-years) : null;
+            DateOnly? penaltySince = filter.HasPenalties == true ? today.AddYears(-FacilityFilter.PenaltyYears) : null;
             return rows.Where(e =>
                 (type is null || e.Item.Type == type)
                 && (state is null || e.Item.State == state)
                 && (byCcn || status switch { FacilityFilter.StatusClosed => !e.Item.Active, FacilityFilter.StatusAll => true, _ => e.Item.Active })
                 && (filter.MinRating is not { } min || e.Item.Rating >= min)
-                && (filter.MaxRating is not { } max || e.Item.Rating < max + 1));
+                && (filter.MaxRating is not { } max || e.Item.Rating < max + 1)
+                && (changedSince is not { } since || e.Item.LastOwnershipChange >= since)
+                && (penaltySince is not { } fined || (e.Item.Penalties > 0 && e.Item.LastPenalty >= fined)));
         }
 
         private static FacilityOverview BuildOverview(IReadOnlyList<FacilitySummary> rows)
@@ -490,7 +532,11 @@ public sealed class FacilityDirectory : IDisposable
     // Types as MySqlConnector returns them (Dapper maps records by constructor).
     private sealed record DirectoryRow(string Ccn, string Type, string? Kind, string Name, string? Address, string? City, string? State, string? Zip5,
         string? Phone, string? Ownership, int? Beds, double? Rating, long Active, DateTime? TerminationDate, string? TerminationReason, int BillingNpis,
-        double? Lat, double? Lon);
+        double? Lat, double? Lon, DateTime? OwnershipChanged, int Penalties, double? Fines, DateTime? LastPenalty);
+
+    private sealed record ChangeRow(string Ccn, DateTime Changed);
+
+    private sealed record PenaltyRow(string Ccn, long Penalties, double? Fines, DateTime? Last);
 
     /// <summary>The site's list: <c>directory_facility</c>, which the loader builds (<see cref="ReadSourcesAsync"/>); not ready before its first build.</summary>
     private static async Task<Snapshot> LoadAsync(string connectionString, CancellationToken ct)
@@ -509,7 +555,8 @@ public sealed class FacilityDirectory : IDisposable
                 """
                 SELECT ccn AS Ccn, type AS Type, kind AS Kind, name AS Name, address AS Address, city AS City, state AS State, zip5 AS Zip5, phone AS Phone,
                        ownership AS Ownership, beds AS Beds, rating AS Rating, CAST(active AS SIGNED) AS Active, termination_date AS TerminationDate,
-                       termination_reason AS TerminationReason, billing_npis AS BillingNpis, lat AS Lat, lon AS Lon
+                       termination_reason AS TerminationReason, billing_npis AS BillingNpis, lat AS Lat, lon AS Lon,
+                       ownership_changed AS OwnershipChanged, penalties AS Penalties, fines AS Fines, last_penalty AS LastPenalty
                 FROM directory_facility
                 """, cancellationToken: ct))).ToList();
         }
@@ -520,13 +567,18 @@ public sealed class FacilityDirectory : IDisposable
 
         return new Snapshot(rows.Select(r => new FacilitySummary(r.Ccn, r.Type, FacilityTypes.Get(r.Type).Singular, r.Kind,
                 r.Name, r.Address, r.City, r.State, r.Zip5, r.Phone, r.Ownership, r.Beds, r.Rating, r.Active != 0,
-                r.TerminationDate is { } d ? DateOnly.FromDateTime(d) : null, r.TerminationReason, r.BillingNpis, r.Lat, r.Lon))
+                r.TerminationDate is { } d ? DateOnly.FromDateTime(d) : null, r.TerminationReason, r.BillingNpis, r.Lat, r.Lon)
+            {
+                LastOwnershipChange = Date(r.OwnershipChanged), Penalties = r.Penalties, Fines = r.Fines, LastPenalty = Date(r.LastPenalty),
+            })
             .ToList());
     }
 
     /// <summary>
     /// Every facility from the source tables (the Provider of Services file, the four Care Compare listings, the CCN-to-NPI
-    /// enrollments of active NPIs and the ZIP centres), merged (<see cref="Merge"/>): what the loader writes to <c>directory_facility</c>.
+    /// enrollments of active NPIs and the ZIP centres), merged (<see cref="Merge"/>), with each CCN's newest change of ownership
+    /// (facility_ownership_change, as buyer or seller) and nursing home penalties (nh_penalty): what the loader writes to
+    /// <c>directory_facility</c>.
     /// </summary>
     public static async Task<IReadOnlyList<FacilitySummary>> ReadSourcesAsync(MySqlConnection connection, CancellationToken ct)
     {
@@ -558,13 +610,31 @@ public sealed class FacilityDirectory : IDisposable
             commandTimeout: timeout, cancellationToken: ct));
         var centroids = await connection.QueryAsync<CentroidRow>(new CommandDefinition(
             "SELECT zip5 AS Zip5, CAST(lat AS DOUBLE) AS Lat, CAST(lon AS DOUBLE) AS Lon FROM zip_centroid", commandTimeout: timeout, cancellationToken: ct));
+        var changes = await connection.QueryAsync<ChangeRow>(new CommandDefinition(
+            """
+            SELECT x.ccn AS Ccn, MAX(x.effective_date) AS Changed
+            FROM (SELECT buyer_ccn AS ccn, effective_date FROM facility_ownership_change WHERE buyer_ccn IS NOT NULL AND effective_date IS NOT NULL
+                  UNION ALL
+                  SELECT seller_ccn, effective_date FROM facility_ownership_change WHERE seller_ccn IS NOT NULL AND effective_date IS NOT NULL) x
+            GROUP BY x.ccn
+            """, commandTimeout: timeout, cancellationToken: ct));
+        var penalties = await connection.QueryAsync<PenaltyRow>(new CommandDefinition(
+            "SELECT ccn AS Ccn, COUNT(*) AS Penalties, SUM(fine_amount) AS Fines, MAX(penalty_date) AS Last FROM nh_penalty GROUP BY ccn",
+            commandTimeout: timeout, cancellationToken: ct));
         return Merge(pos.Select(p => new PosFacility(p.Ccn, p.Name, p.Address, p.City, p.State, p.Zip5, p.Active != 0, p.TerminationCode,
                 p.TerminationDate is { } d ? DateOnly.FromDateTime(d) : null)),
             listed.Select(l => new ListedFacility(l.Type, l.Row.Ccn, l.Row.Name, l.Row.Address, l.Row.City, l.Row.State, l.Row.Zip, l.Row.Phone,
                 l.Row.Kind, l.Row.Ownership, (int?)l.Row.Beds, l.Row.Rating)),
             npis.Select(n => (n.Ccn, n.Kind, (int)n.Npis)),
-            centroids.ToDictionary(c => c.Zip5, c => (c.Lat, c.Lon)));
+            centroids.ToDictionary(c => c.Zip5, c => (c.Lat, c.Lon)),
+            changes.ToDictionary(c => c.Ccn.Trim(), c => DateOnly.FromDateTime(c.Changed), StringComparer.OrdinalIgnoreCase),
+            penalties.ToDictionary(p => p.Ccn.Trim(), p => new FacilityPenalties((int)p.Penalties, p.Fines, Date(p.Last)), StringComparer.OrdinalIgnoreCase));
     }
+
+    private static DateOnly? Date(DateTime? value) => value is { } d ? DateOnly.FromDateTime(d) : null;
+
+    /// <summary>A nursing home's penalties in Care Compare's penalty file: how many, the fines' total, the newest.</summary>
+    public sealed record FacilityPenalties(int Count, double? Fines, DateOnly? Last);
 
     /// <summary>A row of the Provider of Services file.</summary>
     public sealed record PosFacility(string Ccn, string? Name, string? Address, string? City, string? State, string? Zip5, bool Active,
@@ -578,9 +648,11 @@ public sealed class FacilityDirectory : IDisposable
     /// One row per CCN. The type: the Care Compare listing it is in, else the kind of enrollment linking it to an NPI (FQHC, rural
     /// health clinic …), else its number range (<see cref="FacilityTypes.FromCcn"/>). A Care Compare listing is a facility certified
     /// now; otherwise the Provider of Services file says whether its certification ended. Facilities without a name are left out.
+    /// <paramref name="ownershipChanges"/> (the newest change of ownership) and <paramref name="penalties"/> are by CCN.
     /// </summary>
     public static IReadOnlyList<FacilitySummary> Merge(IEnumerable<PosFacility> pos, IEnumerable<ListedFacility> listed,
-        IEnumerable<(string Ccn, string Kind, int Npis)> npis, IReadOnlyDictionary<string, (double Lat, double Lon)> centroids)
+        IEnumerable<(string Ccn, string Kind, int Npis)> npis, IReadOnlyDictionary<string, (double Lat, double Lon)> centroids,
+        IReadOnlyDictionary<string, DateOnly>? ownershipChanges = null, IReadOnlyDictionary<string, FacilityPenalties>? penalties = null)
     {
         var byCcn = new Dictionary<string, PosFacility>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in pos)
@@ -625,7 +697,13 @@ public sealed class FacilityDirectory : IDisposable
             result.Add(new FacilitySummary(ccn.ToUpperInvariant(), type, FacilityTypes.Get(type).Singular, kind, name.Trim(), l?.Address ?? p?.Address,
                 l?.City ?? p?.City, (l?.State ?? p?.State)?.ToUpperInvariant(), zip, l?.Phone, l?.Ownership, l?.Beds,
                 l?.Rating is { } r and >= 1 and <= 5 ? r : null, active, active ? null : p?.TerminationDate,
-                active ? null : FacilityTypes.TerminationReason(p?.TerminationCode), npiCounts.GetValueOrDefault(ccn), point?.Lat, point?.Lon));
+                active ? null : FacilityTypes.TerminationReason(p?.TerminationCode), npiCounts.GetValueOrDefault(ccn), point?.Lat, point?.Lon)
+            {
+                LastOwnershipChange = ownershipChanges is not null && ownershipChanges.TryGetValue(ccn, out var changed) ? changed : null,
+                Penalties = penalties?.GetValueOrDefault(ccn)?.Count ?? 0,
+                Fines = penalties?.GetValueOrDefault(ccn)?.Fines,
+                LastPenalty = penalties?.GetValueOrDefault(ccn)?.Last,
+            });
         }
 
         return result;
@@ -640,7 +718,7 @@ public static class FacilityCsv
     public static readonly string[] Header =
     [
         "CCN", "Facility", "Type", "Kind", "Address", "City", "State", "ZIP", "Phone", "Ownership", "Certified Beds", "CMS Star Rating", "Status",
-        "Certification Ended", "Reason", "Billing NPIs", "Page",
+        "Certification Ended", "Reason", "Billing NPIs", "Last Ownership Change", "Penalties (3 Years)", "Fines (3 Years)", "Page",
     ];
 
     public static Task<long> WriteAsync(IAsyncEnumerable<FacilitySummary> rows, Stream output, string siteBase, CancellationToken ct) =>
@@ -649,6 +727,8 @@ public static class FacilityCsv
             f.Ccn, f.Name, f.TypeName, f.Kind, f.Address, f.City, f.State, f.Zip, f.Phone, f.Ownership, f.Beds?.ToString(CultureInfo.InvariantCulture),
             f.Rating?.ToString("0.#", CultureInfo.InvariantCulture), f.Active ? "Active" : "Closed",
             f.TerminationDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), f.TerminationReason,
-            f.BillingNpis.ToString(CultureInfo.InvariantCulture), $"{siteBase}/facility/{Uri.EscapeDataString(f.Ccn)}",
+            f.BillingNpis.ToString(CultureInfo.InvariantCulture), f.LastOwnershipChange?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            f.Penalties > 0 ? f.Penalties.ToString(CultureInfo.InvariantCulture) : null, f.Fines?.ToString("0.##", CultureInfo.InvariantCulture),
+            $"{siteBase}/facility/{Uri.EscapeDataString(f.Ccn)}",
         ], ct);
 }

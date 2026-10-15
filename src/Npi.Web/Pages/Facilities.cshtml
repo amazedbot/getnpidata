@@ -30,7 +30,7 @@
 <div class="profile industry">
     <div>
         <h1>Facilities &amp; hospitals</h1>
-        <p class="lede">Every Medicare-certified hospital, nursing home, home health agency, hospice, clinic and center, from CMS's Provider of Services file and Medicare Care Compare. Find one to see how CMS rates it, who works there and the NPIs it bills under.</p>
+        <p class="lede">Every Medicare-certified hospital, nursing home, home health agency, hospice, clinic and center, from CMS's Provider of Services file and Medicare Care Compare. Find one to see how CMS rates it, who works there, who owns it and the NPIs it bills under, or look up <a href="/owners">the facilities' owners</a>.</p>
     </div>
 
     <form method="get" action="/facilities" class="industry-search" role="search">
@@ -158,6 +158,20 @@
                     <option value="@FacilityFilter.StatusAll" selected="@(Model.Status == FacilityFilter.StatusAll)">Both</option>
                 </select>
             </div>
+            <div class="field narrow">
+                <label for="ownershipChangedWithinYears">Changed ownership</label>
+                <select id="ownershipChangedWithinYears" name="ownershipChangedWithinYears">
+                    <option value="">Any time or never</option>
+                    @foreach (var years in FacilitiesModel.OwnershipChangeChoices)
+                    {
+                        <option value="@years" selected="@(Model.OwnershipChangedWithinYears == years)">@(years == 1 ? "In the last year" : $"In the last {years} years")</option>
+                    }
+                </select>
+            </div>
+            <div class="field narrow check-field">
+                <label><input type="checkbox" name="hasPenalties" value="true" checked="@(Model.HasPenalties == true)" /> Has penalties</label>
+                <span class="small muted">Nursing homes fined or denied payment, last @FacilityFilter.PenaltyYears years</span>
+            </div>
             <div class="field narrow directory-submit"><button type="submit">Show</button></div>
         </form>
 
@@ -174,6 +188,14 @@
             }
         </p>
 
+        @if (Model.OwnershipChangedWithinYears is not null || Model.HasPenalties == true)
+        {
+            <p class="small muted">
+                @if (Model.OwnershipChangedWithinYears is not null){<text>Changes of ownership come from CMS's hospital and nursing home change-of-ownership files (since 2016), as the buyer or the seller. </text>}
+                @if (Model.HasPenalties == true){<text>Penalties are the fines and payment denials in Medicare Care Compare's nursing home penalty file. </text>}
+                <a href="@Model.ListUrl(ownershipChanged: null, penalties: null)#list">Clear these filters</a>
+            </p>
+        }
         @if (r.Items.Count == 0)
         {
             <p>No facility matches. Try another name, type or state@(Model.Status is null ? ", or include closed facilities" : "").</p>
@@ -192,6 +214,8 @@
                             <th scope="col" aria-sort="@Model.AriaSort("state")"><a href="@Model.SortUrl("state")#list">State</a></th>
                             <th scope="col" aria-sort="@Model.AriaSort("rating")"><a href="@Model.SortUrl("rating")#list">CMS rating</a></th>
                             @if (Model.ShowClosed){<th scope="col" aria-sort="@Model.AriaSort("closed")"><a href="@Model.SortUrl("closed")#list">Status</a></th>}
+                            @if (Model.OwnershipChangedWithinYears is not null){<th scope="col" aria-sort="@Model.AriaSort("ownershipChange")"><a href="@Model.SortUrl("ownershipChange")#list">Ownership changed</a></th>}
+                            @if (Model.HasPenalties == true){<th scope="col" aria-sort="@Model.AriaSort("fines")"><a href="@Model.SortUrl("fines")#list">Penalties</a></th>}
                         </tr>
                     </thead>
                     <tbody>
@@ -208,6 +232,14 @@
                                 @if (Model.ShowClosed)
                                 {
                                     <td>@if (f.Active){<span class="pill ok">Certified</span>}else{<span class="pill alert">Closed@(f.TerminationDate is { } d ? " " + d.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) : "")</span>@if (f.TerminationReason is not null){<br /><span class="muted small">@f.TerminationReason</span>}}</td>
+                                }
+                                @if (Model.OwnershipChangedWithinYears is not null)
+                                {
+                                    <td class="nowrap"><a href="/facility/@Uri.EscapeDataString(f.Ccn)#ownership-changes">@f.LastOwnershipChange?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</a></td>
+                                }
+                                @if (Model.HasPenalties == true)
+                                {
+                                    <td class="nowrap"><a href="/facility/@Uri.EscapeDataString(f.Ccn)#inspections">@Format.Number(f.Penalties)</a>@if (f.Fines is { } fines){<br /><span class="muted small">@FacilitiesModel.Dollars(fines) in fines</span>}</td>
                                 }
                             </tr>
                         }

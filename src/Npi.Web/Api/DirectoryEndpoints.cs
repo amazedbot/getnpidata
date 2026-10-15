@@ -9,10 +9,11 @@ namespace Npi.Web.Api;
 /// </summary>
 public static class DirectoryEndpoints
 {
-    public static FacilityFilter Facilities(string? q, string? type, string? state, int? minRating, int? maxRating, string? status, string? sort,
-        int? page = null, int? pageSize = null) => new()
+    public static FacilityFilter Facilities(string? q, string? type, string? state, int? minRating, int? maxRating, string? status,
+        int? ownershipChangedWithinYears, bool? hasPenalties, string? sort, int? page = null, int? pageSize = null) => new()
     {
-        Q = Clean(q), Type = Clean(type), State = Clean(state), MinRating = minRating, MaxRating = maxRating, Status = Clean(status), Sort = Clean(sort),
+        Q = Clean(q), Type = Clean(type), State = Clean(state), MinRating = minRating, MaxRating = maxRating, Status = Clean(status),
+        OwnershipChangedWithinYears = ownershipChangedWithinYears, HasPenalties = hasPenalties, Sort = Clean(sort),
         Page = page ?? 1, PageSize = pageSize ?? FacilityFilter.DefaultPageSize,
     };
 
@@ -23,9 +24,10 @@ public static class DirectoryEndpoints
     };
 
     public static async Task<Results<Ok<FacilityPage>, ValidationProblem, ProblemHttpResult>> SearchFacilitiesAsync(string? q, string? type, string? state,
-        int? minRating, int? maxRating, string? status, string? sort, int? page, int? pageSize, FacilityDirectory facilities, CancellationToken ct)
+        int? minRating, int? maxRating, string? status, int? ownershipChangedWithinYears, bool? hasPenalties, string? sort, int? page, int? pageSize,
+        FacilityDirectory facilities, CancellationToken ct)
     {
-        var filter = Facilities(q, type, state, minRating, maxRating, status, sort, page, pageSize);
+        var filter = Facilities(q, type, state, minRating, maxRating, status, ownershipChangedWithinYears, hasPenalties, sort, page, pageSize);
         if (filter.Validate() is { Count: > 0 } errors)
         {
             return TypedResults.ValidationProblem(errors);
@@ -57,10 +59,10 @@ public static class DirectoryEndpoints
     }
 
     /// <summary>Every facility matching the filters as CSV, in the list's order (paging ignored).</summary>
-    public static async Task<IResult> FacilitiesCsvAsync(string? q, string? type, string? state, int? minRating, int? maxRating, string? status, string? sort,
-        HttpContext http, FacilityDirectory facilities, CancellationToken ct)
+    public static async Task<IResult> FacilitiesCsvAsync(string? q, string? type, string? state, int? minRating, int? maxRating, string? status,
+        int? ownershipChangedWithinYears, bool? hasPenalties, string? sort, HttpContext http, FacilityDirectory facilities, CancellationToken ct)
     {
-        var filter = Facilities(q, type, state, minRating, maxRating, status, sort);
+        var filter = Facilities(q, type, state, minRating, maxRating, status, ownershipChangedWithinYears, hasPenalties, sort);
         if (filter.Validate() is { Count: > 0 } errors)
         {
             return Invalid(http, "/facilities", errors);
