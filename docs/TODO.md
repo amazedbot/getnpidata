@@ -8,13 +8,13 @@ with the date and pull request, and stay in the list. New items are added only w
 proposals that wait for a yes are under "Waiting for the owner". Work goes one item at a time, and each waits for the
 owner's "go" (PRODUCT_PLAN.md §5).
 
-Last updated: 2026-10-14.
+Last updated: 2026-10-15.
 
 ## In progress
 
-Fixes the owner found (2026-10-14), one pull request each; B and C wait for the owner's "go":
+Fixes the owner found (2026-10-14), one pull request each; C waits for the owner's "go":
 - ~~**A:** nationwide lists and exports: no filter required, category alone, `quality` / `addressType` alone, the ready-made file of every provider rebuilt by the loader, Excel over its limit refused with a note, the pager says how many pages can be browsed~~ (2026-10-14, PRs #83 and #84)
-- **B:** the map's filters laid out like the search page's, one "Search in this area" button, a clear message when the area is too large.
+- ~~**B:** the map's filters laid out like the search page's, one "Search in this area" button, a clear message when the area is too large~~ (2026-10-15)
 - **C:** the map's area as a list and a CSV (a `bbox` filter in the list, the exports, the API and the client).
 
 ## Next, in order

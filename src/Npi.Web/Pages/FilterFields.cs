@@ -35,5 +35,17 @@ public sealed record FilterFields(SearchFilter Filter, IReadOnlyList<string> Cla
     public bool NuccOpen => Filter.Classification is not null || Filter.TaxonomyCode is not null || Errors.ContainsKey(nameof(SearchFilter.Classification))
                             || Errors.ContainsKey(nameof(SearchFilter.Specialization));
 
+    /// <summary>How many filters other than specialty and location are set (they sit in the "More filters" drawer).</summary>
+    public int MoreCount => new object?[]
+    {
+        Filter.LastName, Filter.FirstName, Filter.OrgName, Filter.Npi, Filter.EntityType, Filter.Gender, Filter.Credential, Filter.Excluded,
+        Filter.OptedOut, Filter.OrderRefer, Filter.AcceptsAssignment, Filter.Telehealth, Filter.MinYears, Filter.MedicareActive, Filter.Shortage,
+        Filter.AddressType, Filter.Quality, Filter.NewWithinDays, Filter.UpdatedWithinDays,
+    }.Count(v => v is not null);
+
+    /// <summary>True when one of those filters is set or has an error: the drawer opens.</summary>
+    public bool MoreOpen => MoreCount > 0 || Errors.Keys.Any(k => k is not (nameof(SearchFilter.Category) or nameof(SearchFilter.Subcategory)
+        or nameof(SearchFilter.Classification) or nameof(SearchFilter.Specialization)));
+
     public string Error(string field) => Errors.TryGetValue(field, out var messages) ? string.Join(" ", messages) : "";
 }

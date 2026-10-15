@@ -16,6 +16,13 @@
   const maxLatSpan = Number(element.dataset.maxLatSpan);
   const maxLonSpan = Number(element.dataset.maxLonSpan);
 
+  // On a phone the filters come before the map: keep the "More filters" drawer folded (its summary says how many are set), unless one
+  // of its fields has an error to show.
+  const more = form.querySelector("details.more");
+  if (more && matchMedia("(max-width: 52rem)").matches && ![...more.querySelectorAll(".field-error")].some((e) => e.textContent.trim())) {
+    more.open = false;
+  }
+
   const map = L.map(element);
   L.tileLayer(element.dataset.tileUrl, {
     maxZoom: Number(element.dataset.maxZoom) || 19,
@@ -53,11 +60,43 @@
   };
   const addressLine = (p) => [p.address1, p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
 
-  const updateButton = () => {
-    const big = tooLarge(map.getBounds());
-    searchButton.disabled = searching || big;
-    searchButton.textContent = big ? "Zoom in to search" : "Search in this area";
+  // Miles across a view (the width at its middle latitude).
+  const miles = (b) => ({
+    wide: Math.round((b.getEast() - b.getWest()) * 69.17 * Math.cos(b.getCenter().lat * Math.PI / 180)),
+    high: Math.round((b.getNorth() - b.getSouth()) * 69.05),
+  });
+  // The status line. A size warning is temporary: once the view can be searched again, the last other message comes back.
+  let lastSaid = "";
+  const say = (text, warn = false, temporary = false) => {
+    if (!temporary) lastSaid = text;
+    status.textContent = text;
+    status.classList.toggle("warn", warn);
   };
+
+  // The one search button (it submits the filter form). Over a view too large to search it zooms in first, and the status line
+  // says why, with the sizes.
+  const updateButton = () => {
+    const view = map.getBounds();
+    const big = tooLarge(view);
+    searchButton.disabled = searching;
+    searchButton.textContent = big ? "Zoom in and search" : "Search in this area";
+    if (big && !searching) {
+      const now = miles(view);
+      const most = miles(L.latLngBounds([view.getCenter().lat - maxLatSpan / 2, view.getCenter().lng - maxLonSpan / 2],
+        [view.getCenter().lat + maxLatSpan / 2, view.getCenter().lng + maxLonSpan / 2]));
+      say(`This view is about ${now.wide.toLocaleString()} × ${now.high.toLocaleString()} miles. The map searches an area of at most about ${most.wide.toLocaleString()} × ${most.high.toLocaleString()} miles: zoom in, or choose Zoom in and search. For a whole state or the whole country, use the search page's list.`, true, true);
+    } else if (status.textContent !== lastSaid && !searching) {
+      say(lastSaid);
+    }
+  };
+
+  // Zooms in around the centre to the widest view that can be searched, then searches it.
+  function zoomInAndSearch() {
+    const c = map.getCenter();
+    const largest = L.latLngBounds([c.lat - maxLatSpan * 0.48, c.lng - maxLonSpan * 0.48], [c.lat + maxLatSpan * 0.48, c.lng + maxLonSpan * 0.48]);
+    map.once("moveend", () => search());
+    map.setView(c, map.getBoundsZoom(largest, true));
+  }
 
   const filterParams = () => {
     const params = new URLSearchParams();
@@ -71,7 +110,7 @@
   async function search(area) {
     const bounds = area instanceof L.LatLngBounds ? area : map.getBounds();
     if (tooLarge(bounds)) {
-      status.textContent = "Zoom in to search: the map shows too large an area.";
+      zoomInAndSearch();
       return;
     }
 
@@ -79,19 +118,19 @@
     params.set("bbox", bounds.toBBoxString());
     searching = true;
     updateButton();
-    status.textContent = "Searching…";
+    say("Searching…");
     try {
       const response = await fetch("/map/search?" + params.toString());
       const body = await response.json();
       if (!response.ok) {
-        status.textContent = Object.values(body.errors || {}).flat().join(" ") || "The search failed.";
+        say(Object.values(body.errors || {}).flat().join(" ") || "The search failed.", true);
         return;
       }
 
       history.replaceState(null, "", "/map?" + params.toString());
       draw(body);
     } catch {
-      status.textContent = "The search failed. Try again.";
+      say("The search failed. Try again.", true);
     } finally {
       searching = false;
       updateButton();
@@ -134,11 +173,11 @@
     }
 
     const total = result.items.length;
-    status.textContent = total === 0
+    say(total === 0
       ? "No providers match in this area."
       : `${plural(total, "provider")} at ${plural(pins.length, "address", "addresses")}` + (result.truncated
         ? ` (the ${result.limit.toLocaleString()} closest to the center; zoom in or add filters to see all)`
-        : "");
+        : ""));
     renderTable();
   }
 
@@ -239,7 +278,6 @@
   });
   sortBy.addEventListener("change", renderTable);
   sortOrder.addEventListener("change", renderTable);
-  searchButton.addEventListener("click", () => search());
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     search();
@@ -250,22 +288,22 @@
   if ("geolocation" in navigator && window.isSecureContext) {
     nearMe.hidden = false;
     nearMe.addEventListener("click", () => {
-      status.textContent = "Finding your location…";
+      say("Finding your location…");
       navigator.geolocation.getCurrentPosition((position) => {
         map.setView([position.coords.latitude, position.coords.longitude], 13);
         search();
       }, (error) => {
-        status.textContent = error.code === error.PERMISSION_DENIED
+        say(error.code === error.PERMISSION_DENIED
           ? "Location access was blocked. Allow it in your browser, or move the map yourself."
-          : "Your location isn't available right now.";
+          : "Your location isn't available right now.", true);
       }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
     });
   }
 
-  updateButton();
   if (element.dataset.autoSearch === "true") {
     map.whenReady(() => search(start));
-  } else if (!start) {
-    status.textContent = "Zoom in on an area, then choose Search in this area.";
+  } else {
+    updateButton();
+    if (!status.textContent) say("Move the map to an area, then choose Search in this area.");
   }
 })();

@@ -118,16 +118,17 @@ addresses are not searched. Each result row shows the location that matched.
   JavaScript and on phones.
 - **`/map`**: map search on [OpenStreetMap](https://www.openstreetmap.org/).
   - Move the map and choose **Search in this area**: every provider practicing inside the visible area that matches
-    the filters (the same specialty, provider and Medicare & compliance filters as the search page; the map area
-    replaces state/county/city/ZIP).
+    the filters. The filters sit beside the map as on the search page (specialty first, the rest under "More
+    filters"); the map area replaces state/county/city/ZIP. The map's button is the only search button.
   - One pin per street address. Hover a pin to see who practices there (everyone at that address); click it for the
     same list with links. Solid pins are at the building (Overture Maps address points and places), white pins are
     estimated along the street (Census geocoder), and gray dashed pins are approximate: the address couldn't be
     located, so it sits at its ZIP code's center.
-  - The table beside the map (below it on phones and narrow windows) lists every provider at the pins in view, and
+  - The table below the map (beside it on very wide screens) lists every provider at the pins in view, and
     updates as you pan. Sort it by distance from the map center, name, specialty, city or last update, either way.
-  - At most 1,000 providers per search, the closest to the center; zoom in or add filters for more. Very large areas
-    (more than about 170 miles across) ask you to zoom in.
+  - At most 1,000 providers per search, the closest to the center; zoom in or add filters for more. A view too large to
+    search (more than about 170 miles across) says how large it is and how large an area can be searched, and the
+    button becomes **Zoom in and search**, which zooms in on the middle of the view and searches there.
   - **Near me** centers the map on your location (the browser asks first; it stays in your browser) and searches
     there. Browsers offer location only over https (or on localhost).
   - The search URL (filters + area) is shareable.
