@@ -22,6 +22,20 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 {
     public const string Source = "provider_quality";
 
+    /// <summary>
+    /// The <c>reference_data</c> row whose <c>loaded_at</c> is when quality_search last changed (speed item 18): every full
+    /// relabel, and an incremental one that changed a queued provider's rows (a label, or a location the projection moved).
+    /// A relabel that found nothing different leaves it, so the area history's quality mix isn't taken again for nothing.
+    /// </summary>
+    public const string LabelsSource = "provider_quality_labels";
+
+    /// <summary>
+    /// SQL: when the labels last changed (<see cref="LabelsSource"/>); before its first write, the labels' last build of any kind.
+    /// </summary>
+    public const string LabelsChangedAt =
+        $"COALESCE((SELECT `loaded_at` FROM `reference_data` WHERE `source` = '{LabelsSource}'), " +
+        $"(SELECT GREATEST(`loaded_at`, `checked_at`) FROM `reference_data` WHERE `source` = '{Source}'), '1970-01-01')";
+
     /// <summary>NPIs whose state license rows changed since the labels were built (migration 088).</summary>
     public const string Pending = "quality_pending";
 
@@ -307,6 +321,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 
         if (onlyPending && pendingCount == 0)
         {
+            await MarkLabelsAsync(connection, changed: false, "", DateTime.UtcNow, ct);
             await RunAsync(
                 """
                 UPDATE `reference_data` SET `checked_at` = UTC_TIMESTAMP(),
@@ -449,12 +464,13 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 """;
 
             Dictionary<string, long> counts;
+            var labelsChanged = true;
             if (onlyPending)
             {
                 await RunAsync("DROP TABLE IF EXISTS `provider_quality_staging`");
                 await RunAsync("CREATE TABLE `provider_quality_staging` LIKE `provider_quality`");
                 await InsertLabelsAsync();
-                await ReplacePendingAsync(connection, searchRows, ct);
+                labelsChanged = await ReplacePendingAsync(connection, searchRows, ct);
                 counts = new() { ["provider_quality"] = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
                     "SELECT COUNT(*) FROM `provider_quality`", cancellationToken: ct)) };
             }
@@ -472,18 +488,15 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
             var byLabel = (await connection.QueryAsync<(sbyte Label, long Rows)>(new CommandDefinition(
                 "SELECT `label`, COUNT(*) FROM `provider_quality` GROUP BY `label` ORDER BY `label`", cancellationToken: ct))).ToList();
             var now = DateTime.UtcNow;
+            var version = "as of " + asOf.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            await MarkLabelsAsync(connection, labelsChanged, version, now, ct);
             await Database.ExecuteAsync(connection,
                 """
                 INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
                 VALUES (@source, @version, '', @rows, @now, @now) AS new
                 ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `checked_at` = new.`checked_at`,
                   `loaded_at` = IF(@onlyPending, `reference_data`.`loaded_at`, new.`loaded_at`)
-                """, ct, param: new
-                {
-                    onlyPending,
-                    source = Source, version = "as of " + asOf.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
-                    rows = counts["provider_quality"], now,
-                });
+                """, ct, param: new { onlyPending, source = Source, version, rows = counts["provider_quality"], now });
             log.Information("Record quality: {Rows:N0} providers{Scope} ({Labels}) in {Seconds:N0}s", counts["provider_quality"],
                 onlyPending ? $", {pendingCount:N0} relabelled" : "",
                 string.Join(", ", byLabel.Select(b => $"{RecordQuality.Name((QualityLabel)b.Label)} {b.Rows:N0}")), watch.Elapsed.TotalSeconds);
@@ -503,26 +516,59 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     /// empties the queue. Their old search rows are found by their old label and their practice locations as the labels last
     /// saw them (the projection's snapshot, else the current ones) and as they are now.
     /// </summary>
-    private static async Task ReplacePendingAsync(MySqlConnection connection, string searchRows, CancellationToken ct)
+    /// <returns>Whether quality_search changed: a new row it lacked, or an old row the new ones don't have.</returns>
+    private static async Task<bool> ReplacePendingAsync(MySqlConnection connection, string searchRows, CancellationToken ct)
     {
         await using var transaction = await connection.BeginTransactionAsync(ct);
         Task RunAsync(string sql) => connection.ExecuteAsync(new CommandDefinition(sql, transaction: transaction, commandTimeout: 0, cancellationToken: ct));
 
-        await RunAsync(
+        var oldRows =
             $"""
-            DELETE qs FROM `quality_search` qs
+            `quality_search` qs
             JOIN (SELECT DISTINCT q.`label`, IFNULL(l.`state`, '') AS `state`, IFNULL(l.`city`, '') AS `city`, IFNULL(l.`zip5`, '') AS `zip5`, l.`npi`
                   FROM `provider_quality` q
                   JOIN (SELECT ol.`npi`, ol.`state`, ol.`city`, ol.`zip5` FROM {BuilderPending.OldLocations(Pending)} ol
                         UNION SELECT x.`npi`, x.`state`, x.`city`, x.`zip5` FROM `provider_location` x JOIN `{Pending}` s ON s.`npi` = x.`npi`) l
                     ON l.`npi` = q.`npi`) k
               ON qs.`label` = k.`label` AND qs.`state` = k.`state` AND qs.`city` = k.`city` AND qs.`zip5` = k.`zip5` AND qs.`npi` = k.`npi`
-            """);
+            """;
+        // A search row of the new labels: (label, state, city, ZIP, NPI) of a staged label at one of the provider's locations now.
+        static string IsNewRow(string row) =>
+            $"""
+            EXISTS (SELECT 1 FROM `provider_quality_staging` n JOIN `provider_location` nl ON nl.`npi` = n.`npi`
+                    WHERE n.`npi` = {row}.`npi` AND n.`label` = {row}.`label` AND IFNULL(nl.`state`, '') = {row}.`state`
+                      AND IFNULL(nl.`city`, '') = {row}.`city` AND IFNULL(nl.`zip5`, '') = {row}.`zip5`)
+            """;
+        var changed = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+            $"""
+            SELECT EXISTS (SELECT 1 FROM `provider_quality_staging` n JOIN `provider_location` nl ON nl.`npi` = n.`npi`
+                           WHERE NOT EXISTS (SELECT 1 FROM `quality_search` x WHERE x.`label` = n.`label` AND x.`state` = IFNULL(nl.`state`, '')
+                                             AND x.`city` = IFNULL(nl.`city`, '') AND x.`zip5` = IFNULL(nl.`zip5`, '') AND x.`npi` = n.`npi`))
+                OR EXISTS (SELECT 1 FROM {oldRows} WHERE NOT {IsNewRow("qs")})
+            """, transaction: transaction, commandTimeout: 0, cancellationToken: ct)) != 0;
+
+        await RunAsync($"DELETE qs FROM {oldRows}");
         await RunAsync($"DELETE q FROM `provider_quality` q JOIN `{Pending}` s ON s.`npi` = q.`npi`");
         await RunAsync("INSERT INTO `provider_quality` (`npi`, `label`, `reasons`, `activity`) SELECT `npi`, `label`, `reasons`, `activity` FROM `provider_quality_staging`");
         await RunAsync($"INSERT INTO `quality_search` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
         await RunAsync($"DELETE FROM `{Pending}`");
         await BuilderPending.CleanAsync(connection, transaction, ct);
         await transaction.CommitAsync(ct);
+        return changed;
     }
+
+    // The labels row (LabelsSource): moved to now when the labels changed; otherwise written only when missing, as of the labels'
+    // last build (before this build's own row moves on), so a relabel that changed nothing never moves it.
+    private static Task<int> MarkLabelsAsync(MySqlConnection connection, bool changed, string version, DateTime now, CancellationToken ct) =>
+        connection.ExecuteAsync(new CommandDefinition(changed
+            ? """
+              INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
+              VALUES (@labels, @version, '', 0, @now, @now) AS new
+              ON DUPLICATE KEY UPDATE `version` = new.`version`, `loaded_at` = new.`loaded_at`, `checked_at` = new.`checked_at`
+              """
+            : """
+              INSERT IGNORE INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
+              SELECT @labels, `version`, '', 0, GREATEST(`loaded_at`, `checked_at`), GREATEST(`loaded_at`, `checked_at`)
+              FROM `reference_data` WHERE `source` = @source
+              """, new { labels = LabelsSource, source = Source, version, now }, cancellationToken: ct));
 }

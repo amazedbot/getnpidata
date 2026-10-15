@@ -4,6 +4,7 @@ using Dapper;
 using MySqlConnector;
 using Npi.Core.Search;
 using Npi.Loader.Db;
+using Npi.Loader.Reference;
 using Serilog;
 
 namespace Npi.Loader.Projection;
@@ -32,8 +33,18 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
 {
     public const string Source = "area_history";
 
-    // Reloads after which the as-of month's snapshots are taken again.
-    private static readonly string[] Inputs = [AreaCountBuilder.Source, QualityBuilder.Source];
+    // SQL: when something the open months read last changed, besides the projection's queue, a full projection and the change
+    // log (checked on their own): the area counts (the as-of month's provider counts and the code → category table), the
+    // record-quality labels (its quality mix; a relabel that changed nothing doesn't count, speed item 18), and the NUCC codes,
+    // HUD's ZIP → county crosswalk and Census's counties (every state and county gets a count). The NPPES archive (step 3.4)
+    // isn't one: it writes its own months (basis 3) and removes the derived rows under them itself, which a build leaves as they are.
+    private const string InputsChangedAt =
+        $"""
+        GREATEST(COALESCE((SELECT GREATEST(`loaded_at`, `checked_at`) FROM `reference_data` WHERE `source` = '{AreaCountBuilder.Source}'), '1970-01-01'),
+                 {QualityBuilder.LabelsChangedAt},
+                 COALESCE((SELECT MAX(`loaded_at`) FROM `reference_data`
+                           WHERE `source` IN ('{ReferenceLoader.Nucc}', '{ReferenceLoader.Hud}', '{ReferenceLoader.Gazetteer}')), '1970-01-01'))
+        """;
 
     private const string Snapshot = "area_history_location";
     private const string OldAreas = "area_history_old";
@@ -53,7 +64,11 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
 
     private sealed record Meta(DateTime? DerivedFrom, DateTime? TrackedFrom, DateTime? ChangesFrom, DateTime? AsOfMonth, long LastChangeId, DateTime? ArchiveTo);
 
-    /// <summary>True when the projection queued providers, a load changed what the as-of month's snapshots read, the change log grew or the month moved on.</summary>
+    /// <summary>
+    /// True when the projection queued providers or was rebuilt in full, an input changed (<see cref="InputsChangedAt"/>), the
+    /// change log has a row of a kind the history counts, or the month moved on. Otherwise a build would write the same rows
+    /// again (1.19M in 347 s on full data), and <c>run</c> skips it.
+    /// </summary>
     public async Task<bool> IsStaleAsync(CancellationToken ct)
     {
         await using var connection = await database.OpenAsync(ct);
@@ -63,12 +78,12 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
                 OR NOT EXISTS (SELECT 1 FROM `area_history_meta` WHERE `id` = 1)
                 OR EXISTS (SELECT 1 FROM `builder_pending` WHERE `builder` = @builder)
                 OR (SELECT `loaded_at` FROM `reference_data` WHERE `source` = @source) < {BuilderPending.FullProjectedAt}
-                OR (SELECT `checked_at` FROM `reference_data` WHERE `source` = @source)
-                   < COALESCE((SELECT MAX(GREATEST(`loaded_at`, `checked_at`)) FROM `reference_data` WHERE `source` IN @inputs), '1970-01-01')
-                OR COALESCE((SELECT MAX(`id`) FROM `provider_change`), 0) > (SELECT `last_change_id` FROM `area_history_meta` WHERE `id` = 1)
+                OR (SELECT `checked_at` FROM `reference_data` WHERE `source` = @source) < {InputsChangedAt}
+                OR EXISTS (SELECT 1 FROM `provider_change`
+                           WHERE `id` > (SELECT `last_change_id` FROM `area_history_meta` WHERE `id` = 1) AND `change_type` IN ({AreaChangeKinds.ChangeTypeSqlList}))
                 OR NOT ((SELECT `as_of_month` FROM `area_history_meta` WHERE `id` = 1)
                         <=> (SELECT {Month("`as_of_date`")} FROM `data_version` WHERE `id` = 1)), 1)
-            """, new { source = Source, builder = BuilderPending.AreaHistory, inputs = Inputs }, cancellationToken: ct)) != 0;
+            """, new { source = Source, builder = BuilderPending.AreaHistory }, cancellationToken: ct)) != 0;
     }
 
     /// <param name="full">Compare every provider's locations with the history's (the <c>area-history full</c> command); otherwise
@@ -127,10 +142,7 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
             // MySQL's clock, or the inputs' time when later: the area counts record DateTime.UtcNow, which a DATETIME column rounds
             // up to the next second, so a build in the same second would otherwise look older than them (IsStaleAsync).
             var at = await connection.ExecuteScalarAsync<DateTime>(new CommandDefinition(
-                """
-                SELECT GREATEST(UTC_TIMESTAMP(), COALESCE(MAX(GREATEST(`loaded_at`, `checked_at`)), '1970-01-01'))
-                FROM `reference_data` WHERE `source` IN @inputs
-                """, new { inputs = Inputs }, cancellationToken: ct));
+                $"SELECT GREATEST(UTC_TIMESTAMP(), {InputsChangedAt})", cancellationToken: ct));
             await Database.ExecuteAsync(connection,
                 """
                 INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
@@ -418,9 +430,8 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
         var qualityDue = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             $"""
             SELECT NOT EXISTS (SELECT 1 FROM `{Stats}` WHERE `month` = DATE(@asOfMonth) AND `quality_current` IS NOT NULL)
-                OR COALESCE((SELECT GREATEST(`loaded_at`, `checked_at`) FROM `reference_data` WHERE `source` = @quality), '1970-01-01')
-                   > COALESCE((SELECT `checked_at` FROM `reference_data` WHERE `source` = @source), '1970-01-01')
-            """, new { asOfMonth = asOfMonth.ToDateTime(TimeOnly.MinValue), quality = QualityBuilder.Source, source = Source }, cancellationToken: ct)) != 0;
+                OR {QualityBuilder.LabelsChangedAt} > COALESCE((SELECT `checked_at` FROM `reference_data` WHERE `source` = @source), '1970-01-01')
+            """, new { asOfMonth = asOfMonth.ToDateTime(TimeOnly.MinValue), source = Source }, cancellationToken: ct)) != 0;
         if (qualityDue)
         {
             await run($"UPDATE `{Stats}` SET `quality_current` = NULL, `quality_check` = NULL, `quality_stale` = NULL WHERE `month` = DATE(@asOfMonth)", null);
