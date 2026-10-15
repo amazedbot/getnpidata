@@ -66,6 +66,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 - Speed item 9: stream zip files instead of extracting them first, where a loader still extracts.
 - Speed item 11, the rest: ClinicalTrials.gov 3–5 requests at once.
 - Speed item 16: build the loader to its own output folder, so loader changes never wait on stopping the site.
+- Speed item 17 (found 2026-10-15): the map builds in full when its incremental batch is a large share of the map. After a full Overture pass the incremental path re-placed 8.6M providers in 61 min, where a full build takes ~24 min.
 
 ## Done
 
