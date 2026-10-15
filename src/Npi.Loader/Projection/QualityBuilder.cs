@@ -456,7 +456,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                   {(onlyPending ? $"WHERE p.`npi` IN (SELECT `npi` FROM `{Pending}`)" : "")}
                 ) x
                 """, new { dates.old5, dates.old10, poBox = PoBox, nearMeters = RecordQuality.CareCompareMiles * 1609.344 });
-            // Label Ã— location, like building_search: the search's location conditions apply as they are.
+            // Label × location, like building_search: the search's location conditions apply as they are.
             const string searchRows =
                 """
                 SELECT DISTINCT q.`label`, IFNULL(l.`state`, ''), IFNULL(l.`city`, ''), IFNULL(l.`zip5`, ''), l.`npi`
