@@ -976,6 +976,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 ApiRequestDelay = TimeSpan.Zero,
                 OpenFdaApiKey = "test-key", // adverse event counts asked several at a time
                 OpenFdaKeyedRequestInterval = TimeSpan.Zero,
+                ClinicalTrialsRequestInterval = TimeSpan.Zero, // trial counts several at a time (ClinicalTrialsParallelRequests, 4)
+                ApiRetryDelay = TimeSpan.FromMilliseconds(1),
             },
             db.Database, new HttpClient(server), Logger.None, clock: clock);
 

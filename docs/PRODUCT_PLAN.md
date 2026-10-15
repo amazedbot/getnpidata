@@ -474,7 +474,7 @@ of 2026-10-13 proposed these items; the owner chose the order below. The state o
 | 7 | Independent sources, states and the Vermont feed in parallel (2–4 at a time) (**done** 2026-10-15; timings to measure) | downloads overlap loads |
 | 10 | Deactivation flags by difference (**done** 2026-10-14) | 9.8M rows → a few thousand (measured: after a monthly under 1 s instead of 55–61 s; after a report a few seconds instead of ~57 s) |
 | 13 | The map-by-credential table built once; independent builders side by side (**done** 2026-10-15; timings to measure) | less after item 2 |
-| 11 | API caches: the openFDA key (**done**, PR #62); ClinicalTrials.gov 3–5 requests at once (not scheduled) | the first fill in one run instead of ~10 days |
+| 11 | API caches: the openFDA key (**done**, PR #62); ClinicalTrials.gov 4 products at once, one request started every 200 ms (**done** 2026-10-15; timing to measure) | the first fill in one run instead of ~10 days; trials ~7 → ~4 min for 600 products (the pace, not the parallelism, sets it: an answer takes ~0.1 s) |
 | 9 | Stream zips instead of extracting them, where a loader still extracts (not scheduled) | disk and time |
 | 14 | Relax MySQL's disk flushing during big loads (**skipped** 2026-10-14 after measuring: a commit flush ~0.6 ms and the big loads are single statements; a bigger index-build buffer didn't help; approved 2026-10-13: a crash loses the last second of writes, which a reload repeats; any setting changed by hand is explained to the owner first) | faster big loads |
 | 16 | Build the loader to its own folder so loader work never waits on stopping the site (not scheduled) | development only |

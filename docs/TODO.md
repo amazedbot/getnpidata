@@ -67,7 +67,6 @@ Fixes the owner found (2026-10-14), one pull request each:
 ## Not scheduled
 
 - Speed item 9: stream zip files instead of extracting them first, where a loader still extracts.
-- Speed item 11, the rest: ClinicalTrials.gov 3–5 requests at once.
 - Speed item 16: build the loader to its own output folder, so loader changes never wait on stopping the site.
 - Speed item 17 (found 2026-10-15): the map builds in full when its incremental batch is a large share of the map. After a full Overture pass the incremental path re-placed 8.6M providers in 61 min, where a full build takes ~24 min.
 
@@ -107,6 +106,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 - ~~Item 3: dataset reloads queue only the providers whose rows changed, for the quality label~~ (2026-10-13, PR #70: 35,260 relabelled in 1:55 instead of 9.5M in 25 min)
 - ~~Item 2: the builders after the projection work from the queue~~ (2026-10-13, PR #65: everything after a weekly in about 10 min instead of about 2.5 h)
 - ~~Item 1: incremental projection; the monthly compared by a hash of the projected columns~~ (2026-10-13, PR #64: the same October monthly loaded twice found 9.85M then 0 changed NPIs; a load that changes nothing rebuilds nothing)
+- ~~Item 11, the rest: ClinicalTrials.gov 4 products at once, one request started every 200 ms (5 a second; it publishes no limit, the one-at-a-time loop ran at ~2.5 a second); both API caches stop early after 5 products in a row kept failing~~ (2026-10-15; the real timing in the combined run after the batch, expected ~4 min for 600 products instead of ~7)
 - ~~Item 11, the openFDA part: the API key's rate; ask again only after new exports~~ (2026-10-13, PR #62)
 - ~~Item 15: MySQL tests in parallel on a pool of test databases (4.5 min → 35 s)~~ (2026-10-13, PR #63)
 - ~~Cleanup: unused code and test warnings~~ (2026-10-13, PR #66)
