@@ -63,6 +63,14 @@ public sealed record FacilityProfile(CertifiedFacility Facility, string? Address
 
     /// <summary>A dialysis facility's ESRD Quality Incentive Program score and payment reduction (newest payment year); null otherwise.</summary>
     public DialysisQualityIncentive? QualityIncentive { get; init; }
+    /// <summary>The health systems it belongs to (AHRQ Compendium of U.S. Health Systems, by CCN; docs/PRODUCT_PLAN.md step 3.6 part 2).</summary>
+    public IReadOnlyList<HealthSystemLink> Systems { get; init; } = [];
+
+    /// <summary>The HRSA health center sites it is (by the Medicare number HRSA lists, or an NPI CMS links to the CCN).</summary>
+    public IReadOnlyList<HealthCenterSite> HealthCenterSites { get; init; } = [];
+
+    /// <summary>Its 340B registrations (HRSA OPAIS), by its CCN, an NPI enrolled for it or an HRSA site that is it; participating first.</summary>
+    public IReadOnlyList<Covered340BEntity> Covered340B { get; init; } = [];
 }
 
 /// <summary>
@@ -209,6 +217,9 @@ public sealed class OrganizationService(string connectionString)
         }
 
         var clinicians = await ClinicianListAsync(connection, FacilityNpis, ccn, page, ct);
+        var systems = await HealthSystemService.ForCcnAsync(connection, ccn, ct);
+        var sites = await HealthCenterService.ForCcnAsync(connection, ccn, ct);
+        var covered340B = await Program340BService.ForCcnAsync(connection, ccn, ct);
         // A Care Compare listing is a facility certified now, whatever an older Provider of Services row says.
         var active = facility.Count > 0 || pos?.Active == 1;
         var details = await FacilityDetails.ReadAsync(connection, ccn, found.Kind, ct);
@@ -222,6 +233,9 @@ public sealed class OrganizationService(string connectionString)
             Dialysis = details.Dialysis,
             QualityIncentive = details.QualityIncentive,
             CertifiedSince = details.CertifiedSince,
+            Systems = systems,
+            HealthCenterSites = sites,
+            Covered340B = covered340B,
         };
     }
 

@@ -50,7 +50,7 @@
             <a class="stat@(t.Type == type?.Code ? " current" : null)" href="@Model.ListUrl(type: t.Type, minRating: null, maxRating: null, sort: null, q: null)#list" aria-current="@(t.Type == type?.Code ? "true" : null)">
                 <span class="label">@t.Name</span>
                 <strong>@Format.Number(t.Active)</strong>
-                <span class="small">certified now@(t.Closed > 0 ? $" · {Format.Number(t.Closed)} closed" : "")</span>
+                <span class="small">@(t.Type == FacilityTypes.HealthCenterSite ? "active sites HRSA lists without a CMS match" : "certified now")@(t.Closed > 0 ? $" · {Format.Number(t.Closed)} closed" : "")</span>
             </a>
         }
     </div>
@@ -116,6 +116,7 @@
         <form method="get" action="/facilities#list" class="directory-filters">
             @if (!string.IsNullOrWhiteSpace(Model.Q)){<input type="hidden" name="q" value="@Model.Q" />}
             @if (!string.IsNullOrWhiteSpace(Model.Sort)){<input type="hidden" name="sort" value="@Model.Sort" />}
+            @if (!string.IsNullOrWhiteSpace(Model.System)){<input type="hidden" name="system" value="@Model.System" />}
             <div class="field">
                 <label for="type">Type</label>
                 <select id="type" name="type">
@@ -172,9 +173,31 @@
                 <label><input type="checkbox" name="hasPenalties" value="true" checked="@(Model.HasPenalties == true)" /> Has penalties</label>
                 <span class="small muted">Nursing homes fined or denied payment, last @FacilityFilter.PenaltyYears years</span>
             </div>
+            <div class="field narrow">
+                <label for="in340b">340B</label>
+                <select id="in340b" name="in340b">
+                    <option value="">Any</option>
+                    <option value="true" selected="@(Model.In340B == true)">340B covered entities</option>
+                    <option value="false" selected="@(Model.In340B == false)">Not in 340B</option>
+                </select>
+            </div>
             <div class="field narrow directory-submit"><button type="submit">Show</button></div>
         </form>
 
+        @if (Model.System is { } system)
+        {
+            <p class="chips" aria-label="Health system">
+                <a class="chip" href="/system/@Uri.EscapeDataString(system)">Health system: @(Model.SystemName ?? system)</a>
+                <a class="chip" href="@Model.ListUrl(system: null)#list">Any system ✕</a>
+            </p>
+        }
+        @if (Model.In340B is { } in340b)
+        {
+            <p class="chips" aria-label="340B">
+                <span class="chip">@(in340b ? "340B covered entities" : "Not in 340B")</span>
+                <a class="chip" href="@Model.ListUrl(in340b: null)#list">Any ✕</a>
+            </p>
+        }
         <p class="chips" aria-label="Types in this list">
             <a class="chip" href="@Model.ListUrl(type: null)#list" aria-current="@(type is null ? "true" : null)">All types · @Format.Number(Model.TypeCounts.Sum(t => Model.ShowClosed ? t.Active + t.Closed : t.Active))</a>
             @foreach (var t in Model.TypeCounts)
@@ -224,7 +247,7 @@
                             var f = r.Items[i];
                             <tr>
                                 <td class="muted">@(first + i + 1)</td>
-                                <td class="break"><a href="/facility/@Uri.EscapeDataString(f.Ccn)">@FacilitiesModel.Name(f.Name)</a><br /><span class="muted small">@(f.Kind is null ? "" : f.Kind + " · ")CMS ID <span class="mono">@f.Ccn</span>@(f.Beds is { } beds ? $" · {Format.Number(beds)} beds" : "")</span></td>
+                                <td class="break"><a href="@f.PagePath">@FacilitiesModel.Name(f.Name)</a><br /><span class="muted small">@(f.Kind is null ? "" : f.Kind + " · ")@(f.Source == FacilitySummary.SourceHrsa ? "HRSA site" : "CMS ID") <span class="mono">@f.Ccn</span>@(f.Beds is { } beds ? $" · {Format.Number(beds)} beds" : "")</span>@if (f.SystemName is not null){<br /><span class="muted small">Part of <a href="/system/@Uri.EscapeDataString(f.SystemId!)">@f.SystemName</a></span>}else if (f.HealthCenter is not null && f.Source != FacilitySummary.SourceHrsa){<br /><span class="muted small">Health center: @FacilitiesModel.Name(f.HealthCenter)</span>}@if (f.Program340B is not null){<br /><span class="small" title="@Program340B.Describe(f.Program340B, f.Program340BSince) (HRSA OPAIS)">340B · @Program340B.TypeName(f.Program340B)</span>}</td>
                                 <td>@f.TypeName</td>
                                 <td>@(f.City is null ? "" : CityCatalog.TitleCase(f.City))</td>
                                 <td>@f.State</td>
@@ -282,7 +305,10 @@
     <p class="src">
         Sources: CMS Provider of Services file (every certified facility by CMS Certification Number, active or closed) and Medicare Care Compare (hospitals, nursing homes,
         home health agencies, hospices, dialysis facilities, surgery centers, inpatient rehabilitation facilities, long-term care hospitals: names, ratings, ownership, beds).
-        The type of a facility outside Care Compare comes from the enrollment that links it to an NPI, else from its CMS number. A listing says nothing about whether a
-        facility takes new patients or a plan.
+        The type of a facility outside Care Compare comes from the enrollment that links it to an NPI, else from its CMS number. Health systems: AHRQ Compendium of U.S. Health Systems (by CMS number; <a href="/systems">every system</a>). Health center
+        sites: HRSA's list of health center (FQHC) and look-alike service sites, matched to a certified facility by the Medicare number or NPI HRSA gives,
+        else by street address; sites matched to none are listed as health center sites. 340B: HRSA's 340B Office of Pharmacy Affairs Information
+        System (OPAIS) covered entities, matched by the Medicare provider number, HRSA site ID or NPI they list. A listing says nothing about whether a facility takes new
+        patients or a plan.
     </p>
 </div>

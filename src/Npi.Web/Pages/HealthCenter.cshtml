@@ -1,0 +1,98 @@
+@page "/health-center/{id}"
+@using System.Globalization
+@using Npi.Core.Search
+@model HealthCenterModel
+@{
+    var s = Model.Site;
+    var d = Model.Detail;
+    ViewData["Title"] = CityCatalog.TitleCase(s.Name);
+    var website = NetworkFormat.Website(s.Website);
+}
+
+<div class="profile">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/facilities">Facilities &amp; hospitals</a> › <a href="/facilities?type=@FacilityTypes.Fqhc">Health centers</a></nav>
+
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="Health center" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="52" class="bg" />
+                <path d="M30 80V40l22-14 22 14v40M46 54h12M52 48v12M44 80V68h16v12" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@CityCatalog.TitleCase(s.Name)</h1>
+                <p class="summary">@Model.Summary</p>
+                <ul class="pills" aria-label="Facts">
+                    <li class="pill ok">@(s.LookAlike ? "FQHC look-alike" : "HRSA-funded health center")</li>
+                    @if (s.LocationType is { } type && type != "Permanent"){<li class="pill plain">@type</li>}
+                    <li class="pill plain">HRSA site <span class="mono">&nbsp;@s.SiteId</span></li>
+                </ul>
+            </div>
+            <div class="head-actions">
+                @if (s.Phone is not null){<a class="button secondary" href="tel:@s.Phone">Call @Format.Phone(s.Phone)</a>}
+                @if (website is not null){<a class="button secondary" href="@website" rel="noopener nofollow">Website</a>}
+            </div>
+        </div>
+    </section>
+
+    <div class="profile-row">
+        <section class="card grow" aria-labelledby="ids-h">
+            <h2 id="ids-h">Medicare and NPI</h2>
+            <dl class="facts">
+                <dt>Medicare number (CCN)</dt>
+                <dd>@if (s.Ccn is null){<text>None listed by HRSA</text>}else if (d.CcnListed){<a href="/facility/@Uri.EscapeDataString(s.Ccn)" class="mono">@s.Ccn</a>}else{<span class="mono">@s.Ccn</span> <span class="muted">(not in CMS's Provider of Services file)</span>}</dd>
+                <dt>NPI</dt>
+                <dd>@if (s.Npi is null){<text>None listed by HRSA</text>}else if (d.NpiName is not null){<a href="/provider/@s.Npi">@CityCatalog.TitleCase(d.NpiName)</a> <span class="muted mono">@s.Npi</span>}else{<span class="mono">@s.Npi</span> <span class="muted">(not an active NPI)</span>}</dd>
+                @if (s.SiteType is not null){<dt>Site</dt><dd>@s.SiteType</dd>}
+                @if (s.AddedDate is { } added){<dt>A health center site since</dt><dd>@added.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>}
+            </dl>
+            <partial name="_Covered340B" model="d.Covered340B" />
+            <p class="src">
+                HRSA Health Center Service Delivery and Look-Alike Sites (data.hrsa.gov). Health centers serve everyone, with fees on a sliding scale by income.
+                @if (d.Covered340B.Count > 0){<text>340B: HRSA OPAIS, by the HRSA site ID or NPI it lists.</text>}
+            </p>
+        </section>
+        <section class="card side-card" aria-labelledby="loc-h">
+            <h2 id="loc-h">Location</h2>
+            @if (Model.Map is { } map)
+            {
+                <div class="static-map small-map">
+                    @foreach (var t in map.Tiles)
+                    {
+                        <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
+                             style="left:@(StaticMap.Css(t.LeftPercent))%;top:@(StaticMap.Css(t.TopPercent))%;width:@(StaticMap.Css(t.WidthPercent))%;height:@(StaticMap.Css(t.HeightPercent))%" />
+                    }
+                    @foreach (var pin in map.Pins)
+                    {
+                        <span class="pin" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%" aria-hidden="true">●</span>
+                    }
+                </div>
+                <p class="src">@Html.Raw(Model.Attribution)</p>
+            }
+            <p>@(s.Address is null ? null : CityCatalog.TitleCase(s.Address))<br />@(s.City is null ? null : CityCatalog.TitleCase(s.City)), @s.State @s.Zip</p>
+            @if (s.Phone is not null){<p><a href="tel:@s.Phone">@Format.Phone(s.Phone)</a></p>}
+            @if (s.Latitude is { } lat && s.Longitude is { } lon)
+            {
+                <p><a href="https://www.openstreetmap.org/directions?to=@lat.ToString(CultureInfo.InvariantCulture)%2C@lon.ToString(CultureInfo.InvariantCulture)" rel="noopener">Directions</a></p>
+            }
+        </section>
+    </div>
+
+    <section class="card" aria-labelledby="other-h">
+        <h2 id="other-h">@(s.HealthCenter is null ? "Other sites" : "Other sites of " + CityCatalog.TitleCase(s.HealthCenter)) (@Format.Number(d.OtherSiteCount))</h2>
+        @if (d.OtherSites.Count == 0)
+        {
+            <p>HRSA lists no other site for this health center.</p>
+        }
+        else
+        {
+            <ul class="link-list">
+                @foreach (var o in d.OtherSites)
+                {
+                    <li><a href="/health-center/@Uri.EscapeDataString(o.SiteId)">@CityCatalog.TitleCase(o.Name)</a> <span class="muted">@(o.City is null ? "" : CityCatalog.TitleCase(o.City) + ", ")@o.State@(o.Setting is null ? "" : " · " + o.Setting.ToLowerInvariant())</span></li>
+                }
+            </ul>
+            @if (d.OtherSiteCount > d.OtherSites.Count){<p class="muted">The first @d.OtherSites.Count of @Format.Number(d.OtherSiteCount), by name.</p>}
+        }
+        <p class="src">Sites sharing the health center's grant or look-alike designation number@(s.GrantNumber is null ? "" : $" ({s.GrantNumber})"); the health center is based in @(s.HealthCenterCity is null ? "—" : CityCatalog.TitleCase(s.HealthCenterCity) + ", " + s.HealthCenterState).</p>
+    </section>
+</div>

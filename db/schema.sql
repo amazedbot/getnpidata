@@ -2,6 +2,47 @@
 -- For reading only: the database is built and upgraded by `Npi.Loader migrate` from db/migrations. Regenerate it
 -- after adding a migration: set NPI_UPDATE_SCHEMA=1 and run the MySQL tests.
 
+CREATE TABLE `aco` (
+  `aco_id` varchar(10) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `program_year` smallint NOT NULL,
+  `service_area` varchar(200) DEFAULT NULL,
+  `agreement_period` tinyint DEFAULT NULL,
+  `initial_start_date` date DEFAULT NULL,
+  `current_start_date` date DEFAULT NULL,
+  `track` varchar(40) DEFAULT NULL,
+  `high_revenue` tinyint DEFAULT NULL,
+  `address` varchar(255) DEFAULT NULL,
+  `website` varchar(255) DEFAULT NULL,
+  `lat` double DEFAULT NULL,
+  `lon` double DEFAULT NULL,
+  PRIMARY KEY (`aco_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `aco_participant` (
+  `aco_id` varchar(10) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  PRIMARY KEY (`aco_id`,`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `aco_participant_npi` (
+  `aco_id` varchar(10) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `npi` char(10) NOT NULL,
+  `candidates` tinyint NOT NULL,
+  `hospital_group` tinyint NOT NULL DEFAULT '0',
+  `grouped_by` varchar(12) DEFAULT NULL,
+  `grouped_value` varchar(200) DEFAULT NULL,
+  PRIMARY KEY (`aco_id`,`name`,`npi`),
+  KEY `ix_aco_participant_npi_npi` (`npi`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `aco_snf_affiliate` (
+  `aco_id` varchar(10) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  PRIMARY KEY (`aco_id`,`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `address_building` (
   `addr_key` char(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   `matched` varchar(8) NOT NULL,
@@ -632,7 +673,7 @@ CREATE TABLE `dicomhosts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 CREATE TABLE `directory_facility` (
-  `ccn` varchar(10) NOT NULL,
+  `ccn` varchar(20) NOT NULL,
   `type` varchar(20) NOT NULL,
   `kind` varchar(80) DEFAULT NULL,
   `name` varchar(200) NOT NULL,
@@ -654,6 +695,13 @@ CREATE TABLE `directory_facility` (
   `penalties` int NOT NULL DEFAULT '0',
   `fines` double DEFAULT NULL,
   `last_penalty` date DEFAULT NULL,
+  `source` varchar(10) NOT NULL DEFAULT 'cms',
+  `system_id` varchar(20) DEFAULT NULL,
+  `system_name` varchar(200) DEFAULT NULL,
+  `health_center` varchar(200) DEFAULT NULL,
+  `website` varchar(255) DEFAULT NULL,
+  `program_340b` varchar(10) DEFAULT NULL,
+  `since_340b` date DEFAULT NULL,
   PRIMARY KEY (`ccn`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -977,6 +1025,41 @@ CREATE TABLE `gender_codes` (
   PRIMARY KEY (`gender_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `health_system` (
+  `system_id` varchar(20) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `data_year` smallint NOT NULL,
+  `physicians` int DEFAULT NULL,
+  `primary_care_physicians` int DEFAULT NULL,
+  `nurse_practitioners` int DEFAULT NULL,
+  `physician_assistants` int DEFAULT NULL,
+  `group_practices` int DEFAULT NULL,
+  `hospitals` int DEFAULT NULL,
+  `acute_hospitals` int DEFAULT NULL,
+  `nursing_homes` int DEFAULT NULL,
+  `home_health_agencies` int DEFAULT NULL,
+  `beds` int DEFAULT NULL,
+  `discharges` int DEFAULT NULL,
+  `major_teaching` tinyint DEFAULT NULL,
+  `offers_insurance` tinyint DEFAULT NULL,
+  `medicare_advantage` tinyint DEFAULT NULL,
+  PRIMARY KEY (`system_id`),
+  KEY `ix_health_system_state` (`state`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `health_system_facility` (
+  `ccn` varchar(10) NOT NULL,
+  `system_id` varchar(20) NOT NULL,
+  `kind` varchar(20) NOT NULL,
+  `name` varchar(200) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  PRIMARY KEY (`ccn`,`system_id`),
+  KEY `ix_health_system_facility_system` (`system_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `history_area_count` (
   `area_type` varchar(6) NOT NULL,
   `area_id` varchar(5) NOT NULL,
@@ -1010,6 +1093,68 @@ CREATE TABLE `history_period` (
   `seconds` int DEFAULT NULL,
   `error` text,
   PRIMARY KEY (`period`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `hrsa_340b_entity` (
+  `id_340b` varchar(20) NOT NULL,
+  `ce_id` int DEFAULT NULL,
+  `entity_type` varchar(10) NOT NULL,
+  `participating` tinyint NOT NULL,
+  `start_date` date DEFAULT NULL,
+  `termination_date` date DEFAULT NULL,
+  `termination_reason` varchar(200) DEFAULT NULL,
+  `name` varchar(200) NOT NULL,
+  `sub_name` varchar(255) DEFAULT NULL,
+  `grant_number` varchar(30) DEFAULT NULL,
+  `site_id` varchar(20) DEFAULT NULL,
+  `ccn` varchar(10) DEFAULT NULL,
+  `address` varchar(255) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `zip5` char(5) DEFAULT NULL,
+  `rural` tinyint DEFAULT NULL,
+  `parent_id_340b` varchar(20) DEFAULT NULL,
+  PRIMARY KEY (`id_340b`),
+  KEY `ix_340b_ccn` (`ccn`),
+  KEY `ix_340b_site` (`site_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `hrsa_340b_npi` (
+  `id_340b` varchar(20) NOT NULL,
+  `npi` char(10) NOT NULL,
+  PRIMARY KEY (`id_340b`,`npi`),
+  KEY `ix_340b_npi` (`npi`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `hrsa_health_center_site` (
+  `site_id` varchar(20) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `address` varchar(200) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `zip5` char(5) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `website` varchar(255) DEFAULT NULL,
+  `hours_per_week` double DEFAULT NULL,
+  `setting` varchar(60) DEFAULT NULL,
+  `location_type` varchar(30) DEFAULT NULL,
+  `site_type` varchar(60) DEFAULT NULL,
+  `look_alike` tinyint NOT NULL,
+  `grant_number` varchar(20) DEFAULT NULL,
+  `health_center` varchar(200) DEFAULT NULL,
+  `health_center_city` varchar(100) DEFAULT NULL,
+  `health_center_state` varchar(2) DEFAULT NULL,
+  `ccn` varchar(10) DEFAULT NULL,
+  `npi` char(10) DEFAULT NULL,
+  `added_date` date DEFAULT NULL,
+  `county_fips` char(5) DEFAULT NULL,
+  `lat` double DEFAULT NULL,
+  `lon` double DEFAULT NULL,
+  PRIMARY KEY (`site_id`),
+  KEY `ix_hrsa_site_ccn` (`ccn`),
+  KEY `ix_hrsa_site_npi` (`npi`),
+  KEY `ix_hrsa_site_grant` (`grant_number`),
+  KEY `ix_hrsa_site_point` (`lat`,`lon`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `hrsa_shortage_raw` (

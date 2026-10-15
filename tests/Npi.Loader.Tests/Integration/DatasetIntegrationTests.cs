@@ -68,7 +68,7 @@ public sealed class DatasetIntegrationTests : IDisposable
 
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture); // the API caches' version is the day
         Assert.Equal(
-            [("cc_clinicians", "2026-08-18 DAC_NationalDownloadableFile.csv"),
+            [(HealthSystemSourceName, HealthSystemSource.NoFiles), ("cc_clinicians", "2026-08-18 DAC_NationalDownloadableFile.csv"),
              ("cc_dialysis", "2026-06-16 DFC_FACILITY.csv | 2026-06-16 ICH_CAHPS_FACILITY.csv"),
              ("cc_esrd_qip", "PY 2026 2025-12-15 TPS.csv"),
              ("cc_facility_affiliations", "2026-08-18 Facility_Affiliation.csv"),
@@ -82,7 +82,10 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cc_post_acute", "2026-09-17 Inpatient_Rehabilitation_Facility-General_Information_Sep2026.csv | 2026-09-17 Inpatient_Rehabilitation_Facility-Provider_Data_Sep2026.csv | 2026-09-17 Inpatient_Rehabilitation_Facility-National_Data_Sep2026.csv"
                  + " | 2026-09-17 Long-Term_Care_Hospital-General_Information_Sep2026.csv | 2026-09-17 Long-Term_Care_Hospital-Provider_Data_Sep2026.csv | 2026-09-17 Long-Term_Care_Hospital-National_Data_Sep2026.csv"),
              ("cc_surgery_centers", "2025-12-16 ASC_Facility.csv | 2025-12-16 ASC_National.csv"),
-             ("census_county_population", "vintage 2025"), ("cms_dialysis_npis", "2026-12-31 dfr_facility_socrata_fy2026.csv"),
+             ("census_county_population", "vintage 2025"),
+             ("cms_aco", "2026-12-31 PY2026_Medicare_Shared_Savings_Program_Organizations.csv | 2026-12-31 PY2026_Medicare_Shared_Savings_Program_Participants.csv"
+                 + " | 2026-12-31 PY2026_Medicare_Shared_Savings_Program_ACO_SNF_Affiliates.csv"),
+             ("cms_dialysis_npis", "2026-12-31 dfr_facility_socrata_fy2026.csv"),
              ("cms_dme_suppliers", "2024-12-31 mup_dme_ry26_p05_v10_dy24_supr.csv"),
              ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"
                  + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"
@@ -102,7 +105,10 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("cms_revalidation", "2026-10-31 revalidation_base.csv"),
              ("drug_spending", "Part D 2024-12-31 | Part B 2024-12-31 | Medicaid 2024-12-31"), ("fda_enforcement", "drug 2026-10-06 | device 2026-10-06"),
              ("fda_products", "ndc 2026-10-06 | drugsfda 2026-10-06 | label 2026-10-06 | udi 2026-10-06 | 510k 2026-10-06 | pma 2026-10-06"),
-             ("fda_shortages", "shortages 2026-10-09"), ("hrsa_hpsa", "HPSA 2026-10-08"),
+             ("fda_shortages", "shortages 2026-10-09"),
+             ("hrsa_340b", Program340BSource.NoFiles),
+             ("hrsa_health_center_sites", $"2026-10-08T11:47:41Z {new FileInfo(Fixtures.Path("datasets/hrsa_health_center_sites_sample.csv")).Length} bytes"),
+             ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("medicare_enrollment", "2026-09-30 PPEF_Enrollment_Extract_2026.07.17.csv | 2026-10-31 revalidation_clinic_group_practice_reassignment_pa_xref.csv"),
              ("medicare_history", MedicareHistoryVersion()),
              ("nadac", "2026 nadac-national-average-drug-acquisition-cost-10-07-2026.csv"),
@@ -338,6 +344,8 @@ public sealed class DatasetIntegrationTests : IDisposable
     }
 
     // The version of the lists the loader assembles (Rhode Island, Vermont, West Virginia): the ISO week.
+    private static readonly string HealthSystemSourceName = new HealthSystemSource().Name;
+
     private static string Week => $"week {System.Globalization.ISOWeek.GetYear(DateTime.UtcNow)}-{System.Globalization.ISOWeek.GetWeekOfYear(DateTime.UtcNow):00}";
 
     [Fact]
@@ -961,6 +969,9 @@ public sealed class DatasetIntegrationTests : IDisposable
                 ProviderDataMetastoreUrl = "https://pdc.test/items/",
                 LeieUrl = "https://oig.test/UPDATED.csv",
                 HrsaHpsaUrlTemplate = "https://hrsa.test/BCD_HPSA_FCT_DET_{discipline}.csv",
+                HrsaHealthCenterSitesUrl = "https://hrsa.test/Health_Center_Service_Delivery_and_LookAlike_Sites.csv",
+                AhrqCompendiumFolder = Path.Combine(folder, "ahrq-compendium"), // empty: the Compendium is skipped
+                Hrsa340bFolder = Path.Combine(folder, "hrsa-340b"), // empty: 340B is skipped
                 CensusPopulationBaseUrl = "https://census.test/popest/",
                 OpenPaymentsCatalogUrl = "https://op.test/items",
                 FdaDownloadIndexUrl = "https://fda.test/download.json",
@@ -1206,6 +1217,10 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://hrsa.test/BCD_HPSA_FCT_DET_PC.csv" => "datasets/hpsa_PC_sample.csv",
                 "https://hrsa.test/BCD_HPSA_FCT_DET_DH.csv" => "datasets/hpsa_DH_sample.csv",
                 "https://hrsa.test/BCD_HPSA_FCT_DET_MH.csv" => "datasets/hpsa_MH_sample.csv",
+                "https://hrsa.test/Health_Center_Service_Delivery_and_LookAlike_Sites.csv" => "datasets/hrsa_health_center_sites_sample.csv",
+                "https://cms.test/files/PY2026_Medicare_Shared_Savings_Program_Organizations.csv" => "datasets/aco_organizations_sample.csv",
+                "https://cms.test/files/PY2026_Medicare_Shared_Savings_Program_Participants.csv" => "datasets/aco_participants_sample.csv",
+                "https://cms.test/files/PY2026_Medicare_Shared_Savings_Program_ACO_SNF_Affiliates.csv" => "datasets/aco_snf_affiliates_sample.csv",
                 "https://census.test/popest/" => "datasets/census_popest_listing.html",
                 "https://fda.test/download.json" => "datasets/fda_download_index_sample.json",
                 "https://sec.test/company_tickers_exchange.json" => "datasets/sec_company_tickers_sample.json",

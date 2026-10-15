@@ -29,6 +29,7 @@ Rules:
 | [`state-licenses/`](state-licenses/README.md) | State licenses: 3 files (063, 064, 088) |
 | [`quality/`](quality/README.md) | Record quality: 3 files (083, 084, 097) |
 | [`incremental/`](incremental/README.md) | Incremental loading queues: 3 files (089, 091, 092) |
+| [`systems/`](systems/README.md) | Health systems, ACOs, health center sites and 340B covered entities: 5 files (112, 113, 114, 115, 116) |
 
 ## nppes/001_baseline.sql
 

@@ -311,6 +311,38 @@ public sealed class NpiClient : IDisposable
         using var response = await SendAsync("api/v1/owners/" + Segment(id, nameof(id)), cancellationToken).ConfigureAwait(false);
         return response.StatusCode == HttpStatusCode.NotFound ? null : await ReadJsonAsync<OwnerDetail>(response, cancellationToken).ConfigureAwait(false);
     }
+    /// <summary>One page of health systems (AHRQ Compendium of U.S. Health Systems) matching <paramref name="search"/>.</summary>
+    /// <exception cref="NpiApiException">Invalid filters (see <see cref="NpiApiException.Errors"/>), rate limit, or another API error.</exception>
+    public Task<HealthSystemPage> SearchSystemsAsync(SystemSearch search, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<HealthSystemPage>("api/v1/systems" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), cancellationToken);
+
+    /// <summary>One health system by its AHRQ ID (e.g. HSI00000010) with its facilities and Medicare groups, or null when it is unknown.</summary>
+    public Task<HealthSystemDetail?> GetSystemAsync(string id, CancellationToken cancellationToken = default) =>
+        GetOrNullAsync<HealthSystemDetail>("api/v1/systems/" + Segment(id, nameof(id)), cancellationToken);
+
+    /// <summary>One page of Medicare Shared Savings Program ACOs matching <paramref name="search"/>, by name.</summary>
+    /// <exception cref="NpiApiException">Invalid filters (see <see cref="NpiApiException.Errors"/>), rate limit, or another API error.</exception>
+    public Task<AcoPage> SearchAcosAsync(AcoSearch search, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<AcoPage>("api/v1/acos" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), cancellationToken);
+
+    /// <summary>One ACO by its ID (e.g. A1234) with its participants and SNF affiliates, or null when it is unknown.</summary>
+    public Task<AcoDetail?> GetAcoAsync(string id, CancellationToken cancellationToken = default) =>
+        GetOrNullAsync<AcoDetail>("api/v1/acos/" + Segment(id, nameof(id)), cancellationToken);
+
+    /// <summary>
+    /// The Medicare ACOs an organization NPI takes part in, matched by its NPPES legal business name (CMS publishes participants by
+    /// name only); empty when there is none.
+    /// </summary>
+    public Task<IReadOnlyList<AcoMembership>> GetProviderAcosAsync(string npi, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<IReadOnlyList<AcoMembership>>("api/v1/providers/" + Segment(npi, nameof(npi)) + "/acos", cancellationToken);
+
+    /// <summary>The Medicare ACOs of the organization NPIs enrolled under a group's PAC ID, matched by name; empty when there is none.</summary>
+    public Task<IReadOnlyList<AcoMembership>> GetGroupAcosAsync(string pacId, CancellationToken cancellationToken = default) =>
+        GetJsonAsync<IReadOnlyList<AcoMembership>>("api/v1/groups/" + Segment(pacId, nameof(pacId)) + "/acos", cancellationToken);
+
+    /// <summary>One HRSA health center site by HRSA's site number (BPS-…), with the health center's other sites, or null when it is unknown.</summary>
+    public Task<HealthCenterSiteDetail?> GetHealthCenterSiteAsync(string id, CancellationToken cancellationToken = default) =>
+        GetOrNullAsync<HealthCenterSiteDetail>("api/v1/health-center-sites/" + Segment(id, nameof(id)), cancellationToken);
 
     /// <summary>States and territories.</summary>
     public Task<IReadOnlyList<StateInfo>> GetStatesAsync(CancellationToken cancellationToken = default) =>
@@ -431,6 +463,18 @@ public sealed class NpiClient : IDisposable
 
     private static string Segment(string value, string name) =>
         string.IsNullOrWhiteSpace(value) ? throw new ArgumentException("A value is required.", name) : Uri.EscapeDataString(value.Trim());
+
+    private async Task<T?> GetOrNullAsync<T>(string path, CancellationToken cancellationToken)
+        where T : class
+    {
+        using var response = await SendAsync(path, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<T>(response, cancellationToken).ConfigureAwait(false);
+    }
 
     private async Task<T> GetJsonAsync<T>(string path, CancellationToken cancellationToken)
     {

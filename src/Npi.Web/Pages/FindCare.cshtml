@@ -85,6 +85,7 @@
         @if (results.Items.Count == 0)
         {
             <p>We didn't find any within @results.RadiusMiles miles. Try fewer preferences, or another kind of care.</p>
+            <partial name="_HealthCentersNearby" model="Model.HealthCenters" />
         }
         else
         {
@@ -158,6 +159,8 @@
                     </li>
                 }
             </ol>
+
+            <partial name="_HealthCentersNearby" model="Model.HealthCenters" />
 
             <nav class="care-more" aria-label="More results">
                 @if (Model.PageNumber > 1){<a class="button secondary" href="@Model.Link(Model.PageNumber - 1)">‹ Closer ones</a>}

@@ -201,6 +201,37 @@ public sealed class LoaderOptions
 
     public string ResolvedStateLicenseFilesFolder => Resolve(StateLicenseFilesFolder, "state-files");
 
+    /// <summary>
+    /// The AHRQ Compendium of U.S. Health Systems CSV files the owner downloads from <see cref="AhrqCompendiumPageUrl"/> (the
+    /// systems file and the hospital, nursing home and home health linkage files; docs/PRODUCT_PLAN.md step 3.6 part 2):
+    /// ahrq.gov answers programs with a browser check, so the loader reads them from here. Default: <see cref="DefaultRoot"/>/ahrq-compendium.
+    /// </summary>
+    public string AhrqCompendiumFolder { get; set; } = "";
+
+    public string ResolvedAhrqCompendiumFolder => Resolve(AhrqCompendiumFolder, "ahrq-compendium");
+
+    /// <summary>Where the Compendium files are published (recorded as the source, and named in the doctor's advice).</summary>
+    public string AhrqCompendiumPageUrl { get; set; } = "https://www.ahrq.gov/chsp/data-resources/compendium.html";
+
+    /// <summary>
+    /// HRSA's 340B OPAIS covered entity export the owner downloads (the "Covered Entity Daily Export" JSON as its .zip,
+    /// 340B_CoveredEntityJson_Daily_&lt;yyyyMMdd_HHmmss&gt;.zip, or the .json in it, or the "Covered Entity Daily Report" .xlsx;
+    /// docs/PRODUCT_PLAN.md step 3.6 part 2): OPAIS has no download URL or API, so the loader reads the newest file here. Default:
+    /// <see cref="DefaultRoot"/>/hrsa-340b.
+    /// </summary>
+    public string Hrsa340bFolder { get; set; } = "";
+
+    public string ResolvedHrsa340bFolder => Resolve(Hrsa340bFolder, "hrsa-340b");
+
+    /// <summary>OPAIS's page with the daily reports (Reports/Files).</summary>
+    public string Hrsa340bPageUrl { get; set; } = "https://340bopais.hrsa.gov/Reports";
+
+    /// <summary>
+    /// HRSA's Health Center Service Delivery and Look-Alike Sites file, listed on data.hrsa.gov's data download page under the
+    /// same name every day (docs/PRODUCT_PLAN.md step 3.6 part 2); its Last-Modified and size are the version.
+    /// </summary>
+    public string HrsaHealthCenterSitesUrl { get; set; } = "https://data.hrsa.gov/DataDownload/DD_Files/Health_Center_Service_Delivery_and_LookAlike_Sites.csv";
+
     public string ResolvedWorkFolder => Resolve(WorkFolder, "work");
 
     /// <summary>

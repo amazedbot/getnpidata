@@ -1,0 +1,32 @@
+@using System.Globalization
+@using Npi.Core.Search
+@model IReadOnlyList<Covered340BEntity>
+@{
+    // A facility's or health center site's 340B registrations (HRSA OPAIS; docs/PRODUCT_PLAN.md step 3.6 part 2), matched by an
+    // identifier the export gives: the Medicare provider number, an NPI, or the HRSA site ID.
+    string MatchedBy(string how) => how switch
+    {
+        Program340B.MatchedByCcn => "by its Medicare provider number",
+        Program340B.MatchedByNpi => "by an NPI HRSA lists for it",
+        _ => "by its HRSA site ID",
+    };
+}
+@if (Model.Count > 0)
+{
+    <ul class="link-list covered-340b">
+        @foreach (var e in Model)
+        {
+            <li>
+                @if (e.Participating)
+                {
+                    <strong>@Program340B.Describe(e.EntityType, e.StartDate)</strong>
+                }
+                else
+                {
+                    <span>Former 340B covered entity (@e.EntityTypeName@(e.TerminationDate is { } ended ? ", until " + ended.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) : ""))</span>
+                }
+                <span class="muted">· 340B ID <span class="mono">@e.Id340B</span>@(e.SubName is null ? "" : " · " + e.SubName) · <span title="Matched @MatchedBy(e.MatchedBy) in HRSA's export">@MatchedBy(e.MatchedBy)</span></span>
+            </li>
+        }
+    </ul>
+}

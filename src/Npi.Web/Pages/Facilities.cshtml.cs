@@ -41,6 +41,17 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
     [BindProperty(SupportsGet = true)]
     public string? Sort { get; set; }
 
+    /// <summary>A health system's ID (from its page): only its facilities (docs/PRODUCT_PLAN.md step 3.6 part 2).</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? System { get; set; }
+
+    /// <summary>true: only 340B covered entities (HRSA OPAIS).</summary>
+    [BindProperty(SupportsGet = true)]
+    public bool? In340B { get; set; }
+
+    /// <summary>The name of <see cref="System"/>, from the listed facilities.</summary>
+    public string? SystemName => System is null ? null : Result?.Items.FirstOrDefault(f => f.SystemName is not null)?.SystemName;
+
     /// <summary>
     /// The list's page, read from the query string in <c>OnGetAsync</c>: a property bound by the name "page" would get Razor Pages'
     /// own route value of that name (the page's path) instead.
@@ -93,9 +104,9 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
         if (errors.Count > 0)
         {
             Errors = errors;
-            Q = Type = State = Status = Sort = null;
+            Q = Type = State = Status = Sort = System = null;
             MinRating = MaxRating = OwnershipChangedWithinYears = null;
-            HasPenalties = null;
+            HasPenalties = In340B = null;
             PageNumber = 1;
             filter = Filter(1);
         }
@@ -123,7 +134,8 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
     }
 
     private FacilityFilter Filter(int page) =>
-        DirectoryEndpoints.Facilities(Q, Type, State, MinRating, MaxRating, Status, OwnershipChangedWithinYears, HasPenalties, Sort, page);
+        DirectoryEndpoints.Facilities(Q, Type, State, MinRating, MaxRating, Status, OwnershipChangedWithinYears, HasPenalties, Sort, page, system: System,
+            in340b: In340B);
 
     /// <summary>The "Changed ownership" choices, in years.</summary>
     public static readonly IReadOnlyList<int> OwnershipChangeChoices = [1, 3, 5, 10];
@@ -160,13 +172,24 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
                 what += " with " + string.Join(" and ", with);
             }
 
+            if (System is not null)
+            {
+                what += " of " + (SystemName ?? "health system " + System);
+            }
+
+            if (In340B == true)
+            {
+                what += " in the 340B program";
+            }
+
             return string.IsNullOrWhiteSpace(Q) ? what : $"{what} matching “{Q.Trim()}”";
         }
     }
 
     /// <summary>The page's query string with some values replaced (null removes one); page 1 is left out.</summary>
     public string ListUrl(string path = "/facilities", string? type = "", string? minRating = "", string? maxRating = "", string? status = "",
-        string? sort = "", int page = 1, string? state = "", string? q = "", string? ownershipChanged = "", string? penalties = "")
+        string? sort = "", int page = 1, string? state = "", string? q = "", string? ownershipChanged = "", string? penalties = "", string? system = "",
+        string? in340b = "")
     {
         var values = new (string Key, string? Value)[]
         {
@@ -176,7 +199,8 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
             ("status", status == "" ? Status : status),
             ("ownershipChangedWithinYears", ownershipChanged == "" ? OwnershipChangedWithinYears?.ToString(CultureInfo.InvariantCulture) : ownershipChanged),
             ("hasPenalties", penalties == "" ? (HasPenalties == true ? "true" : null) : penalties),
-            ("sort", sort == "" ? Sort : sort),
+            ("sort", sort == "" ? Sort : sort), ("system", system == "" ? System : system),
+            ("in340b", in340b == "" ? (In340B is { } b ? (b ? "true" : "false") : null) : in340b),
             ("page", page > 1 ? page.ToString(CultureInfo.InvariantCulture) : null),
         };
         var query = string.Join("&", values.Where(v => !string.IsNullOrWhiteSpace(v.Value)).Select(v => $"{v.Key}={Uri.EscapeDataString(v.Value!.Trim())}"));

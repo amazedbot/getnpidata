@@ -98,6 +98,31 @@
     </section>
     }
 
+    @if (p.Systems.Count > 0 || p.HealthCenterSites.Count > 0 || p.Covered340B.Count > 0)
+    {
+        <section class="card" aria-labelledby="net-h">
+            <h2 id="net-h">@(p.Systems.Count > 0 ? "Health system" : p.HealthCenterSites.Count > 0 ? "Health center" : "340B Drug Pricing Program")</h2>
+            <partial name="_Covered340B" model="p.Covered340B" />
+            <dl class="facts">
+                @if (p.Systems.Count > 0)
+                {
+                    <dt>Part of</dt>
+                    <dd>@for (var i = 0; i < p.Systems.Count; i++){@(i > 0 ? ", " : "")<a href="/system/@Uri.EscapeDataString(p.Systems[i].SystemId)">@p.Systems[i].Name</a>}</dd>
+                }
+                @foreach (var s in p.HealthCenterSites)
+                {
+                    <dt>@(s.LookAlike ? "Health center look-alike site" : "Health center site")</dt>
+                    <dd><a href="/health-center/@Uri.EscapeDataString(s.SiteId)">@Npi.Core.Search.CityCatalog.TitleCase(s.Name)</a>@if (s.HealthCenter is not null){<span class="muted"> of @Npi.Core.Search.CityCatalog.TitleCase(s.HealthCenter)</span>}</dd>
+                }
+            </dl>
+            <p class="src">
+                @if (p.Systems.Count > 0){<text>@Npi.Core.Search.HealthSystemText.Credit(null) By CMS Certification Number; @Npi.Core.Search.HealthSystemText.Basis </text>}
+                @if (p.Covered340B.Count > 0){<text>HRSA 340B Office of Pharmacy Affairs Information System (OPAIS), by the Medicare number, NPI or HRSA site ID it lists. </text>}
+                @if (p.HealthCenterSites.Count > 0){<text>HRSA health center service delivery sites (by the Medicare number or NPI HRSA lists for the site).</text>}
+            </p>
+        </section>
+    }
+
     @if (p.Measures.Count > 0)
     {
         <section class="card" aria-labelledby="cmp-h">

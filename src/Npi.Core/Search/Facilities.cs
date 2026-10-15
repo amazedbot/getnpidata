@@ -26,6 +26,7 @@ public static class FacilityTypes
     public const string SurgeryCenter = "asc";
     public const string Rehab = "rehab";
     public const string LongTermCare = "ltch";
+    public const string HealthCenterSite = "health_center";
     public const string Other = "other";
 
     /// <summary>In the order the page lists them.</summary>
@@ -41,6 +42,7 @@ public static class FacilityTypes
         new(SurgeryCenter, "Ambulatory surgery centers", "Ambulatory surgery center", null, "Clinics & centers", "Surgery centers"),
         new(Rehab, "Inpatient rehabilitation facilities", "Inpatient rehabilitation facility", null, "Hospitals", "Rehabilitation hospitals"),
         new(LongTermCare, "Long-term care hospitals", "Long-term care hospital", null, "Hospitals", "Long-term & specialty hospitals"),
+        new(HealthCenterSite, "Health center sites (HRSA)", "Health center site", null, "Clinics & centers", "Primary care & community health centers"),
         new(Other, "Other certified facilities", "Certified facility", null, null, null),
     ];
 
@@ -167,6 +169,39 @@ public sealed record FacilitySummary(string Ccn, string Type, string TypeName, s
 
     /// <summary>The newest of those penalties.</summary>
     public DateOnly? LastPenalty { get; init; }
+    public const string SourceCms = "cms";
+    public const string SourceHrsa = "hrsa";
+
+    /// <summary>
+    /// "cms": a facility in CMS's files, by its CCN. "hrsa": a health center site only HRSA lists (step 3.6 part 2): <see cref="Ccn"/> then
+    /// holds HRSA's site number (BPS-…), its page is /health-center/{id}, and <see cref="Latitude"/>/<see cref="Longitude"/> are HRSA's
+    /// point of the site.
+    /// </summary>
+    public string Source { get; init; } = SourceCms;
+
+    /// <summary>The health system it belongs to (AHRQ Compendium of U.S. Health Systems, by CCN); null when it is in none.</summary>
+    public string? SystemId { get; init; }
+
+    public string? SystemName { get; init; }
+
+    /// <summary>The HRSA-funded health center (or look-alike) it is a site of, matched by Medicare number, NPI or address.</summary>
+    public string? HealthCenter { get; init; }
+
+    /// <summary>Its website as HRSA lists it (health center sites).</summary>
+    public string? Website { get; init; }
+
+    /// <summary>
+    /// A participating 340B covered entity's type code (DSH, CAH, CH …; <see cref="Search.Program340B.TypeName"/>) when the facility is
+    /// one, matched by the Medicare provider number, an NPI or the HRSA site ID in HRSA's OPAIS export; null otherwise.
+    /// </summary>
+    public string? Program340B { get; init; }
+
+    /// <summary>When that 340B participation started.</summary>
+    public DateOnly? Program340BSince { get; init; }
+
+    /// <summary>The site's page for it.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string PagePath => Source == SourceHrsa ? "/health-center/" + Uri.EscapeDataString(Ccn) : "/facility/" + Uri.EscapeDataString(Ccn);
 }
 
 /// <summary>A page of facilities.</summary>
@@ -227,6 +262,12 @@ public sealed record FacilityFilter
 
     public string? Sort { get; init; }
 
+    /// <summary>A health system's ID (AHRQ Compendium, e.g. HSI00000010): only its facilities.</summary>
+    public string? System { get; init; }
+
+    /// <summary>true: only participating 340B covered entities; false: only facilities that aren't one.</summary>
+    public bool? In340B { get; init; }
+
     public int Page { get; init; } = 1;
 
     public int PageSize { get; init; } = DefaultPageSize;
@@ -238,6 +279,11 @@ public sealed record FacilityFilter
         if (Q?.Trim().Length > MaxQueryLength)
         {
             errors["q"] = [$"At most {MaxQueryLength} characters."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(System) && !HealthSystemService.IsSystemId(System.Trim()))
+        {
+            errors["system"] = ["A health system ID, e.g. HSI00000010."];
         }
 
         if (!string.IsNullOrWhiteSpace(Type) && FacilityTypes.Find(Type) is null)
@@ -488,8 +534,11 @@ public sealed class FacilityDirectory : IDisposable
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             DateOnly? changedSince = filter.OwnershipChangedWithinYears is { } years ? today.AddYears(-years) : null;
             DateOnly? penaltySince = filter.HasPenalties == true ? today.AddYears(-FacilityFilter.PenaltyYears) : null;
+            var system = string.IsNullOrWhiteSpace(filter.System) ? null : filter.System.Trim();
             return rows.Where(e =>
                 (type is null || e.Item.Type == type)
+                && (system is null || string.Equals(e.Item.SystemId, system, StringComparison.OrdinalIgnoreCase))
+                && (filter.In340B is not { } in340b || (e.Item.Program340B is not null) == in340b)
                 && (state is null || e.Item.State == state)
                 && (byCcn || status switch { FacilityFilter.StatusClosed => !e.Item.Active, FacilityFilter.StatusAll => true, _ => e.Item.Active })
                 && (filter.MinRating is not { } min || e.Item.Rating >= min)
@@ -538,7 +587,8 @@ public sealed class FacilityDirectory : IDisposable
     // Types as MySqlConnector returns them (Dapper maps records by constructor).
     private sealed record DirectoryRow(string Ccn, string Type, string? Kind, string Name, string? Address, string? City, string? State, string? Zip5,
         string? Phone, string? Ownership, int? Beds, double? Rating, long Active, DateTime? TerminationDate, string? TerminationReason, int BillingNpis,
-        double? Lat, double? Lon, DateTime? OwnershipChanged, int Penalties, double? Fines, DateTime? LastPenalty);
+        double? Lat, double? Lon, DateTime? OwnershipChanged, int Penalties, double? Fines, DateTime? LastPenalty, string Source, string? SystemId,
+        string? SystemName, string? HealthCenter, string? Website, string? Program340B, DateTime? Since340B);
 
     private sealed record ChangeRow(string Ccn, DateTime Changed);
 
@@ -562,7 +612,9 @@ public sealed class FacilityDirectory : IDisposable
                 SELECT ccn AS Ccn, type AS Type, kind AS Kind, name AS Name, address AS Address, city AS City, state AS State, zip5 AS Zip5, phone AS Phone,
                        ownership AS Ownership, beds AS Beds, rating AS Rating, CAST(active AS SIGNED) AS Active, termination_date AS TerminationDate,
                        termination_reason AS TerminationReason, billing_npis AS BillingNpis, lat AS Lat, lon AS Lon,
-                       ownership_changed AS OwnershipChanged, penalties AS Penalties, fines AS Fines, last_penalty AS LastPenalty
+                       ownership_changed AS OwnershipChanged, penalties AS Penalties, fines AS Fines, last_penalty AS LastPenalty, source AS Source,
+                       system_id AS SystemId, system_name AS SystemName, health_center AS HealthCenter, website AS Website,
+                       program_340b AS Program340B, since_340b AS Since340B
                 FROM directory_facility
                 """, cancellationToken: ct))).ToList();
         }
@@ -576,6 +628,8 @@ public sealed class FacilityDirectory : IDisposable
                 r.TerminationDate is { } d ? DateOnly.FromDateTime(d) : null, r.TerminationReason, r.BillingNpis, r.Lat, r.Lon)
             {
                 LastOwnershipChange = Date(r.OwnershipChanged), Penalties = r.Penalties, Fines = r.Fines, LastPenalty = Date(r.LastPenalty),
+                Source = r.Source, SystemId = r.SystemId, SystemName = r.SystemName, HealthCenter = r.HealthCenter, Website = r.Website,
+                Program340B = r.Program340B, Program340BSince = r.Since340B is { } since ? DateOnly.FromDateTime(since) : null,
             })
             .ToList());
     }
@@ -634,6 +688,7 @@ public sealed class FacilityDirectory : IDisposable
         var penalties = await connection.QueryAsync<PenaltyRow>(new CommandDefinition(
             "SELECT ccn AS Ccn, COUNT(*) AS Penalties, SUM(fine_amount) AS Fines, MAX(penalty_date) AS Last FROM nh_penalty GROUP BY ccn",
             commandTimeout: timeout, cancellationToken: ct));
+        var networks = await FacilityNetworks.ReadAsync(connection, timeout, ct);
         return Merge(pos.Select(p => new PosFacility(p.Ccn, p.Name, p.Address, p.City, p.State, p.Zip5, p.Active != 0, p.TerminationCode,
                 p.TerminationDate is { } d ? DateOnly.FromDateTime(d) : null)),
             listed.Select(l => new ListedFacility(l.Type, l.Row.Ccn, l.Row.Name, l.Row.Address, l.Row.City, l.Row.State, l.Row.Zip, l.Row.Phone,
@@ -641,7 +696,8 @@ public sealed class FacilityDirectory : IDisposable
             npis.Select(n => (n.Ccn, n.Kind, (int)n.Npis)),
             centroids.ToDictionary(c => c.Zip5, c => (c.Lat, c.Lon)),
             changes.ToDictionary(c => c.Ccn.Trim(), c => DateOnly.FromDateTime(c.Changed), StringComparer.OrdinalIgnoreCase),
-            penalties.ToDictionary(p => p.Ccn.Trim(), p => new FacilityPenalties((int)p.Penalties, p.Fines, Date(p.Last)), StringComparer.OrdinalIgnoreCase));
+            penalties.ToDictionary(p => p.Ccn.Trim(), p => new FacilityPenalties((int)p.Penalties, p.Fines, Date(p.Last)), StringComparer.OrdinalIgnoreCase),
+            networks);
     }
 
     private static DateOnly? Date(DateTime? value) => value is { } d ? DateOnly.FromDateTime(d) : null;
@@ -677,9 +733,14 @@ public sealed class FacilityDirectory : IDisposable
     /// now; otherwise the Provider of Services file says whether its certification ended. Facilities without a name are left out.
     /// <paramref name="ownershipChanges"/> (the newest change of ownership) and <paramref name="penalties"/> are by CCN.
     /// </summary>
+    /// <param name="networks">
+    /// Health systems by CCN and HRSA's health center sites (docs/PRODUCT_PLAN.md step 3.6 part 2); null: none. See
+    /// <see cref="FacilityNetworks.Apply"/>.
+    /// </param>
     public static IReadOnlyList<FacilitySummary> Merge(IEnumerable<PosFacility> pos, IEnumerable<ListedFacility> listed,
         IEnumerable<(string Ccn, string Kind, int Npis)> npis, IReadOnlyDictionary<string, (double Lat, double Lon)> centroids,
-        IReadOnlyDictionary<string, DateOnly>? ownershipChanges = null, IReadOnlyDictionary<string, FacilityPenalties>? penalties = null)
+        IReadOnlyDictionary<string, DateOnly>? ownershipChanges = null, IReadOnlyDictionary<string, FacilityPenalties>? penalties = null,
+        FacilityNetworks? networks = null)
     {
         var byCcn = new Dictionary<string, PosFacility>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in pos)
@@ -733,7 +794,7 @@ public sealed class FacilityDirectory : IDisposable
             });
         }
 
-        return result;
+        return networks is null ? result : networks.Apply(result, centroids);
     }
 
     private static string? FirstFive(string? zip) => zip is { Length: >= 5 } && zip[..5].All(char.IsAsciiDigit) ? zip[..5] : null;
@@ -745,7 +806,8 @@ public static class FacilityCsv
     public static readonly string[] Header =
     [
         "CCN", "Facility", "Type", "Kind", "Address", "City", "State", "ZIP", "Phone", "Ownership", "Certified Beds", "CMS Star Rating", "Status",
-        "Certification Ended", "Reason", "Billing NPIs", "Last Ownership Change", "Penalties (3 Years)", "Fines (3 Years)", "Page",
+        "Certification Ended", "Reason", "Billing NPIs", "Last Ownership Change", "Penalties (3 Years)", "Fines (3 Years)", "Health System",
+        "Health Center (HRSA)", "340B Entity Type", "340B Since", "Page",
     ];
 
     public static Task<long> WriteAsync(IAsyncEnumerable<FacilitySummary> rows, Stream output, string siteBase, CancellationToken ct) =>
@@ -756,6 +818,8 @@ public static class FacilityCsv
             f.TerminationDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), f.TerminationReason,
             f.BillingNpis.ToString(CultureInfo.InvariantCulture), f.LastOwnershipChange?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             f.Penalties > 0 ? f.Penalties.ToString(CultureInfo.InvariantCulture) : null, f.Fines?.ToString("0.##", CultureInfo.InvariantCulture),
-            $"{siteBase}/facility/{Uri.EscapeDataString(f.Ccn)}",
+            f.SystemName, f.HealthCenter,
+            f.Program340B is null ? null : Program340B.TypeName(f.Program340B), f.Program340BSince?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            siteBase + f.PagePath,
         ], ct);
 }

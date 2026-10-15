@@ -57,7 +57,7 @@ public sealed class FacilitySummary
     /// <summary>Active NPIs CMS's enrollment files, the dialysis facility report or the surgery center file link to the facility.</summary>
     public int BillingNpis { get; set; }
 
-    /// <summary>The centre of the facility's ZIP code (approximate).</summary>
+    /// <summary>The centre of the facility's ZIP code (approximate); for an HRSA site, HRSA's point of it.</summary>
     public double? Latitude { get; set; }
 
     public double? Longitude { get; set; }
@@ -72,6 +72,28 @@ public sealed class FacilitySummary
     public double? Fines { get; set; }
 
     public DateTime? LastPenalty { get; set; }
+    /// <summary>
+    /// "cms": a facility in CMS's files, by its CCN. "hrsa": a health center site only HRSA lists (type health_center); <see cref="Ccn"/>
+    /// then holds HRSA's site number (see <see cref="NpiClient.GetHealthCenterSiteAsync"/>).
+    /// </summary>
+    public string Source { get; set; } = "cms";
+
+    /// <summary>The health system it belongs to (AHRQ Compendium, by CCN), when any.</summary>
+    public string? SystemId { get; set; }
+
+    public string? SystemName { get; set; }
+
+    /// <summary>The HRSA-funded health center (or look-alike) it is a site of.</summary>
+    public string? HealthCenter { get; set; }
+
+    /// <summary>Its website as HRSA lists it.</summary>
+    public string? Website { get; set; }
+
+    /// <summary>A participating 340B covered entity's type code (DSH, CAH, CH …) when the facility is one (HRSA OPAIS); null otherwise.</summary>
+    public string? Program340B { get; set; }
+
+    /// <summary>When that 340B participation started.</summary>
+    public DateTime? Program340BSince { get; set; }
 }
 
 /// <summary>A page of Medicare group practices (/api/v1/groups).</summary>
@@ -158,6 +180,15 @@ public sealed class FacilityProfile
 
     /// <summary>A nursing home's inspections and penalties, when the server includes them (they also have their own endpoint).</summary>
     public NursingHomeInspections? Inspections { get; set; }
+
+    /// <summary>The health systems it belongs to (AHRQ Compendium of U.S. Health Systems, by CCN).</summary>
+    public IReadOnlyList<HealthSystemLink> Systems { get; set; } = [];
+
+    /// <summary>The HRSA health center sites it is (by the Medicare number HRSA lists, or an NPI CMS links to the CCN).</summary>
+    public IReadOnlyList<HealthCenterSite> HealthCenterSites { get; set; } = [];
+
+    /// <summary>Its 340B registrations (HRSA OPAIS), participating first, each with how it matched (ccn, npi or site).</summary>
+    public IReadOnlyList<Covered340BEntity> Covered340B { get; set; } = [];
 }
 
 /// <summary>A facility's certification in CMS's Provider of Services file: active, or ended on <see cref="TerminationDate"/>.</summary>

@@ -192,6 +192,11 @@
             </section>
         }
     }
+    @if (!Model.IsPerson)
+    {
+        <partial name="_HealthSystemNote" model="new HealthSystemNote(HealthSystemNote.Npi, Model.Npi)" />
+        <partial name="_AcoNote" model="new HealthSystemNote(HealthSystemNote.Npi, Model.Npi)" />
+    }
     @if (!Model.IsPerson && p.Profile is { } responsible && (responsible.AuthorizedOfficial is not null || responsible.ParentOrganization is not null))
     {
         <section class="card" aria-labelledby="resp-h">
