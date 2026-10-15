@@ -257,7 +257,27 @@ internal static class CaliforniaAccess
         ("CourtOrder", "DateOfAction", "DescriptionOfAction", null),
     ];
 
+    // One read at a time in the process: the ACE provider crashed the process (SEHException, then 0xC0000005 in
+    // OleDbServicesWrapper.GetDataSource) when two tests opened their databases at once. The loader reads one CA file a run.
+    private static readonly SemaphoreSlim OneAtATime = new(1, 1);
+
     public static IEnumerable<AssembledStateDataset.Row> Read(string database)
+    {
+        OneAtATime.Wait();
+        try
+        {
+            foreach (var row in ReadOne(database))
+            {
+                yield return row;
+            }
+        }
+        finally
+        {
+            OneAtATime.Release();
+        }
+    }
+
+    private static IEnumerable<AssembledStateDataset.Row> ReadOne(string database)
     {
         using var connection = new OleDbConnection($"Provider=Microsoft.ACE.OLEDB.16.0;Data Source={database};Mode=Read;");
         connection.Open();
