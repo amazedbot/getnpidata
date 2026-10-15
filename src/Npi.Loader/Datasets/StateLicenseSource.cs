@@ -408,12 +408,22 @@ public sealed class StateLicenseSource : DatasetSource
         var versions = Datasets.Select((d, i) => (d.State, Version: found[i])).ToList();
 
         context.Log.Information("State licenses versions: {Versions}", string.Join(" | ", versions.Select(v => $"{v.State} {v.Version ?? "none"}")));
-        _versions = versions;
-        return new DatasetRelease(CombineVersions(versions), new Uri("https://data.cms.gov/"));
+        return new StateLicenseRelease(CombineVersions(versions), new Uri("https://data.cms.gov/"), versions);
     }
 
-    // The versions FindLatestAsync found, one per dataset in Datasets order (LoadAsync follows it in the same run).
-    private IReadOnlyList<(string State, string? Version)>? _versions;
+    /// <summary>
+    /// What <see cref="FindLatestAsync"/> found: the combined version and each dataset's own, in <see cref="Datasets"/> order, for
+    /// <see cref="LoadAsync"/>. They travel with the release, not on this object: one instance serves every refresh in the process
+    /// (<see cref="DatasetLoader.AllSources"/>), and a field set by one refresh's probe was read by another's load running at the
+    /// same time, which then removed the states it had files for.
+    /// </summary>
+    public sealed record StateLicenseRelease : DatasetRelease
+    {
+        public StateLicenseRelease(string version, Uri url, IReadOnlyList<(string State, string? Version)> states)
+            : base(version, url) => States = states;
+
+        public IReadOnlyList<(string State, string? Version)> States { get; }
+    }
 
     /// <summary>
     /// One short version for all the datasets (reference_data.version holds 200 characters): the states with data and a
@@ -460,7 +470,9 @@ public sealed class StateLicenseSource : DatasetSource
     /// <returns>The rows in provider_state_license afterwards.</returns>
     public override async Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct)
     {
-        var versions = _versions ?? await Task.WhenAll(Datasets.Select(async d => (d.State, await d.VersionAsync(context, ct))));
+        var versions = release is StateLicenseRelease found
+            ? found.States
+            : await Task.WhenAll(Datasets.Select(async d => (d.State, await d.VersionAsync(context, ct))));
         await using var connection = await context.Database.OpenAsync(ct);
         var stored = (await connection.QueryAsync<(string State, string Version)>(new CommandDefinition(
                 "SELECT `state`, `version` FROM `state_license_version`", cancellationToken: ct)))

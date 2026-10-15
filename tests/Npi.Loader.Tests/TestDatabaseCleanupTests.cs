@@ -30,6 +30,21 @@ public class TestDatabaseCleanupTests
     public void Only_old_test_databases_are_stale(string name, bool stale) =>
         Assert.Equal(stale, TestDatabase.IsStale(name, Now - TestDatabase.StaleAfter, "abcdef012345"));
 
+    [Theory]
+    [InlineData("npi_test_it_pool_0123456789ab_03", "0123456789ab")]
+    [InlineData("npi_test_it_pool_0123456789ab_tpl", "0123456789ab")]
+    [InlineData("npi_test_it_20261009194500_ab12cd34", null)]
+    [InlineData("npi_test_it_run_0123456789ab_00", null)]
+    [InlineData("workplace", null)]
+    public void Pool_databases_name_their_schema(string name, string? schema) => Assert.Equal(schema, TestDatabase.PoolSchema(name));
+
+    [Fact]
+    public void Run_locks_are_named_per_schema_and_slot()
+    {
+        Assert.Equal("npi_test_it_run_0123456789ab_07", TestDatabase.RunLockName("0123456789ab", 7));
+        Assert.True(TestDatabase.RunLockName("0123456789ab", TestDatabase.RunSlots - 1).Length <= 64); // MySQL's limit for a lock name
+    }
+
     [Fact]
     public void The_schema_hash_covers_every_migration() =>
         Assert.Matches("^[0-9a-f]{12}$", TestDatabase.SchemaHash);
