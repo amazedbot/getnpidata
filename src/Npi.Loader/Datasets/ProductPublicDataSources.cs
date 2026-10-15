@@ -296,7 +296,8 @@ public abstract class ProductApiCacheSource : DatasetSource
     /// </summary>
     protected static async Task<JsonDocument?> GetJsonAsync(DatasetContext context, string url, CancellationToken ct)
     {
-        // A server error (openFDA answers 500 now and then) is retried twice, then the product is skipped until the next run.
+        // A server error (openFDA answers 500 now and then) or a dropped connection is retried twice, then the product is
+        // skipped until the next run.
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -305,14 +306,24 @@ public abstract class ProductApiCacheSource : DatasetSource
             }
             catch (UnavailableException) when (attempt < 3)
             {
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
+                await Task.Delay(context.Options.ApiRetryDelay * attempt, ct);
             }
         }
     }
 
     private static async Task<JsonDocument?> GetOnceAsync(DatasetContext context, string url, CancellationToken ct)
     {
-        using var response = await context.Http.GetAsync(url, ct);
+        HttpResponseMessage answer;
+        try
+        {
+            answer = await context.Http.GetAsync(url, ct);
+        }
+        catch (Exception e) when (e is HttpRequestException || (e is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            throw new UnavailableException(); // no connection, or HttpClient's timeout
+        }
+
+        using var response = answer;
         if ((int)response.StatusCode >= 500)
         {
             throw new UnavailableException();
@@ -343,6 +354,175 @@ public abstract class ProductApiCacheSource : DatasetSource
     protected sealed class RejectedException : Exception;
 
     protected sealed class UnavailableException : Exception;
+
+    /// <summary>How a run of an API cache ended.</summary>
+    internal enum Stop
+    {
+        /// <summary>Every product was asked.</summary>
+        Finished,
+
+        /// <summary>The API answered 429: the rest wait for the next run.</summary>
+        RateLimited,
+
+        /// <summary><see cref="LoaderOptions.ApiFailuresInARow"/> products in a row kept failing: the rest wait for the next run.</summary>
+        KeptFailing,
+    }
+
+    /// <summary>
+    /// Asks about every item, up to <paramref name="parallel"/> at once (the pace is set inside <paramref name="ask"/>), and
+    /// saves each answer as soon as it comes, one save at a time, so a stopped run keeps what it saved. <paramref name="ask"/>
+    /// returns null when the API kept failing for that item (asked again on the next run). A rate limit (429), or
+    /// <paramref name="failuresInARow"/> items in a row that kept failing, stops the run early without failing it: no new
+    /// item starts, the requests in flight are cancelled and their items wait for the next run, like the rest.
+    /// </summary>
+    internal static async Task<(long Saved, Stop Stop)> AskAllAsync<TItem, TAnswer>(IReadOnlyList<TItem> items, int parallel, int failuresInARow,
+        Func<TItem, CancellationToken, Task<TAnswer?>> ask, Func<TItem, TAnswer, CancellationToken, Task> save, CancellationToken ct)
+        where TAnswer : class
+    {
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var write = new SemaphoreSlim(1, 1);
+        var saved = 0L;
+        var failing = 0;
+        var stop = (int)Stop.Finished;
+
+        void StopWith(Stop reason)
+        {
+            Interlocked.CompareExchange(ref stop, (int)reason, (int)Stop.Finished);
+            stopping.Cancel();
+        }
+
+        try
+        {
+            await Parallel.ForEachAsync(items, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, parallel), CancellationToken = stopping.Token },
+                async (item, token) =>
+                {
+                    TAnswer? answer;
+                    try
+                    {
+                        answer = await ask(item, token);
+                    }
+                    catch (RateLimitedException)
+                    {
+                        StopWith(Stop.RateLimited);
+                        return;
+                    }
+                    catch (OperationCanceledException) when (stopping.IsCancellationRequested && !ct.IsCancellationRequested)
+                    {
+                        return; // stopped while in flight: asked again on the next run
+                    }
+
+                    if (answer is null)
+                    {
+                        if (Interlocked.Increment(ref failing) >= Math.Max(1, failuresInARow))
+                        {
+                            StopWith(Stop.KeptFailing);
+                        }
+
+                        return;
+                    }
+
+                    Interlocked.Exchange(ref failing, 0);
+                    await write.WaitAsync(ct); // the run's own token: a save under way finishes even when the run stops
+                    try
+                    {
+                        await save(item, answer, ct);
+                        saved++;
+                    }
+                    finally
+                    {
+                        write.Release();
+                    }
+                });
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // Stopped early: Parallel.ForEachAsync started no new item after that.
+        }
+
+        return (saved, (Stop)stop);
+    }
+
+    /// <summary>Says why a run stopped early (a warning, not a failure: the rest are asked on the next run).</summary>
+    private protected static void LogStop(DatasetContext context, string api, Stop stop, long done)
+    {
+        if (stop == Stop.RateLimited)
+        {
+            context.Log.Warning("{Api} rate limit reached after {Done:N0} products; the rest continue on the next run", api, done);
+        }
+        else if (stop == Stop.KeptFailing)
+        {
+            context.Log.Warning("{Api} kept failing for {Failures} products in a row after {Done:N0} were saved; stopped early, the rest continue on the next run",
+                api, context.Options.ApiFailuresInARow, done);
+        }
+    }
+
+    /// <summary>
+    /// Spaces requests, however many run at once: each <see cref="StartAsync"/> waits until <c>interval</c> after the
+    /// previous request started, or, with <c>fromEnd</c> (one at a time), after it ended (dispose the result when it ends).
+    /// </summary>
+    internal sealed class Pacer(TimeSpan interval, bool fromEnd = false) : IDisposable
+    {
+        private readonly SemaphoreSlim _gate = new(1, 1);
+        private readonly Lock _lock = new();
+        private readonly TimeSpan _interval = interval;
+        private DateTime _next = DateTime.MinValue;
+
+        public async Task<IDisposable> StartAsync(CancellationToken ct)
+        {
+            await _gate.WaitAsync(ct);
+            try
+            {
+                TimeSpan wait;
+                lock (_lock)
+                {
+                    wait = _next - DateTime.UtcNow;
+                }
+
+                if (wait > TimeSpan.Zero)
+                {
+                    await Task.Delay(wait, ct);
+                }
+
+                if (!fromEnd)
+                {
+                    lock (_lock)
+                    {
+                        _next = DateTime.UtcNow + _interval;
+                    }
+                }
+            }
+            finally
+            {
+                _gate.Release();
+            }
+
+            return fromEnd ? new Ended(this) : NoEnd.Instance;
+        }
+
+        public void Dispose() => _gate.Dispose();
+
+        private void End()
+        {
+            lock (_lock)
+            {
+                _next = DateTime.UtcNow + _interval;
+            }
+        }
+
+        private sealed class Ended(Pacer pacer) : IDisposable
+        {
+            public void Dispose() => pacer.End();
+        }
+
+        private sealed class NoEnd : IDisposable
+        {
+            public static readonly NoEnd Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
 
     /// <summary>A name the APIs can search: letters, digits, spaces and - . / + only, spaces collapsed.</summary>
     public static string Clean(string name) =>
@@ -416,49 +596,34 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
             candidates.Count, drugsExported, devicesExported, parallel);
 
         using var pacer = new Pacer(keyed ? context.Options.OpenFdaKeyedRequestInterval : context.Options.ApiRequestDelay);
-        using var write = new SemaphoreSlim(1, 1);
-        var done = 0L;
-        try
-        {
-            await Parallel.ForEachAsync(candidates, new ParallelOptions { MaxDegreeOfParallelism = parallel, CancellationToken = ct },
-                async (candidate, token) =>
+        var (done, stop) = await AskAllAsync(candidates, parallel, context.Options.ApiFailuresInARow,
+            async (candidate, token) =>
+            {
+                using (await pacer.StartAsync(token))
                 {
-                    var (slug, kind, query) = candidate;
-                    await pacer.WaitAsync(token);
-                    var counts = await AskAsync(context, kind, query, key, token);
-                    if (counts is null)
-                    {
-                        return; // kept failing: asked again on the next run
-                    }
-
-                    var (reports, serious, deaths, injuries, malfunctions) = counts.Value;
-                    await write.WaitAsync(ct);
-                    try
-                    {
-                        await connection.ExecuteAsync(new CommandDefinition(
-                            """
-                            INSERT INTO `product_adverse_events` (`slug`, `kind`, `query_name`, `reports`, `serious`, `deaths`, `injuries`, `malfunctions`, `fetched_at`)
-                            VALUES (@slug, @kind, @query, @reports, @serious, @deaths, @injuries, @malfunctions, UTC_TIMESTAMP())
-                            ON DUPLICATE KEY UPDATE `kind` = VALUES(`kind`), `query_name` = VALUES(`query_name`), `reports` = VALUES(`reports`), `serious` = VALUES(`serious`),
-                              `deaths` = VALUES(`deaths`), `injuries` = VALUES(`injuries`), `malfunctions` = VALUES(`malfunctions`), `fetched_at` = VALUES(`fetched_at`)
-                            """, new { slug, kind, query = CompanyRecords.Trim(query, 500), reports, serious, deaths, injuries, malfunctions }, cancellationToken: ct));
-                        done++;
-                    }
-                    finally
-                    {
-                        write.Release();
-                    }
-                });
-        }
-        catch (RateLimitedException)
-        {
-            // Parallel.ForEachAsync stops starting new products and lets the ones in flight finish first.
-            context.Log.Warning("openFDA rate limit reached after {Done:N0} products; the rest continue on the next run", done);
-        }
-
+                    return await AskAsync(context, candidate.Kind, candidate.Query, key, token);
+                }
+            },
+            (candidate, counts, token) => connection.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO `product_adverse_events` (`slug`, `kind`, `query_name`, `reports`, `serious`, `deaths`, `injuries`, `malfunctions`, `fetched_at`)
+                VALUES (@slug, @kind, @query, @reports, @serious, @deaths, @injuries, @malfunctions, UTC_TIMESTAMP())
+                ON DUPLICATE KEY UPDATE `kind` = VALUES(`kind`), `query_name` = VALUES(`query_name`), `reports` = VALUES(`reports`), `serious` = VALUES(`serious`),
+                  `deaths` = VALUES(`deaths`), `injuries` = VALUES(`injuries`), `malfunctions` = VALUES(`malfunctions`), `fetched_at` = VALUES(`fetched_at`)
+                """,
+                new
+                {
+                    slug = candidate.Slug, kind = candidate.Kind, query = CompanyRecords.Trim(candidate.Query, 500), reports = counts.Reports, serious = counts.Serious,
+                    deaths = counts.Deaths, injuries = counts.Injuries, malfunctions = counts.Malfunctions,
+                }, cancellationToken: token)),
+            ct);
+        LogStop(context, "openFDA", stop, done);
         context.Log.Information("Adverse event counts: {Done:N0} products asked", done);
         return done;
     }
+
+    /// <summary>One product's counts; all null when openFDA refused the name (stored as unknown).</summary>
+    private sealed record Counts(int? Reports, int? Serious, int? Deaths, int? Injuries, int? Malfunctions);
 
     private static DateTime Exported(string part, string prefix) =>
         DateTime.ParseExact(part[prefix.Length..], "yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -467,8 +632,7 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
     /// One product's counts: all null when openFDA refuses the name (stored as unknown), null when it kept failing; a rate
     /// limit (429) is thrown and stops the run.
     /// </summary>
-    private static async Task<(int? Reports, int? Serious, int? Deaths, int? Injuries, int? Malfunctions)?> AskAsync(DatasetContext context, string kind,
-        string query, string key, CancellationToken ct)
+    private static async Task<Counts?> AskAsync(DatasetContext context, string kind, string query, string key, CancellationToken ct)
     {
         int? reports = null, serious = null, deaths = null, injuries = null, malfunctions = null;
         {
@@ -502,35 +666,7 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
             }
         }
 
-        return (reports, serious, deaths, injuries, malfunctions);
-    }
-
-    /// <summary>Lets callers start at most one request per <c>interval</c>, however many run at once.</summary>
-    private sealed class Pacer(TimeSpan interval) : IDisposable
-    {
-        private readonly SemaphoreSlim _gate = new(1, 1);
-        private DateTime _next = DateTime.MinValue;
-
-        public async Task WaitAsync(CancellationToken ct)
-        {
-            await _gate.WaitAsync(ct);
-            try
-            {
-                var wait = _next - DateTime.UtcNow;
-                if (wait > TimeSpan.Zero)
-                {
-                    await Task.Delay(wait, ct);
-                }
-
-                _next = DateTime.UtcNow + interval;
-            }
-            finally
-            {
-                _gate.Release();
-            }
-        }
-
-        public void Dispose() => _gate.Dispose();
+        return new Counts(reports, serious, deaths, injuries, malfunctions);
     }
 
     // count= answers: {"results": [{"term": "1", "count": 123}, …]}; none (404) → empty.
@@ -542,7 +678,14 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
 
 /// <summary>
 /// ClinicalTrials.gov study counts (part 3) for drugs and biologicals, by intervention name: their generic name from
-/// FDA's NDC directory, else the product name; all studies and those recruiting now.
+/// FDA's NDC directory, else the product name; all studies and those recruiting now. Up to
+/// <see cref="LoaderOptions.ClinicalTrialsParallelRequests"/> products at once, one request started every
+/// <see cref="LoaderOptions.ClinicalTrialsRequestInterval"/> (200 ms, at most 5 a second; speed item 11). ClinicalTrials.gov
+/// publishes no rate limit for API v2: neither https://clinicaltrials.gov/data-api/about-api nor the OpenAPI document at
+/// https://clinicaltrials.gov/api/oas/v2 names one (checked 2026-10-15), and its answers carry no rate-limit headers.
+/// Reports by other clients put a practical ceiling near 50 a minute per address, yet the one-at-a-time loop ran at
+/// ~2.5 a second for months without a 429, so 5 a second is about twice that pace, well below what a busy public API
+/// serves, and a 429 still ends the run early.
 /// </summary>
 public sealed class ProductTrialSource : ProductApiCacheSource
 {
@@ -563,42 +706,71 @@ public sealed class ProductTrialSource : ProductApiCacheSource
     public override async Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct)
     {
         await using var connection = await context.Database.OpenAsync(ct);
-        var done = 0L;
-        foreach (var (slug, _, query) in await CandidatesAsync(connection, Drugs, "product_trials", MaxAge, context.Options.ClinicalTrialsPerRun, ct))
-        {
-            int? studies = null, recruiting = null;
-            try
-            {
-                var term = Uri.EscapeDataString(Clean(query));
-                studies = Total(await GetJsonAsync(context, $"{context.Options.ClinicalTrialsApiUrl}?query.intr={term}&countTotal=true&pageSize=1&fields=NCTId", ct));
-                await Task.Delay(context.Options.ApiRequestDelay, ct);
-                recruiting = Total(await GetJsonAsync(context, $"{context.Options.ClinicalTrialsApiUrl}?query.intr={term}&filter.overallStatus=RECRUITING&countTotal=true&pageSize=1&fields=NCTId", ct));
-            }
-            catch (RateLimitedException)
-            {
-                context.Log.Warning("ClinicalTrials.gov rate limit reached after {Done:N0} products; the rest continue on the next run", done);
-                break;
-            }
-            catch (RejectedException)
-            {
-                context.Log.Debug("ClinicalTrials.gov refused the search for {Query}; stored as unknown", query);
-            }
-            catch (UnavailableException)
-            {
-                context.Log.Warning("ClinicalTrials.gov kept failing for {Query}; asked again on the next run", query);
-                continue;
-            }
-
-            await connection.ExecuteAsync(new CommandDefinition(
+        var candidates = await CandidatesAsync(connection, Drugs, "product_trials", MaxAge, context.Options.ClinicalTrialsPerRun, ct);
+        context.Log.Information("ClinicalTrials.gov counts: {Count:N0} products to ask, {Parallel} at a time", candidates.Count, ParallelRequests(context.Options));
+        var done = await AskProductsAsync(context, candidates.Select(c => (c.Slug, c.Query)).ToList(),
+            (slug, query, counts, token) => connection.ExecuteAsync(new CommandDefinition(
                 """
                 INSERT INTO `product_trials` (`slug`, `query_name`, `studies`, `recruiting`, `fetched_at`) VALUES (@slug, @query, @studies, @recruiting, UTC_TIMESTAMP())
                 ON DUPLICATE KEY UPDATE `query_name` = VALUES(`query_name`), `studies` = VALUES(`studies`), `recruiting` = VALUES(`recruiting`), `fetched_at` = VALUES(`fetched_at`)
-                """, new { slug, query = CompanyRecords.Trim(query, 500), studies, recruiting }, cancellationToken: ct));
-            done++;
-            await Task.Delay(context.Options.ApiRequestDelay, ct);
+                """, new { slug, query = CompanyRecords.Trim(query, 500), studies = counts.Studies, recruiting = counts.Recruiting }, cancellationToken: token)),
+            ct);
+        context.Log.Information("ClinicalTrials.gov counts: {Done:N0} products asked", done);
+        return done;
+    }
+
+    /// <summary>A product's study counts: all and recruiting now; both null when ClinicalTrials.gov refused the name (stored as unknown).</summary>
+    internal sealed record Counts(int? Studies, int? Recruiting);
+
+    private static int ParallelRequests(LoaderOptions options) => Math.Max(1, options.ClinicalTrialsParallelRequests);
+
+    /// <summary>
+    /// Asks ClinicalTrials.gov about each product (slug, intervention name), two requests each, and hands every answer to
+    /// <paramref name="save"/> as it comes (one save at a time, in the order they finish). Up to
+    /// <see cref="LoaderOptions.ClinicalTrialsParallelRequests"/> products at once, one request started every
+    /// <see cref="LoaderOptions.ClinicalTrialsRequestInterval"/>; with 1, one request at a time with
+    /// <see cref="LoaderOptions.ApiRequestDelay"/> after each, as before. A 429, or <see cref="LoaderOptions.ApiFailuresInARow"/>
+    /// products in a row that kept failing, ends the run early: the rest are asked on the next one. Returns the products saved.
+    /// </summary>
+    internal static async Task<long> AskProductsAsync(DatasetContext context, IReadOnlyList<(string Slug, string Query)> products,
+        Func<string, string, Counts, CancellationToken, Task> save, CancellationToken ct)
+    {
+        var options = context.Options;
+        var parallel = ParallelRequests(options);
+        using var pacer = parallel == 1 ? new Pacer(options.ApiRequestDelay, fromEnd: true) : new Pacer(options.ClinicalTrialsRequestInterval);
+
+        async Task<int?> TotalAsync(string url, CancellationToken token)
+        {
+            using (await pacer.StartAsync(token))
+            {
+                return Total(await GetJsonAsync(context, url, token));
+            }
         }
 
-        context.Log.Information("ClinicalTrials.gov counts: {Done:N0} products asked", done);
+        var (done, stop) = await AskAllAsync(products, parallel, options.ApiFailuresInARow,
+            async (product, token) =>
+            {
+                try
+                {
+                    var term = Uri.EscapeDataString(Clean(product.Query));
+                    var studies = await TotalAsync($"{options.ClinicalTrialsApiUrl}?query.intr={term}&countTotal=true&pageSize=1&fields=NCTId", token);
+                    var recruiting = await TotalAsync($"{options.ClinicalTrialsApiUrl}?query.intr={term}&filter.overallStatus=RECRUITING&countTotal=true&pageSize=1&fields=NCTId", token);
+                    return new Counts(studies, recruiting);
+                }
+                catch (RejectedException)
+                {
+                    context.Log.Debug("ClinicalTrials.gov refused the search for {Query}; stored as unknown", product.Query);
+                    return new Counts(null, null);
+                }
+                catch (UnavailableException)
+                {
+                    context.Log.Warning("ClinicalTrials.gov kept failing for {Query}; asked again on the next run", product.Query);
+                    return null;
+                }
+            },
+            (product, counts, token) => save(product.Slug, product.Query, counts, token),
+            ct);
+        LogStop(context, "ClinicalTrials.gov", stop, done);
         return done;
     }
 

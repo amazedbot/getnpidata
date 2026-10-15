@@ -124,8 +124,29 @@ public sealed class LoaderOptions
     /// <summary>Products asked about per run (two requests each).</summary>
     public int ClinicalTrialsPerRun { get; set; } = 600;
 
+    /// <summary>
+    /// ClinicalTrials.gov products asked at once (speed item 11). 1 = one request at a time with <see cref="ApiRequestDelay"/>
+    /// after each, as before.
+    /// </summary>
+    public int ClinicalTrialsParallelRequests { get; set; } = 4;
+
+    /// <summary>
+    /// With more than one ClinicalTrials.gov product at once: one request started every this often, 5 a second at most.
+    /// NLM publishes no rate limit for API v2 (its about-api page and the OpenAPI document at /api/oas/v2 have none, checked
+    /// 2026-10-15), so this stays modest: an answer takes ~0.1 s, so the requests in flight only cover slow answers and the
+    /// interval sets the pace; about twice the rate of the one-at-a-time loop (~2.4 a second), which never saw a 429; a 429
+    /// stops the run.
+    /// </summary>
+    public TimeSpan ClinicalTrialsRequestInterval { get; set; } = TimeSpan.FromMilliseconds(200);
+
     /// <summary>Pause between requests to the public APIs (openFDA allows 240 a minute).</summary>
     public TimeSpan ApiRequestDelay { get; set; } = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>The API caches retry a server error (5xx) or a dropped connection after this, then after twice this, then skip the product.</summary>
+    public TimeSpan ApiRetryDelay { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>The API caches stop a run early (not as a failure) after this many products in a row kept failing.</summary>
+    public int ApiFailuresInARow { get; set; } = 5;
 
     /// <summary>US Census Bureau batch geocoder (Stage 5.5 item 10, map search).</summary>
     public string CensusGeocoderUrl { get; set; } = "https://geocoding.geo.census.gov/geocoder/locations/addressbatch";
