@@ -16,26 +16,26 @@ Fixes the owner found (2026-10-14), one pull request each:
 - ~~**A:** nationwide lists and exports: no filter required, category alone, `quality` / `addressType` alone, the ready-made file of every provider rebuilt by the loader, Excel over its limit refused with a note, the pager says how many pages can be browsed~~ (2026-10-14, PRs #83 and #84)
 - ~~**B:** the map's filters laid out like the search page's, one "Search in this area" button, a clear message when the area is too large~~ (2026-10-15)
 - ~~**C:** the map's area as a list and a CSV (a `bbox` filter in the list, the exports, the API and the client)~~ (2026-10-15)
+- ~~**Listings that confirm** (owner, 2026-10-15): an open Overture listing is a sign of practice only when a confirming source backs it; a 10+ year old record with only a listing is Check~~ (2026-10-15)
 
 ## Next, in order
 
 1. **Speed items 6, 7, 13:**
-   - 6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull;
+   - ~~6: Socrata delta pulls (TX, WA, IL, CO, CT, DE) with a periodic full pull~~ dropped (owner, 2026-10-15): only Connecticut publishes real deltas (about 32,000 of 1.88M rows a week); TX, CO, DE and NY replace every row at each update and WA and IL re-touch every row daily, so it would save 1–2 min a week;
    - 7: independent sources, states and the Vermont feed in parallel (2–4 at a time);
    - 13: build the map-by-credential table once; run credentials, address types and area counts side by side.
 2. **Phase 3, the rest** (data quality signals and change history):
    - **New data, approved 2026-10-13 (not built yet):**
      - **Older Medicare years, 2013–2023** (Part B by provider and Part D prescribers by provider, data.cms.gov), shown as "last billed Medicare in [year]" and as a reason on the quality label.
    - **Step 3.6 (owner, 2026-10-14):** a **"Facilities & hospitals"** home page (`/facilities`, `/hospitals` opening it on hospitals: every certified facility by type, filters, map, ratings, exports) and a **"Groups & organizations"** home page (`/organizations`, `/groups`: Medicare groups and organization NPIs, exports), both in the menu, built from data already loaded. Proposed new sources for those pages and the profiles (PRODUCT_PLAN.md Phase 3; each needs a yes): CMS All Owners and Change of Ownership files, the AHRQ health systems compendium, hospital cost reports and Form 990s, Medicare inpatient/outpatient hospital services, more Care Compare files (dialysis, surgery centres, rehab and long-term care hospitals, nursing home inspections and penalties), HIFLD hospitals, HRSA health center sites, UDS and 340B, and the ACO files.
-   - **Step 3.7 (owner, 2026-10-14; researched, not built):** more states' Medicaid enrollment. Florida's Provider Master List (public, weekly, by NPI) is confirmed and is added like NY and CA. The national HHS "Medicaid Provider Enrollment Segments" (every state, 2018–2024 history) and "Medicaid Provider Spending by HCPCS" (Medicaid billing, 2018–2024) are proposals that need a yes. Texas, New Jersey, Pennsylvania, Ohio and Maine publish no bulk list (PRODUCT_PLAN.md Phase 3).
-   - **Step 3.3:** change pages ("Changes in [county] this month", "New practices", "Closed or moved") and monthly change counts on county pages.
+   - **Step 3.6 part 2, new sources (owner approved 2026-10-15: "any new sources you deem best"), after the pages:** CMS All Owners and Change of Ownership files; Care Compare dialysis facilities, ambulatory surgical centers, inpatient rehabilitation and long-term care hospitals; nursing home health and fire safety deficiencies and penalties; Medicare Inpatient and Outpatient Hospitals by Provider; more Care Compare hospital measures; DHS HIFLD Hospitals; HRSA Health Center Service Delivery Sites and 340B covered entities; the Medicare Shared Savings Program ACO files; the AHRQ Compendium of U.S. Health Systems. Left for later: hospital cost reports (HCRIS), Form 990s and UDS (complex formats or uncertain matching). Each source's current file and fields are checked before it is built.
+   - **Step 3.7 (owner, 2026-10-14; researched, not built; sources approved 2026-10-15, not to be added yet):** more states' Medicaid enrollment. Florida's Provider Master List (public, weekly, by NPI), added like NY and CA, and the national HHS "Medicaid Provider Enrollment Segments" (every state, 2018–2024 history) and "Medicaid Provider Spending by HCPCS" (Medicaid billing, 2018–2024) are approved; build when the owner says so. Texas, New Jersey, Pennsylvania, Ohio and Maine publish no bulk list (PRODUCT_PLAN.md Phase 3).
+   - **Step 3.3 (scope clarified by the owner, 2026-10-15):** part of **Areas**: a more analytical, statistics-based Areas section with changes over time easy to see, at the country, state and county level (for now); a JavaScript map that shows the statistics down to the county level; shortage areas shown; once the NBER history (step 3.4) is in, the statistics go back in time, not only since recording started on 2026-10-09.
    - **Step 3.4, approved 2026-10-13:** history before October 2026 from the NBER archive of past NPPES monthly files, for trends, analytics and statistics (a large download, one file per period).
 
 ## Waiting for the owner
 
 **Decisions:**
-- **Step 3.6 sources:** which of the proposed sources for the facility and organization pages to add (PRODUCT_PLAN.md Phase 3 step 3.6).
-- **Step 3.7 sources:** the national T-MSIS Medicaid enrollment history and Medicaid billing files (opendata.hhs.gov), besides Florida's list.
 - **Phase 8, insurance networks (Stage 5.5 item 16):** pick the pilot state and approve the sources.
 - **Phase 4 sources:** SAM.gov exclusions, state Medicaid exclusion lists.
 

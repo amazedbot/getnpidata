@@ -17,3 +17,4 @@ Applied in number order together with the other folders (see [../README.md](../R
 | `087_address_place.sql` | Businesses Overture Maps lists at each practice address, with operating status (Phase 3 step 3.1). |
 | `093_address_building_point.sql` | `address_building.lat`/`lon`: the point each address was matched from, so only new or moved addresses are looked up in the FEMA files. |
 | `094_overture_checked.sql` | `overture_checked`: every address an Overture pass looked at and its release, so `run` places only new addresses between releases. |
+| `099_address_place_sources.sql` | `address_place.sources`: the sources behind each listing with their own dates, so only a confirmed open listing counts as a sign of practice. |

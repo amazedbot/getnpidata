@@ -70,6 +70,12 @@ public enum QualityReason
 
     /// <summary>Overture Maps lists a business with the organization's name at its address as permanently closed, and none as open.</summary>
     ListedClosed = 8192,
+
+    /// <summary>
+    /// Not updated in <see cref="RecordQuality.StaleYears"/>+ years, and the only sign of current operation is an open business
+    /// listing at the address (owner, 2026-10-15: a listing can outlive the business, so on its own it can't clear that age).
+    /// </summary>
+    ListingOnly = 16384,
 }
 
 /// <summary>Signs that the provider currently practises (<c>provider_quality.activity</c>); stored bits, never renumber them.</summary>
@@ -133,7 +139,7 @@ public static class RecordQuality
 
     /// <summary>Any one of these makes a record "check".</summary>
     public const QualityReason CheckAny = QualityReason.NotMapped | QualityReason.PoBox | QualityReason.NoPhone | QualityReason.CareCompareAddress |
-                                          QualityReason.CareCompareSpecialty | QualityReason.LicenseLapsed | Closed;
+                                          QualityReason.CareCompareSpecialty | QualityReason.LicenseLapsed | QualityReason.ListingOnly | Closed;
 
     public static QualityLabel Classify(QualityReason r) =>
         (r & (QualityReason.NotUpdated10Years | QualityReason.NoActivity)) == (QualityReason.NotUpdated10Years | QualityReason.NoActivity)
@@ -204,6 +210,7 @@ public static class RecordQuality
         (QualityReason.FacilityClosed, "Medicare-certified facility closed"),
         (QualityReason.ListedClosed, "Listed as permanently closed"),
         (QualityReason.NotUpdated10Years, $"Not updated in {StaleYears}+ years"),
+        (QualityReason.ListingOnly, "Only a map listing shows it open"),
         (QualityReason.NotUpdated5Years, $"Not updated in {CheckYears}+ years"),
         (QualityReason.NoActivity, "No sign of current practice"),
         (QualityReason.CareCompareSpecialty, "Medicare lists another profession"),
@@ -292,6 +299,11 @@ public static class RecordQuality
         {
             var signs = SignTexts(q.Activity);
             notes.Add(new("good", "Signs of current practice: " + string.Join(", ", signs)));
+        }
+
+        if (Has(QualityReason.ListingOnly))
+        {
+            notes.Add(new("warn", "The only sign of current operation is a business listing at the address (Overture Maps), and listings can outlive a business"));
         }
 
         if (Has(QualityReason.CareCompareSpecialty))

@@ -271,7 +271,7 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
             {
                 command.CommandText =
                     "SELECT names.primary, addresses[1].freeform, addresses[1].postcode, addresses[1].locality, bbox.ymin, bbox.xmin, confidence, " +
-                    "operating_status, list_max(list_transform(sources, s -> s.update_time)) " +
+                    "operating_status, " + PlaceSourcesSql + " " +
                     $"FROM read_parquet('{root}/theme=places/type=place/*', hive_partitioning = 1) p " +
                     FormattableString.Invariant($"WHERE {inBox} AND confidence >= {options.OverturePlaceMinConfidence} ") +
                     $"AND (left(addresses[1].postcode, 5) IN (SELECT zip FROM zips) OR upper(trim(addresses[1].locality)) IN (SELECT city FROM cities)) AND {Near("p")}";
@@ -279,8 +279,7 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
                 while (reader.Read())
                 {
                     index.AddPlace(Text(reader, 0), Text(reader, 1), Text(reader, 2), Text(reader, 3), Number(reader, 4), Number(reader, 5), Number(reader, 6),
-                        Text(reader, 7), Text(reader, 8) is { Length: >= 10 } u && DateOnly.TryParseExact(u[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                            DateTimeStyles.None, out var d) ? d : null);
+                        Text(reader, 7), PlaceUpdated(Text(reader, 8)), Text(reader, 8));
                 }
             }
         }
@@ -434,15 +433,14 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
         {
             command.CommandText =
                 $"SELECT names.primary, addresses[1].freeform, addresses[1].postcode, addresses[1].locality, bbox.ymin, bbox.xmin, confidence, " +
-                "operating_status, list_max(list_transform(sources, s -> s.update_time)) " +
+                "operating_status, " + PlaceSourcesSql + " " +
                 $"FROM read_parquet('{root}/theme=places/type=place/*', hive_partitioning = 1) " +
                 FormattableString.Invariant($"WHERE {inBox} AND confidence >= {options.OverturePlaceMinConfidence}");
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
                 index.AddPlace(Text(reader, 0), Text(reader, 1), Text(reader, 2), Text(reader, 3), Number(reader, 4), Number(reader, 5), Number(reader, 6),
-                    Text(reader, 7), Text(reader, 8) is { Length: >= 10 } u && DateOnly.TryParseExact(u[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                        DateTimeStyles.None, out var d) ? d : null);
+                    Text(reader, 7), PlaceUpdated(Text(reader, 8)), Text(reader, 8));
             }
         }
 
@@ -493,19 +491,35 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
             for (var i = 0; i < chunk.Length; i++)
             {
                 var (key, place) = chunk[i];
-                values.Add($"(@k{i}, @n{i}, @s{i}, @u{i}, @release)");
+                values.Add($"(@k{i}, @n{i}, @s{i}, @src{i}, @u{i}, @release)");
                 p.Add($"k{i}", key);
                 p.Add($"n{i}", place.Name.Length <= 255 ? place.Name : place.Name[..255]);
                 p.Add($"s{i}", place.OperatingStatus is { Length: <= 20 } s ? s : null);
                 p.Add($"u{i}", place.Updated?.ToDateTime(TimeOnly.MinValue));
+                p.Add($"src{i}", place.Sources is { Length: > 255 } all ? all[..255] : place.Sources);
             }
 
             p.Add("release", release);
             await Database.ExecuteAsync(connection,
-                "INSERT IGNORE INTO `address_place` (`addr_key`, `name`, `operating_status`, `updated`, `release`) VALUES " + string.Join(", ", values),
+                "INSERT IGNORE INTO `address_place` (`addr_key`, `name`, `operating_status`, `sources`, `updated`, `release`) VALUES " + string.Join(", ", values),
                 ct, param: p);
         }
     }
+
+    /// <summary>
+    /// A place's sources with their own dates, "dataset yyyy-mm-dd" joined by ";" (<see cref="ListedPlace.Sources"/>, migration 099):
+    /// Overture's own rows ("Overture", "Overture-signals") are dated the release and say nothing about the business, so they're left out.
+    /// </summary>
+    private const string PlaceSourcesSql =
+        "array_to_string(list_transform(list_filter(sources, s -> s.dataset NOT IN ('Overture', 'Overture-signals')), " +
+        "s -> s.dataset || ' ' || coalesce(left(s.update_time, 10), '')), ';')";
+
+    /// <summary>The newest date in <see cref="PlaceSourcesSql"/>'s list, or null.</summary>
+    internal static DateOnly? PlaceUpdated(string? sources) =>
+        sources?.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(e => e.Trim() is var t && t.LastIndexOf(' ') is var i and > 0
+                         && DateOnly.TryParseExact(t[(i + 1)..], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : (DateOnly?)null)
+            .Max();
 
     private static void Execute(DuckDBConnection duck, string sql)
     {

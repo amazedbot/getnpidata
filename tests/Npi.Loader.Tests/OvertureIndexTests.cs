@@ -103,6 +103,12 @@ public class OvertureIndexTests
         Assert.Equal(new DateOnly(2025, 3, 1), here[0].Updated);
         Assert.Empty(index.PlacesAt("14 MAIN ST", "11701"));
         Assert.Empty(index.PlacesAt("A BUILDING NAME", "11701"));
+
+        // One name from two sources is one business, open when either says so, with both sources (owner, 2026-10-15).
+        index.AddPlace("Village Chiropractic", "3 Main St", "11701", null, 40.68, -73.41, 0.9, "open", new DateOnly(2026, 9, 17), "BrightQuery 2026-09-17");
+        index.AddPlace("VILLAGE CHIROPRACTIC", "3 Main St", "11701", null, 40.68, -73.41, 0.9, null, new DateOnly(2021, 4, 2), "Microsoft 2021-04-02");
+        Assert.Equal(new ListedPlace("Village Chiropractic", "open", new DateOnly(2026, 9, 17), "BrightQuery 2026-09-17;Microsoft 2021-04-02"),
+            Assert.Single(index.PlacesAt("3 MAIN ST", "11701")));
     }
 
     [Fact]

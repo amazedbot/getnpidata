@@ -16,8 +16,11 @@ public static class PointSource
 /// <summary>Where an address was placed, and what it matched (the address point or the place name).</summary>
 public sealed record PointMatch(string Source, double Lat, double Lon, string Matched);
 
-/// <summary>A business Overture lists at an address: its name, operating status (open, permanently_closed …) and last source update.</summary>
-public sealed record ListedPlace(string Name, string? OperatingStatus, DateOnly? Updated);
+/// <summary>
+/// A business Overture lists at an address: its name, operating status (open, permanently_closed …), its sources with their own
+/// dates ("meta 2026-09-14;Microsoft 2011-08-22", Overture's own rows left out) and the newest of those dates.
+/// </summary>
+public sealed record ListedPlace(string Name, string? OperatingStatus, DateOnly? Updated, string? Sources = null);
 
 /// <summary>
 /// The Overture address points and places of one area, indexed for matching practice addresses (CLAUDE.md §7 Stage 5.5
@@ -106,7 +109,7 @@ public sealed class OvertureIndex
     }
 
     public void AddPlace(string? name, string? freeformAddress, string? zip, string? city, double lat, double lon, double confidence,
-        string? operatingStatus = null, DateOnly? updated = null)
+        string? operatingStatus = null, DateOnly? updated = null, string? sources = null)
     {
         var z = Zip5(zip) ?? "";
         var c = city?.Trim().ToUpperInvariant() ?? "";
@@ -114,7 +117,7 @@ public sealed class OvertureIndex
         {
             if (z.Length > 0 && !string.IsNullOrWhiteSpace(name))
             {
-                Add(_listedByZip, (number, street, z), new ListedPlace(name.Trim(), operatingStatus, updated));
+                Add(_listedByZip, (number, street, z), new ListedPlace(name.Trim(), operatingStatus, updated, sources));
             }
 
             var entry = (lat, lon, name ?? "");
@@ -145,10 +148,16 @@ public sealed class OvertureIndex
         }
     }
 
-    /// <summary>The businesses listed at a practice street address (same house number, street and ZIP); empty when none.</summary>
+    /// <summary>
+    /// The businesses listed at a practice street address (same house number, street and ZIP); empty when none. Places with one name
+    /// are one business: open when any of them is, with every source and the newest date.
+    /// </summary>
     public IReadOnlyList<ListedPlace> PlacesAt(string? address1, string zip5) =>
         AddressNormalizer.Split(address1) is var (number, street) && _listedByZip.TryGetValue((number, street, zip5), out var places)
-            ? places.DistinctBy(p => p.Name.ToUpperInvariant()).ToList()
+            ? places.GroupBy(p => p.Name.ToUpperInvariant()).Select(g => g.Skip(1).Any()
+                ? new ListedPlace(g.First().Name, g.Any(p => p.OperatingStatus == "open") ? "open" : g.First().OperatingStatus, g.Max(p => p.Updated),
+                    string.Join(";", g.SelectMany(p => (p.Sources ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries)).Distinct()) is { Length: > 0 } s ? s : null)
+                : g.First()).ToList()
             : [];
 
     /// <summary>The best placement of a practice address in this area, or null.</summary>
