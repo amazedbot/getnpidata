@@ -438,6 +438,7 @@ tiers; pay-as-you-go verification; data licensing; custom area reports. Sponsore
 - 2026-10-14: more states' Medicaid enrollment is Phase 3 step 3.7 (Florida's Provider Master List confirmed; the national T-MSIS enrollment history and Medicaid billing files proposed); not built yet.
 - 2026-10-14: every list and export works without a filter (the whole country); an export of every provider comes from a ready-made file the loader rebuilds after each load. The map's filters match the search page, and the map's area opens as a list or a CSV. Organization and facility home pages are Phase 3 step 3.6.
 - 2026-10-15: an open business listing counts as a sign of practice only when a confirming source backs it (Meta, store locators and listing services, or a Bing/Foursquare record seen within 3 years); a 10+ year old record with only a listing is Check.
+- 2026-10-15: the owner approved the step 3.6 sources Claude judges best: All Owners and Change of Ownership, more Care Compare facility types and hospital measures, nursing home deficiencies and penalties, Medicare inpatient/outpatient by provider, HIFLD hospitals, HRSA health center sites and 340B, the MSSP ACO files and the AHRQ compendium (built after the pages); HCRIS cost reports, Form 990s and UDS later.
 - 2026-10-13: [TODO.md](TODO.md) is the working to-do list, kept up to date with each decision; this document stays the full plan.
 
 ## 7. Loader speed work (owner, 2026-10-13)
