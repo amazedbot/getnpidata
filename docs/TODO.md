@@ -46,7 +46,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 ## Not needed for now (owner, 2026-10-13)
 
 - **VA addresses and the VA facility list** (step 3.5 found 1 of 50 Stale records at a VA medical center).
-- **Phase 2, private test hosting on Azure:** still only when a feature needs it, with the design and a cost estimate first.
+- **Phase 2, private test hosting on Azure:** still only when a feature needs it, with the design and a cost estimate first. It includes the **admin console** the owner wants before release (2026-10-15): everything in Docker, Portainer Community Edition, CloudBeaver (read and write), loader runs and site settings from the console, a few admins, an audit log (PRODUCT_PLAN.md Phase 2).
 
 ## Later phases (PRODUCT_PLAN.md §3)
 
