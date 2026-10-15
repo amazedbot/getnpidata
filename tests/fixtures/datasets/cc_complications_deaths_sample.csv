@@ -1,0 +1,5 @@
+"Facility ID","Facility Name","Address","City/Town","State","ZIP Code","County/Parish","Telephone Number","Measure ID","Measure Name","Compared to National","Denominator","Score","Lower Estimate","Higher Estimate","Footnote","Start Date","End Date"
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,MORT_30_AMI,Death rate for heart attack patients,No Different Than the National Rate,234,13.5,11.2,16.1,,07/01/2022,06/30/2025
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,PSI_90,CMS Medicare PSI 90: Patient safety and adverse events composite,Better Than the National Value,Not Applicable,0.85,0.66,0.99,,07/01/2022,06/30/2024
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,PSI_06,Iatrogenic pneumothorax rate,No Different Than the National Rate,5000,0.2,,,,07/01/2022,06/30/2024
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,MORT_30_HF,Death rate for heart failure patients,Not Available,Not Available,Not Available,,,,07/01/2022,06/30/2025

@@ -241,6 +241,22 @@ public sealed class NpiClient : IDisposable
     public Task<FacilityPage> SearchFacilitiesAsync(FacilitySearch search, CancellationToken cancellationToken = default) =>
         GetJsonAsync<FacilityPage>("api/v1/facilities" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), cancellationToken);
 
+    /// <summary>
+    /// One facility by its CMS Certification Number, with <paramref name="page"/> of its affiliated clinicians (50 a page), or null when the
+    /// CCN is unknown.
+    /// </summary>
+    public async Task<FacilityProfile?> GetFacilityAsync(string ccn, int page = 1, CancellationToken cancellationToken = default)
+    {
+        var path = "api/v1/facilities/" + Segment(ccn, nameof(ccn)) + (page > 1 ? "?page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture) : "");
+        using var response = await SendAsync(path, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<FacilityProfile>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Streams every facility matching <paramref name="search"/> as CSV into <paramref name="destination"/> (paging ignored).</summary>
     public Task DownloadFacilitiesCsvAsync(FacilitySearch search, Stream destination, CancellationToken cancellationToken = default) =>
         DownloadAsync("api/v1/facilities.csv" + (search ?? throw new ArgumentNullException(nameof(search))).ToQueryString(), destination, cancellationToken);

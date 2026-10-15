@@ -250,7 +250,7 @@ public static class RecordQuality
         (QualityActivity.MipsScore, "has a Medicare quality (MIPS) score"),
         (QualityActivity.FacilityAffiliation, "works at a Medicare-certified facility"),
         (QualityActivity.IndustryPayments, "received industry payments in the last two Open Payments years"),
-        (QualityActivity.CertifiedFacility, "holds a Medicare-certified facility"),
+        (QualityActivity.CertifiedFacility, "holds a Medicare-certified facility (a hospital, clinic, dialysis facility, surgery center …)"),
         (QualityActivity.EquipmentBilling, "billed Medicare for equipment and supplies"),
         (QualityActivity.OpioidTreatment, "is a certified opioid treatment program"),
         (QualityActivity.MedicaidEnrollment, "enrolled in a state Medicaid program"),

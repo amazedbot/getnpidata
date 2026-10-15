@@ -245,6 +245,96 @@ CREATE TABLE `cc_mips` (
   KEY `ix_cc_mips_npi` (`npi`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `cms_asc` (
+  `ccn` varchar(10) NOT NULL,
+  `npi` char(10) NOT NULL,
+  `name` varchar(200) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `zip` varchar(10) DEFAULT NULL,
+  `data_year` smallint DEFAULT NULL,
+  `asc9_rate` double DEFAULT NULL,
+  `asc13_rate` double DEFAULT NULL,
+  `asc12_cases` int DEFAULT NULL,
+  `asc12_category` varchar(60) DEFAULT NULL,
+  `asc12_rate` double DEFAULT NULL,
+  `asc17_cases` int DEFAULT NULL,
+  `asc17_category` varchar(60) DEFAULT NULL,
+  `asc17_rate` double DEFAULT NULL,
+  `asc18_cases` int DEFAULT NULL,
+  `asc18_category` varchar(60) DEFAULT NULL,
+  `asc18_rate` double DEFAULT NULL,
+  `asc19_cases` int DEFAULT NULL,
+  `asc19_category` varchar(60) DEFAULT NULL,
+  `asc19_rate` double DEFAULT NULL,
+  PRIMARY KEY (`ccn`,`npi`),
+  KEY `idx_cms_asc_npi` (`npi`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_asc_survey` (
+  `ccn` varchar(10) NOT NULL,
+  `professional` smallint DEFAULT NULL,
+  `communication` smallint DEFAULT NULL,
+  `recommend` smallint DEFAULT NULL,
+  `rating` smallint DEFAULT NULL,
+  `surveys` int DEFAULT NULL,
+  `response_rate` smallint DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  PRIMARY KEY (`ccn`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_dialysis` (
+  `ccn` varchar(10) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `address` varchar(200) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `zip` varchar(10) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `ownership` varchar(40) DEFAULT NULL,
+  `chain` varchar(200) DEFAULT NULL,
+  `stations` smallint DEFAULT NULL,
+  `in_center` tinyint DEFAULT NULL,
+  `peritoneal` tinyint DEFAULT NULL,
+  `home_hemodialysis` tinyint DEFAULT NULL,
+  `five_star` double DEFAULT NULL,
+  `five_star_period` varchar(40) DEFAULT NULL,
+  `survey_rating` tinyint DEFAULT NULL,
+  `survival` varchar(60) DEFAULT NULL,
+  `survival_period` varchar(40) DEFAULT NULL,
+  `hospitalization` varchar(60) DEFAULT NULL,
+  `hospitalization_period` varchar(40) DEFAULT NULL,
+  `readmission` varchar(60) DEFAULT NULL,
+  `readmission_period` varchar(40) DEFAULT NULL,
+  `ed_visits` varchar(60) DEFAULT NULL,
+  `ed_visits_period` varchar(40) DEFAULT NULL,
+  `infection` varchar(60) DEFAULT NULL,
+  `infection_period` varchar(40) DEFAULT NULL,
+  `transfusion` varchar(60) DEFAULT NULL,
+  `transfusion_period` varchar(40) DEFAULT NULL,
+  `waitlist` varchar(60) DEFAULT NULL,
+  `waitlist_period` varchar(40) DEFAULT NULL,
+  PRIMARY KEY (`ccn`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_dialysis_npi` (
+  `ccn` varchar(10) NOT NULL,
+  `npi` char(10) NOT NULL,
+  PRIMARY KEY (`ccn`,`npi`),
+  KEY `idx_cms_dialysis_npi_npi` (`npi`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_dialysis_qip` (
+  `ccn` varchar(10) NOT NULL,
+  `payment_year` smallint NOT NULL,
+  `total_score` smallint DEFAULT NULL,
+  `state_average` smallint DEFAULT NULL,
+  `national_average` smallint DEFAULT NULL,
+  `payment_reduction` double DEFAULT NULL,
+  PRIMARY KEY (`ccn`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `cms_facility_enrollment` (
   `enrollment_id` varchar(20) NOT NULL,
   `kind` varchar(20) NOT NULL,
@@ -330,11 +420,48 @@ CREATE TABLE `cms_hospital` (
   PRIMARY KEY (`ccn`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `cms_hospital_measure` (
+  `ccn` varchar(10) NOT NULL,
+  `measure_id` varchar(30) NOT NULL,
+  `score` double DEFAULT NULL,
+  `compared` varchar(60) DEFAULT NULL,
+  `cases` int DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  PRIMARY KEY (`ccn`,`measure_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_hospital_service` (
+  `ccn` varchar(10) NOT NULL,
+  `setting` char(1) NOT NULL,
+  `service_rank` tinyint NOT NULL,
+  `code` varchar(20) NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `cases` int NOT NULL,
+  `beneficiaries` int DEFAULT NULL,
+  `avg_medicare_payment` double DEFAULT NULL,
+  PRIMARY KEY (`ccn`,`setting`,`service_rank`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `cms_hospital_survey` (
   `ccn` varchar(10) NOT NULL,
   `star_rating` tinyint DEFAULT NULL,
   `surveys` int DEFAULT NULL,
   `response_rate` double DEFAULT NULL,
+  PRIMARY KEY (`ccn`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_hospital_volume` (
+  `ccn` varchar(10) NOT NULL,
+  `inpatient_year` smallint DEFAULT NULL,
+  `discharges` int DEFAULT NULL,
+  `beneficiaries` int DEFAULT NULL,
+  `covered_days` int DEFAULT NULL,
+  `medicare_payments` double DEFAULT NULL,
+  `total_payments` double DEFAULT NULL,
+  `outpatient_year` smallint DEFAULT NULL,
+  `outpatient_services` int DEFAULT NULL,
+  `outpatient_payments` double DEFAULT NULL,
   PRIMARY KEY (`ccn`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -376,6 +503,32 @@ CREATE TABLE `cms_pos_facility` (
   `termination_date` date DEFAULT NULL,
   PRIMARY KEY (`ccn`),
   KEY `ix_cms_pos_facility_zip` (`zip5`,`active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_post_acute` (
+  `ccn` varchar(10) NOT NULL,
+  `kind` varchar(10) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `address` varchar(200) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `zip` varchar(10) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `ownership` varchar(100) DEFAULT NULL,
+  `certified_since` date DEFAULT NULL,
+  `beds` int DEFAULT NULL,
+  PRIMARY KEY (`ccn`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `cms_post_acute_measure` (
+  `ccn` varchar(10) NOT NULL,
+  `measure_id` varchar(20) NOT NULL,
+  `score` double DEFAULT NULL,
+  `compared` varchar(60) DEFAULT NULL,
+  `cases` int DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  PRIMARY KEY (`ccn`,`measure_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `company_parent` (

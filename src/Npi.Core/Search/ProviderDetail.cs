@@ -159,7 +159,7 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record AffiliationRow(string FacilityType, string Ccn, string? Name, string? City, string? State, long? OverallRating, string? FacilityNpi);
 
     private sealed record FacilityRow(string Ccn, string Kind, string Name, string? Type, string? Ownership, string? City, string? State, string? Phone,
-        sbyte? EmergencyServices, int? CertifiedBeds, long? OverallRating, long? InspectionRating, long? StaffingRating, long? QualityRating, long AffiliatedClinicians,
+        sbyte? EmergencyServices, long? CertifiedBeds, long? OverallRating, long? InspectionRating, long? StaffingRating, long? QualityRating, long AffiliatedClinicians,
         long? SurveyRating, double? QualityOfCare, long? MortMeasures, long? MortBetter, long? MortWorse, long? SafetyMeasures, long? SafetyBetter,
         long? SafetyWorse, long? ReadmMeasures, long? ReadmBetter, long? ReadmWorse);
 
@@ -329,15 +329,17 @@ public sealed class ProviderDetailService(string connectionString)
                 """, new { npi }, cancellationToken: ct));
             var affiliations = await connection.QueryAsync<AffiliationRow>(new CommandDefinition(
                 """
-                SELECT a.facility_type AS FacilityType, a.ccn AS Ccn, COALESCE(h.name, n.name, hh.name, hs.name) AS Name,
-                       COALESCE(h.city, n.city, hh.city, hs.city) AS City, COALESCE(h.state, n.state, hh.state, hs.state) AS State,
-                       CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating,
-                       (SELECT MIN(f.npi) FROM cms_facility_npi f WHERE f.ccn = a.ccn) AS FacilityNpi
+                SELECT a.facility_type AS FacilityType, a.ccn AS Ccn, COALESCE(h.name, pa.name, n.name, hh.name, hs.name, d.name) AS Name,
+                       COALESCE(h.city, pa.city, n.city, hh.city, hs.city, d.city) AS City, COALESCE(h.state, pa.state, n.state, hh.state, hs.state, d.state) AS State,
+                       CAST(COALESCE(h.overall_rating, n.overall_rating, ROUND(d.five_star)) AS SIGNED) AS OverallRating,
+                       COALESCE((SELECT MIN(f.npi) FROM cms_facility_npi f WHERE f.ccn = a.ccn), (SELECT MIN(f.npi) FROM cms_dialysis_npi f WHERE f.ccn = a.ccn)) AS FacilityNpi
                 FROM (SELECT DISTINCT facility_type, ccn FROM cc_facility_affiliation WHERE npi = @npi) a
                 LEFT JOIN cms_hospital h ON h.ccn = a.ccn
+                LEFT JOIN cms_post_acute pa ON pa.ccn = a.ccn
                 LEFT JOIN cms_nursing_home n ON n.ccn = a.ccn
                 LEFT JOIN cms_home_health hh ON hh.ccn = a.ccn
                 LEFT JOIN cms_hospice hs ON hs.ccn = a.ccn
+                LEFT JOIN cms_dialysis d ON d.ccn = a.ccn
                 ORDER BY a.facility_type, Name, a.ccn
                 """, new { npi }, cancellationToken: ct));
             careCompare = new ProviderCareCompare(
@@ -414,7 +416,9 @@ public sealed class ProviderDetailService(string connectionString)
             FROM open_payments_company WHERE npi = @npi ORDER BY company_rank
             """, new { npi }, cancellationToken: ct))).ToList();
 
-        var facilities = await FacilitiesAsync(connection, "FROM cms_facility_npi f", "f.npi = @npi", new { npi }, ct);
+        // The facilities this NPI bills for: CMS's enrollment files, the dialysis facility report and the surgery center file (step 3.6 part 2).
+        var facilities = await FacilitiesAsync(connection, $"FROM (SELECT DISTINCT ccn, kind FROM ({FacilityDirectory.BillingNpiSql}) b WHERE npi = @npi) f", "1 = 1",
+            new { npi }, ct);
 
         // Specialty changes are stored as taxonomy codes and shown by name. Added/removed/deactivated rows are for feeds, not this page.
         var changes = await connection.QueryAsync<ChangeRow>(new CommandDefinition(
@@ -582,21 +586,26 @@ public sealed class ProviderDetailService(string connectionString)
 
     /// <summary>
     /// Medicare-certified facilities with their ratings and outcomes. <paramref name="from"/> is a FROM clause giving <c>f</c> with
-    /// <c>ccn</c> and <c>kind</c>; <paramref name="where"/> narrows it (shared by the provider page and the facility page).
+    /// <c>ccn</c> and <c>kind</c>; <paramref name="where"/> narrows it (shared by the provider page and the facility page). A CCN enrolled as
+    /// a hospital but listed by Care Compare as an inpatient rehabilitation facility or long-term care hospital takes that kind. Dialysis
+    /// facilities carry their five-star rating as the overall rating and their patient survey (ICH CAHPS) stars as the survey rating.
     /// </summary>
     internal static async Task<IReadOnlyList<CertifiedFacility>> FacilitiesAsync(MySqlConnection connection, string from, string where, object param,
         CancellationToken ct)
     {
         var rows = await connection.QueryAsync<FacilityRow>(new CommandDefinition(
             $"""
-            SELECT f.ccn AS Ccn, f.kind AS Kind, COALESCE(h.name, n.name, hh.name, hs.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
-                   COALESCE(h.ownership, n.ownership, hh.ownership, hs.ownership) AS Ownership, COALESCE(h.city, n.city, hh.city, hs.city) AS City,
-                   COALESCE(h.state, n.state, hh.state, hs.state) AS State, COALESCE(h.phone, n.phone, hh.phone, hs.phone) AS Phone,
-                   h.emergency_services AS EmergencyServices, n.certified_beds AS CertifiedBeds,
-                   CAST(COALESCE(h.overall_rating, n.overall_rating) AS SIGNED) AS OverallRating, CAST(n.inspection_rating AS SIGNED) AS InspectionRating,
+            SELECT f.ccn AS Ccn, IF(h.ccn IS NULL AND pa.ccn IS NOT NULL, pa.kind, f.kind) AS Kind,
+                   COALESCE(h.name, pa.name, n.name, hh.name, hs.name, d.name, a.name) AS Name, COALESCE(h.hospital_type, n.provider_type) AS Type,
+                   COALESCE(h.ownership, pa.ownership, n.ownership, hh.ownership, hs.ownership, d.ownership) AS Ownership,
+                   COALESCE(h.city, pa.city, n.city, hh.city, hs.city, d.city, a.city) AS City,
+                   COALESCE(h.state, pa.state, n.state, hh.state, hs.state, d.state, a.state) AS State,
+                   COALESCE(h.phone, pa.phone, n.phone, hh.phone, hs.phone, d.phone) AS Phone,
+                   h.emergency_services AS EmergencyServices, CAST(COALESCE(n.certified_beds, pa.beds) AS SIGNED) AS CertifiedBeds,
+                   CAST(COALESCE(h.overall_rating, n.overall_rating, ROUND(d.five_star)) AS SIGNED) AS OverallRating, CAST(n.inspection_rating AS SIGNED) AS InspectionRating,
                    CAST(n.staffing_rating AS SIGNED) AS StaffingRating, CAST(n.quality_rating AS SIGNED) AS QualityRating,
                    (SELECT COUNT(DISTINCT a.npi) FROM cc_facility_affiliation a WHERE a.ccn = f.ccn) AS AffiliatedClinicians,
-                   CAST(COALESCE(sv.star_rating, hs.family_rating) AS SIGNED) AS SurveyRating, hh.quality_rating AS QualityOfCare,
+                   CAST(COALESCE(sv.star_rating, hs.family_rating, d.survey_rating) AS SIGNED) AS SurveyRating, hh.quality_rating AS QualityOfCare,
                    CAST(h.mort_measures AS SIGNED) AS MortMeasures, CAST(h.mort_better AS SIGNED) AS MortBetter, CAST(h.mort_worse AS SIGNED) AS MortWorse,
                    CAST(h.safety_measures AS SIGNED) AS SafetyMeasures, CAST(h.safety_better AS SIGNED) AS SafetyBetter,
                    CAST(h.safety_worse AS SIGNED) AS SafetyWorse, CAST(h.readm_measures AS SIGNED) AS ReadmMeasures,
@@ -607,11 +616,14 @@ public sealed class ProviderDetailService(string connectionString)
             LEFT JOIN cms_nursing_home n ON f.kind = 'nursing_home' AND n.ccn = f.ccn
             LEFT JOIN cms_home_health hh ON f.kind = 'home_health' AND hh.ccn = f.ccn
             LEFT JOIN cms_hospice hs ON f.kind = 'hospice' AND hs.ccn = f.ccn
-            WHERE {where} AND COALESCE(h.name, n.name, hh.name, hs.name) IS NOT NULL
-            ORDER BY f.kind, Name
+            LEFT JOIN cms_post_acute pa ON f.kind IN ('hospital', 'rehab', 'ltch') AND pa.ccn = f.ccn
+            LEFT JOIN cms_dialysis d ON f.kind = 'dialysis' AND d.ccn = f.ccn
+            LEFT JOIN cms_asc a ON f.kind = 'asc' AND a.ccn = f.ccn AND a.npi = (SELECT MIN(x.npi) FROM cms_asc x WHERE x.ccn = f.ccn)
+            WHERE {where} AND COALESCE(h.name, pa.name, n.name, hh.name, hs.name, d.name, a.name) IS NOT NULL
+            ORDER BY Kind, Name
             """, param, cancellationToken: ct));
         return rows.Select(f => new CertifiedFacility(f.Ccn, f.Kind, f.Name, f.Type, f.Ownership, f.City, f.State, f.Phone,
-                f.EmergencyServices is null ? null : f.EmergencyServices != 0, f.CertifiedBeds, (int?)f.OverallRating, (int?)f.InspectionRating, (int?)f.StaffingRating,
+                f.EmergencyServices is null ? null : f.EmergencyServices != 0, (int?)f.CertifiedBeds, (int?)f.OverallRating, (int?)f.InspectionRating, (int?)f.StaffingRating,
                 (int?)f.QualityRating, (int)f.AffiliatedClinicians)
             {
                 PatientSurveyRating = (int?)f.SurveyRating,

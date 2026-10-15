@@ -1,0 +1,3 @@
+"Measure ID","Measure Name","National Rate","Number of Hospitals Worse","Number of Hospitals Same","Number of Hospitals Better","Number of Hospitals Too Few","Footnote","Start Date","End Date"
+MORT_30_AMI,Death rate for heart attack patients,11.9,Not Available,Not Available,Not Available,Not Available,,07/01/2022,06/30/2025
+PSI_90,CMS Medicare PSI 90: Patient safety and adverse events composite,1.00,160,2600,60,Not Available,,07/01/2022,06/30/2024

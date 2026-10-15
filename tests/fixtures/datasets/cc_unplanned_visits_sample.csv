@@ -1,0 +1,4 @@
+"Facility ID","Facility Name","Address","City/Town","State","ZIP Code","County/Parish","Telephone Number","Measure ID","Measure Name","Compared to National","Denominator","Score","Lower Estimate","Higher Estimate","Number of Patients","Number of Patients Returned","Footnote","Start Date","End Date"
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,READM_30_HF,Heart failure (HF) 30-Day Readmission Rate,No Different Than the National Rate,300,20.1,,,,,,07/01/2022,06/30/2025
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,OP_36,Ratio of unplanned hospital visits after hospital outpatient surgery,Better than expected,"1,212",0.9,,,,,,01/01/2024,12/31/2024
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,EDAC_30_AMI,Hospital return days for heart attack patients,Not Available,242,-2.6,,,,,,07/01/2022,06/30/2025

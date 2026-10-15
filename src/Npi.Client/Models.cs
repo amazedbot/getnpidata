@@ -1394,12 +1394,12 @@ public sealed class FacilityAffiliation
     public string? Npi { get; set; }
 }
 
-/// <summary>A Medicare-certified hospital or nursing home with its Care Compare ratings.</summary>
+/// <summary>A Medicare-certified facility (hospital, nursing home, dialysis facility …) with its Care Compare ratings.</summary>
 public sealed class CertifiedFacility
 {
     public string Ccn { get; set; } = "";
 
-    /// <summary>"hospital", "nursing_home", "home_health" or "hospice".</summary>
+    /// <summary>"hospital", "nursing_home", "home_health", "hospice", "dialysis", "asc", "rehab", "ltch", or (facility pages only) another facility type.</summary>
     public string Kind { get; set; } = "";
 
     public string Name { get; set; } = "";
@@ -1418,6 +1418,7 @@ public sealed class CertifiedFacility
 
     public int? CertifiedBeds { get; set; }
 
+    /// <summary>The overall star rating, 1–5 (hospitals, nursing homes; dialysis facilities: the five-star rating).</summary>
     public int? OverallRating { get; set; }
 
     public int? InspectionRating { get; set; }
@@ -1429,7 +1430,7 @@ public sealed class CertifiedFacility
     /// <summary>Clinicians Care Compare lists as affiliated with this facility.</summary>
     public int AffiliatedClinicians { get; set; }
 
-    /// <summary>Patient experience stars 1-5: HCAHPS for a hospital, the family caregiver survey for a hospice.</summary>
+    /// <summary>Patient experience stars 1-5: HCAHPS for a hospital, the family caregiver survey for a hospice, ICH CAHPS for a dialysis facility.</summary>
     public int? PatientSurveyRating { get; set; }
 
     /// <summary>A home health agency's quality of patient care stars, 1-5 in half stars.</summary>

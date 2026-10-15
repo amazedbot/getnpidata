@@ -625,6 +625,106 @@
      "mediaType": "text/csv"
     }
    ]
+  },
+  {
+   "title": "Medicare Dialysis Facilities : 2025-01-01",
+   "modified": "2025-09-10",
+   "temporal": [
+    {
+     "startDate": "2025-01-01",
+     "endDate": "2025-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/dfr_facility_socrata_fy2025.csv",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "resourcesAPI": "https://cms.test/data-api/v1/dataset-resources/dfr-2025"
+    },
+    {
+     "format": "API",
+     "accessURL": "https://cms.test/data-api/v1/dataset/dfr-2025/data",
+     "resourcesAPI": "https://cms.test/data-api/v1/dataset-resources/dfr-2025"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Dialysis Facilities : 2026-01-01",
+   "modified": "2026-01-27",
+   "temporal": [
+    {
+     "startDate": "2026-01-01",
+     "endDate": "2026-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "format": "API",
+     "accessURL": "https://cms.test/data-api/v1/dataset/dfr-latest/data",
+     "resourcesAPI": "https://cms.test/data-api/v1/dataset-resources/dfr-latest",
+     "description": "latest"
+    },
+    {
+     "downloadURL": "https://cms.test/files/dfr_facility_socrata_fy2026.csv",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "resourcesAPI": "https://cms.test/data-api/v1/dataset-resources/dfr-2026"
+    },
+    {
+     "format": "API",
+     "accessURL": "https://cms.test/data-api/v1/dataset/dfr-2026/data",
+     "resourcesAPI": "https://cms.test/data-api/v1/dataset-resources/dfr-2026"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Inpatient Hospitals - by Provider : 2024-01-01",
+   "modified": "2026-04-23",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/mup_inp_ry26_p04_v10_dy24_prv.csv",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Inpatient Hospitals - by Provider and Service : 2024-01-01",
+   "modified": "2026-04-23",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/MUP_INP_RY26_P03_V10_DY24_PrvSvc.CSV",
+     "mediaType": "text/csv"
+    }
+   ]
+  },
+  {
+   "title": "Medicare Outpatient Hospitals - by Provider and Service : 2024-01-01",
+   "modified": "2026-06-25",
+   "temporal": [
+    {
+     "startDate": "2024-01-01",
+     "endDate": "2024-12-31"
+    }
+   ],
+   "distribution": [
+    {
+     "downloadURL": "https://cms.test/files/MUP_OUT_RY26_P04_V10_DY24_Prov_Svc.csv",
+     "mediaType": "text/csv"
+    }
+   ]
   }
  ]
 }
