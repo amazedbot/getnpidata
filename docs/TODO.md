@@ -36,12 +36,15 @@ Fixes the owner found (2026-10-14), one pull request each:
 ## Waiting for the owner
 
 **Decisions:**
-- **Phase 8, insurance networks (Stage 5.5 item 16):** pick the pilot state and approve the sources.
-- **Phase 4 sources:** SAM.gov exclusions, state Medicaid exclusion lists.
+- ~~**Phase 8, insurance networks (Stage 5.5 item 16):** pick the pilot state~~ New York (owner, 2026-10-15); its sources are checked and proposed when Phase 8 starts.
+- ~~**Phase 4 sources:** SAM.gov exclusions, state Medicaid exclusion lists~~ approved (owner, 2026-10-15); built with Phase 4.
+- **Step 3.7:** on hold (owner, 2026-10-15).
 
 **Actions only the owner can take:**
 - **New York license status:** submit the Office of the Professions' Bulk Verifications Request Form (weekly files of currently registered licensees, free). NY today has board actions only.
-- **Michigan license lists:** download the remaining lists (A–L, Nursing, Pharmacy) into `StateLicenseFilesFolder\MI`.
+- ~~**Michigan license lists:** download the remaining lists (A–L, Nursing, Pharmacy) into `StateLicenseFilesFolder\MI`~~ done: the folder holds A–L, M–O, Nursing, Pharmacy and P–V, loaded 2026-10-13.
+- **AHRQ Compendium 2023:** download the systems CSV and the hospital, nursing home and home health linkage CSVs into `<data folder>\ahrq-compendium` (ahrq.gov blocks scripts).
+- **HRSA 340B:** download OPAIS's covered entity export once into `<data folder>\hrsa-340b`.
 
 ## Not needed for now (owner, 2026-10-13)
 
@@ -50,7 +53,7 @@ Fixes the owner found (2026-10-14), one pull request each:
 
 ## Later phases (PRODUCT_PLAN.md §3)
 
-- **Phase 4, bulk verification and compliance:** name, specialty and state match against an uploaded roster; changes since a date; the quality label; a PDF/CSV report with sources and dates; SAM.gov and state Medicaid exclusions (need a yes).
+- **Phase 4, bulk verification and compliance:** name, specialty and state match against an uploaded roster; changes since a date; the quality label; a PDF/CSV report with sources and dates; SAM.gov and state Medicaid exclusions (approved 2026-10-15).
 - **Phase 5, accounts, saved lists and alerts:** sign-in, saved searches, lists and rosters, weekly alerts by email and in the site, team sharing. Needs Phase 2 and the owner's choice of identity and email services.
 - **Phase 6, API and export tooling:** self-serve API keys and a usage page, a weekly change feed, bulk CSV/Parquet downloads, webhooks, the .NET client on NuGet, a Python client.
 - **Phase 7, area intelligence:** per-capita benchmarks against similar counties, trends, shortage overlays on the map, "where is the gap" rankings, printable area reports, specialty pages.
