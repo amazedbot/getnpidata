@@ -122,14 +122,20 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
             var changes = await CountChangesAsync(connection, RunAsync, meta, param, first, ct);
             var rows = await WriteStatsAsync(connection, RunAsync, asOfMonth, from, trackedFrom, first, ct);
 
-            // MySQL's clock, as the area counts and the projection record theirs (compared in IsStaleAsync).
+            // MySQL's clock, or the inputs' time when later: the area counts record DateTime.UtcNow, which a DATETIME column rounds
+            // up to the next second, so a build in the same second would otherwise look older than them (IsStaleAsync).
+            var at = await connection.ExecuteScalarAsync<DateTime>(new CommandDefinition(
+                """
+                SELECT GREATEST(UTC_TIMESTAMP(), COALESCE(MAX(GREATEST(`loaded_at`, `checked_at`)), '1970-01-01'))
+                FROM `reference_data` WHERE `source` IN @inputs
+                """, new { inputs = Inputs }, cancellationToken: ct));
             await Database.ExecuteAsync(connection,
                 """
                 INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
-                VALUES (@source, @version, '', @rows, UTC_TIMESTAMP(), UTC_TIMESTAMP()) AS new
+                VALUES (@source, @version, '', @rows, @at, @at) AS new
                 ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `checked_at` = new.`checked_at`,
                   `loaded_at` = IF(@fullDiff, new.`loaded_at`, `reference_data`.`loaded_at`)
-                """, ct, param: new { source = Source, version = "as of " + asOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), rows, fullDiff });
+                """, ct, param: new { source = Source, version = "as of " + asOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), rows, fullDiff, at });
             log.Information("Area history: {Events:N0} moves and deactivations, {Changes:N0} recorded changes, {Rows:N0} monthly rows ({Months}) in {Seconds:N0}s",
                 events, changes, rows, first ? $"derived from {AreaHistoryMath.MonthKey(derivedFrom)}" : $"from {AreaHistoryMath.MonthKey(openFrom)}",
                 watch.Elapsed.TotalSeconds);
@@ -270,6 +276,10 @@ public sealed class AreaHistoryBuilder(Database database, ILogger log)
         if (fullDiff)
         {
             await BuilderPending.ClearAsync(connection, BuilderPending.AreaHistory, ct);
+        }
+        else
+        {
+            await BuilderPending.CleanAsync(connection, null, ct);
         }
 
         log.Information("Area history: {Compared:N0} providers' locations compared{Full}", compared, fullDiff ? " (every provider)" : "");
