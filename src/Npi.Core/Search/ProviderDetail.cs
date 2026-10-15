@@ -111,6 +111,12 @@ public sealed record ProviderDetail(
     /// <summary>Changes recorded since change tracking began, newest first (Stage 5.5 item 11).</summary>
     public IReadOnlyList<ProviderChange> Changes { get; init; } = [];
 
+    /// <summary>
+    /// The record over the years in the archived monthly NPPES files (docs/PRODUCT_PLAN.md step 3.4), newest version first;
+    /// null when the archive isn't loaded or doesn't list the NPI.
+    /// </summary>
+    public ProviderHistory? History { get; init; }
+
     /// <summary>How current and trustworthy the record looks (docs/PRODUCT_PLAN.md step 3.1); null when not labelled yet.</summary>
     public ProviderQuality? Quality { get; init; }
 
@@ -210,6 +216,22 @@ public sealed class ProviderDetailService(string connectionString)
         var rows = (await connection.QueryAsync<DateTime?>(new CommandDefinition(
             "SELECT deactivation_date FROM provider_deactivated WHERE npi = @npi", new { npi }, cancellationToken: ct))).ToList();
         return rows.Count == 0 ? (false, null) : (true, rows[0] is { } d ? DateOnly.FromDateTime(d) : null);
+    }
+
+    /// <summary>
+    /// An NPI's record over the years in the archived monthly files (for a deactivated NPI: its last known record, without a
+    /// name); null when the archive doesn't list it.
+    /// </summary>
+    public async Task<ProviderHistory?> GetHistoryAsync(string npi, CancellationToken ct)
+    {
+        if (!InputFormats.IsNpi(npi))
+        {
+            return null;
+        }
+
+        await using var connection = new MySqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        return await ProviderHistoryReader.ReadAsync(connection, npi, ct);
     }
 
     public async Task<ProviderDetail?> GetAsync(string npi, CancellationToken ct)
@@ -447,6 +469,7 @@ public sealed class ProviderDetailService(string connectionString)
             "SELECT address1 AS Address1, city AS City, state AS State, zip5 AS Zip5 FROM cc_clinician_location WHERE npi = @npi ORDER BY zip5",
             new { npi }, cancellationToken: ct))).ToList();
 
+        var history = await ProviderHistoryReader.ReadAsync(connection, npi, ct);
         var standardCredential = (await SearchService.StandardCredentialsAsync(connection, [npi], ct)).GetValueOrDefault(npi);
         return new ProviderDetail(
             p.Npi, p.EntityType,
@@ -494,6 +517,7 @@ public sealed class ProviderDetailService(string connectionString)
             MedicarePrescribing = partD is null ? null : new MedicarePrescribing(partD.DataYear, partD.PrescriberType, partD.Claims, partD.DrugCost,
                 partD.Beneficiaries, partD.BrandClaims, partD.GenericClaims, partD.OpioidClaims, partD.OpioidRate, partD.AntibioticClaims),
             MedicareHistory = medicareHistory,
+            History = history,
             Facilities = facilities,
             StateLicenses = stateLicenses,
             MipsScores = mips.Select(m => new MipsScore(m.Year, m.Source, m.Organization, m.FinalScore, m.Quality, m.Pi, m.Ia, m.Cost)).ToList(),

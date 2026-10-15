@@ -159,6 +159,35 @@ public sealed class HistoryIntegrationTests : IDisposable
         var page = (await service.GetChangesAsync("NY", Kings, AreaChangeKinds.New, Nov2011, null, 1, _ct))!;
         Assert.Equal((1, E), (page.Total, page.Entries.Single().Npi));
 
+        // The profile's "Over the years" and Verify's "changed since" (October 2011 recorded as without a file, as a run does).
+        await db.ExecuteAsync("INSERT INTO history_period (period, status) VALUES ('2011-10-01', 'Missing')");
+        await db.ExecuteAsync(
+            "INSERT INTO provider_change (npi, detected_at, change_type, old_value, new_value) VALUES (@A, '2026-10-14 03:00:00', 'taxonomy_added', NULL, @Dentist)",
+            new { A, Dentist });
+        await using (var connection = new MySqlConnector.MySqlConnection(db.ConnectionString))
+        {
+            await connection.OpenAsync(_ct);
+            var a = (await ProviderHistoryReader.ReadAsync(connection, A, _ct))!;
+            Assert.Equal((Sep2011, Dec2012, new DateOnly(2011, 9, 11), true), (a.ArchiveFrom, a.ArchiveTo, a.FirstListed, a.InFirstFile));
+            Assert.Equal(2, a.Versions.Count);
+            Assert.Equal(["Primary practice location: Farmingdale, NY 11735 → Brooklyn, NY 11201", "Updated in NPPES on October 1, 2011"],
+                a.Versions[0].Changes.Select(x => x.Text));
+            Assert.Equal([Oct2011], a.Versions[0].MonthsWithoutFileBefore);
+            Assert.Equal(("CMS NPPES monthly file (historical copy via NBER)", new DateOnly(2011, 11, 13)), (a.Versions[0].Source, a.Versions[1].ListedTo));
+            Assert.StartsWith("In the archive's first file", a.Versions[1].Changes.Single().Text, StringComparison.Ordinal);
+            var c = (await ProviderHistoryReader.ReadAsync(connection, C, _ct))!;
+            Assert.Equal(("11735", "Farmingdale, NY 11735"), (c.LastActive!.Practice!.Zip5, c.LastActive.Practice.ToString()));
+            Assert.Equal([ProviderHistoryReader.Deactivated, ProviderHistoryReader.NotListed, ProviderHistoryReader.Active], c.Versions.Select(v => v.Status));
+            Assert.Null(await ProviderHistoryReader.ReadAsync(connection, "1234567893", _ct));
+
+            var since = await ProviderHistoryReader.ChangesSinceAsync(connection, [A, B, C, D, E, "1234567893"], new DateOnly(2011, 12, 1), _ct);
+            Assert.Equal([A, C, D], since.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal(["Listed again as deactivated on October 15, 2011"], since[C].Select(x => x.Text));
+            Assert.Equal([(new DateOnly(2012, 12, 9), HistoryChangeKinds.Deactivated, "Deactivated on December 1, 2012")], since[D].Select(x => (x.On, x.Kind, x.Text)));
+            Assert.StartsWith("Specialty added: ", Assert.Single(since[A]).Text, StringComparison.Ordinal);       // recorded since October 2026
+            Assert.Equal([B, E], (await ProviderHistoryReader.ChangesSinceAsync(connection, [B, E], new DateOnly(2011, 10, 1), _ct)).Keys.Order(StringComparer.Ordinal));
+        }
+
         // A second pass: nothing to do, nothing changes.
         var versions = await VersionsAsync(db);
         var stats = await StatsAsync(db);

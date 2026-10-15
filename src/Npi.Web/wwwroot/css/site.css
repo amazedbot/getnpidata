@@ -465,6 +465,9 @@ a.stat:hover { border-color: var(--accent); }
 .history-table summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0; }
 .history-table th[scope="row"] { font-weight: 600; text-align: left; }
 .history-notes { padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.history-list { padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.history-list ul { margin: 0.2rem 0 0; padding-left: 1.1rem; }
+.history-list .muted { font-size: 0.85rem; }
 .area-changes .summary { max-width: 46rem; }
 
 /* Verify NPIs (docs/PRODUCT_PLAN.md step 1.7). */

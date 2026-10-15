@@ -242,6 +242,103 @@ public sealed class ProviderDetail
 
     /// <summary>How current and trustworthy the record looks; null when not labelled yet.</summary>
     public RecordQuality? Quality { get; set; }
+
+    /// <summary>
+    /// The record over the years in the archived monthly NPPES files (CMS NPPES; historical copies via NBER), newest version
+    /// first; null when the archive doesn't list the NPI.
+    /// </summary>
+    public ProviderHistory? History { get; set; }
+}
+
+/// <summary>An NPI's record over the years, from the archived monthly NPPES files (November 2007 on).</summary>
+public sealed class ProviderHistory
+{
+    /// <summary>The archive's first file (its month).</summary>
+    public DateTime ArchiveFrom { get; set; }
+
+    /// <summary>The archive's newest file (its month).</summary>
+    public DateTime ArchiveTo { get; set; }
+
+    /// <summary>The date of the first file that listed the NPI.</summary>
+    public DateTime FirstListed { get; set; }
+
+    /// <summary>True when the NPI was already in the archive's first file.</summary>
+    public bool InFirstFile { get; set; }
+
+    /// <summary>The first file that listed secondary practice locations (September 2018).</summary>
+    public DateTime? SecondaryFrom { get; set; }
+
+    /// <summary>The versions, newest first.</summary>
+    public IReadOnlyList<ProviderHistoryVersion> Versions { get; set; } = [];
+}
+
+/// <summary>What the monthly files listed for an NPI from <see cref="ListedFrom"/> until <see cref="ListedTo"/>.</summary>
+public sealed class ProviderHistoryVersion
+{
+    public DateTime ListedFrom { get; set; }
+
+    /// <summary>The date of the file with the next version; null for the newest.</summary>
+    public DateTime? ListedTo { get; set; }
+
+    /// <summary>"active", "deactivated" or "notListed" (deactivated, before November 2012).</summary>
+    public string Status { get; set; } = "";
+
+    /// <summary>1 = individual, 2 = organization.</summary>
+    public int? EntityType { get; set; }
+
+    /// <summary>The primary practice location.</summary>
+    public HistoryPlace? Practice { get; set; }
+
+    /// <summary>Secondary practice locations (listed from September 2018).</summary>
+    public IReadOnlyList<HistoryPlace> SecondaryLocations { get; set; } = [];
+
+    public string? PrimaryTaxonomy { get; set; }
+
+    /// <summary>The primary taxonomy in plain words, with its code.</summary>
+    public string? PrimarySpecialty { get; set; }
+
+    public IReadOnlyList<string> TaxonomyCodes { get; set; } = [];
+
+    public DateTime? EnumerationDate { get; set; }
+
+    public DateTime? LastUpdateDate { get; set; }
+
+    public DateTime? DeactivationDate { get; set; }
+
+    public DateTime? ReactivationDate { get; set; }
+
+    /// <summary>Where the file came from.</summary>
+    public string Source { get; set; } = "";
+
+    /// <summary>What changed from the version before, in plain words.</summary>
+    public IReadOnlyList<HistoryChange> Changes { get; set; } = [];
+
+    /// <summary>Months without a surviving file just before this version.</summary>
+    public IReadOnlyList<DateTime> MonthsWithoutFileBefore { get; set; } = [];
+}
+
+/// <summary>A practice location in the archive: state, and for a US address the ZIP code and its USPS city.</summary>
+public sealed class HistoryPlace
+{
+    public string? State { get; set; }
+
+    public string? Zip5 { get; set; }
+
+    public string? City { get; set; }
+
+    public string? Country { get; set; }
+}
+
+/// <summary>One change in an NPI's record, in plain words.</summary>
+public sealed class HistoryChange
+{
+    /// <summary>When it was first seen (the monthly file, or the load that recorded it).</summary>
+    public DateTime On { get; set; }
+
+    /// <summary>listed, deactivated, reactivated, moved, locations, specialty, entity_type, dates, updated, or a recorded change kind.</summary>
+    public string Kind { get; set; } = "";
+
+    public string Text { get; set; } = "";
 }
 
 /// <summary>A change noticed between two weekly/monthly NPPES loads.</summary>
@@ -1641,6 +1738,12 @@ public sealed class LookupRow
 
     /// <summary>When the provider's current Medicare opt-out ends; null when not opted out or open-ended.</summary>
     public DateTime? OptOutEndDate { get; set; }
+
+    /// <summary>The "changed since" date asked for; null without it.</summary>
+    public DateTime? ChangedSince { get; set; }
+
+    /// <summary>With <see cref="ChangedSince"/>: what changed since then, oldest first (empty: nothing); null for an unknown NPI or without it.</summary>
+    public IReadOnlyList<HistoryChange>? Changes { get; set; }
 }
 
 /// <summary>The API's bulk lookup response.</summary>

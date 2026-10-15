@@ -66,6 +66,15 @@ public sealed record LookupRow(string Npi, LookupStatus Status, ProviderSummary?
 
     /// <summary>When the provider's current Medicare opt-out ends; null when not opted out or open-ended.</summary>
     public DateOnly? OptOutEndDate { get; init; }
+
+    /// <summary>The date the lookup was asked to compare with ("changed since"); null when it wasn't.</summary>
+    public DateOnly? ChangedSince { get; init; }
+
+    /// <summary>
+    /// With <see cref="ChangedSince"/>: what changed since then, oldest first (the archived monthly files, then the changes
+    /// recorded since October 2026); empty when nothing did; null for an unknown or invalid NPI or without the option.
+    /// </summary>
+    public IReadOnlyList<HistoryChange>? Changes { get; init; }
 }
 
 public sealed record SearchResult(IReadOnlyList<ProviderSummary> Items, int Page, int PageSize, long TotalCount, DateOnly? DataAsOf);

@@ -34,6 +34,9 @@
             <div class="paste">
                 <label for="Npis">…or paste NPIs (any separators)</label>
                 <textarea id="Npis" name="Npis" rows="6" placeholder="1003000126, 1234567893 …"></textarea>
+                <label for="ChangedSince">Changed since (optional)</label>
+                <input id="ChangedSince" name="ChangedSince" type="date" min="2005-01-01" value="@Model.ChangedSince?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" />
+                <span class="src">Also say what changed after this date: location, specialty, status, from the monthly NPPES files since 2007.</span>
                 <button type="submit">Check</button>
             </div>
         </div>
@@ -45,6 +48,10 @@
             <input type="hidden" name="List" value="@Model.List" />
             <input type="hidden" name="ListName" value="@Model.ListName" />
             <input type="hidden" name="Tab" value="@Model.CurrentTab" />
+            @if (Model.ChangedSince is { } changedSince)
+            {
+                <input type="hidden" name="ChangedSince" value="@changedSince.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" />
+            }
 
             <section aria-labelledby="sum-h" class="verify-summary">
                 <div class="card-head">
@@ -66,6 +73,10 @@
                 {
                     <p class="muted small">Of @N(Model.Medicare.Individuals) active individuals, @N(Model.Medicare.OrderRefer) can order and refer for Medicare. @N(Model.Medicare.BilledMedicare) of the active NPIs billed Medicare in the latest data year.</p>
                 }
+                @if (Model.ChangedSince is { } since)
+                {
+                    <p class="muted small">@N(c["changed"]) of the active or deactivated NPIs changed since @since.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) (location, specialty, status or other details in NPPES; state licenses, exclusions and opt-outs since October 2026).</p>
+                }
                 @if (c["stale"] + c["check"] > 0)
                 {
                     <p class="muted small">Record quality of the active NPIs: @N(c["active"] - c["stale"] - c["check"]) look current, @N(c["check"]) need a check and @N(c["stale"]) look stale
@@ -82,7 +93,8 @@
                         {
                             continue;
                         }
-                        <button type="submit" name="Show" value="@key" class="tab" aria-pressed="@(key == Model.CurrentTab ? "true" : "false")">@label · @N(c[key])</button>
+                        var tabLabel = key == "changed" && Model.ChangedSince is { } tabSince ? $"{label} {tabSince.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)}" : label;
+                        <button type="submit" name="Show" value="@key" class="tab" aria-pressed="@(key == Model.CurrentTab ? "true" : "false")">@tabLabel · @N(c[key])</button>
                     }
                 </div>
 
@@ -109,7 +121,12 @@
                                         <td>@(p?.PlainSpecialty ?? p?.PrimarySpecialty)</td>
                                         <td>@(p is null ? null : string.Join(", ", new[] { p.City, p.State }.Where(s => !string.IsNullOrEmpty(s))))</td>
                                         <td class="nowrap">@p?.LastUpdateDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</td>
-                                        <td><ul class="pills">@foreach (var (text, style) in VerifyModel.Results(row)){<li class="pill @style">@text</li>}</ul></td>
+                                        <td><ul class="pills">@foreach (var (text, style) in VerifyModel.Results(row)){<li class="pill @style">@text</li>}</ul>
+                                            @if (VerifyModel.ChangeLines(row) is { Count: > 0 } lines)
+                                            {
+                                                <details class="small"><summary>What changed</summary><ul>@foreach (var line in lines){<li>@line</li>}</ul></details>
+                                            }
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
@@ -125,7 +142,7 @@
                     }
                 }
                 @{ var version = await Geography.GetDataVersionAsync(HttpContext.RequestAborted); }
-                <p class="src">Sources: NPPES as of @Day(version?.AsOfDate) (deactivations: @(version?.DeactivationFile ?? "unknown"))@foreach (var (source, label) in VerifyModel.Sources){<text> · @label, loaded @Day(Model.SourceDates.TryGetValue(source, out var d) ? d : null)</text>}. The downloads have every row with the same columns as the search CSV, plus the status and dates.</p>
+                <p class="src">Sources: NPPES as of @Day(version?.AsOfDate) (deactivations: @(version?.DeactivationFile ?? "unknown"))@foreach (var (source, label) in VerifyModel.Sources){<text> · @label, loaded @Day(Model.SourceDates.TryGetValue(source, out var d) ? d : null)</text>}. The downloads have every row with the same columns as the search CSV, plus the status and dates@(Model.ChangedSince is null ? "" : " and what changed")@(Model.ChangedSince is null ? "" : $"; changes before October 2026 come from the archived monthly NPPES files ({ProviderHistory.Attribution})").</p>
             </section>
         </form>
     }

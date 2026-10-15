@@ -23,6 +23,15 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
 
     public DateOnly? DeactivationDate { get; private set; }
 
+    /// <summary>A deactivated NPI's last record listed active in the archived monthly files (no name), when there is one.</summary>
+    public ProviderHistoryVersion? LastKnown { get; private set; }
+
+    /// <summary>The archive's months for <see cref="LastKnown"/>'s source note.</summary>
+    public ProviderHistory? DeactivatedHistory { get; private set; }
+
+    /// <summary>The versions shown before "Show all" in "Over the years".</summary>
+    public const int HistoryShown = 4;
+
     public string Npi { get; private set; } = "";
 
     /// <summary>The primary specialty in the site's plain categories; null without a primary taxonomy.</summary>
@@ -64,6 +73,8 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
 
             Deactivated = true;
             DeactivationDate = date;
+            DeactivatedHistory = await details.GetHistoryAsync(npi, ct);
+            LastKnown = DeactivatedHistory?.LastActive;
             return Page();
         }
 

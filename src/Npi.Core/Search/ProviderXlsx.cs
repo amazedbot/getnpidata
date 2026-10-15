@@ -19,8 +19,8 @@ public static class ProviderXlsx
         WriteAsync(rows, output, columns.Select(c => c.Header).ToList(), r => columns.Select(c => c.Value(r)), ct);
 
     /// <summary>Bulk lookup results (docs/PRODUCT_PLAN.md step 1.7) with the CSV's columns (<see cref="ProviderCsv.LookupHeader"/>).</summary>
-    public static Task<long> WriteLookupAsync(IAsyncEnumerable<LookupRow> rows, Stream output, CancellationToken ct) =>
-        WriteAsync(rows, output, ProviderCsv.LookupHeader, ProviderCsv.LookupValues, ct);
+    public static Task<long> WriteLookupAsync(IAsyncEnumerable<LookupRow> rows, Stream output, CancellationToken ct, bool withChanges = false) =>
+        WriteAsync(rows, output, withChanges ? ProviderCsv.LookupChangesHeader : ProviderCsv.LookupHeader, r => ProviderCsv.LookupValues(r, withChanges), ct);
 
     private static async Task<long> WriteAsync<T>(IAsyncEnumerable<T> rows, Stream output, IReadOnlyList<string> header, Func<T, IEnumerable<string?>> values,
         CancellationToken ct)
