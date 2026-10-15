@@ -76,6 +76,12 @@ public enum QualityReason
     /// listing at the address (owner, 2026-10-15: a listing can outlive the business, so on its own it can't clear that age).
     /// </summary>
     ListingOnly = 16384,
+
+    /// <summary>
+    /// Billed Medicare Part B or prescribed under Part D in an older data year, but in neither in the newest one (older Medicare
+    /// years, docs/PRODUCT_PLAN.md Phase 3). Counts like the 5-year age: with no sign of current practice the record needs a check.
+    /// </summary>
+    MedicareStopped = 32768,
 }
 
 /// <summary>Signs that the provider currently practises (<c>provider_quality.activity</c>); stored bits, never renumber them.</summary>
@@ -122,7 +128,7 @@ public sealed record ProviderQuality(QualityLabel Label, [property: JsonIgnore] 
 /// explains it). <b>Stale:</b> not updated in NPPES for <see cref="StaleYears"/>+ years and no sign of current practice in the public
 /// data (Medicare billing or prescribing, a Care Compare listing, Medicare enrollment or order-and-refer eligibility, industry
 /// payments, a certified facility, a current state license, a state Medicaid enrollment), or a state record listing the provider as deceased. <b>Check:</b> not
-/// updated for <see cref="CheckYears"/>+ years with no sign of practice, or a conflict or gap: Care Compare lists another address or
+/// updated for <see cref="CheckYears"/>+ years, or Medicare billing stopped, with no sign of practice, or a conflict or gap: Care Compare lists another address or
 /// profession, a lapsed state license, an address that couldn't be mapped or is a PO box, no phone. <b>Current:</b> everything else.
 /// A reactivated NPI and a home address are shown but don't change the label.
 /// </summary>
@@ -137,6 +143,9 @@ public static class RecordQuality
     /// <summary>A sign that the practice closed: with no sign of current practice, the record is stale; otherwise it needs a check.</summary>
     public const QualityReason Closed = QualityReason.FacilityClosed | QualityReason.ListedClosed;
 
+    /// <summary>With no sign of current practice (<see cref="QualityReason.NoActivity"/>), any one of these makes a record "check".</summary>
+    public const QualityReason Inactive = QualityReason.NotUpdated5Years | QualityReason.MedicareStopped;
+
     /// <summary>Any one of these makes a record "check".</summary>
     public const QualityReason CheckAny = QualityReason.NotMapped | QualityReason.PoBox | QualityReason.NoPhone | QualityReason.CareCompareAddress |
                                           QualityReason.CareCompareSpecialty | QualityReason.LicenseLapsed | QualityReason.ListingOnly | Closed;
@@ -146,7 +155,7 @@ public static class RecordQuality
         || (r & QualityReason.Deceased) != 0
         || ((r & Closed) != 0 && (r & QualityReason.NoActivity) != 0)
             ? QualityLabel.Stale
-            : (r & (QualityReason.NotUpdated5Years | QualityReason.NoActivity)) == (QualityReason.NotUpdated5Years | QualityReason.NoActivity)
+            : ((r & QualityReason.NoActivity) != 0 && (r & Inactive) != 0)
               || (r & CheckAny) != 0
                 ? QualityLabel.Check
                 : QualityLabel.Current;
@@ -156,11 +165,11 @@ public static class RecordQuality
     {
         static int I(QualityReason r) => (int)r;
         var stale = I(QualityReason.NotUpdated10Years | QualityReason.NoActivity);
-        var check = I(QualityReason.NotUpdated5Years | QualityReason.NoActivity);
         return string.Create(CultureInfo.InvariantCulture,
             $"CASE WHEN ({reasons} & {stale}) = {stale} OR ({reasons} & {I(QualityReason.Deceased)}) <> 0 " +
             $"OR (({reasons} & {I(Closed)}) <> 0 AND ({reasons} & {I(QualityReason.NoActivity)}) <> 0) THEN {(int)QualityLabel.Stale} " +
-            $"WHEN ({reasons} & {check}) = {check} OR ({reasons} & {I(CheckAny)}) <> 0 THEN {(int)QualityLabel.Check} " +
+            $"WHEN (({reasons} & {I(QualityReason.NoActivity)}) <> 0 AND ({reasons} & {I(Inactive)}) <> 0) OR ({reasons} & {I(CheckAny)}) <> 0 " +
+            $"THEN {(int)QualityLabel.Check} " +
             $"ELSE {(int)QualityLabel.Current} END");
     }
 
@@ -213,6 +222,7 @@ public static class RecordQuality
         (QualityReason.ListingOnly, "Only a map listing shows it open"),
         (QualityReason.NotUpdated5Years, $"Not updated in {CheckYears}+ years"),
         (QualityReason.NoActivity, "No sign of current practice"),
+        (QualityReason.MedicareStopped, "Stopped billing Medicare"),
         (QualityReason.CareCompareSpecialty, "Medicare lists another profession"),
         (QualityReason.CareCompareAddress, "Medicare lists practices elsewhere"),
         (QualityReason.LicenseLapsed, "State license lapsed"),
@@ -254,10 +264,11 @@ public static class RecordQuality
 
     /// <summary>
     /// The full explanation for a profile: the label's reasons first (bad, then warn), then what checked out (good), then notes (info).
-    /// <paramref name="lastUpdate"/> gives the age in years; <paramref name="careCompare"/> adds what Care Compare lists.
+    /// <paramref name="lastUpdate"/> gives the age in years; <paramref name="careCompare"/> adds what Care Compare lists;
+    /// <paramref name="medicare"/> the year Medicare billing stopped.
     /// </summary>
     public static IReadOnlyList<QualityNote> Explain(ProviderQuality q, DateOnly? lastUpdate, DateOnly today, bool isPerson,
-        QualityCareCompare? careCompare = null)
+        QualityCareCompare? careCompare = null, MedicareHistory? medicare = null)
     {
         var r = q.Reasons;
         bool Has(QualityReason x) => (r & x) != 0;
@@ -304,6 +315,11 @@ public static class RecordQuality
         if (Has(QualityReason.ListingOnly))
         {
             notes.Add(new("warn", "The only sign of current operation is a business listing at the address (Overture Maps), and listings can outlive a business"));
+        }
+
+        if (Has(QualityReason.MedicareStopped))
+        {
+            notes.Add(new(Has(QualityReason.NoActivity) ? "bad" : "info", MedicareStoppedText(medicare)));
         }
 
         if (Has(QualityReason.CareCompareSpecialty))
@@ -355,6 +371,20 @@ public static class RecordQuality
         }
 
         return notes;
+    }
+
+    /// <summary>
+    /// The <see cref="QualityReason.MedicareStopped"/> note: "Last billed Medicare in 2016 (Part B); none in the CMS data for 2017–2024".
+    /// </summary>
+    public static string MedicareStoppedText(MedicareHistory? medicare)
+    {
+        if (medicare is not { LastBilledText: { } last, LastYear: { } year })
+        {
+            return "Billed Medicare in an earlier year, but not in the newest CMS data";
+        }
+
+        var since = year + 1 >= medicare.NewestDataYear ? $"{medicare.NewestDataYear}" : $"{year + 1}–{medicare.NewestDataYear}";
+        return $"{last}; none in the CMS data for {since}";
     }
 
     /// <summary>The kinds of Care Compare primary specialty → the plain categories (<see cref="SpecialtyCategories"/>) it may belong to.</summary>

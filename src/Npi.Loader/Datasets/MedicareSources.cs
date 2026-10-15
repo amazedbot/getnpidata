@@ -24,7 +24,7 @@ public sealed class MedicareUtilizationSource : MedicareYearlySource
 {
     public override string Name => "cms_physician_by_provider";
 
-    protected override string CatalogTitle => "Medicare Physician & Other Practitioners - by Provider";
+    protected override string CatalogTitle => MedicareHistoryPart.PartB.Title; // the older years: MedicareHistorySource
 
     private static readonly CsvColumn[] Columns =
     [
@@ -107,7 +107,7 @@ public sealed class PartDPrescriberSource : MedicareYearlySource
 {
     public override string Name => "cms_part_d_by_provider";
 
-    protected override string CatalogTitle => "Medicare Part D Prescribers - by Provider";
+    protected override string CatalogTitle => MedicareHistoryPart.PartD.Title; // the older years: MedicareHistorySource
 
     private static readonly CsvColumn[] Columns =
     [

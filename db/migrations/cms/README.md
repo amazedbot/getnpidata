@@ -17,3 +17,4 @@ Applied in number order together with the other folders (see [../README.md](../R
 | `081_cc_dac_raw_address.sql`, `082_cc_clinician_location.sql` | Care Compare practice addresses per clinician and ZIP code, for the record-quality check (Phase 3 step 3.1). |
 | `085_practice_signals.sql` | Signs of current practice: opioid treatment programs, Medicare revalidation list, equipment suppliers that billed Medicare (Phase 3 step 3.1). |
 | `086_cms_pos_facility.sql` | CMS Provider of Services: every certified facility, active or terminated, for closures (Phase 3 step 3.1). |
+| `100_medicare_history.sql` | Older Medicare years (2013 on): Part B billing and Part D prescribing per NPI and data year, and the file each year was loaded from (Phase 3). |

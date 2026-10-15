@@ -146,6 +146,8 @@ public class ClientTests
     [InlineData(typeof(Server.CompanyIntegrityAgreement), typeof(CompanyIntegrityAgreement))]
     [InlineData(typeof(Server.LookupRow), typeof(LookupRow))]
     [InlineData(typeof(Server.ProviderQuality), typeof(RecordQuality))]
+    [InlineData(typeof(Server.MedicareHistory), typeof(MedicareHistory))]
+    [InlineData(typeof(Server.MedicareHistoryYear), typeof(MedicareHistoryYear))]
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {

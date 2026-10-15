@@ -58,6 +58,78 @@ public sealed record IndustryPaymentHistory(IReadOnlyList<IndustryPaymentYear> Y
 public sealed record MedicarePrescribing(int Year, string? PrescriberType, int? Claims, double? DrugCost, int? Beneficiaries, int? BrandClaims,
     int? GenericClaims, int? OpioidClaims, double? OpioidRate, int? AntibioticClaims);
 
+/// <summary>Medicare activity in one data year: Part B billing with its patients, Part D prescribing with its claims (null: suppressed by CMS).</summary>
+public sealed record MedicareHistoryYear(int Year, bool PartB, bool PartD, int? Beneficiaries, int? Claims);
+
+/// <summary>
+/// Medicare Part B billing and Part D prescribing per data year, from <see cref="FirstDataYear"/> (2013) to the newest year CMS has
+/// published (docs/PRODUCT_PLAN.md Phase 3 "Older Medicare years"; the newest year is items 5a/5b). Only years with activity are
+/// listed, oldest first.
+/// </summary>
+public sealed record MedicareHistory(int FirstDataYear, int NewestDataYear, IReadOnlyList<MedicareHistoryYear> Years)
+{
+    public int? FirstYear => Years.Count == 0 ? null : Years.Min(y => y.Year);
+
+    public int? LastYear => Years.Count == 0 ? null : Years.Max(y => y.Year);
+
+    /// <summary>Billed Medicare or prescribed under Part D in an earlier year, but not in the newest one.</summary>
+    public bool Stopped => LastYear is { } last && last < NewestDataYear;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int? LastPartBYear => Years.Where(y => y.PartB).Select(y => (int?)y.Year).Max();
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int? LastPartDYear => Years.Where(y => y.PartD).Select(y => (int?)y.Year).Max();
+
+    /// <summary>The years with activity as ranges, e.g. "2013–2016, 2019, 2021–2024".</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string Spans
+    {
+        get
+        {
+            var years = Years.Select(y => y.Year).Distinct().Order().ToList();
+            var spans = new List<string>();
+            for (var i = 0; i < years.Count;)
+            {
+                var j = i;
+                while (j + 1 < years.Count && years[j + 1] == years[j] + 1)
+                {
+                    j++;
+                }
+
+                spans.Add(j == i ? years[i].ToString(System.Globalization.CultureInfo.InvariantCulture) : $"{years[i]}–{years[j]}");
+                i = j + 1;
+            }
+
+            return string.Join(", ", spans);
+        }
+    }
+
+    /// <summary>
+    /// When the provider last billed Medicare, e.g. "Last billed Medicare in 2016 (Part B)", "Last billed Medicare in 2018 (Part B and
+    /// Part D)", "Last prescribed under Medicare Part D in 2019; last billed Part B in 2015"; null without any year.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? LastBilledText
+    {
+        get
+        {
+            if (LastYear is not { } last)
+            {
+                return null;
+            }
+
+            var year = Years.Single(y => y.Year == last);
+            return (year.PartB, year.PartD) switch
+            {
+                (true, true) => $"Last billed Medicare in {last} (Part B and Part D)",
+                (true, false) => $"Last billed Medicare in {last} (Part B)" + (LastPartDYear is { } d ? $"; last Part D prescription in {d}" : ""),
+                _ => $"Last prescribed under Medicare Part D in {last}" + (LastPartBYear is { } b ? $"; last billed Part B in {b}" : ""),
+            };
+        }
+    }
+}
+
 /// <summary>An entry on the HHS-OIG List of Excluded Individuals/Entities, matched by NPI.</summary>
 public sealed record OigExclusion(string? Type, string? TypeDescription, DateOnly? ExclusionDate, DateOnly? WaiverDate, string? WaiverState,
     string? Category, string? Specialty);

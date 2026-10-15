@@ -640,6 +640,16 @@ CREATE TABLE `hrsa_shortage_raw` (
   `county_fips` varchar(5) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `medicare_activity_year` (
+  `data_year` smallint NOT NULL,
+  `npi` char(10) NOT NULL,
+  `parts` tinyint NOT NULL,
+  `part_b_beneficiaries` int DEFAULT NULL,
+  `part_d_claims` int DEFAULT NULL,
+  PRIMARY KEY (`data_year`,`npi`),
+  KEY `ix_medicare_activity_year_npi` (`npi`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `medicare_dme_supplier` (
   `npi` char(10) NOT NULL,
   `data_year` smallint NOT NULL,
@@ -657,6 +667,15 @@ CREATE TABLE `medicare_enrollment` (
   `org_name` varchar(200) DEFAULT NULL,
   PRIMARY KEY (`npi`,`enrollment_id`),
   KEY `ix_medicare_enrollment_pac` (`pac_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `medicare_history_version` (
+  `part` char(1) NOT NULL,
+  `data_year` smallint NOT NULL,
+  `version` varchar(500) NOT NULL,
+  `rows_loaded` bigint NOT NULL,
+  `loaded_at` datetime NOT NULL,
+  PRIMARY KEY (`part`,`data_year`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `medicare_opt_out` (

@@ -222,6 +222,9 @@ public sealed class ProviderDetail
     /// <summary>Medicare Part D prescribing in the latest data year; null when none.</summary>
     public MedicarePrescribing? MedicarePrescribing { get; set; }
 
+    /// <summary>Medicare Part B billing and Part D prescribing per data year since 2013; null when the NPI is in none of them.</summary>
+    public MedicareHistory? MedicareHistory { get; set; }
+
     /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
     public IndustryPayments? IndustryPayments { get; set; }
 
@@ -1195,6 +1198,44 @@ public sealed class MedicarePrescribing
     public double? OpioidRate { get; set; }
 
     public int? AntibioticClaims { get; set; }
+}
+
+/// <summary>Medicare Part B billing and Part D prescribing per data year, from 2013 to the newest year CMS has published.</summary>
+public sealed class MedicareHistory
+{
+    /// <summary>The first data year covered (2013).</summary>
+    public int FirstDataYear { get; set; }
+
+    /// <summary>The newest data year CMS has published.</summary>
+    public int NewestDataYear { get; set; }
+
+    /// <summary>The years with Part B billing or Part D prescribing, oldest first (years without either aren't listed).</summary>
+    public IReadOnlyList<MedicareHistoryYear> Years { get; set; } = [];
+
+    public int? FirstYear { get; set; }
+
+    public int? LastYear { get; set; }
+
+    /// <summary>True when the provider billed Medicare in an earlier year but not in the newest one.</summary>
+    public bool Stopped { get; set; }
+}
+
+/// <summary>Medicare activity in one data year.</summary>
+public sealed class MedicareHistoryYear
+{
+    public int Year { get; set; }
+
+    /// <summary>Billed Medicare Part B.</summary>
+    public bool PartB { get; set; }
+
+    /// <summary>Prescribed under Medicare Part D.</summary>
+    public bool PartD { get; set; }
+
+    /// <summary>Part B patients (null when suppressed by CMS or not billed).</summary>
+    public int? Beneficiaries { get; set; }
+
+    /// <summary>Part D claims (null when suppressed by CMS or not prescribed).</summary>
+    public int? Claims { get; set; }
 }
 
 /// <summary>What Medicare Care Compare publishes about a clinician.</summary>

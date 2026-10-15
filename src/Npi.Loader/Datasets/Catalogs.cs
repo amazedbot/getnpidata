@@ -80,6 +80,22 @@ public sealed class CmsCatalog
         var url = new Uri(best.CsvUrl);
         return new DatasetRelease($"{best.PeriodEnd} {Path.GetFileName(url.AbsolutePath)}".Trim(), url, best.PeriodEnd.Length > 0 ? best.PeriodEnd : null);
     }
+
+    /// <summary>
+    /// Every data year of a yearly dataset (e.g. "Medicare Part D Prescribers - by Provider", one release per year), oldest first:
+    /// per year the release whose period ends last (then the newest <c>modified</c>), with a CSV file. The version is the file's
+    /// path, folder included, because CMS republishes old years under new folders with the same file name.
+    /// </summary>
+    public IReadOnlyList<DatasetRelease> FindYears(string title) =>
+        _entries
+            .Where(e => e.CsvUrl is not null && string.Equals(e.BaseTitle, title, StringComparison.OrdinalIgnoreCase))
+            .Select(e => (Entry: e, Release: new DatasetRelease(new Uri(e.CsvUrl!).AbsolutePath, new Uri(e.CsvUrl!), e.PeriodEnd.Length > 0 ? e.PeriodEnd : null)))
+            .Where(x => x.Release.DataYear is not null)
+            .GroupBy(x => x.Release.DataYear!.Value)
+            .OrderBy(g => g.Key)
+            .Select(g => g.OrderByDescending(x => x.Entry.PeriodEnd, StringComparer.Ordinal).ThenByDescending(x => x.Entry.Modified, StringComparer.Ordinal)
+                .First().Release)
+            .ToList();
 }
 
 /// <summary>

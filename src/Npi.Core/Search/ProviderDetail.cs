@@ -90,6 +90,12 @@ public sealed record ProviderDetail(
     /// <summary>Medicare Part D prescribing in the latest data year; null when none (Stage 5.5 item 5b).</summary>
     public MedicarePrescribing? MedicarePrescribing { get; init; }
 
+    /// <summary>
+    /// Medicare Part B billing and Part D prescribing per data year since 2013 (docs/PRODUCT_PLAN.md Phase 3); null when the older years
+    /// aren't loaded or the NPI is in none of them.
+    /// </summary>
+    public MedicareHistory? MedicareHistory { get; init; }
+
     /// <summary>Open Payments general payments in the newest program year; null when none (Stage 5.5 item 6).</summary>
     public IndustryPayments? IndustryPayments { get; init; }
 
@@ -161,6 +167,8 @@ public sealed class ProviderDetailService(string connectionString)
 
     private sealed record TopServiceRow(string Hcpcs, string? Description, sbyte? IsDrug, string? PlaceOfService, int? Beneficiaries, double? Services,
         double? AvgPayment);
+
+    private sealed record HistoryRow(short Year, sbyte Parts, int? Beneficiaries, int? Claims);
 
     private sealed record PartDRow(short DataYear, string? PrescriberType, int? Claims, double? DrugCost, int? Beneficiaries, int? BrandClaims,
         int? GenericClaims, int? OpioidClaims, double? OpioidRate, int? AntibioticClaims);
@@ -338,6 +346,8 @@ public sealed class ProviderDetailService(string connectionString)
             FROM medicare_part_d WHERE npi = @npi
             """, new { npi }, cancellationToken: ct));
 
+        var medicareHistory = await MedicareHistoryAsync(connection, npi, utilization, partD, ct);
+
         var payments = await connection.QuerySingleOrDefaultAsync<PaymentSummaryRow>(new CommandDefinition(
             "SELECT program_year AS ProgramYear, total_amount AS TotalAmount, records AS Records, payers AS Payers FROM open_payments_summary WHERE npi = @npi",
             new { npi }, cancellationToken: ct));
@@ -483,10 +493,50 @@ public sealed class ProviderDetailService(string connectionString)
                     s.PlaceOfService switch { "F" => "Facility", "O" => "Office", _ => s.PlaceOfService }, s.Beneficiaries, s.Services, s.AvgPayment)).ToList()),
             MedicarePrescribing = partD is null ? null : new MedicarePrescribing(partD.DataYear, partD.PrescriberType, partD.Claims, partD.DrugCost,
                 partD.Beneficiaries, partD.BrandClaims, partD.GenericClaims, partD.OpioidClaims, partD.OpioidRate, partD.AntibioticClaims),
+            MedicareHistory = medicareHistory,
             Facilities = facilities,
             StateLicenses = stateLicenses,
             MipsScores = mips.Select(m => new MipsScore(m.Year, m.Source, m.Organization, m.FinalScore, m.Quality, m.Pi, m.Ia, m.Cost)).ToList(),
         };
+    }
+
+    /// <summary>
+    /// The older years (medicare_activity_year) with the newest one (medicare_utilization, medicare_part_d); null when the older years
+    /// aren't loaded or the NPI billed in none of the years. The newest data year is the newest of the two newest-year releases.
+    /// </summary>
+    private static async Task<MedicareHistory?> MedicareHistoryAsync(MySqlConnection connection, string npi, UtilizationRow? utilization, PartDRow? partD,
+        CancellationToken ct)
+    {
+        var (firstYear, newestYear) = await connection.QuerySingleAsync<(long? First, long? Newest)>(new CommandDefinition(
+            """
+            SELECT (SELECT CAST(MIN(data_year) AS SIGNED) FROM medicare_history_version),
+                   (SELECT MAX(CAST(LEFT(version, 4) AS SIGNED)) FROM reference_data
+                    WHERE source IN ('cms_physician_by_provider', 'cms_part_d_by_provider') AND version REGEXP '^[0-9]{4}')
+            """, cancellationToken: ct));
+        if (firstYear is null)
+        {
+            return null;
+        }
+
+        var years = (await connection.QueryAsync<HistoryRow>(new CommandDefinition(
+                "SELECT data_year AS Year, parts AS Parts, part_b_beneficiaries AS Beneficiaries, part_d_claims AS Claims FROM medicare_activity_year WHERE npi = @npi",
+                new { npi }, cancellationToken: ct)))
+            .Select(r => new MedicareHistoryYear(r.Year, (r.Parts & 1) != 0, (r.Parts & 2) != 0, r.Beneficiaries, r.Claims))
+            .ToList();
+        foreach (var year in new[] { (int?)utilization?.DataYear, partD?.DataYear }.OfType<int>().Distinct())
+        {
+            years.RemoveAll(y => y.Year == year); // the newest year's own tables win
+            years.Add(new MedicareHistoryYear(year, utilization?.DataYear == year, partD?.DataYear == year,
+                utilization?.DataYear == year ? utilization.Beneficiaries : null, partD?.DataYear == year ? partD.Claims : null));
+        }
+
+        if (years.Count == 0)
+        {
+            return null;
+        }
+
+        years.Sort((a, b) => a.Year.CompareTo(b.Year));
+        return new MedicareHistory(Math.Min((int)firstYear.Value, years[0].Year), Math.Max((int)(newestYear ?? 0), years[^1].Year), years);
     }
 
     private static DateOnly? ToDate(DateTime? value) => value is null ? null : DateOnly.FromDateTime(value.Value);
