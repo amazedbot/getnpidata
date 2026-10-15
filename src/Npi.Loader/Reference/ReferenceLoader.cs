@@ -172,10 +172,10 @@ public sealed class ReferenceLoader(LoaderOptions options, Database database, Ht
             return;
         }
 
-        var gazetteerCounties = CensusGeography.ParseGazetteerCounties(await OpenZippedTextAsync(CensusGeography.CountiesUrl(baseUrl, year), ct));
+        var gazetteerCounties = await ReadZippedTextAsync(CensusGeography.CountiesUrl(baseUrl, year), CensusGeography.ParseGazetteerCounties, ct);
         var codes2020 = CensusGeography.ParseCountyCodes2020(new MemoryStream(await http.GetByteArrayAsync(new Uri(options.CountyCodes2020Url), ct)));
         var counties = CensusGeography.Merge(gazetteerCounties, codes2020);
-        var centroids = CensusGeography.ParseGazetteerZcta(await OpenZippedTextAsync(CensusGeography.ZctaUrl(baseUrl, year), ct));
+        var centroids = await ReadZippedTextAsync(CensusGeography.ZctaUrl(baseUrl, year), CensusGeography.ParseGazetteerZcta, ct);
 
         var countyTable = ReferenceTables.ToDataTable(counties,
             ("county_fips", typeof(string), c => c.CountyFips),
@@ -197,19 +197,26 @@ public sealed class ReferenceLoader(LoaderOptions options, Database database, Ht
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
 
-    private async Task<Stream> OpenZippedTextAsync(Uri url, CancellationToken ct)
+    // The zip is downloaded into memory (opening one needs a seekable stream; the ZCTA zip is ~1 MB) and its .txt is parsed
+    // as it is unzipped, never copied out first (speed item 9).
+    private async Task<T> ReadZippedTextAsync<T>(Uri url, Func<Stream, T> parse, CancellationToken ct)
     {
-        var zip = new ZipArchive(new MemoryStream(await http.GetByteArrayAsync(url, ct)), ZipArchiveMode.Read);
-        var entry = zip.Entries.SingleOrDefault(e => e.FullName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidDataException($"{url} should contain exactly one .txt file.");
-        var buffer = new MemoryStream();
-        await using (var s = entry.Open())
+        using var zip = new MemoryStream(await http.GetByteArrayAsync(url, ct), writable: false);
+        return ReadZippedText(zip, url.ToString(), parse);
+    }
+
+    /// <summary>Parses the one .txt file of a zip straight from its entry.</summary>
+    internal static T ReadZippedText<T>(Stream zipStream, string what, Func<Stream, T> parse)
+    {
+        using var zip = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: true);
+        var entries = zip.Entries.Where(e => e.FullName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (entries.Count != 1)
         {
-            await s.CopyToAsync(buffer, ct);
+            throw new InvalidDataException($"{what} should contain exactly one .txt file.");
         }
 
-        buffer.Position = 0;
-        return buffer;
+        using var text = entries[0].Open();
+        return parse(text);
     }
 
     /// <summary>True (after recording the check) when <paramref name="version"/> is already loaded and no reload is forced.</summary>
