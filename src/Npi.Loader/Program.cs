@@ -29,8 +29,9 @@ var options = configuration.Get<LoaderOptions>() ?? new LoaderOptions();
 Directory.CreateDirectory(options.ResolvedLogFolder);
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
-    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
-    .WriteTo.File(Path.Combine(options.ResolvedLogFolder, "getnpidata-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 60, formatProvider: CultureInfo.InvariantCulture)
+    .WriteTo.Console(outputTemplate: LoaderLog.OutputTemplate, formatProvider: CultureInfo.InvariantCulture)
+    .WriteTo.File(Path.Combine(options.ResolvedLogFolder, "getnpidata-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 60,
+        outputTemplate: LoaderLog.FileOutputTemplate, formatProvider: CultureInfo.InvariantCulture)
     .CreateLogger();
 
 using var cts = new CancellationTokenSource();

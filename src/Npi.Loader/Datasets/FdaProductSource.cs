@@ -29,6 +29,9 @@ public sealed partial class FdaProductSource : DatasetSource
 
     public override string Name => "fda_products";
 
+    // The products named in Open Payments (op_product) decide which labels, devices and decisions are kept.
+    public override IReadOnlyList<string> After => ["open_payments"];
+
     public override TimeSpan CheckInterval => TimeSpan.FromDays(7);
 
     private sealed record Partition(string Endpoint, Uri Url, string ExportDate);

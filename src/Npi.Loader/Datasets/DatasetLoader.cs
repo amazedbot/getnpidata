@@ -6,21 +6,52 @@ using Serilog;
 namespace Npi.Loader.Datasets;
 
 /// <summary>Shared services for <see cref="DatasetSource"/>s during one refresh.</summary>
-public sealed class DatasetContext(LoaderOptions options, Database database, HttpClient http, ILogger log)
+public sealed class DatasetContext
 {
-    private CmsCatalog? _cmsCatalog;
+    private readonly CatalogCache _catalogs;
 
-    public LoaderOptions Options { get; } = options;
+    public DatasetContext(LoaderOptions options, Database database, HttpClient http, ILogger log)
+        : this(options, database, http, log, new CatalogCache())
+    {
+    }
 
-    public Database Database { get; } = database;
+    private DatasetContext(LoaderOptions options, Database database, HttpClient http, ILogger log, CatalogCache catalogs)
+    {
+        Options = options;
+        Database = database;
+        Http = http;
+        Log = log;
+        _catalogs = catalogs;
+    }
 
-    public HttpClient Http { get; } = http;
+    public LoaderOptions Options { get; }
 
-    public ILogger Log { get; } = log;
+    public Database Database { get; }
 
-    /// <summary>The data.cms.gov catalog, fetched once per refresh (~18 MB) and shared by every CMS source.</summary>
-    public async Task<CmsCatalog> CmsCatalogAsync(CancellationToken ct) =>
-        _cmsCatalog ??= await CmsCatalog.LoadAsync(Http, new Uri(Options.CmsCatalogUrl), ct);
+    public HttpClient Http { get; }
+
+    public ILogger Log { get; }
+
+    /// <summary>The same services, logging with "[<paramref name="step"/>] " before each line (sources and states run side by side).</summary>
+    public DatasetContext ForStep(string step) => new(Options, Database, Http, LoaderLog.ForStep(Log, step), _catalogs);
+
+    /// <summary>The data.cms.gov catalog, fetched once per refresh (~18 MB) and shared by every CMS source, also when they run at once.</summary>
+    public Task<CmsCatalog> CmsCatalogAsync(CancellationToken ct)
+    {
+        Task<CmsCatalog> fetch;
+        lock (_catalogs.Lock)
+        {
+            // A failed fetch is tried again by the next source that needs it.
+            if (_catalogs.Cms is not { IsFaulted: false, IsCanceled: false })
+            {
+                _catalogs.Cms = CmsCatalog.LoadAsync(Http, new Uri(Options.CmsCatalogUrl), ct);
+            }
+
+            fetch = _catalogs.Cms;
+        }
+
+        return fetch.WaitAsync(ct);
+    }
 
     public Task<DatasetRelease> ProviderDataAsync(string datasetId, CancellationToken ct) =>
         ProviderDataCatalog.FindLatestAsync(Http, new Uri(Options.ProviderDataMetastoreUrl), datasetId, ct);
@@ -32,6 +63,14 @@ public sealed class DatasetContext(LoaderOptions options, Database database, Htt
     /// <summary>A downloader with the configured attempts and parallel parts.</summary>
     public FileDownloader Downloader() =>
         new(Http, Log, Options.DownloadAttempts, parts: Options.DownloadParts, partMinBytes: Options.DownloadPartMinBytes);
+
+    // Shared by a context and those made from it with ForStep.
+    private sealed class CatalogCache
+    {
+        public Lock Lock { get; } = new();
+
+        public Task<CmsCatalog>? Cms { get; set; }
+    }
 }
 
 /// <summary>One external dataset joined to NPIs (CLAUDE.md §7 Stage 5.5). Its version is tracked in <c>reference_data</c>.</summary>
@@ -42,6 +81,16 @@ public abstract class DatasetSource
 
     /// <summary>How long a successful check stays valid before <c>run</c> looks for a new release again.</summary>
     public virtual TimeSpan CheckInterval => TimeSpan.FromHours(20);
+
+    /// <summary>
+    /// The sources (by <see cref="Name"/>) that must finish before this one starts when they refresh in the same run: those whose
+    /// tables it reads while loading, or that rebuild the same tables after their load. They come earlier in
+    /// <see cref="DatasetLoader.AllSources"/>.
+    /// </summary>
+    public virtual IReadOnlyList<string> After => [];
+
+    /// <summary>A load of several GB (download, MySQL work or memory); at most one heavy source runs at a time.</summary>
+    public virtual bool Heavy => false;
 
     public abstract Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct);
 
@@ -137,25 +186,33 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
             return false;
         }
 
+        // Side by side, up to ParallelSources (speed item 7); each source checks and loads on its own connections, and one that
+        // fails doesn't stop the others. Its lines start with its name.
         var context = new DatasetContext(options, database, http, log);
-        var ok = true;
-        foreach (var source in selected)
+        var loaded = 0;
+        var jobs = selected.Select(source => new ScheduledJob(source.Name, source.After, source.Heavy, async jobCt =>
         {
-            try
+            if (await RefreshAsync(context.ForStep(source.Name), source, force, jobCt))
             {
-                await RefreshAsync(context, source, force, ct);
+                Interlocked.Increment(ref loaded);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                log.Error(ex, "Dataset {Source} failed", source.Name);
-                ok = false;
-            }
+        })).ToList();
+        var failed = await ParallelSchedule.RunAsync(jobs, options.ParallelSources, ct, (job, ex) => log.Error(ex, "Dataset {Source} failed", job.Name));
+        if (loaded > 0)
+        {
+            DropOrphanSidecars(Path.Combine(options.ResolvedWorkFolder, "datasets"));
         }
 
-        return ok;
+        if (failed.Count > 0 && selected.Count > 1)
+        {
+            log.Error("Datasets failed: {Sources}", string.Join(", ", selected.Select(s => s.Name).Where(failed.Contains)));
+        }
+
+        return failed.Count == 0;
     }
 
-    private async Task RefreshAsync(DatasetContext context, DatasetSource source, bool force, CancellationToken ct)
+    /// <returns>True when the source was loaded, false when it was current.</returns>
+    private async Task<bool> RefreshAsync(DatasetContext context, DatasetSource source, bool force, CancellationToken ct)
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         await using var connection = await database.OpenAsync(ct);
@@ -165,7 +222,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         if (!force && stored is not null && now - stored.CheckedAt < source.CheckInterval)
         {
             log.Information("Dataset {Source} {Version} checked {Hours:N0} h ago", source.Name, stored.Version, (now - stored.CheckedAt).TotalHours);
-            return;
+            return false;
         }
 
         var latest = await source.FindLatestAsync(context, ct);
@@ -174,12 +231,11 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
             await Database.ExecuteAsync(connection, "UPDATE `reference_data` SET `checked_at` = @now WHERE `source` = @source", ct,
                 param: new { now, source = source.Name });
             log.Information("Dataset {Source} {Version} is current", source.Name, latest.Version);
-            return;
+            return false;
         }
 
         var started = DateTime.UtcNow;
         var rows = await source.LoadAsync(context, latest, ct);
-        DropOrphanSidecars(Path.Combine(options.ResolvedWorkFolder, "datasets"));
         await Database.ExecuteAsync(connection,
             """
             INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
@@ -189,6 +245,7 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
             """, ct, param: new { source = source.Name, version = latest.Version, url = latest.Url.ToString(), rows, now = _clock.GetUtcNow().UtcDateTime });
         log.Information("Dataset {Source} {Version}: {Rows:N0} rows loaded in {Seconds:N0}s", source.Name, latest.Version, rows,
             (DateTime.UtcNow - started).TotalSeconds);
+        return true;
     }
 
     // The validators of downloads a source deleted itself after loading them (FileDownloader.MetaPath).

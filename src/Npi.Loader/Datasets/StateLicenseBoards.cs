@@ -145,33 +145,58 @@ public sealed record VermontDataset() : AssembledStateDataset("VT", "vt_bmp")
 
     private const int PageSize = 100;
 
+    /// <summary>
+    /// The first page gives the total; the other pages are asked <see cref="LoaderOptions.StateFeedParallelRequests"/> at a time
+    /// (one started at most every <see cref="LoaderOptions.ApiRequestDelay"/>) and read in order. An empty page ends the list.
+    /// </summary>
     public override async IAsyncEnumerable<Row> RowsAsync(DatasetContext context, [EnumeratorCancellation] CancellationToken ct)
     {
-        for (var (start, total) = (0, int.MaxValue); start < total; start += PageSize)
+        Task<string> PageAsync(int page, CancellationToken pageCt) =>
+            RetryAsync(() => context.Http.GetStringAsync(new Uri($"{FeedUrl}?draw=1&start={page * PageSize}&length={PageSize}"), pageCt), pageCt);
+
+        var (total, first) = ParsePage(await PageAsync(0, ct));
+        foreach (var row in first)
         {
-            var url = new Uri($"{FeedUrl}?draw=1&start={start}&length={PageSize}");
-            using var doc = JsonDocument.Parse(await RetryAsync(() => context.Http.GetStringAsync(url, ct), ct));
-            total = doc.RootElement.GetProperty("recordsTotal").GetInt32();
-            var page = doc.RootElement.GetProperty("data");
-            if (page.GetArrayLength() == 0)
+            yield return row;
+        }
+
+        if (first.Count == 0)
+        {
+            yield break;
+        }
+
+        var pages = (total + PageSize - 1) / PageSize;
+        await foreach (var json in ParallelSchedule.InOrderAsync(pages - 1, (i, pageCt) => PageAsync(i + 1, pageCt),
+                           context.Options.StateFeedParallelRequests, context.Options.ApiRequestDelay, ct))
+        {
+            var (_, rows) = ParsePage(json);
+            if (rows.Count == 0)
             {
                 break;
             }
 
-            foreach (var r in page.EnumerateArray())
+            foreach (var row in rows)
             {
-                string? At(int i) => r.GetArrayLength() > i && r[i].ValueKind == JsonValueKind.String ? r[i].GetString() : null;
-
-                // "042.Physician" → "Physician"; an action column of "None" means none.
-                var type = At(30) is { } t && t.IndexOf('.', StringComparison.Ordinal) is var dot and >= 0 ? t[(dot + 1)..] : At(30);
-                yield return new Row(At(0), At(4), At(2), type, At(1), At(13), At(29) is "None" or "" ? null : At(29));
-            }
-
-            if (context.Options.ApiRequestDelay > TimeSpan.Zero)
-            {
-                await Task.Delay(context.Options.ApiRequestDelay, ct);
+                yield return row;
             }
         }
+    }
+
+    /// <summary>One answer of the feed: the total number of records and the page's rows.</summary>
+    public static (int Total, IReadOnlyList<Row> Rows) ParsePage(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var rows = new List<Row>();
+        foreach (var r in doc.RootElement.GetProperty("data").EnumerateArray())
+        {
+            string? At(int i) => r.GetArrayLength() > i && r[i].ValueKind == JsonValueKind.String ? r[i].GetString() : null;
+
+            // "042.Physician" → "Physician"; an action column of "None" means none.
+            var type = At(30) is { } t && t.IndexOf('.', StringComparison.Ordinal) is var dot and >= 0 ? t[(dot + 1)..] : At(30);
+            rows.Add(new Row(At(0), At(4), At(2), type, At(1), At(13), At(29) is "None" or "" ? null : At(29)));
+        }
+
+        return (doc.RootElement.GetProperty("recordsTotal").GetInt32(), rows);
     }
 }
 

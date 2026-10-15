@@ -376,6 +376,9 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
 {
     public override string Name => "product_adverse_events";
 
+    // The products asked about come from op_product, their names from the FDA tables.
+    public override IReadOnlyList<string> After => ["open_payments", "fda_products"];
+
     protected override TimeSpan MaxAge => TimeSpan.FromDays(7); // not used: openFDA's export dates decide
 
     /// <summary>openFDA's export dates of the drug (FAERS) and device (MAUDE) adverse event reports.</summary>
@@ -544,6 +547,9 @@ public sealed class ProductAdverseEventSource : ProductApiCacheSource
 public sealed class ProductTrialSource : ProductApiCacheSource
 {
     public override string Name => "product_trials";
+
+    // The products asked about come from op_product, their names from the FDA tables.
+    public override IReadOnlyList<string> After => ["open_payments", "fda_products"];
 
     protected override TimeSpan MaxAge => TimeSpan.FromDays(30);
 

@@ -24,6 +24,22 @@ public sealed class LoaderOptions
 
     public long DownloadPartMinBytes { get; set; } = Datasets.FileDownloader.DefaultPartMinBytes;
 
+    /// <summary>
+    /// Stage 5.5 datasets <c>run</c> and <c>datasets</c> check and load at once (speed item 7); the order between those that
+    /// read another's tables is kept (<see cref="Datasets.DatasetSource.After"/>), and at most one heavy load runs at a time
+    /// (<see cref="Datasets.DatasetSource.Heavy"/>). 1 = one after another.
+    /// </summary>
+    public int ParallelSources { get; set; } = 3;
+
+    /// <summary>
+    /// States whose license files are downloaded and filtered at once (speed item 7); matching and replacing their rows stays
+    /// one state at a time. 1 = one state after another.
+    /// </summary>
+    public int ParallelStates { get; set; } = 3;
+
+    /// <summary>Requests in flight to a state board's paged feed (Vermont's roster, 100 records a request); answers are kept in order.</summary>
+    public int StateFeedParallelRequests { get; set; } = 4;
+
     /// <summary>NUCC taxonomy CSV page; the newest nucc_taxonomy_&lt;ver&gt;.csv link on it is loaded.</summary>
     public string NuccPageUrl { get; set; } = "https://www.nucc.org/index.php/code-sets-mainmenu-41/provider-taxonomy-mainmenu-40/csv-mainmenu-57";
 
