@@ -65,6 +65,9 @@ public sealed class MedicareHistorySource : DatasetSource
 
     public override string Name => "medicare_history";
 
+    /// <summary>22 files of 0.3–0.8 GB on a first load (speed item 7: at most one heavy load at a time).</summary>
+    public override bool Heavy => true;
+
     public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
     {
         var files = Files(await context.CmsCatalogAsync(ct));
