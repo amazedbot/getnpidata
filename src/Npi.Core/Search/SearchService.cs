@@ -56,7 +56,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         }
 
         var f = SearchValidation.Normalize(
-            filter with { State = null, CountyFips = null, City = null, Zip5 = null, RadiusMiles = null, Sort = null, Page = 1, PageSize = SearchFilter.DefaultPageSize });
+            filter with { State = null, CountyFips = null, City = null, Zip5 = null, RadiusMiles = null, Bbox = null, Sort = null, Page = 1, PageSize = SearchFilter.DefaultPageSize });
         var query = new SearchQuery(f, await taxonomy.ResolveAsync(f, ct), radiusCenter: null, areaSearch: true, credential: await ResolveCredentialAsync(f, ct));
         var p = new DynamicParameters(query.Parameters);
         p.Add("cells", bounds.Cells);

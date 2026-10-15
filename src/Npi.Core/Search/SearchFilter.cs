@@ -94,6 +94,13 @@ public sealed record SearchFilter
     public string? AddressType { get; init; }
 
     /// <summary>
+    /// A map area, "west,south,east,north" in degrees (the map page's area, <see cref="MapBounds"/>; owner, 2026-10-14): a practice
+    /// location whose map point (<c>provider_map</c>) is inside it. Normalized to six decimals; at most the map's largest
+    /// searchable area. Combines with the other location filters.
+    /// </summary>
+    public string? Bbox { get; init; }
+
+    /// <summary>
     /// Record quality (<see cref="RecordQuality"/>, docs/PRODUCT_PLAN.md step 3.1): <c>notStale</c> (hide stale records), <c>current</c>,
     /// <c>check</c> or <c>stale</c>.
     /// </summary>

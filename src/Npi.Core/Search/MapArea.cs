@@ -59,6 +59,10 @@ public sealed record MapBounds(double South, double West, double North, double E
                 ? "Zoom in to search this area: the map shows too large a region."
                 : null;
 
+    /// <summary>"west,south,east,north" with at most six decimals (about 0.1 m), the form a list's <c>bbox</c> filter keeps.</summary>
+    public string ToBboxString() => string.Join(",", new[] { West, South, East, North }
+        .Select(v => Math.Round(v, 6).ToString("0.######", CultureInfo.InvariantCulture)));
+
     /// <summary>Parses "west,south,east,north"; null when it isn't four numbers.</summary>
     public static MapBounds? Parse(string? value)
     {

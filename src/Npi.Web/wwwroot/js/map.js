@@ -129,6 +129,12 @@
 
       history.replaceState(null, "", "/map?" + params.toString());
       draw(body);
+      // Every match in the searched area, not only the 1,000 pins: the list and the CSV take the same filters and the area.
+      for (const [id, path] of [["area-list", "/search?"], ["area-csv", "/export.csv?"]]) {
+        const link = document.getElementById(id);
+        link.href = path + params.toString();
+        link.hidden = false;
+      }
     } catch {
       say("The search failed. Try again.", true);
     } finally {

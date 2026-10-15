@@ -78,6 +78,7 @@ public static class SearchQueryString
             MedicareActive = Bool("medicareActive", nameof(SearchFilter.MedicareActive)),
             Shortage = Text(q, "shortage"),
             AddressType = Text(q, "addressType"),
+            Bbox = Text(q, "bbox"),
             Quality = Text(q, "quality"),
             NewWithinDays = Int("newWithinDays", nameof(SearchFilter.NewWithinDays)),
             UpdatedWithinDays = Int("updatedWithinDays", nameof(SearchFilter.UpdatedWithinDays)),
@@ -112,6 +113,8 @@ public static class SearchQueryString
         new("city", ParameterType.Text, nameof(SearchFilter.City), "Practice location city (exact, case-insensitive)."),
         new("zip", ParameterType.Text, nameof(SearchFilter.Zip5), "Five-digit practice location ZIP."),
         new("radius", ParameterType.WholeNumber, nameof(SearchFilter.RadiusMiles), "Miles around zip (1-100). Needs a ZIP with a Census ZCTA centroid."),
+        new("bbox", ParameterType.Text, nameof(SearchFilter.Bbox),
+            "Map area west,south,east,north in degrees (at most 2.5° of latitude by 3.5° of longitude): a practice location whose map point is inside it, as on the map page."),
         new("lastName", ParameterType.Text, nameof(SearchFilter.LastName), "Last name prefix (individuals)."),
         new("firstName", ParameterType.Text, nameof(SearchFilter.FirstName), "First name prefix (individuals)."),
         new("orgName", ParameterType.Text, nameof(SearchFilter.OrgName), "Organization name prefix; with nameMatch=similar, words anywhere in the legal or another (DBA) name."),
@@ -163,7 +166,7 @@ public static class SearchQueryString
     private static readonly string[] FilterKeys =
         ["category", "subcategory", "classification", "taxonomy", "state", "county", "city", "zip", "lastName", "firstName", "orgName", "npi", "entityType", "gender", "credential",
          "excluded", "optedOut", "orderRefer", "acceptsAssignment", "telehealth", "minYears", "medicareActive", "shortage", "addressType", "quality",
-         "newWithinDays", "updatedWithinDays"];
+         "bbox", "newWithinDays", "updatedWithinDays"];
 
     /// <summary>"?classification=…&amp;state=…" for the filter, optionally with a different page/sort.</summary>
     public static string ToQueryString(SearchFilter f, int? page = null, string? sort = null, bool includePaging = true)
@@ -187,6 +190,7 @@ public static class SearchQueryString
         Add("city", f.City);
         Add("zip", f.Zip5);
         Add("radius", f.RadiusMiles?.ToString(CultureInfo.InvariantCulture));
+        Add("bbox", f.Bbox);
         Add("lastName", f.LastName);
         Add("firstName", f.FirstName);
         Add("orgName", f.OrgName);
