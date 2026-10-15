@@ -2,8 +2,12 @@ using System.Text.Json;
 
 namespace Npi.Loader.Datasets;
 
-/// <summary>A published release of a dataset: its version label, the file to download and (CMS catalog) the end of its data period.</summary>
-public sealed record DatasetRelease(string Version, Uri Url, string? PeriodEnd = null)
+/// <summary>
+/// A published release of a dataset: its version label, the file to download and (CMS catalog) the end of its data period.
+/// A source that needs more of what it found for its load derives from it (<see cref="StateLicenseSource"/>): the source
+/// objects are shared (<see cref="DatasetLoader.AllSources"/>), so nothing found for one refresh may be kept on them.
+/// </summary>
+public record DatasetRelease(string Version, Uri Url, string? PeriodEnd = null)
 {
     /// <summary>The data year (e.g. 2024 for a period ending 2024-12-31), or null when the catalog gives no period.</summary>
     public int? DataYear => PeriodEnd is { Length: >= 4 } p && int.TryParse(p.AsSpan(0, 4), System.Globalization.CultureInfo.InvariantCulture, out var y) ? y : null;

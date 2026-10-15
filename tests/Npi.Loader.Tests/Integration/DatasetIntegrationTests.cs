@@ -196,69 +196,7 @@ public sealed class DatasetIntegrationTests : IDisposable
     public async Task State_licenses_match_by_state_number_and_last_name()
     {
         await using var db = await TestDatabase.CreateAsync();
-        // Providers with NPPES licenses written the way NPPES has them (punctuation, leading zeros, other prefixes).
-        await db.ExecuteAsync(
-            """
-            INSERT INTO provider (npi, entity_type, last_name, first_name, sort_name) VALUES
-              ('1000000004', 1, 'O''BRIEN', 'JOSE', 'O''BRIEN, JOSE'), ('1000000012', 1, 'GARCIA', 'MARIA', 'GARCIA, MARIA'),
-              ('1000000020', 1, 'LEE', 'ANN', 'LEE, ANN'), ('1000000038', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA'), ('1000000046', 1, 'OTHER', 'PAT', 'OTHER, PAT'),
-              ('1000000053', 1, 'BROWN', 'KIM', 'BROWN, KIM'), ('1000000061', 1, 'SINGH', 'JOSEPH', 'SINGH, JOSEPH'), ('1000000079', 1, 'PATEL', 'RAJ', 'PATEL, RAJ'),
-              ('1000000087', 1, 'JONES', 'AMY', 'JONES, AMY'), ('1000000095', 1, 'ACOSTA', 'GILBERTO', 'ACOSTA, GILBERTO'),
-              ('1000000103', 1, 'WHITE', 'SAM', 'WHITE, SAM'), ('1000000111', 1, 'GREEN', 'LEE', 'GREEN, LEE'), ('1000000129', 1, 'BLACK', 'RON', 'BLACK, RON'),
-              ('1000000137', 1, 'HILL', 'DANA', 'HILL, DANA'), ('1000000145', 1, 'STONE', 'AVA', 'STONE, AVA'),
-              ('1000000152', 1, 'GARRETT', 'MICHAEL', 'GARRETT, MICHAEL'), ('1000000160', 1, 'ADAMS', 'KATELYN', 'ADAMS, KATELYN');
-            INSERT INTO provider_taxonomy (npi, slot, taxonomy_code, is_primary, license_no, license_state) VALUES
-              ('1000000004', 1, '207Q00000X', 1, 'MD-174744', 'NY'), ('1000000012', 1, '207Q00000X', 1, 'N1234', 'TX'),
-              ('1000000020', 1, '207Q00000X', 1, 'MD00012345', 'WA'), ('1000000020', 2, '207Q00000X', 0, '036.098765', 'IL'),
-              ('1000000038', 1, '207Q00000X', 1, 'DR.0042345', 'CO'), ('1000000046', 1, '207Q00000X', 1, '1234', 'TX'),
-              ('1000000053', 1, '207Q00000X', 1, '0024514', 'DE'), ('1000000061', 1, '207Q00000X', 1, '050192', 'CT'),
-              ('1000000079', 1, '207Q00000X', 1, 'D12345', 'MD'), ('1000000087', 1, '363A00000X', 1, 'C1234', 'MD'),
-              ('1000000095', 1, '207Q00000X', 1, 'ME80978', 'FL'), ('1000000103', 1, '207Q00000X', 1, 'MD05878', 'RI'),
-              ('1000000111', 1, '207Q00000X', 1, '10818', 'VT'), ('1000000129', 1, '207Q00000X', 1, '16132', 'WV'),
-              ('1000000137', 1, '207Q00000X', 1, 'A64406', 'CA'), ('1000000145', 1, '207Q00000X', 1, '35457', 'CA'),
-              ('1000000152', 1, '207Q00000X', 1, 'MD.801', 'AL'), ('1000000160', 1, '106H00000X', 1, '4151001126', 'MI');
-            """);
-        // Florida's files are dropped by the owner into the state files folder (PROF_ALL inside its zip).
-        var florida = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "FL")).FullName;
-        using (var zip = ZipFile.Open(Path.Combine(florida, "PROF_ALL.zip"), ZipArchiveMode.Create))
-        {
-            zip.CreateEntryFromFile(Fixtures.Path("datasets/state_fl_prof_all.txt"), "dbdumps/ldms/PROF_ALL.txt");
-        }
-
-        File.Copy(Fixtures.Path("datasets/state_fl_dxe004dd.txt"), Path.Combine(florida, "dxe004dd.txt"));
-
-        // Alabama's roster as the browser names it; Michigan's list downloaded twice (counted once); California's snapshots in one zip
-        // (the newest is read; Windows only, with the Access database driver).
-        var alabama = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "AL")).FullName;
-        File.Copy(Fixtures.Path("datasets/state_al_roster.csv"), Path.Combine(alabama, "roster-2026-10-12-001538.csv"));
-        var michigan = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "MI")).FullName;
-        var list = XlsxWriter.Write(
-        [
-            ["Last Name", "First Name", "Middle Name", "Suffix", "Facility Name", "Profession", "Type", "Specialities", "License No", "Status", "Issue Date", "Expiration"],
-            [null, null, null, null, "Sparkline Solutions LLC", "Personnel Agency", "Agency A", null, "6102003894", "Active", 46248.0, 47344.0],
-            ["Adams", "Katelyn", null, null, null, "Marriage and Family Therapy", "Marriage and Fam Ther Ed Ltd", null, "4151001126", "Active", 45246.0, 46342.0],
-        ]);
-        File.WriteAllBytes(Path.Combine(michigan, "BPL_EXT_LicPubList_REC_MUL_SSRS.xlsx"), list);
-        File.WriteAllBytes(Path.Combine(michigan, "BPL_EXT_LicPubList_REC_MUL_SSRS (1).xlsx"), list);
-        var california = OperatingSystem.IsWindows();
-        if (california)
-        {
-            var folder = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "CA")).FullName;
-            using var snapshot = new MemoryStream();
-            using (var inner = new ZipArchive(snapshot, ZipArchiveMode.Create, leaveOpen: true))
-            {
-                inner.CreateEntryFromFile(Fixtures.Path("datasets/state_ca_mbc.accdb"), "MBCPhysicianAndSurgeonInformation-PUBLIC.accdb");
-            }
-
-            using var outer = ZipFile.Open(Path.Combine(folder, "MBC Physician and Surgeon Access Database.zip"), ZipArchiveMode.Create);
-            foreach (var date in new[] { "20260922", "20260929" })
-            {
-                var entry = outer.CreateEntry($"MBC Physician and Surgeon Access Database/MBCPhysicianAndSurgeonInformation-PUBLIC-{date}.zip");
-                using var to = entry.Open();
-                to.Write(date == "20260929" ? snapshot.ToArray() : [0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // the older one: an empty zip
-            }
-        }
-
+        var california = await SeedStateLicensesAsync(db);
         Assert.True(await Loader(db, new FakeSources(), new FakeClock()).RefreshAsync(force: false, only: "state_licenses", _ct));
 
         // O'BRIEN = "OBrien" is not equal (the apostrophe), but the second row ("O'BRIEN") is; GARCIA's N1234 matches, and the
@@ -341,6 +279,109 @@ public sealed class DatasetIntegrationTests : IDisposable
             Assert.Equal("Case 8002016026076", hill.Actions[1].Description);
             Assert.Equal("Retired", Assert.Single((await details.GetAsync("1000000145", _ct))!.StateLicenses).Status);
         }
+    }
+
+    /// <summary>
+    /// The state license tests' providers (with NPPES licenses written the way NPPES has them: punctuation, leading zeros, other
+    /// prefixes) and the files the owner drops for FL, AL, MI and CA (CA only on Windows, which has the Access database driver).
+    /// </summary>
+    /// <returns>Whether California's file is there.</returns>
+    private async Task<bool> SeedStateLicensesAsync(TestDatabase db)
+    {
+        await db.ExecuteAsync(
+            """
+            INSERT INTO provider (npi, entity_type, last_name, first_name, sort_name) VALUES
+              ('1000000004', 1, 'O''BRIEN', 'JOSE', 'O''BRIEN, JOSE'), ('1000000012', 1, 'GARCIA', 'MARIA', 'GARCIA, MARIA'),
+              ('1000000020', 1, 'LEE', 'ANN', 'LEE, ANN'), ('1000000038', 1, 'NUÑEZ', 'ELENA', 'NUÑEZ, ELENA'), ('1000000046', 1, 'OTHER', 'PAT', 'OTHER, PAT'),
+              ('1000000053', 1, 'BROWN', 'KIM', 'BROWN, KIM'), ('1000000061', 1, 'SINGH', 'JOSEPH', 'SINGH, JOSEPH'), ('1000000079', 1, 'PATEL', 'RAJ', 'PATEL, RAJ'),
+              ('1000000087', 1, 'JONES', 'AMY', 'JONES, AMY'), ('1000000095', 1, 'ACOSTA', 'GILBERTO', 'ACOSTA, GILBERTO'),
+              ('1000000103', 1, 'WHITE', 'SAM', 'WHITE, SAM'), ('1000000111', 1, 'GREEN', 'LEE', 'GREEN, LEE'), ('1000000129', 1, 'BLACK', 'RON', 'BLACK, RON'),
+              ('1000000137', 1, 'HILL', 'DANA', 'HILL, DANA'), ('1000000145', 1, 'STONE', 'AVA', 'STONE, AVA'),
+              ('1000000152', 1, 'GARRETT', 'MICHAEL', 'GARRETT, MICHAEL'), ('1000000160', 1, 'ADAMS', 'KATELYN', 'ADAMS, KATELYN');
+            INSERT INTO provider_taxonomy (npi, slot, taxonomy_code, is_primary, license_no, license_state) VALUES
+              ('1000000004', 1, '207Q00000X', 1, 'MD-174744', 'NY'), ('1000000012', 1, '207Q00000X', 1, 'N1234', 'TX'),
+              ('1000000020', 1, '207Q00000X', 1, 'MD00012345', 'WA'), ('1000000020', 2, '207Q00000X', 0, '036.098765', 'IL'),
+              ('1000000038', 1, '207Q00000X', 1, 'DR.0042345', 'CO'), ('1000000046', 1, '207Q00000X', 1, '1234', 'TX'),
+              ('1000000053', 1, '207Q00000X', 1, '0024514', 'DE'), ('1000000061', 1, '207Q00000X', 1, '050192', 'CT'),
+              ('1000000079', 1, '207Q00000X', 1, 'D12345', 'MD'), ('1000000087', 1, '363A00000X', 1, 'C1234', 'MD'),
+              ('1000000095', 1, '207Q00000X', 1, 'ME80978', 'FL'), ('1000000103', 1, '207Q00000X', 1, 'MD05878', 'RI'),
+              ('1000000111', 1, '207Q00000X', 1, '10818', 'VT'), ('1000000129', 1, '207Q00000X', 1, '16132', 'WV'),
+              ('1000000137', 1, '207Q00000X', 1, 'A64406', 'CA'), ('1000000145', 1, '207Q00000X', 1, '35457', 'CA'),
+              ('1000000152', 1, '207Q00000X', 1, 'MD.801', 'AL'), ('1000000160', 1, '106H00000X', 1, '4151001126', 'MI');
+            """);
+        // Florida's files are dropped by the owner into the state files folder (PROF_ALL inside its zip).
+        var florida = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "FL")).FullName;
+        using (var zip = ZipFile.Open(Path.Combine(florida, "PROF_ALL.zip"), ZipArchiveMode.Create))
+        {
+            zip.CreateEntryFromFile(Fixtures.Path("datasets/state_fl_prof_all.txt"), "dbdumps/ldms/PROF_ALL.txt");
+        }
+
+        File.Copy(Fixtures.Path("datasets/state_fl_dxe004dd.txt"), Path.Combine(florida, "dxe004dd.txt"));
+
+        // Alabama's roster as the browser names it; Michigan's list downloaded twice (counted once); California's snapshots in one zip
+        // (the newest is read; Windows only, with the Access database driver).
+        var alabama = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "AL")).FullName;
+        File.Copy(Fixtures.Path("datasets/state_al_roster.csv"), Path.Combine(alabama, "roster-2026-10-12-001538.csv"));
+        var michigan = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "MI")).FullName;
+        var list = XlsxWriter.Write(
+        [
+            ["Last Name", "First Name", "Middle Name", "Suffix", "Facility Name", "Profession", "Type", "Specialities", "License No", "Status", "Issue Date", "Expiration"],
+            [null, null, null, null, "Sparkline Solutions LLC", "Personnel Agency", "Agency A", null, "6102003894", "Active", 46248.0, 47344.0],
+            ["Adams", "Katelyn", null, null, null, "Marriage and Family Therapy", "Marriage and Fam Ther Ed Ltd", null, "4151001126", "Active", 45246.0, 46342.0],
+        ]);
+        File.WriteAllBytes(Path.Combine(michigan, "BPL_EXT_LicPubList_REC_MUL_SSRS.xlsx"), list);
+        File.WriteAllBytes(Path.Combine(michigan, "BPL_EXT_LicPubList_REC_MUL_SSRS (1).xlsx"), list);
+        var california = OperatingSystem.IsWindows();
+        if (california)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(_folder, "state-files", "CA")).FullName;
+            using var snapshot = new MemoryStream();
+            using (var inner = new ZipArchive(snapshot, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                inner.CreateEntryFromFile(Fixtures.Path("datasets/state_ca_mbc.accdb"), "MBCPhysicianAndSurgeonInformation-PUBLIC.accdb");
+            }
+
+            using var outer = ZipFile.Open(Path.Combine(folder, "MBC Physician and Surgeon Access Database.zip"), ZipArchiveMode.Create);
+            foreach (var date in new[] { "20260922", "20260929" })
+            {
+                var entry = outer.CreateEntry($"MBC Physician and Surgeon Access Database/MBCPhysicianAndSurgeonInformation-PUBLIC-{date}.zip");
+                using var to = entry.Open();
+                to.Write(date == "20260929" ? snapshot.ToArray() : [0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // the older one: an empty zip
+            }
+        }
+
+        return california;
+    }
+
+    [Fact]
+    public async Task State_licenses_load_the_versions_their_own_probe_found()
+    {
+        // One StateLicenseSource serves every refresh in the process (DatasetLoader.AllSources), and refreshes run at once (the
+        // tests, or two loaders in one process). Here another refresh probes in between, from a work folder without the dropped
+        // files: the first refresh's load must still use the versions its own probe found, not the other's (it kept them on the
+        // shared object, so the FL, AL, MI and CA rows it had files for were removed instead).
+        await using var db = await TestDatabase.CreateAsync();
+        var california = await SeedStateLicensesAsync(db);
+        var source = DatasetLoader.AllSources.OfType<StateLicenseSource>().Single();
+        var other = Directory.CreateDirectory(Path.Combine(_folder, "other")).FullName;
+        DatasetContext Context(string folder) => new(new LoaderOptions
+            {
+                WorkFolder = folder, LogFolder = folder, StateLicenseFilesFolder = Path.Combine(folder, "state-files"), DownloadAttempts = 1,
+                ApiRequestDelay = TimeSpan.Zero,
+            },
+            db.Database, new HttpClient(new FakeSources()), TestLog.Warnings);
+
+        var mine = Context(_folder);
+        var release = await source.FindLatestAsync(mine, _ct);
+        var theirs = await source.FindLatestAsync(Context(other), _ct);
+        Assert.NotEqual(release.Version, theirs.Version); // the other folder has no dropped files
+        await source.LoadAsync(mine, release, _ct);
+
+        string[] dropped = california ? ["AL", "CA", "FL", "MI"] : ["AL", "FL", "MI"];
+        Assert.Equal(dropped, await db.QueryAsync<string>(
+            "SELECT DISTINCT state FROM provider_state_license WHERE state IN ('AL', 'CA', 'FL', 'MI') ORDER BY state"));
+        Assert.Equal(dropped, await db.QueryAsync<string>(
+            "SELECT state FROM state_license_version WHERE state IN ('AL', 'CA', 'FL', 'MI') AND rows_loaded > 0 ORDER BY state"));
     }
 
     // The version of the lists the loader assembles (Rhode Island, Vermont, West Virginia): the ISO week.
@@ -990,7 +1031,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 ClinicalTrialsRequestInterval = TimeSpan.Zero, // trial counts several at a time (ClinicalTrialsParallelRequests, 4)
                 ApiRetryDelay = TimeSpan.FromMilliseconds(1),
             },
-            db.Database, new HttpClient(server), Logger.None, clock: clock);
+            db.Database, new HttpClient(server), TestLog.Warnings, clock: clock);
 
     private sealed class FakeClock : TimeProvider
     {

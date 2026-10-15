@@ -25,6 +25,16 @@ namespace Npi.Loader.Tests.Integration;
 /// Cleanup: the first test of a run drops pool databases of another schema (unless another run is using them) and any
 /// npi_test_it_&lt;UTC time&gt;_&lt;random&gt; database older than <see cref="StaleAfter"/> (the per-test naming used before).
 /// </para>
+/// <para>
+/// Runs side by side (other checkouts, other branches, so other schemas): each run holds a run lock for its schema
+/// (<c>npi_test_it_run_&lt;schema&gt;_&lt;nn&gt;</c>) for as long as its process lives, taken before it reads the template. Another
+/// schema's databases are dropped only while no run holds such a lock, while holding that schema's template lock, and each
+/// under its own lock, so a sweep never drops the template or a pool database a running test reads (it did: a run of another
+/// branch dropped them between two tests, and every later test failed). A template dropped anyway (by a run of the older code)
+/// is built again before the next test copies from it. Idle pooled connections are closed after <see cref="IdleSeconds"/>:
+/// each pool database has its own connection pool, and the idle connections of finished tests (kept 3 minutes by default)
+/// count against MySQL's 151 connections, which overlapping runs exceeded ("Too many connections").
+/// </para>
 /// </summary>
 internal sealed class TestDatabase : IAsyncDisposable
 {
@@ -32,7 +42,14 @@ internal sealed class TestDatabase : IAsyncDisposable
 
     private const string Prefix = "npi_test_it_";
     private const string PoolPrefix = Prefix + "pool_";
+    private const string RunPrefix = Prefix + "run_";
     private const string StampFormat = "yyyyMMddHHmmss";
+
+    /// <summary>Run locks per schema (a run finding every slot taken goes unprotected, as all runs were before them).</summary>
+    internal const int RunSlots = 32;
+
+    /// <summary>Seconds an idle pooled test connection is kept (MySqlConnector's default is 180).</summary>
+    internal const int IdleSeconds = 10;
 
     /// <summary>A whole test run takes minutes; a per-test database older than this belongs to a run that died.</summary>
     internal static readonly TimeSpan StaleAfter = TimeSpan.FromHours(2);
@@ -43,6 +60,9 @@ internal sealed class TestDatabase : IAsyncDisposable
 
     private static readonly SemaphoreSlim SetupLock = new(1, 1);
     private static Template? _template;
+
+    // This run's lock for its schema, held on its own connection (not pooled) until the process ends.
+    private static MySqlConnection? _runLock;
 
     /// <summary>The migrated schema every pool database copies.</summary>
     /// <param name="Tables">Every table.</param>
@@ -74,7 +94,7 @@ internal sealed class TestDatabase : IAsyncDisposable
         var connectionString = Environment.GetEnvironmentVariable(EnvironmentVariable);
         Assert.SkipWhen(string.IsNullOrWhiteSpace(connectionString), $"{EnvironmentVariable} is not set; skipping MySQL integration test.");
 
-        var server = new MySqlConnectionStringBuilder(connectionString) { Database = "" }.ConnectionString;
+        var server = ServerConnectionString(connectionString!);
         var template = await TemplateAsync(server);
         for (var i = 0; ; i++)
         {
@@ -89,6 +109,12 @@ internal sealed class TestDatabase : IAsyncDisposable
 
             try
             {
+                if (!await ExistsAsync(server, template.Name))
+                {
+                    // The template was dropped under this run (a sweep by a run of the older code): built again, then copied.
+                    template = await TemplateAsync(server, rebuild: template);
+                }
+
                 await PrepareAsync(server, template, name);
                 return new TestDatabase(server, name, claim);
             }
@@ -108,12 +134,31 @@ internal sealed class TestDatabase : IAsyncDisposable
     {
         var connectionString = Environment.GetEnvironmentVariable(EnvironmentVariable);
         Assert.SkipWhen(string.IsNullOrWhiteSpace(connectionString), $"{EnvironmentVariable} is not set; skipping MySQL integration test.");
-        var server = new MySqlConnectionStringBuilder(connectionString) { Database = "" }.ConnectionString;
+        var server = ServerConnectionString(connectionString!);
         var template = await TemplateAsync(server);
         return new Database(new MySqlConnectionStringBuilder(server) { Database = template.Name }.ConnectionString);
     }
 
+    private static string ServerConnectionString(string connectionString) =>
+        new MySqlConnectionStringBuilder(connectionString) { Database = "", ConnectionIdleTimeout = IdleSeconds }.ConnectionString;
+
     private static string PoolName(string suffix) => $"{PoolPrefix}{SchemaHash}_{suffix}";
+
+    /// <summary>The run lock of one of a schema's slots.</summary>
+    internal static string RunLockName(string schemaHash, int slot) => $"{RunPrefix}{schemaHash}_{slot.ToString("D2", CultureInfo.InvariantCulture)}";
+
+    /// <summary>The schema of a pool database (or template) name, or null for any other name.</summary>
+    internal static string? PoolSchema(string name) =>
+        name.StartsWith(PoolPrefix, StringComparison.Ordinal) && name.IndexOf('_', PoolPrefix.Length) is var end and > 0
+            ? name[PoolPrefix.Length..end]
+            : null;
+
+    private static async Task<bool> ExistsAsync(string server, string name)
+    {
+        await using var connection = new MySqlConnection(server);
+        await connection.OpenAsync();
+        return await connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = @name", new { name }) > 0;
+    }
 
     internal static string NewName(DateTime utcNow) =>
         Prefix + utcNow.ToString(StampFormat, CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N")[..8];
@@ -142,21 +187,25 @@ internal sealed class TestDatabase : IAsyncDisposable
             || created < cutoff;
     }
 
-    // Once per test run: the sweep, then the template (built when this schema has none yet; another run building it is
-    // waited for through its lock).
-    private static async Task<Template> TemplateAsync(string server)
+    // Once per test run: the run lock, the sweep, then the template (built when this schema has none yet; another run
+    // building it is waited for through its lock). Again after the template was dropped (rebuild: the one that went).
+    private static async Task<Template> TemplateAsync(string server, Template? rebuild = null)
     {
         await SetupLock.WaitAsync();
         try
         {
-            if (_template is not null)
+            if (_template is not null && _template != rebuild)
             {
                 return _template;
             }
 
             await using var connection = new MySqlConnection(server);
             await connection.OpenAsync();
-            await SweepStaleAsync(connection, DateTime.UtcNow);
+            if (_runLock is null)
+            {
+                _runLock = await HoldRunLockAsync(server, SchemaHash);
+                await SweepStaleAsync(connection, DateTime.UtcNow, SchemaHash);
+            }
 
             var name = PoolName("tpl");
             if (await connection.ExecuteScalarAsync<long?>("SELECT GET_LOCK(@name, 600)", new { name }) != 1)
@@ -266,17 +315,97 @@ internal sealed class TestDatabase : IAsyncDisposable
                FROM information_schema.statistics WHERE table_schema = @database))
             """, new { database })!;
 
-    // Once per test run: drop the test databases that may go (see IsStale); a pool database another run holds is kept.
-    private static async Task SweepStaleAsync(MySqlConnection connection, DateTime utcNow)
+    /// <summary>
+    /// Takes a free run slot of <paramref name="schemaHash"/> on a connection of its own (not pooled, so the lock goes with the
+    /// process) and returns that connection, which holds the lock while it is open.
+    /// </summary>
+    internal static async Task<MySqlConnection> HoldRunLockAsync(string server, string schemaHash)
     {
-        var names = await connection.QueryAsync<string>(
-            @"SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'npi\_test\_it\_%'");
-        foreach (var name in names.Where(n => IsStale(n, utcNow - StaleAfter, SchemaHash)))
+        var connection = new MySqlConnection(new MySqlConnectionStringBuilder(server) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync();
+        for (var slot = 0; slot < RunSlots; slot++)
         {
-            if (await connection.ExecuteScalarAsync<long?>("SELECT IS_USED_LOCK(@name)", new { name }) is null)
+            if (await connection.ExecuteScalarAsync<long?>("SELECT GET_LOCK(@name, 0)", new { name = RunLockName(schemaHash, slot) }) == 1)
             {
-                await connection.ExecuteAsync($"DROP DATABASE IF EXISTS `{name}`");
+                break;
             }
+        }
+
+        return connection;
+    }
+
+    /// <summary>
+    /// Drops the test databases that may go (see <see cref="IsStale"/>). Another schema's pool databases and template go only
+    /// when no run of that schema holds a run lock, each under its own lock, and with that schema's template lock held
+    /// meanwhile, so a run of it starting now waits and then builds its template again. Never anything outside npi_test_it_.
+    /// </summary>
+    internal static async Task SweepStaleAsync(MySqlConnection connection, DateTime utcNow, string schemaHash)
+    {
+        var stale = (await connection.QueryAsync<string>(
+                @"SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'npi\_test\_it\_%'"))
+            .Where(n => IsStale(n, utcNow - StaleAfter, schemaHash)).ToList();
+        foreach (var name in stale.Where(n => PoolSchema(n) is null))
+        {
+            await DropIfFreeAsync(connection, name);
+        }
+
+        foreach (var schema in stale.Select(PoolSchema).OfType<string>().Distinct())
+        {
+            var template = $"{PoolPrefix}{schema}_tpl";
+            if (await connection.ExecuteScalarAsync<long?>("SELECT GET_LOCK(@template, 0)", new { template }) != 1)
+            {
+                continue; // a run of that schema is reading or building its template
+            }
+
+            try
+            {
+                // A run of that schema: one holding a run lock, or (a run of the older code, which holds none) a test holding one of
+                // its pool databases.
+                var locks = Enumerable.Range(0, RunSlots).Select(slot => RunLockName(schema, slot))
+                    .Concat(stale.Where(n => PoolSchema(n) == schema && n != template));
+                var running = false;
+                foreach (var name in locks)
+                {
+                    if (running = await connection.ExecuteScalarAsync<long?>("SELECT IS_USED_LOCK(@name)", new { name }) is not null)
+                    {
+                        break;
+                    }
+                }
+
+                if (running)
+                {
+                    continue;
+                }
+
+                foreach (var name in stale.Where(n => PoolSchema(n) == schema && n != template))
+                {
+                    await DropIfFreeAsync(connection, name);
+                }
+
+                await connection.ExecuteAsync($"DROP DATABASE IF EXISTS `{template}`"); // its lock is held here
+            }
+            finally
+            {
+                await connection.ExecuteAsync("SELECT RELEASE_LOCK(@template)", new { template });
+            }
+        }
+    }
+
+    // Drops a test database while holding its lock (a test claims a pool database by the same lock), unless another holds it.
+    private static async Task DropIfFreeAsync(MySqlConnection connection, string name)
+    {
+        if (await connection.ExecuteScalarAsync<long?>("SELECT GET_LOCK(@name, 0)", new { name }) != 1)
+        {
+            return;
+        }
+
+        try
+        {
+            await connection.ExecuteAsync($"DROP DATABASE IF EXISTS `{name}`");
+        }
+        finally
+        {
+            await connection.ExecuteAsync("SELECT RELEASE_LOCK(@name)", new { name });
         }
     }
 
