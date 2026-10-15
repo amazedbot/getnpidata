@@ -183,11 +183,23 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
 
     /// <summary>
     /// The <c>history measure</c> command: reads local zips in order and compares them in memory only (no database), logging
-    /// the read time, versions per file and memory, to size a full run.
+    /// the read time, versions per file and memory, to size a full run. When the database answers, the practice ZIPs not in its
+    /// HUD crosswalk are counted too.
     /// </summary>
-    public void Measure(IReadOnlyList<string> zips, CancellationToken ct)
+    public async Task MeasureAsync(IReadOnlyList<string> zips, CancellationToken ct)
     {
         var state = new HistoryState(new HistoryValues());
+        IReadOnlySet<int> crosswalk;
+        try
+        {
+            crosswalk = await LoadCrosswalkZipsAsync(ct);
+        }
+        catch (Exception ex) when (ex is MySqlException or InvalidOperationException)
+        {
+            log.Information("History measure: no database ({Message}); ZIPs not checked against the crosswalk", ex.Message);
+            crosswalk = new HashSet<int>();
+        }
+
         foreach (var zip in zips)
         {
             var watch = Stopwatch.StartNew();
@@ -204,6 +216,12 @@ public sealed class HistoryBuilder(LoaderOptions options, Database database, Htt
                 diff.Versions - diff.NewNpis - diff.Deactivated - diff.Reactivated - diff.Moved, diff.Active, state.Count, state.Dictionary.SetCount,
                 GC.GetTotalMemory(false) / 1_000_000);
             LogUnmapped(state, Path.GetFileName(zip));
+            if (crosswalk.Count > 0)
+            {
+                var (unmatched, providers) = UnmatchedZips(state, crosswalk);
+                log.Information("History measure {File}: ZIPs not in today's crosswalk: {Zips:N0} ({Providers:N0} of {Active:N0} active providers)",
+                    Path.GetFileName(zip), unmatched, providers, diff.Active);
+            }
         }
     }
 

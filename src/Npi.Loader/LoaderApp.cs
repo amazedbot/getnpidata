@@ -422,7 +422,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
 
         if (arguments.Count > 0 && arguments[0] == "measure")
         {
-            builder.Measure(arguments.Skip(1).ToList(), ct);
+            await builder.MeasureAsync(arguments.Skip(1).ToList(), ct);
             return 0;
         }
 
