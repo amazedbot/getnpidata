@@ -62,6 +62,19 @@ public class LoaderCommandLineTests
     }
 
     [Fact]
+    public void Area_history_takes_an_optional_full()
+    {
+        var plain = LoaderCommandLine.Parse(["area-history"], out var error);
+        Assert.Null(error);
+        Assert.Equal(LoaderCommand.AreaHistory, plain?.Command);
+        Assert.Empty(plain!.Arguments);
+        Assert.Equal(["full"], LoaderCommandLine.Parse(["area-history", "FULL"], out _)!.Arguments);
+        Assert.Null(LoaderCommandLine.Parse(["area-history", "all"], out error));
+        Assert.Contains("full", error, StringComparison.Ordinal);
+        Assert.Null(LoaderCommandLine.Parse(["area-history", "full", "extra"], out _));
+    }
+
+    [Fact]
     public void Geocode_takes_an_optional_county_fips()
     {
         Assert.Equal([], LoaderCommandLine.Parse(["geocode"], out _)?.Arguments);

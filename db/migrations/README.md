@@ -24,7 +24,7 @@ Rules:
 | [`search/`](search/README.md) | Search projection and search features: 18 files (011, 012, 013, 014 …) |
 | [`map/`](map/README.md) | Map, geocoding and buildings: 11 files (046, 047, 048, 049 …) |
 | [`cms/`](cms/README.md) | CMS and OIG datasets: 23 files (022, 023, 024, 025 …) |
-| [`areas/`](areas/README.md) | Area facts: 6 files (037, 038, 039, 040 …) |
+| [`areas/`](areas/README.md) | Area facts: 7 files (037, 038, 039, 040 …) |
 | [`industry/`](industry/README.md) | Open Payments, companies and products: 16 files (041, 042, 043, 044 …) |
 | [`state-licenses/`](state-licenses/README.md) | State licenses: 3 files (063, 064, 088) |
 | [`quality/`](quality/README.md) | Record quality: 2 files (083, 084) |
