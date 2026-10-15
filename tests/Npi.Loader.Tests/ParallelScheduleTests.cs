@@ -220,7 +220,7 @@ public sealed class ParallelScheduleTests
             [("fda_products", "open_payments"), ("part_d_prescribers", "fda_products, open_payments"), ("product_adverse_events", "fda_products, open_payments"),
              ("product_trials", "fda_products, open_payments")],
             sources.Where(s => s.After.Count > 0).Select(s => (s.Name, string.Join(", ", s.After.Order(StringComparer.Ordinal)))).OrderBy(x => x.Name, StringComparer.Ordinal));
-        Assert.Equal(["cms_physician_by_service", "fema_structures", "open_payments", "open_payments_companies", "open_payments_years", "part_d_prescribers"],
+        Assert.Equal(["cms_physician_by_service", "fema_structures", "medicare_history", "open_payments", "open_payments_companies", "open_payments_years", "part_d_prescribers"],
             sources.Where(s => s.Heavy).Select(s => s.Name).Order(StringComparer.Ordinal));
     }
 

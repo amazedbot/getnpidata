@@ -87,6 +87,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("fda_products", "ndc 2026-10-06 | drugsfda 2026-10-06 | label 2026-10-06 | udi 2026-10-06 | 510k 2026-10-06 | pma 2026-10-06"),
              ("fda_shortages", "shortages 2026-10-09"), ("hrsa_hpsa", "HPSA 2026-10-08"),
              ("medicare_enrollment", "2026-09-30 PPEF_Enrollment_Extract_2026.07.17.csv | 2026-10-31 revalidation_clinic_group_practice_reassignment_pa_xref.csv"),
+             ("medicare_history", MedicareHistoryVersion()),
              ("nadac", "2026 nadac-national-average-drug-acquisition-cost-10-07-2026.csv"),
              ("oig_leie", "2026-10-01T12:00:00Z 808"), ("open_payments", "2025 OP_DTL_GNRL_PGYR2025_P06302026_06032026.csv"),
              ("open_payments_companies", "PBLCTN_SMRY_BY_CR_BY_AMGPO_PGYRall_P06302026_06032026.csv"),
@@ -352,10 +353,26 @@ public sealed class DatasetIntegrationTests : IDisposable
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('cms_hcahps_raw_staging', 'cms_hospice_cahps_raw_staging')"));
     }
 
+    // The older Medicare years of the fixture catalog: Part B 2023 (2024 is the newest year).
+    private static string MedicareHistoryVersion()
+    {
+        using var stream = File.OpenRead(Fixtures.Path("datasets/cms_catalog_sample.json"));
+        var files = MedicareHistorySource.Files(CmsCatalog.Parse(stream));
+        Assert.Equal([('B', 2023)], files.Select(f => (f.Part.Code, f.Year)));
+        return MedicareHistorySource.Version(files);
+    }
+
     [Fact]
     public async Task Medicare_activity_loads_with_its_data_year_and_top_services()
     {
         var db = (await Shared.Value).Db;
+
+        // Older years (Phase 3): 2023's Part B file, with a Windows-1252 name in it (only the NPI and the patients are read); a
+        // suppressed count stays NULL.
+        Assert.Equal([((short)2023, "1000000004", (sbyte)1, (int?)198), ((short)2023, "1000000020", (sbyte)1, null)],
+            await db.QueryAsync<(short, string, sbyte, int?)>("SELECT data_year, npi, parts, part_b_beneficiaries FROM medicare_activity_year ORDER BY npi"));
+        Assert.Equal([("B", (short)2023, "/files/MUP_PHY_D23_Prov.csv", 2L)],
+            await db.QueryAsync<(string, short, string, long)>("SELECT part, data_year, version, rows_loaded FROM medicare_history_version"));
 
         // The newest data year (2024, not 2023); suppressed counts stay NULL; long decimals load without warnings.
         Assert.Equal(((short)2024, 212, 1840.0, 31234.56789012, 0.9123), (await db.QueryAsync<(short, int, double, double, double)>(
@@ -908,6 +925,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://cms.test/files/Hospital_and_other.DATA.Q2_2026.csv" => "datasets/pos_qies_sample.csv",
                 "https://cms.test/files/POS_iQIES.DATA.Q2_2026.csv" => "datasets/pos_iqies_sample.csv",
                 "https://cms.test/files/MUP_PHY_D24_Prov.csv" => "datasets/physician_by_provider_sample.csv",
+                "https://cms.test/files/MUP_PHY_D23_Prov.csv" => "datasets/physician_by_provider_2023_sample.csv",
                 "https://cms.test/files/MUP_PHY_D24_Prov_Svc.csv" => "datasets/physician_by_service_sample.csv",
                 "https://cms.test/files/mup_dpr_dy24_npi.csv" => "datasets/part_d_by_provider_sample.csv",
                 "https://hrsa.test/BCD_HPSA_FCT_DET_PC.csv" => "datasets/hpsa_PC_sample.csv",

@@ -12,8 +12,8 @@ namespace Npi.Loader.Projection;
 /// <summary>
 /// Labels every active provider's record current, check or stale (docs/PRODUCT_PLAN.md step 3.1; migration 083) by the rules of
 /// <see cref="RecordQuality"/>: the age of the NPPES record, signs of current practice in the other datasets, the primary practice
-/// address (mapped, PO box, home), the phone, whether Care Compare agrees on address and profession, the state license records and
-/// NPI reactivation. Rebuilt after each full projection and whenever one of its inputs reloads in full. Otherwise only the NPIs
+/// address (mapped, PO box, home), the phone, whether Care Compare agrees on address and profession, the state license records,
+/// NPI reactivation and Medicare billing that stopped (older years, <see cref="Datasets.MedicareHistorySource"/>). Rebuilt after each full projection and whenever one of its inputs reloads in full. Otherwise only the NPIs
 /// queued in <c>quality_pending</c> are relabelled: those whose state license rows changed, those an incremental projection
 /// rebuilt, those at an address whose map point or building label changed (<see cref="BuilderPending"/>), and those whose
 /// record crossed the 5- or 10-year age limit because the data's as-of date moved.
@@ -37,14 +37,14 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     };
 
     // The inputs whose changes are queued per NPI: the sources of QueuedTables (every table of theirs that the label reads is
-    // queued) and the state licenses (per state). Any other input (Open Payments, whose newest two years shift together; the
+    // queued), the state licenses (per state) and the older Medicare years (per year, MedicareHistorySource). Any other input (Open Payments, whose newest two years shift together; the
     // Provider of Services and Overture listings, matched by address; a full map or address type build) or a full projection
     // relabels everyone; the map and the address types queue the NPIs they update incrementally.
     private static readonly IReadOnlyList<string> QueuedInputs =
     [
         "state_licenses", "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring",
         "cms_facility_enrollments", "cc_mips", "cc_facility_affiliations", "cms_otp_providers", "cms_revalidation", "cms_dme_suppliers",
-        "state_medicaid",
+        "state_medicaid", "medicare_history",
     ];
 
     /// <summary>Above this share of the providers queued, relabelling everyone is quicker.</summary>
@@ -58,7 +58,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     [
         "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring", "open_payments_years",
         "cms_facility_enrollments", "state_licenses", "provider_map", "address_type", "cc_mips", "cc_facility_affiliations", "cms_otp_providers",
-        "cms_revalidation", "cms_dme_suppliers", "cms_provider_of_services", "overture", "state_medicaid",
+        "cms_revalidation", "cms_dme_suppliers", "cms_provider_of_services", "overture", "state_medicaid", "medicare_history",
     ];
 
     // A state license status that means the license can't be used (the states' own wording; matched case-insensitively).
@@ -67,6 +67,23 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 
     // A status that means a usable license when the state gives no expiration date.
     internal const string ActiveStatus = "^(ACTIVE|CURRENT|CLEAR|APPROVED|PERMIT ISSUED|PROBATION|MILITARY ACTIVE|RETIRED ACTIVE|A$)";
+
+    /// <summary>
+    /// The NPIs of <see cref="QualityReason.MedicareStopped"/>: in <c>medicare_activity_year</c> for a year before the newest data year
+    /// and in neither of the newest year's tables (each NPI looked up once). With both newest tables empty (not loaded yet) the newest
+    /// year is 0 and nobody counts. <paramref name="onlyPending"/> limits it to the queued NPIs.
+    /// </summary>
+    internal static string StoppedMedicareSql(bool onlyPending) =>
+        $"""
+        SELECT h.`npi` FROM (
+          SELECT DISTINCT `npi` FROM `medicare_activity_year`
+          WHERE `data_year` < (SELECT GREATEST(COALESCE((SELECT MAX(`data_year`) FROM `medicare_utilization`), 0),
+                                               COALESCE((SELECT MAX(`data_year`) FROM `medicare_part_d`), 0)))
+            {(onlyPending ? $"AND `npi` IN (SELECT `npi` FROM `{Pending}`)" : "")}
+        ) h
+        WHERE NOT EXISTS (SELECT 1 FROM `medicare_utilization` u WHERE u.`npi` = h.`npi`)
+          AND NOT EXISTS (SELECT 1 FROM `medicare_part_d` d WHERE d.`npi` = h.`npi`)
+        """;
 
     // A PO box in the street line ("PO BOX 12", "P.O. Box", "POST OFFICE BOX").
     internal const string PoBox = "(^|[^A-Z])(P[ .]*O[ .]*BOX|POST OFFICE BOX)([^A-Z]|$)";
@@ -369,6 +386,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                     $"AND (a.`npi` IS NULL OR a.`bits` & {(int)QualityActivity.CurrentLicense} = 0)"),
                 (QualityReason.Deceased, "SELECT DISTINCT l.`npi` FROM `provider_state_license` l WHERE l.`kind` = 'license' AND l.`status` REGEXP 'DECEASED'"),
                 (QualityReason.Reactivated, "SELECT n.`NPI` AS `npi` FROM `npidata` n WHERE n.`NPI_Reactivation_Date` IS NOT NULL AND n.`Is_Deactivated` = 0"),
+                // Billed Part B or prescribed under Part D in an older year (medicare_activity_year), but in neither in the newest one.
+                (QualityReason.MedicareStopped, StoppedMedicareSql(onlyPending)),
             ];
             foreach (var (bit, select) in found)
             {

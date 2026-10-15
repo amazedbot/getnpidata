@@ -402,7 +402,7 @@
         </section>
     }
 
-    @if (p.MedicareServices is not null || p.MedicarePrescribing is not null)
+    @if (Model.HasMedicare)
     {
         <section class="card" id="medicare" aria-labelledby="med-h">
             <h2 id="med-h">Medicare activity</h2>
@@ -450,7 +450,30 @@
                     @if (rx.AntibioticClaims is not null){<dt>Antibiotic claims</dt><dd>@Count(rx.AntibioticClaims)</dd>}
                 </dl>
             }
-            <p class="src">CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers data (traditional Medicare only; counts under 11 are suppressed by CMS).</p>
+            @if (p.MedicareHistory is { } mh)
+            {
+                <h3>Medicare by year</h3>
+                <p>@(mh.Stopped ? mh.LastBilledText + "; none since." : $"Billed Medicare in {mh.Spans}.")</p>
+                <ol class="medicare-years" aria-label="Medicare activity by data year">
+                    @for (var y = mh.FirstDataYear; y <= mh.NewestDataYear; y++)
+                    {
+                        var year = mh.Years.FirstOrDefault(x => x.Year == y);
+                        var parts = year is null ? "none" : year.PartB && year.PartD ? "Part B and Part D" : year.PartB ? "Part B" : "Part D";
+                        var detail = year is null ? "" : string.Join(", ", new[]
+                        {
+                            year.Beneficiaries is { } b ? $"{b.ToString("N0", CultureInfo.InvariantCulture)} patients" : null,
+                            year.Claims is { } c ? $"{c.ToString("N0", CultureInfo.InvariantCulture)} prescriptions" : null,
+                        }.Where(x => x is not null));
+                        <li class="@(year is null ? "off" : "on")" title="@y: @parts@(detail.Length > 0 ? " (" + detail + ")" : "")">
+                            <span class="yr">@y</span>
+                            <span class="parts" aria-hidden="true">@(year is null ? "–" : (year.PartB ? "B" : "") + (year.PartD ? "D" : ""))</span>
+                            <span class="visually-hidden">: @parts@(detail.Length > 0 ? ", " + detail : "")</span>
+                        </li>
+                    }
+                </ol>
+                <p class="muted small">B = billed Part B (services), D = prescribed under Part D.</p>
+            }
+            <p class="src">CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers data by provider, @(p.MedicareHistory is { } h ? $"{h.FirstDataYear}–{h.NewestDataYear}" : "newest year") (traditional Medicare only; counts under 11 are suppressed by CMS).</p>
         </section>
     }
 

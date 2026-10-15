@@ -212,11 +212,15 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
     public bool HasBoardAction => Provider.StateLicenses.Any(l => l.Actions.Count > 0
         || l.Discipline?.Trim().ToUpperInvariant() is "Y" or "YES");
 
+    /// <summary>Medicare billing or prescribing in the newest data year or an older one: the Medicare activity section.</summary>
+    public bool HasMedicare => Provider.MedicareServices is not null || Provider.MedicarePrescribing is not null || Provider.MedicareHistory is not null;
+
     public bool OptedOut => Provider.Compliance.OptOut is { Active: true };
 
     /// <summary>The record-quality explanation (docs/PRODUCT_PLAN.md step 3.1); empty when the record isn't labelled yet.</summary>
     public IReadOnlyList<QualityNote> QualityNotes => Provider.Quality is { } q
-        ? RecordQuality.Explain(q, Provider.LastUpdateDate, DateOnly.FromDateTime(DateTime.UtcNow), IsPerson, Provider.QualityCareCompare)
+        ? RecordQuality.Explain(q, Provider.LastUpdateDate, DateOnly.FromDateTime(DateTime.UtcNow), IsPerson, Provider.QualityCareCompare,
+            Provider.MedicareHistory)
         : [];
 
     public IEnumerable<StatusPill> Status
@@ -307,7 +311,7 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
                 yield return ("record-quality", "Record quality");
             }
 
-            if (Provider.MedicareServices is not null || Provider.MedicarePrescribing is not null)
+            if (HasMedicare)
             {
                 yield return ("medicare", "Medicare");
             }

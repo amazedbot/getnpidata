@@ -1563,6 +1563,177 @@ public sealed class SearchIntegrationTests : IDisposable
             (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @E", new { E }) & QualityActivity.OrderRefer);
     }
 
+    [Fact]
+    public async Task Older_medicare_years_load_once_and_a_changed_year_relabels_only_its_changed_providers()
+    {
+        await using var db = await SeededAsync();
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct); // specialty_code_category
+        // A, B and E otherwise look current: updated this year, mapped, with a phone. The newest data year is 2024 (B prescribed then).
+        await db.ExecuteAsync(
+            """
+            UPDATE provider SET last_update_date = '2026-01-01' WHERE npi IN (@A, @B, @E);
+            UPDATE provider_location SET phone = '6315550100' WHERE npi IN (@A, @B, @E) AND is_primary = 1;
+            INSERT INTO provider_map (npi, addr_key, lat, lon, approximate, pt, source)
+              SELECT npi, addr_key, 40.7, -73.4, 0, ST_SRID(POINT(-73.4, 40.7), 0), 'address' FROM provider_location WHERE npi IN (@A, @B, @E) AND is_primary = 1;
+            INSERT INTO medicare_part_d (npi, data_year, claims) VALUES (@B, 2024, 300);
+            INSERT INTO state_medicaid (npi, state, enrolled_since, provider_type) VALUES (@E, 'NY', '2007-10-26', 'PHYSICIAN');
+            INSERT INTO reference_data (source, version, source_url, rows_loaded, loaded_at, checked_at) VALUES
+              ('cms_part_d_by_provider', '2024-12-31 mup_dpr_dy24_npi.csv', '', 1, UTC_TIMESTAMP(), UTC_TIMESTAMP());
+            """, new { A, B, E });
+        var quality = new QualityBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 };
+        await quality.BuildAsync(_ct, allowIncremental: false);
+        Assert.Equal((sbyte)QualityLabel.Current, await db.ScalarAsync<sbyte>("SELECT label FROM provider_quality WHERE npi = @A", new { A }));
+        const string loadedAt = "SELECT CAST(loaded_at AS CHAR) FROM reference_data WHERE source = 'provider_quality'";
+        var labelledAt = await db.ScalarAsync<string>(loadedAt);
+
+        // Part B 2014 in CMS's old column names, 2015 and 2016 in today's; Part D 2016; 2024 is each part's newest year (not history).
+        var server = new FakeMedicareCms();
+        server.Files["https://cms.test/files/2025-11/a/MUP_PHY_D14_Prov.csv"] = $"npi,nppes_provider_last_org_name,total_services,total_unique_benes\n{E},NUNEZ,120,40\n";
+        server.Files["https://cms.test/files/2025-11/b/MUP_PHY_D15_Prov.csv"] = $"Rndrng_NPI,Rndrng_Prvdr_Last_Org_Name,Tot_Benes,Tot_Srvcs\n{A},OBRIEN,12,30\n1999999993,GONE,15,40\n";
+        server.Files["https://cms.test/files/2025-11/c/MUP_PHY_D16_Prov.csv"] = $"Rndrng_NPI,Rndrng_Prvdr_Last_Org_Name,Tot_Benes,Tot_Srvcs\n{A},OBRIEN,15,31\n";
+        server.Files["https://cms.test/files/2026-08/d/mup_dpr_dy16_npi.csv"] = $"Prscrbr_NPI,Prscrbr_Last_Org_Name,Tot_Clms,Tot_Benes\n{B},BAKER,100,\n{A},OBRIEN,20,\n";
+        server.Releases.AddRange(
+        [
+            (Npi.Loader.Datasets.MedicareHistoryPart.PartB.Title, 2014, "https://cms.test/files/2025-11/a/MUP_PHY_D14_Prov.csv", "2025-03-26"),
+            (Npi.Loader.Datasets.MedicareHistoryPart.PartB.Title, 2015, "https://cms.test/files/2025-11/b/MUP_PHY_D15_Prov.csv", "2025-03-26"),
+            (Npi.Loader.Datasets.MedicareHistoryPart.PartB.Title, 2016, "https://cms.test/files/2025-11/c/MUP_PHY_D16_Prov.csv", "2025-03-26"),
+            (Npi.Loader.Datasets.MedicareHistoryPart.PartB.Title, 2024, "https://cms.test/files/2026-05/e/MUP_PHY_D24_Prov.csv", "2026-05-21"),
+            (Npi.Loader.Datasets.MedicareHistoryPart.PartD.Title, 2016, "https://cms.test/files/2026-08/d/mup_dpr_dy16_npi.csv", "2026-08-03"),
+            (Npi.Loader.Datasets.MedicareHistoryPart.PartD.Title, 2024, "https://cms.test/files/2026-08/f/mup_dpr_dy24_npi.csv", "2026-08-03"),
+        ]);
+        var clock = new SteppedClock();
+        Npi.Loader.Datasets.DatasetLoader History() => new(
+            new LoaderOptions { WorkFolder = _folder, LogFolder = _folder, DownloadAttempts = 1, CmsCatalogUrl = "https://cms.test/data.json" },
+            db.Database, new HttpClient(server), Logger.None, [new Npi.Loader.Datasets.MedicareHistorySource()], clock);
+
+        // The first load reads every older year, once, and queues the providers in them.
+        Assert.True(await History().RefreshAsync(force: false, only: null, _ct));
+        Assert.Equal(["https://cms.test/data.json", "https://cms.test/files/2025-11/a/MUP_PHY_D14_Prov.csv", "https://cms.test/files/2025-11/b/MUP_PHY_D15_Prov.csv",
+                      "https://cms.test/files/2025-11/c/MUP_PHY_D16_Prov.csv", "https://cms.test/files/2026-08/d/mup_dpr_dy16_npi.csv"], server.Requests);
+        const string rows = "SELECT data_year, npi, parts, part_b_beneficiaries, part_d_claims FROM medicare_activity_year ORDER BY data_year, npi";
+        Assert.Equal(
+            [((short)2014, E, (sbyte)1, (int?)40, (int?)null), ((short)2015, A, (sbyte)1, 12, null), ((short)2015, "1999999993", (sbyte)1, 15, null),
+             ((short)2016, A, (sbyte)3, 15, 20), ((short)2016, B, (sbyte)2, null, 100)],
+            await db.QueryAsync<(short, string, sbyte, int?, int?)>(rows));
+        Assert.Equal([A, B, E, "1999999993"], await db.QueryAsync<string>("SELECT npi FROM quality_pending ORDER BY npi"));
+        Assert.Matches("^2014-2016 [0-9a-f]{12}$", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'medicare_history'"));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_folder, "datasets"))); // downloads are deleted after loading
+
+        // Relabelled: A billed Medicare until 2016 and shows nothing current, so it needs a check; E stopped too but is enrolled in
+        // Medicaid (a note only); B prescribed in 2024 (not stopped).
+        Assert.True(await quality.IsStaleAsync(_ct));
+        await quality.BuildAsync(_ct);
+        Assert.Equal(labelledAt, await db.ScalarAsync<string>(loadedAt)); // the queue only
+        var labels = (await db.QueryAsync<(string, sbyte, int)>("SELECT npi, label, reasons FROM provider_quality WHERE npi IN (@A, @B, @E) ORDER BY npi", new { A, B, E }))
+            .ToDictionary(r => r.Item1, r => (Label: (QualityLabel)r.Item2, Reasons: (QualityReason)r.Item3));
+        Assert.Equal((QualityLabel.Check, QualityReason.NoActivity | QualityReason.MedicareStopped), labels[A]);
+        Assert.Equal((QualityLabel.Current, QualityReason.None), labels[B]);
+        Assert.Equal((QualityLabel.Current, QualityReason.MedicareStopped), labels[E]);
+        Assert.All(labels.Values, l => Assert.Equal(RecordQuality.Classify(l.Reasons), l.Label)); // the SQL label = the C# rule
+
+        // The profile: every year since the first one loaded, the newest from the newest-year tables, and the note.
+        var a = (await new ProviderDetailService(db.ConnectionString).GetAsync(A, _ct))!;
+        Assert.Equal((2014, 2024, true), (a.MedicareHistory!.FirstDataYear, a.MedicareHistory.NewestDataYear, a.MedicareHistory.Stopped));
+        Assert.Equal([new MedicareHistoryYear(2015, true, false, 12, null), new MedicareHistoryYear(2016, true, true, 15, 20)], a.MedicareHistory.Years);
+        Assert.Contains(new QualityNote("bad", "Last billed Medicare in 2016 (Part B and Part D); none in the CMS data for 2017–2024"),
+            RecordQuality.Explain(a.Quality!, a.LastUpdateDate, new DateOnly(2026, 10, 12), true, medicare: a.MedicareHistory));
+        var b = (await new ProviderDetailService(db.ConnectionString).GetAsync(B, _ct))!;
+        Assert.Equal([new MedicareHistoryYear(2016, false, true, null, 100), new MedicareHistoryYear(2024, false, true, null, 300)], b.MedicareHistory!.Years);
+        Assert.False(b.MedicareHistory.Stopped);
+        Assert.Null((await new ProviderDetailService(db.ConnectionString).GetAsync(D, _ct))!.MedicareHistory);
+
+        // Nothing changed: even a forced reload asks only for the catalog.
+        server.Requests.Clear();
+        Assert.True(await History().RefreshAsync(force: true, only: null, _ct));
+        Assert.Equal(["https://cms.test/data.json"], server.Requests);
+        Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM quality_pending"));
+
+        // CMS republishes 2015 in a new folder: A the same, E added. Only that file is fetched and only E is queued.
+        server.Releases[1] = (Npi.Loader.Datasets.MedicareHistoryPart.PartB.Title, 2015, "https://cms.test/files/2026-12/g/MUP_PHY_D15_Prov.csv", "2026-12-01");
+        server.Files["https://cms.test/files/2026-12/g/MUP_PHY_D15_Prov.csv"] = $"Rndrng_NPI,Rndrng_Prvdr_Last_Org_Name,Tot_Benes,Tot_Srvcs\n{A},OBRIEN,12,30\n1999999993,GONE,15,40\n{E},NUNEZ,11,12\n";
+        server.Requests.Clear();
+        clock.Advance(TimeSpan.FromDays(1));
+        Assert.True(await History().RefreshAsync(force: false, only: null, _ct));
+        Assert.Equal(["https://cms.test/data.json", "https://cms.test/files/2026-12/g/MUP_PHY_D15_Prov.csv"], server.Requests);
+        Assert.Equal([E], await db.QueryAsync<string>("SELECT npi FROM quality_pending"));
+        Assert.Equal(((sbyte)1, (int?)11), (await db.QueryAsync<(sbyte, int?)>(
+            "SELECT parts, part_b_beneficiaries FROM medicare_activity_year WHERE data_year = 2015 AND npi = @E", new { E })).Single());
+        Assert.Equal("/files/2026-12/g/MUP_PHY_D15_Prov.csv", await db.ScalarAsync<string>(
+            "SELECT version FROM medicare_history_version WHERE part = 'B' AND data_year = 2015"));
+        Assert.True(await quality.IsStaleAsync(_ct));
+        await quality.BuildAsync(_ct);
+        Assert.Equal(labelledAt, await db.ScalarAsync<string>(loadedAt));
+        var incremental = await ProjectionSnapshotAsync(db, ["provider_quality", "quality_search"]);
+        await quality.BuildAsync(_ct, allowIncremental: false);
+        var full = await ProjectionSnapshotAsync(db, ["provider_quality", "quality_search"]);
+        Assert.Equal(full["provider_quality"], incremental["provider_quality"]);
+        Assert.Equal(full["quality_search"], incremental["quality_search"]);
+
+        // A year with far fewer NPIs than before is refused (≥ 95% check), and a file in an unknown layout fails clearly; both keep the data.
+        server.Releases[2] = (Npi.Loader.Datasets.MedicareHistoryPart.PartB.Title, 2016, "https://cms.test/files/2026-12/h/MUP_PHY_D16_Prov.csv", "2026-12-01");
+        server.Files["https://cms.test/files/2026-12/h/MUP_PHY_D16_Prov.csv"] = "Rndrng_NPI,Tot_Benes\n";
+        server.Releases[4] = (Npi.Loader.Datasets.MedicareHistoryPart.PartD.Title, 2016, "https://cms.test/files/2026-12/i/mup_dpr_dy16_npi.csv", "2026-12-01");
+        server.Files["https://cms.test/files/2026-12/i/mup_dpr_dy16_npi.csv"] = $"Prescriber_NPI,Total_Claims\n{B},100\n";
+        var before = await db.QueryAsync<(short, string, sbyte, int?, int?)>(rows);
+        Assert.False(await History().RefreshAsync(force: true, only: null, _ct));
+        Assert.Equal(before, await db.QueryAsync<(short, string, sbyte, int?, int?)>(rows));
+        Assert.Equal("/files/2025-11/c/MUP_PHY_D16_Prov.csv", await db.ScalarAsync<string>(
+            "SELECT version FROM medicare_history_version WHERE part = 'B' AND data_year = 2016"));
+    }
+
+    [Fact]
+    public async Task The_label_sql_matches_the_csharp_rule_for_every_reason_combination()
+    {
+        // LabelSql run by MySQL for all 2^16 values of the low 16 reason bits (every reason there is, MedicareStopped = 32768 included).
+        await using var db = await TestDatabase.CreateAsync();
+        var labels = await db.QueryAsync<(long Reasons, long Label)>(
+            $"""
+            SELECT CAST(n.r AS SIGNED), CAST({RecordQuality.LabelSql("n.r")} AS SIGNED) FROM (
+              SELECT a.d + 16 * b.d + 256 * c.d + 4096 * e.d AS r
+              FROM (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+                    UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15) a
+              CROSS JOIN (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+                    UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15) b
+              CROSS JOIN (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+                    UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15) c
+              CROSS JOIN (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+                    UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15) e
+            ) n
+            """);
+        Assert.Equal(65536, labels.Count());
+        Assert.All(labels, l => Assert.Equal((long)RecordQuality.Classify((QualityReason)l.Reasons), l.Label));
+    }
+
+    /// <summary>A data.cms.gov catalog with the given yearly releases, and their CSV files.</summary>
+    private sealed class FakeMedicareCms : HttpMessageHandler
+    {
+        public List<(string Title, int Year, string Url, string Modified)> Releases { get; } = [];
+
+        public Dictionary<string, string> Files { get; } = [];
+
+        public List<string> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.AbsoluteUri;
+            Requests.Add(url);
+            var body = url == "https://cms.test/data.json" ? MedicareHistoryTests.CatalogJson(Releases) : Files.GetValueOrDefault(url);
+            return Task.FromResult(body is null
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)
+                : new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) });
+        }
+    }
+
+    /// <summary>A clock the test moves forward (past the sources' check interval).</summary>
+    private sealed class SteppedClock : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan by) => _now += by;
+    }
+
     /// <summary>The Source Cooperative listing of the FEMA USA Structures files and the two fixture files.</summary>
     private sealed class FakeFema : HttpMessageHandler
     {
