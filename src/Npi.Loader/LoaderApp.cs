@@ -391,8 +391,14 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     private async Task<bool> RefreshAreaHistoryAsync(bool projectionOk, CancellationToken ct)
     {
         var history = new AreaHistoryBuilder(database, log);
-        if (!projectionOk || !await history.IsStaleAsync(ct))
+        if (!projectionOk)
         {
+            return true;
+        }
+
+        if (!await history.IsStaleAsync(ct))
+        {
+            log.Information("Area history is current: no provider queued, no counted change recorded, the month and its inputs unchanged");
             return true;
         }
 

@@ -7,7 +7,8 @@ namespace Npi.Loader.Tests.Integration;
 /// <summary>
 /// Areas over time (docs/PRODUCT_PLAN.md step 3.3; migration 102) on scratch databases: the first build derives the past, a
 /// build after an incremental projection records moves, deactivations and changes, the full and the incremental paths give the
-/// same tables, the lists behind the counts match them, and a new month freezes the one before last.
+/// same tables, the lists behind the counts match them, a new month freezes the one before last, and a build is skipped only
+/// when nothing it reads changed.
 /// </summary>
 public sealed class AreaHistoryIntegrationTests : IDisposable
 {
@@ -195,6 +196,95 @@ public sealed class AreaHistoryIntegrationTests : IDisposable
         var (oct, nov) = (suffolk.Months[^2], suffolk.Months[^1]);
         Assert.Equal((false, true, 0), (oct.Partial, nov.Partial, nov.NetChange!.Value));
         Assert.Null(oct.NetChange);                                                            // September wasn't counted
+    }
+
+    [Fact]
+    public async Task A_build_is_skipped_when_nothing_it_reads_changed_and_runs_when_an_input_did()
+    {
+        // Speed item 18. Two copies of the same data: one builds only when IsStaleAsync says so (as run does), the other every
+        // time; after each step their tables are the same, so a skip never hides a change.
+        await using var skipping = await SeededAsync("skipping");
+        await using var forced = await SeededAsync("forced");
+        TestDatabase[] both = [skipping, forced];
+        static QualityBuilder Quality(TestDatabase db) => new(db.Database, TestLog.Warnings, 0.95) { IncrementalShare = 10 };
+        static AreaHistoryBuilder Builder(TestDatabase db) => new(db.Database, TestLog.Warnings);
+        // Whether the last relabel moved the labels row (both rows are written with the same time then).
+        static async Task<bool> LabelsMovedAsync(TestDatabase db) => await db.ScalarAsync<long>(
+            "SELECT l.loaded_at = q.checked_at FROM reference_data l JOIN reference_data q ON q.source = @quality WHERE l.source = @labels",
+            new { quality = QualityBuilder.Source, labels = QualityBuilder.LabelsSource }) != 0;
+
+        async Task StepAsync(string step, bool stale, Func<TestDatabase, Task> change)
+        {
+            foreach (var db in both)
+            {
+                // As if the step came a minute after the last one: every recorded time a minute older, in the same order, so a
+                // build time in the same second as the step's can't hide what the step moved.
+                await db.ExecuteAsync("UPDATE reference_data SET loaded_at = loaded_at - INTERVAL 1 MINUTE, checked_at = checked_at - INTERVAL 1 MINUTE");
+                await change(db);
+            }
+
+            Assert.True(stale == await Builder(skipping).IsStaleAsync(_ct), $"{step}: stale should be {stale}");
+            if (stale)
+            {
+                await Builder(skipping).BuildAsync(_ct);
+            }
+
+            await Builder(forced).BuildAsync(_ct);
+            Assert.False(await Builder(skipping).IsStaleAsync(_ct), $"{step}: still stale after the build");
+            foreach (var table in new[] { "area_month_stat", "area_month_event", "area_history_location" })
+            {
+                Assert.True((await RowsAsync(forced, table)).SequenceEqual(await RowsAsync(skipping, table)), $"{step}: {table} differs from a forced build");
+            }
+        }
+
+        await StepAsync("the first build", true, db => new AreaCountBuilder(db.Database, TestLog.Warnings, 0.95).BuildAsync(_ct));
+        await StepAsync("nothing changed", false, _ => Task.CompletedTask);
+        await StepAsync("the labels built", true, db => Quality(db).BuildAsync(_ct, allowIncremental: false));
+
+        // A dataset reload that queued nobody, and a queued provider whose label stays: relabelled, nothing different.
+        await StepAsync("a relabel with nobody queued", false, db => Quality(db).BuildAsync(_ct));
+        Assert.False(await LabelsMovedAsync(skipping));
+        await StepAsync("a relabel that changed no label", false, async db =>
+        {
+            await db.ExecuteAsync("INSERT INTO quality_pending (npi) VALUES (@A)", new { A });
+            await Quality(db).BuildAsync(_ct);
+        });
+        Assert.False(await LabelsMovedAsync(skipping));
+        var staleBefore = await Stat(skipping, "us", "US", "", Oct, "quality_stale");
+        await StepAsync("a relabel that changed a label", true, async db =>
+        {
+            await db.ExecuteAsync("UPDATE provider SET last_update_date = '2012-01-01' WHERE npi = @A; INSERT INTO quality_pending (npi) VALUES (@A)", new { A });
+            await Quality(db).BuildAsync(_ct);
+        });
+        Assert.True(await LabelsMovedAsync(skipping));
+        Assert.Equal(staleBefore + 1, await Stat(skipping, "us", "US", "", Oct, "quality_stale"));   // A, not updated since 2012
+
+        // The change log: a kind the history doesn't count, then one it does.
+        const string change = "INSERT INTO provider_change (npi, detected_at, change_type, old_value, new_value) VALUES (@D, UTC_TIMESTAMP(), @type, NULL, 'x')";
+        await StepAsync("a phone change recorded", false, db => db.ExecuteAsync(change, new { D, type = "phone" }));
+        await StepAsync("a license listed", true, db => db.ExecuteAsync(change, new { D, type = "license_added" }));
+
+        await StepAsync("providers queued by the projection", true, ChangeAsync);
+
+        // The NPPES archive (step 3.4) covering the open month before the recorded series, as HistoryAreaStats writes it.
+        await StepAsync("the archive's month written", false, db => db.ExecuteAsync(
+            """
+            DELETE FROM area_month_stat WHERE basis <> 3 AND month <= '2026-09-01' AND month < '2026-10-01';
+            INSERT INTO area_month_stat (area_type, area_id, category, subcategory, month, basis, providers) VALUES ('us', 'US', '', '', '2026-09-01', 3, 5);
+            UPDATE area_history_meta SET archive_from = '2007-11-01', archive_to = '2026-09-01' WHERE id = 1;
+            """));
+        Assert.Equal(3, await Stat(skipping, "us", "US", "", Sep, "basis"));
+
+        await StepAsync("a county added by a Census reload", true, db => db.ExecuteAsync(
+            """
+            INSERT INTO county (county_fips, state, county_name, source) VALUES ('36119', 'NY', 'Westchester County', 'census-gazetteer');
+            INSERT INTO reference_data (source, version, source_url, rows_loaded, loaded_at, checked_at)
+            VALUES ('census_gazetteer', '2026', '', 4, UTC_TIMESTAMP() + INTERVAL 2 SECOND, UTC_TIMESTAMP() + INTERVAL 2 SECOND) AS new
+            ON DUPLICATE KEY UPDATE loaded_at = new.loaded_at, checked_at = new.checked_at;
+            """));
+        Assert.Equal(0, await Stat(skipping, "county", "36119", "", Oct, "providers"));
+        await StepAsync("a new month", true, db => db.ExecuteAsync("UPDATE data_version SET as_of_date = '2026-11-03' WHERE id = 1"));
+        await StepAsync("nothing changed in the new month", false, _ => Task.CompletedTask);
     }
 
     // A's move to Brooklyn, B's deactivation, C's new specialty, F's new NPI and a license listed for D, then an incremental
