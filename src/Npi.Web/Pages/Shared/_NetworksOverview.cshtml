@@ -1,0 +1,48 @@
+@inject Npi.Core.Search.HealthSystemService Systems
+@inject ILogger<Npi.Core.Search.HealthSystemService> Log
+@{
+    // Health systems, ACOs and HRSA health centers on the Groups & organizations page (docs/PRODUCT_PLAN.md step 3.6 part 2). The
+    // rest of the page comes from the directory snapshot; this section is left out when its counts can't be read.
+    Npi.Core.Search.NetworkOverview? n = null;
+    try
+    {
+        n = await Systems.GetOverviewAsync(Context.RequestAborted);
+    }
+    catch (MySqlConnector.MySqlException ex)
+    {
+        Log.LogWarning(ex, "Health system, ACO and health center counts couldn't be read");
+    }
+}
+@if (n is not null && (n.Systems > 0 || n.Acos > 0 || n.HealthCenterSites > 0))
+{
+    <section class="card" aria-labelledby="networks-h">
+        <h2 id="networks-h">Health systems, ACOs and health centers</h2>
+        <div class="stat-row">
+            @if (n.Systems > 0)
+            {
+                <a class="stat" href="/systems">
+                    <span class="label">Health systems@(n.SystemYear is { } sy ? $", {sy}" : "")</span>
+                    <strong>@Format.Number(n.Systems)</strong>
+                    <span class="small">with @Format.Number(n.SystemFacilities) facilities by CMS number (AHRQ)</span>
+                </a>
+            }
+            @if (n.Acos > 0)
+            {
+                <a class="stat" href="/acos">
+                    <span class="label">Medicare ACOs@(n.AcoYear is { } ay ? $", {ay}" : "")</span>
+                    <strong>@Format.Number(n.Acos)</strong>
+                    <span class="small">with @Format.Number(n.AcoParticipants) participants (Shared Savings Program)</span>
+                </a>
+            }
+            @if (n.HealthCenterSites > 0)
+            {
+                <a class="stat" href="/facilities?type=fqhc">
+                    <span class="label">Health center sites</span>
+                    <strong>@Format.Number(n.HealthCenterSites)</strong>
+                    <span class="small">of @Format.Number(n.HealthCenters) HRSA-funded health centers and look-alikes</span>
+                </a>
+            }
+        </div>
+        <p class="src">AHRQ Compendium of U.S. Health Systems; CMS Medicare Shared Savings Program ACO files; HRSA Health Center Service Delivery and Look-Alike Sites.</p>
+    </section>
+}

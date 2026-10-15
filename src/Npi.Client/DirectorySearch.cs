@@ -39,6 +39,12 @@ public sealed class FacilitySearch
     /// </summary>
     public string? Sort { get; set; }
 
+    /// <summary>An AHRQ health system ID (e.g. HSI00000010): only its facilities.</summary>
+    public string? System { get; set; }
+
+    /// <summary>true: only participating 340B covered entities (HRSA OPAIS); false: only facilities that aren't one.</summary>
+    public bool? In340B { get; set; }
+
     public int? Page { get; set; }
 
     /// <summary>1–200 (default 50).</summary>
@@ -57,6 +63,8 @@ public sealed class FacilitySearch
         q.Add("ownershipChangedWithinYears", OwnershipChangedWithinYears);
         q.Add("hasPenalties", HasPenalties);
         q.Add("sort", Sort);
+        q.Add("system", System);
+        q.Add("in340b", In340B is { } in340b ? (in340b ? "true" : "false") : null);
         q.Add("page", Page);
         q.Add("pageSize", PageSize);
         return q.ToString();
@@ -96,6 +104,63 @@ public sealed class GroupSearch
         q.Add("minClinicians", MinClinicians);
         q.Add("maxClinicians", MaxClinicians);
         q.Add("sort", Sort);
+        q.Add("page", Page);
+        q.Add("pageSize", PageSize);
+        return q.ToString();
+    }
+}
+
+/// <summary>
+/// Filters for <see cref="NpiClient.SearchSystemsAsync"/>: one property per /api/v1/systems parameter. With nothing set, every health
+/// system is listed, most hospitals first.
+/// </summary>
+public sealed class SystemSearch
+{
+    /// <summary>An AHRQ system ID or words of the name or headquarters city.</summary>
+    public string? Q { get; set; }
+
+    /// <summary>Two-letter state code of the headquarters.</summary>
+    public string? State { get; set; }
+
+    /// <summary>name, hospitals, physicians or beds; "-" first for descending (default "-hospitals").</summary>
+    public string? Sort { get; set; }
+
+    public int? Page { get; set; }
+
+    /// <summary>1–200 (default 50).</summary>
+    public int? PageSize { get; set; }
+
+    public string ToQueryString()
+    {
+        var q = new QueryBuilder();
+        q.Add("q", Q);
+        q.Add("state", State);
+        q.Add("sort", Sort);
+        q.Add("page", Page);
+        q.Add("pageSize", PageSize);
+        return q.ToString();
+    }
+}
+
+/// <summary>Filters for <see cref="NpiClient.SearchAcosAsync"/>: one property per /api/v1/acos parameter. With nothing set, every ACO by name.</summary>
+public sealed class AcoSearch
+{
+    /// <summary>An ACO ID, words of its name, or part of a participant's name.</summary>
+    public string? Q { get; set; }
+
+    /// <summary>Two-letter state code in the ACO's service area.</summary>
+    public string? State { get; set; }
+
+    public int? Page { get; set; }
+
+    /// <summary>1–200 (default 50).</summary>
+    public int? PageSize { get; set; }
+
+    public string ToQueryString()
+    {
+        var q = new QueryBuilder();
+        q.Add("q", Q);
+        q.Add("state", State);
         q.Add("page", Page);
         q.Add("pageSize", PageSize);
         return q.ToString();

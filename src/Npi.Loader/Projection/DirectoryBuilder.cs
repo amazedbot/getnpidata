@@ -19,7 +19,8 @@ namespace Npi.Loader.Projection;
 /// <item><c>directory_group</c>: every Medicare group with an active clinician (~210,000): clinicians as its page counts them
 /// (reassigned to it or listed with it in Care Compare), organization NPIs enrolled under it, accepts assignment, group MIPS;</item>
 /// <item><c>directory_org_count</c>: active organization NPIs by primary taxonomy, primary practice state and record-quality label;</item>
-/// <item><c>directory_org_billing</c>: active organization NPIs' own Medicare Part B payments.</item>
+/// <item><c>directory_org_billing</c>: active organization NPIs' own Medicare Part B payments;</item>
+/// <item><c>aco_participant_npi</c>: ACO participants linked to active organization NPIs by exact legal name (<see cref="AcoParticipantMatcher"/>).</item>
 /// </list>
 /// Rebuilt in full (staging + RENAME) after the record quality when the projection, the labels or one of the datasets it reads
 /// changed since its last build. The site rereads the tables when this builder's <c>reference_data</c> row moves.
@@ -28,7 +29,7 @@ public sealed class DirectoryBuilder(Database database, ILogger log, double minR
 {
     public const string Source = DataStamp.DirectorySource;
 
-    public static readonly string[] Tables = ["directory_facility", "directory_group", "directory_org_count", "directory_org_billing"];
+    public static readonly string[] Tables = ["directory_facility", "directory_group", "directory_org_count", "directory_org_billing", "aco_participant_npi"];
 
     // Datasets and reference data the tables read: their reloads count.
     private static readonly string[] Inputs =
@@ -38,6 +39,8 @@ public sealed class DirectoryBuilder(Database database, ILogger log, double minR
         "cms_ownership_changes", OwnershipService.InspectionsSource,
         // Step 3.6 part 2: more facility types and their NPIs.
         "cc_dialysis", "cms_dialysis_npis", "cc_surgery_centers", "cc_post_acute",
+        // Step 3.6 part 2: health systems, HRSA's health center sites and 340B entities in the facility list; ACO participants by name.
+        "ahrq_compendium", "hrsa_health_center_sites", "hrsa_340b", "cms_aco",
     ];
 
     /// <summary>
@@ -124,8 +127,25 @@ public sealed class DirectoryBuilder(Database database, ILogger log, double minR
                 ("lat", typeof(double), f => f.Latitude), ("lon", typeof(double), f => f.Longitude),
                 ("ownership_changed", typeof(DateTime), f => f.LastOwnershipChange?.ToDateTime(TimeOnly.MinValue)),
                 ("penalties", typeof(int), f => f.Penalties), ("fines", typeof(double), f => f.Fines),
-                ("last_penalty", typeof(DateTime), f => f.LastPenalty?.ToDateTime(TimeOnly.MinValue))), ct);
-            log.Information("Directories: {Rows:N0} facilities in {Seconds:N1}s", facilities.Count, step.Elapsed.TotalSeconds);
+                ("last_penalty", typeof(DateTime), f => f.LastPenalty?.ToDateTime(TimeOnly.MinValue)), ("source", typeof(string), f => f.Source),
+                ("system_id", typeof(string), f => f.SystemId), ("system_name", typeof(string), f => Clip(f.SystemName, 200)),
+                ("health_center", typeof(string), f => Clip(f.HealthCenter, 200)), ("website", typeof(string), f => Clip(f.Website, 255)),
+                ("program_340b", typeof(string), f => Clip(f.Program340B, 10)),
+                ("since_340b", typeof(DateTime), f => f.Program340BSince?.ToDateTime(TimeOnly.MinValue))), ct);
+            log.Information("Directories: {Rows:N0} facilities ({In340B:N0} 340B covered entities) in {Seconds:N1}s", facilities.Count,
+                facilities.Count(f => f.Program340B is not null), step.Elapsed.TotalSeconds);
+
+            // ACO participants linked to organization NPIs by exact legal name (owner, 2026-10-15).
+            step.Restart();
+            var (links, matched) = await AcoParticipantMatcher.MatchAsync(connection, ct);
+            await ReferenceTables.CopyToStagingAsync(connection, "aco_participant_npi", ReferenceTables.ToDataTable(links,
+                ("aco_id", typeof(string), l => l.AcoId), ("name", typeof(string), l => l.Name), ("npi", typeof(string), l => l.Npi),
+                ("candidates", typeof(sbyte), l => (sbyte)l.Candidates), ("hospital_group", typeof(sbyte), l => (sbyte)(l.HospitalGroup ? 1 : 0)),
+                ("grouped_by", typeof(string), l => l.GroupedBy), ("grouped_value", typeof(string), l => Clip(l.GroupedValue, 200))), ct);
+            log.Information(
+                "Directories: ACO participants matched by legal name in {Seconds:N1}s: {Participants:N0} participants, {One:N0} to exactly one organization, {Several:N0} to 2–{Max} (all listed), {Hospitals:N0} to a hospital group of {Min}–{MaxHospitals} (all listed), {TooMany:N0} to more (not linked), {None:N0} to none",
+                step.Elapsed.TotalSeconds, matched.Participants, matched.One, matched.Several, AcoNames.MaxCandidates, matched.HospitalGroups,
+                AcoNames.MaxCandidates + 1, AcoNames.MaxHospitalCandidates, matched.TooMany, matched.None);
 
             foreach (var (what, sql) in new[] { ("groups", GroupSql), ("organization counts", OrganizationCountSql), ("organization Part B payments", BillingSql) })
             {

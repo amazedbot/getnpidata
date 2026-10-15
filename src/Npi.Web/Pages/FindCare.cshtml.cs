@@ -12,7 +12,7 @@ namespace Npi.Web.Pages;
 /// optional preferences) and simple result cards nearest first, with the phone, the address, directions and a hospital
 /// the clinician works with. A GET form, so results can be bookmarked and shared.
 /// </summary>
-public class FindCareModel(CareFinder finder, IOptions<MapOptions> mapOptions) : PageModel
+public class FindCareModel(CareFinder finder, HealthCenterService healthCenters, IOptions<MapOptions> mapOptions) : PageModel
 {
     public const int PerPage = 10;
 
@@ -50,6 +50,12 @@ public class FindCareModel(CareFinder finder, IOptions<MapOptions> mapOptions) :
 
     public StaticMap? Map { get; private set; }
 
+    /// <summary>HRSA health center sites near the ZIP (page 1 of the needs health centers serve; docs/PRODUCT_PLAN.md step 3.6 part 2).</summary>
+    public IReadOnlyList<NearbyHealthCenter> HealthCenters { get; private set; } = [];
+
+    /// <summary>How many health center sites are shown, nearest first.</summary>
+    public const int HealthCentersShown = 3;
+
     public bool Asked => Need is not null || Specialty is not null || Zip is not null;
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
@@ -84,6 +90,19 @@ public class FindCareModel(CareFinder finder, IOptions<MapOptions> mapOptions) :
         var pages = Math.Max(1, (Results.Items.Count + PerPage - 1) / PerPage);
         PageNumber = Math.Clamp(PageNumber, 1, pages);
         Shown = await finder.WithHospitalsAsync([.. Results.Items.Skip((PageNumber - 1) * PerPage).Take(PerPage)], ct);
+        if (Chosen.HealthCenters && PageNumber == 1)
+        {
+            // As close as the providers found (at least 10 miles), then 25 miles when there is none that close.
+            foreach (var radius in new[] { Math.Max(10, Results.RadiusMiles), 25 }.Distinct())
+            {
+                HealthCenters = await healthCenters.NearAsync(Results.CenterLat, Results.CenterLon, radius, HealthCentersShown, ct);
+                if (HealthCenters.Count > 0)
+                {
+                    break;
+                }
+            }
+        }
+
         Map = StaticMap.Create(
             Shown.Select((r, i) => (Label: Number(i), r.Nearest.Lat, r.Nearest.Lon, r.Nearest.Approximate)),
             mapOptions.Value.TileUrl);
@@ -184,7 +203,10 @@ public class FindCareModel(CareFinder finder, IOptions<MapOptions> mapOptions) :
         : Math.Round(miles).ToString(CultureInfo.InvariantCulture) + " miles";
 
     /// <summary>OpenStreetMap directions to the point.</summary>
-    public static string Directions(AreaProvider a) =>
+    public static string Directions(AreaProvider a) => Directions(a.Lat, a.Lon);
+
+    /// <summary>OpenStreetMap directions to a point.</summary>
+    public static string Directions(double lat, double lon) =>
         "https://www.openstreetmap.org/directions?route=%3B" + Uri.EscapeDataString(
-            $"{a.Lat.ToString("0.#####", CultureInfo.InvariantCulture)},{a.Lon.ToString("0.#####", CultureInfo.InvariantCulture)}");
+            $"{lat.ToString("0.#####", CultureInfo.InvariantCulture)},{lon.ToString("0.#####", CultureInfo.InvariantCulture)}");
 }

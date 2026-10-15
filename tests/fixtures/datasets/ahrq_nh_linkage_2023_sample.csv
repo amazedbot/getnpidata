@@ -1,0 +1,3 @@
+compendium_nh_id,onekey_id,ccn,nursing_home_name,nursing_home_street,nursing_home_city,nursing_home_state,nursing_home_zip,health_sys_id,health_sys_name,health_sys_city,health_sys_state,corp_parent_id,corp_parent_name,corp_parent_type
+NHI90000001,90000101,335002,SHORE VIEW CARE,5 SHORE RD,BABYLON,NY,11702,HSI90000001,Harbor Health System,West Islip,NY,90000001,HARBOR HEALTH SYSTEM INC,INTEGRATED DELIVERY NETWORK (IDN)
+NHI90000002,90000102,145001,MAPLE GROVE NURSING,12 MAPLE AVE,PEORIA,IL,61602,,,,,.,,

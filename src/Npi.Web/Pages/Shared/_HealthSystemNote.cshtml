@@ -1,0 +1,33 @@
+@model HealthSystemNote
+@inject Npi.Core.Search.HealthSystemService Systems
+@{
+    // The health systems of an organization NPI or a Medicare group (docs/PRODUCT_PLAN.md step 3.6 part 2): by identifiers only,
+    // through a facility (CCN) the AHRQ Compendium places in a system.
+    var links = Model.Kind == HealthSystemNote.Pac
+        ? await Systems.ForPacAsync(Model.Id, Context.RequestAborted)
+        : await Systems.ForNpiAsync(Model.Id, Context.RequestAborted);
+}
+@if (links.Count > 0)
+{
+    <section class="card" aria-labelledby="system-h">
+        <h2 id="system-h">Part of a health system</h2>
+        <ul class="link-list">
+            @foreach (var l in links)
+            {
+                <li>
+                    <a href="/system/@Uri.EscapeDataString(l.SystemId)">@l.Name</a>
+                    @if (l.Ccn is not null)
+                    {
+                        <span class="muted">through <a href="/facility/@Uri.EscapeDataString(l.Ccn)">@(l.FacilityName is null ? "CCN " + l.Ccn : Npi.Core.Search.CityCatalog.TitleCase(l.FacilityName))</a></span>
+                    }
+                </li>
+            }
+        </ul>
+        <p class="src">
+            @Npi.Core.Search.HealthSystemText.Credit(null) It places facilities in systems by CMS Certification Number; @Npi.Core.Search.HealthSystemText.Basis
+            @(Model.Kind == HealthSystemNote.Pac
+                ? "This group's Medicare ID is enrolled with an NPI that bills for the facility (CMS enrollment files), so the group is the same organization."
+                : "This NPI bills for the facility (CMS hospital, nursing home and other facility enrollments).")
+        </p>
+    </section>
+}

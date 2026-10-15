@@ -1,0 +1,93 @@
+@page "/acos"
+@using Npi.Core.Search
+@model AcosModel
+@{
+    ViewData["Title"] = "Medicare ACOs";
+    var r = Model.Result;
+    var states = GeographyCatalog.AllStateNames.OrderBy(s => s.Value, StringComparer.Ordinal).ToList();
+    var year = r.Items.Select(a => (int?)a.ProgramYear).Max();
+}
+
+<div class="profile industry">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a></nav>
+    <div>
+        <h1>Medicare accountable care organizations</h1>
+        <p class="lede">
+            ACOs in the Medicare Shared Savings Program@(year is { } y ? $", {y}" : ""): groups of doctors, hospitals and other providers that take joint
+            responsibility for the cost and quality of their Medicare patients' care. Open one to see its participants and the nursing facilities it works with.
+        </p>
+    </div>
+
+    <form method="get" action="/acos" class="industry-search" role="search">
+        <label for="q" class="visually-hidden">An ACO's name or ID, or a participant's name</label>
+        <input id="q" name="q" type="search" value="@Model.Q" maxlength="@AcoFilter.MaxQueryLength" placeholder="An ACO, its ID, or a participant's name" />
+        @if (Model.State is not null){<input type="hidden" name="state" value="@Model.State" />}
+        <button type="submit">Search</button>
+    </form>
+    @if (Model.Errors.Count > 0)
+    {
+        <p class="error" role="alert">@string.Join(" ", Model.Errors.Select(e => $"{e.Key}: {string.Join(" ", e.Value)}")) The list below has no filters.</p>
+    }
+
+    <section class="card" id="list" aria-labelledby="list-h">
+        <div class="card-head">
+            <h2 id="list-h">ACOs@(Model.State is { } st ? " serving " + GeographyCatalog.StateName(st) : "")@(string.IsNullOrWhiteSpace(Model.Q) ? "" : $" matching “{Model.Q.Trim()}”") (@Format.Number(r.TotalCount))</h2>
+        </div>
+        <form method="get" action="/acos#list" class="directory-filters">
+            @if (!string.IsNullOrWhiteSpace(Model.Q)){<input type="hidden" name="q" value="@Model.Q" />}
+            <div class="field">
+                <label for="state">Serves patients in</label>
+                <select id="state" name="state">
+                    <option value="">Any state</option>
+                    @foreach (var (code, name) in states)
+                    {
+                        <option value="@code" selected="@(code == Model.State)">@name</option>
+                    }
+                </select>
+            </div>
+            <div class="field narrow directory-submit"><button type="submit">Show</button></div>
+        </form>
+
+        @if (r.Items.Count == 0)
+        {
+            <p>No ACO matches.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">ACOs, page @r.Page of @Model.PageCount</caption>
+                    <thead>
+                        <tr><th scope="col">ACO</th><th scope="col">Service area</th><th scope="col">Track</th><th scope="col">Participants</th><th scope="col">In the program since</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in r.Items)
+                        {
+                            <tr>
+                                <td class="break"><a href="/aco/@Uri.EscapeDataString(a.AcoId)">@a.Name</a><br /><span class="muted small mono">@a.AcoId</span></td>
+                                <td>@a.ServiceArea</td>
+                                <td>@(a.Track ?? "—")</td>
+                                <td>@Format.Number(a.Participants)</td>
+                                <td>@(a.InitialStartDate?.Year.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (Model.PageCount > 1)
+            {
+                <nav class="pager" aria-label="Pages">
+                    @if (r.Page > 1) { <a href="@Model.PageUrl(r.Page - 1)#list" rel="prev">‹ Previous</a> }
+                    <span>Page @r.Page of @Format.Number(Model.PageCount)</span>
+                    @if (r.Page < Model.PageCount) { <a href="@Model.PageUrl(r.Page + 1)#list" rel="next">Next ›</a> }
+                </nav>
+            }
+        }
+    </section>
+
+    <p class="src">
+        Source: CMS, Medicare Shared Savings Program Accountable Care Organizations, Participants and SNF Affiliates (data.cms.gov). CMS lists participants
+        by legal business name only, so they aren't linked to provider, group or facility pages here. Programs can use <a href="/developers">the API</a>:
+        <code>/api/v1/acos</code>. See also <a href="/systems">health systems</a>.
+    </p>
+</div>

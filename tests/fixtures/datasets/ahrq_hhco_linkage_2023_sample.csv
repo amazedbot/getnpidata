@@ -1,0 +1,5 @@
+compendium_hh_id,onekey_id,ccn,home_health_care_org_type,home_health_care_org_name,home_health_care_org_street,home_health_care_org_city,home_health_care_org_state,home_health_care_org_zip,health_sys_id,health_sys_name,health_sys_city,health_sys_state,corp_parent_id,corp_parent_name,corp_parent_type
+HHI90000001,90000201,337001,Home health,HARBOR HOME CARE,7 SHORE RD,BABYLON,NY,11702,HSI90000001,Harbor Health System,West Islip,NY,90000001,HARBOR HEALTH SYSTEM INC,INTEGRATED DELIVERY NETWORK (IDN)
+HHI90000002,90000202,331501,Hospice,HARBOR HOSPICE,9 SHORE RD,BABYLON,NY,11702,HSI90000001,Harbor Health System,West Islip,NY,90000001,HARBOR HEALTH SYSTEM INC,INTEGRATED DELIVERY NETWORK (IDN)
+HHI90000003,90000203,242301,Home dialysis,LAKES HOME DIALYSIS,4 LAKE AVE,DULUTH,MN,55802,HSI90000003,"Lakes & Rivers Health, Inc.",Duluth,MN,90000003,LAKES & RIVERS HEALTH INC,INTEGRATED DELIVERY NETWORK (IDN)
+HHI90000004,90000204,147002,Home health,PRAIRIE HOME HELPERS,3 ELM ST,PEORIA,IL,61602,,,,,.,,

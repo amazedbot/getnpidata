@@ -9,7 +9,9 @@ namespace Npi.Core.Search;
 /// <param name="Plural">The results title, e.g. "Family doctors".</param>
 /// <param name="Specialties">(category, subcategory) pairs of <see cref="SpecialtyCategories"/>; subcategory null = the whole category.</param>
 /// <param name="EntityType">1 = clinicians, 2 = places (urgent care centres), null = both (a category picked under "Something else").</param>
-public sealed record CareNeed(string Key, string Label, string Plural, IReadOnlyList<(string Category, string? Subcategory)> Specialties, int? EntityType = 1);
+/// <param name="HealthCenters">Also show HRSA health center sites nearby (primary care, children, dental, mental health: what health centers offer).</param>
+public sealed record CareNeed(string Key, string Label, string Plural, IReadOnlyList<(string Category, string? Subcategory)> Specialties, int? EntityType = 1,
+    bool HealthCenters = false);
 
 /// <summary>What a patient asked for: the kind of care, the ZIP, and the optional preferences.</summary>
 public sealed record CareRequest(CareNeed Need, string Zip, bool TakesMedicare = false, bool VideoVisits = false, string? Gender = null);
@@ -39,11 +41,12 @@ public sealed class CareFinder(string connectionString, SearchService search)
     /// <summary>The kinds of care offered as buttons, in order. "Something else" picks any category or subcategory instead.</summary>
     public static readonly IReadOnlyList<CareNeed> Needs =
     [
-        new("family", "Family doctor", "Family doctors", [("Doctors (MD, DO)", "Family medicine & general practice"), ("Doctors (MD, DO)", "Internal medicine")]),
-        new("children", "Children's doctor", "Children's doctors", [("Doctors (MD, DO)", "Children & teens (pediatrics)")]),
-        new("dentist", "Dentist", "Dentists", [("Dentists", "General dentists"), ("Dentists", "Children's dentists")]),
+        new("family", "Family doctor", "Family doctors", [("Doctors (MD, DO)", "Family medicine & general practice"), ("Doctors (MD, DO)", "Internal medicine")],
+            HealthCenters: true),
+        new("children", "Children's doctor", "Children's doctors", [("Doctors (MD, DO)", "Children & teens (pediatrics)")], HealthCenters: true),
+        new("dentist", "Dentist", "Dentists", [("Dentists", "General dentists"), ("Dentists", "Children's dentists")], HealthCenters: true),
         new("eye", "Eye doctor", "Eye doctors", [("Eye care", "Optometrists"), ("Eye care", "Ophthalmologists")]),
-        new("mental", "Mental health", "Mental health providers", [("Mental & behavioral health", null)]),
+        new("mental", "Mental health", "Mental health providers", [("Mental & behavioral health", null)], HealthCenters: true),
         new("skin", "Skin doctor", "Skin doctors", [("Doctors (MD, DO)", "Skin (dermatology)")]),
         new("back", "Back & joints", "Back and joint care",
             [("Doctors (MD, DO)", "Bones & joints (orthopedics)"), ("Chiropractic & complementary care", "Chiropractors"), ("Therapy & rehabilitation", "Physical therapists")]),

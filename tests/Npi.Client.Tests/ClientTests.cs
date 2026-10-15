@@ -188,6 +188,20 @@ public class ClientTests
     [InlineData(typeof(Server.InspectionSurvey), typeof(InspectionSurvey))]
     [InlineData(typeof(Server.InspectionCitation), typeof(InspectionCitation))]
     [InlineData(typeof(Server.NursingHomePenalty), typeof(NursingHomePenalty))]
+    [InlineData(typeof(Server.HealthSystemPage), typeof(HealthSystemPage))]
+    [InlineData(typeof(Server.HealthSystemSummary), typeof(HealthSystemSummary))]
+    [InlineData(typeof(Server.HealthSystemDetail), typeof(HealthSystemDetail))]
+    [InlineData(typeof(Server.HealthSystemFacility), typeof(HealthSystemFacility))]
+    [InlineData(typeof(Server.HealthSystemGroup), typeof(HealthSystemGroup))]
+    [InlineData(typeof(Server.AcoPage), typeof(AcoPage))]
+    [InlineData(typeof(Server.AcoSummary), typeof(AcoSummary))]
+    [InlineData(typeof(Server.AcoDetail), typeof(AcoDetail))]
+    [InlineData(typeof(Server.HealthCenterSite), typeof(HealthCenterSite))]
+    [InlineData(typeof(Server.HealthCenterSiteDetail), typeof(HealthCenterSiteDetail))]
+    [InlineData(typeof(Server.AcoParticipant), typeof(AcoParticipant))]
+    [InlineData(typeof(Server.AcoParticipantMatch), typeof(AcoParticipantMatch))]
+    [InlineData(typeof(Server.AcoMembership), typeof(AcoMembership))]
+    [InlineData(typeof(Server.Covered340BEntity), typeof(Covered340BEntity))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
         // The names as JSON writes them: [JsonIgnore] properties aren't sent, [JsonPropertyName] renames.
@@ -264,7 +278,7 @@ public class ClientTests
         var facilities = new FacilitySearch
         {
             Q = "good samaritan", Type = "hospital", State = "NY", MinRating = 3, MaxRating = 5, Status = "all", OwnershipChangedWithinYears = 3,
-            HasPenalties = true, Sort = "-rating", Page = 2, PageSize = 100,
+            HasPenalties = true, Sort = "-rating", System = "HSI00000010", In340B = true, Page = 2, PageSize = 100,
         };
         Assert.Equal(ServerParameters(nameof(Npi.Web.Api.DirectoryEndpoints.SearchFacilitiesAsync)), Keys(facilities.ToQueryString()));
         Assert.Equal("?q=good%20samaritan&type=hospital", new FacilitySearch { Q = " good samaritan ", Type = "hospital", State = " " }.ToQueryString());
@@ -272,6 +286,61 @@ public class ClientTests
         var groups = new GroupSearch { Q = "1234567893", State = "NY", MinClinicians = 10, MaxClinicians = 50, Sort = "name", Page = 2, PageSize = 10 };
         Assert.Equal(ServerParameters(nameof(Npi.Web.Api.DirectoryEndpoints.SearchGroupsAsync)), Keys(groups.ToQueryString()));
         Assert.Equal("", new GroupSearch().ToQueryString());
+    }
+
+    [Fact]
+    public void System_and_aco_searches_send_every_parameter_the_server_takes()
+    {
+        static string[] ServerParameters(string method) =>
+            [.. typeof(Npi.Web.Api.SystemEndpoints).GetMethod(method)!.GetParameters()
+                .Where(p => p.ParameterType == typeof(string) || p.ParameterType == typeof(int?) || p.ParameterType == typeof(bool?)).Select(p => p.Name!)];
+
+        static string[] Keys(string query) => [.. QueryHelpers.ParseQuery(query).Keys];
+
+        var systems = new SystemSearch { Q = "harbor", State = "NY", Sort = "-beds", Page = 2, PageSize = 20 };
+        Assert.Equal(ServerParameters(nameof(Npi.Web.Api.SystemEndpoints.SearchSystemsAsync)), Keys(systems.ToQueryString()));
+        var acos = new AcoSearch { Q = "harbor", State = "NY", Page = 2, PageSize = 20 };
+        Assert.Equal(ServerParameters(nameof(Npi.Web.Api.SystemEndpoints.SearchAcosAsync)), Keys(acos.ToQueryString()));
+        Assert.Equal("?q=a%20b", new AcoSearch { Q = " a b ", State = " " }.ToQueryString());
+    }
+
+    [Fact]
+    public void System_aco_and_site_json_reads_into_client_models()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var system = new Server.HealthSystemDetail(
+            new Server.HealthSystemSummary("HSI90000001", "Harbor Health System", "West Islip", "NY", 2023, 1200, 400, 300, 80, 45, 3, 1, 1, 812, 40210, true, null, false, 3),
+            ["NY"], [new Server.HealthSystemFacility("330045", "hospital", "GOOD SAMARITAN HOSPITAL", "WEST ISLIP", "NY", true, 3)],
+            [new Server.HealthSystemGroup("1000000001", "BIG HEALTH GROUP", "NY", 1200)]);
+        var s = JsonSerializer.Deserialize<HealthSystemDetail>(JsonSerializer.Serialize(system, options), options)!;
+        Assert.Equal(("HSI90000001", 2023, (bool?)null, 3, "330045", true, 1200),
+            (s.System.SystemId, s.System.DataYear, s.System.OffersInsurance, s.System.LinkedFacilities, s.Facilities[0].Ccn, s.Facilities[0].Active, s.Groups[0].Clinicians));
+
+        var aco = new Server.AcoDetail(new Server.AcoSummary("A9001", "Harbor ACO", 2026, "NY", "ENHANCED", 3, new DateOnly(2016, 1, 1), null, 2, 1, "www.example.org"),
+            "1 Main St", 40.7, -73.3,
+            [new Server.AcoParticipant("HARBOR MEDICAL GROUP PC", [new Server.AcoParticipantMatch("1234567893", "HARBOR MEDICAL GROUP PC", "WEST ISLIP", "NY")]),
+                new Server.AcoParticipant("GOOD SAMARITAN HOSPITAL", [])],
+            ["SHORE VIEW CARE LLC"]);
+        var a = JsonSerializer.Deserialize<AcoDetail>(JsonSerializer.Serialize(aco, options), options)!;
+        Assert.Equal(("A9001", new DateTime(2016, 1, 1), (DateTime?)null, "HARBOR MEDICAL GROUP PC", "SHORE VIEW CARE LLC"),
+            (a.Aco.AcoId, a.Aco.InitialStartDate, a.Aco.CurrentStartDate, a.Participants[0].Name, a.SnfAffiliates[0]));
+        Assert.Equal(("name", "1234567893", (string?)null, 0), (a.Participants[0].MatchedBy, a.Participants[0].Organizations[0].Npi, a.Participants[1].MatchedBy,
+            a.Participants[1].Organizations.Count));
+
+        var membership = new Server.AcoMembership("A9001", "Harbor ACO", 2026, "HARBOR MEDICAL GROUP PC", "1234567893", 2);
+        var m = JsonSerializer.Deserialize<AcoMembership[]>(JsonSerializer.Serialize(new[] { membership }, options), options)!.Single();
+        Assert.Equal(("A9001", 2026, 2, "name"), (m.AcoId, m.ProgramYear, m.Candidates, m.MatchedBy));
+
+        var site = new Server.HealthCenterSite("BPS-LAL-900004", "Valley Mobile Clinic", "1 Farm Rd", "Albany", "NY", "12201", "5185550102", null, 20, "School",
+            "Mobile Van", "Service Delivery Site", true, "LAL9000001", "VALLEY CARE", "Albany", "NY", null, null, new DateOnly(2006, 1, 1), 42.65, -73.75);
+        var detail = new Server.HealthCenterSiteDetail(site, false, null, [], 0)
+        {
+            Covered340B = [new Server.Covered340BEntity("FQHCLA900001", "FQHCLA", "FQHC look-alike", true, new DateOnly(2015, 4, 1), null, "VALLEY CARE", null, "site")],
+        };
+        var d = JsonSerializer.Deserialize<HealthCenterSiteDetail>(JsonSerializer.Serialize(detail, options), options)!;
+        Assert.Equal(("BPS-LAL-900004", true, 20.0, new DateTime(2006, 1, 1)), (d.Site.SiteId, d.Site.LookAlike, d.Site.HoursPerWeek, d.Site.AddedDate));
+        Assert.Equal(("FQHCLA900001", "FQHCLA", true, new DateTime(2015, 4, 1), "site"),
+            (d.Covered340B[0].Id340B, d.Covered340B[0].EntityType, d.Covered340B[0].Participating, d.Covered340B[0].StartDate, d.Covered340B[0].MatchedBy));
     }
 
     private sealed class DirectoryFactory : WebApplicationFactory<Program>

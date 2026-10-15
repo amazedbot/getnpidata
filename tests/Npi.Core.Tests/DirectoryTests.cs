@@ -183,8 +183,8 @@ public class DirectoryTests
         using var output = new MemoryStream();
         await FacilityCsv.WriteAsync(rows.Where(r => r.Ccn == "335001").ToAsyncEnumerable(), output, "https://example.org", Ct);
         var text = Encoding.UTF8.GetString(output.ToArray());
-        Assert.Contains("Last Ownership Change,Penalties (3 Years),Fines (3 Years),Page", text, StringComparison.Ordinal);
-        Assert.Contains($",{today.AddYears(-4):yyyy-MM-dd},3,182968,https://example.org/facility/335001", text, StringComparison.Ordinal);
+        Assert.Contains("Last Ownership Change,Penalties (3 Years),Fines (3 Years),Health System", text, StringComparison.Ordinal);
+        Assert.Contains($",{today.AddYears(-4):yyyy-MM-dd},3,182968,,,,,https://example.org/facility/335001", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -329,7 +329,7 @@ public class DirectoryTests
         Assert.Equal(1, await FacilityCsv.WriteAsync(rows, output, "https://example.org", Ct));
         var text = Encoding.UTF8.GetString(output.ToArray());
         Assert.StartsWith("﻿CCN,Facility,Type", text, StringComparison.Ordinal);
-        Assert.Contains("330888,OLD NAME HOSPITAL,Hospital,Short-term hospital,10 COURT ST,BROOKLYN,NY,11201,,,,,Closed,2020-01-01,\"Status change, such as a new owner\",0,,,,https://example.org/facility/330888",
+        Assert.Contains("330888,OLD NAME HOSPITAL,Hospital,Short-term hospital,10 COURT ST,BROOKLYN,NY,11201,,,,,Closed,2020-01-01,\"Status change, such as a new owner\",0,,,,,,,,https://example.org/facility/330888",
             text, StringComparison.Ordinal);
 
         using var groups = new MemoryStream();

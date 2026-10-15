@@ -1,0 +1,99 @@
+@page "/systems"
+@using Npi.Core.Search
+@model SystemsModel
+@{
+    ViewData["Title"] = "Health systems";
+    var r = Model.Result;
+    var states = GeographyCatalog.AllStateNames.OrderBy(s => s.Value, StringComparer.Ordinal).ToList();
+    var year = r.Items.Select(s => (int?)s.DataYear).Max();
+}
+
+<div class="profile industry">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a></nav>
+    <div>
+        <h1>Health systems</h1>
+        <p class="lede">
+            Systems of at least one hospital and at least one group of physicians under common ownership or joint management, from AHRQ's
+            Compendium of U.S. Health Systems. Open one to see its hospitals and other facilities (by CMS number) and the Medicare groups that are part of it.
+        </p>
+    </div>
+
+    <form method="get" action="/systems" class="industry-search" role="search">
+        <label for="q" class="visually-hidden">A health system's name or city</label>
+        <input id="q" name="q" type="search" value="@Model.Q" maxlength="@HealthSystemFilter.MaxQueryLength" placeholder="A name or city, e.g. Northwell" />
+        @if (Model.State is not null){<input type="hidden" name="state" value="@Model.State" />}
+        <button type="submit">Search</button>
+    </form>
+    @if (Model.Errors.Count > 0)
+    {
+        <p class="error" role="alert">@string.Join(" ", Model.Errors.Select(e => $"{e.Key}: {string.Join(" ", e.Value)}")) The list below has no filters.</p>
+    }
+
+    <section class="card" id="list" aria-labelledby="list-h">
+        <div class="card-head">
+            <h2 id="list-h">Health systems@(Model.State is { } st ? " based in " + GeographyCatalog.StateName(st) : "")@(string.IsNullOrWhiteSpace(Model.Q) ? "" : $" matching “{Model.Q.Trim()}”") (@Format.Number(r.TotalCount))</h2>
+        </div>
+        <form method="get" action="/systems#list" class="directory-filters">
+            @if (!string.IsNullOrWhiteSpace(Model.Q)){<input type="hidden" name="q" value="@Model.Q" />}
+            @if (!string.IsNullOrWhiteSpace(Model.Sort)){<input type="hidden" name="sort" value="@Model.Sort" />}
+            <div class="field">
+                <label for="state">Headquarters state</label>
+                <select id="state" name="state">
+                    <option value="">Any state</option>
+                    @foreach (var (code, name) in states)
+                    {
+                        <option value="@code" selected="@(code == Model.State)">@name</option>
+                    }
+                </select>
+            </div>
+            <div class="field narrow directory-submit"><button type="submit">Show</button></div>
+        </form>
+
+        @if (r.Items.Count == 0)
+        {
+            <p>No health system matches. The list is AHRQ's Compendium; it appears here once the loader has read its files.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Health systems, page @r.Page of @Model.PageCount</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col" aria-sort="@Model.AriaSort("name")"><a href="@Model.SortUrl("name")#list">Health system</a></th>
+                            <th scope="col">Based in</th>
+                            <th scope="col" aria-sort="@Model.AriaSort("hospitals")"><a href="@Model.SortUrl("hospitals")#list">Hospitals</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("physicians")"><a href="@Model.SortUrl("physicians")#list">Physicians</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("beds")"><a href="@Model.SortUrl("beds")#list">Beds</a></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in r.Items)
+                        {
+                            <tr>
+                                <td class="break"><a href="/system/@Uri.EscapeDataString(s.SystemId)">@s.Name</a></td>
+                                <td>@(s.City is null ? "" : CityCatalog.TitleCase(s.City) + ", ")@s.State</td>
+                                <td>@SystemsModel.Count(s.Hospitals)</td>
+                                <td>@SystemsModel.Count(s.Physicians)</td>
+                                <td>@SystemsModel.Count(s.Beds)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (Model.PageCount > 1)
+            {
+                <nav class="pager" aria-label="Pages">
+                    @if (r.Page > 1) { <a href="@Model.ListUrl(page: r.Page - 1)#list" rel="prev">‹ Previous</a> }
+                    <span>Page @r.Page of @Format.Number(Model.PageCount)</span>
+                    @if (r.Page < Model.PageCount) { <a href="@Model.ListUrl(page: r.Page + 1)#list" rel="next">Next ›</a> }
+                </nav>
+            }
+        }
+    </section>
+
+    <p class="src">
+        Source: @HealthSystemText.Credit(year) @HealthSystemText.Basis Counts as AHRQ gives them.
+        Programs can use <a href="/developers">the API</a>: <code>/api/v1/systems</code>. See also <a href="/acos">Medicare ACOs</a>.
+    </p>
+</div>

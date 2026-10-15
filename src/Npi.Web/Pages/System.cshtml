@@ -1,0 +1,99 @@
+@page "/system/{id}"
+@using Npi.Core.Search
+@model SystemModel
+@{
+    var s = Model.System;
+    var d = Model.Detail;
+    ViewData["Title"] = s.Name;
+}
+
+<div class="profile">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a> › <a href="/systems">Health systems</a></nav>
+
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="Health system" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="52" class="bg" />
+                <path d="M22 80V44h22v36M60 80V30h22v50M44 56h16M30 52h6M68 40h6M68 52h6" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@s.Name</h1>
+                <p class="summary">@HealthSystemText.Summary(s)</p>
+                <ul class="pills" aria-label="Facts">
+                    @if (s.MajorTeaching == true){<li class="pill plain">Includes a major teaching hospital</li>}
+                    @if (s.MedicareAdvantage == true){<li class="pill plain">Offers a Medicare Advantage plan</li>}
+                    else if (s.OffersInsurance == true){<li class="pill plain">Offers health insurance</li>}
+                    @if (d.States.Count > 1){<li class="pill plain">Facilities in @d.States.Count states</li>}
+                    <li class="pill plain">AHRQ ID <span class="mono">&nbsp;@s.SystemId</span></li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="counts-h">
+        <h2 id="counts-h">Size</h2>
+        <div class="tiles">
+            <div class="tile"><span class="label">Hospitals</span><strong>@SystemsModel.Count(s.Hospitals)</strong><span class="small">AHRQ count</span></div>
+            <div class="tile"><span class="label">Physicians</span><strong>@SystemsModel.Count(s.Physicians)</strong><span class="small">@(s.PrimaryCarePhysicians is { } pc ? $"{Format.Number(pc)} in primary care" : "AHRQ count")</span></div>
+            <div class="tile"><span class="label">Nurse practitioners</span><strong>@SystemsModel.Count(s.NursePractitioners)</strong><span class="small">@(s.PhysicianAssistants is { } pa ? $"and {Format.Number(pa)} physician assistants" : "AHRQ count")</span></div>
+            <div class="tile"><span class="label">Group practices</span><strong>@SystemsModel.Count(s.GroupPractices)</strong><span class="small">AHRQ count</span></div>
+            <div class="tile"><span class="label">Beds</span><strong>@SystemsModel.Count(s.Beds)</strong><span class="small">@(s.Discharges is { } dc ? $"{Format.Number(dc)} discharges a year" : "in its hospitals")</span></div>
+            @if (s.NursingHomes is > 0 || s.HomeHealthAgencies is > 0)
+            {
+                <div class="tile"><span class="label">Nursing homes · home health</span><strong>@SystemsModel.Count(s.NursingHomes) · @SystemsModel.Count(s.HomeHealthAgencies)</strong><span class="small">AHRQ counts</span></div>
+            }
+        </div>
+        <p class="src">These are AHRQ's counts for the system; they differ from the Medicare counts on group pages.</p>
+    </section>
+
+    <section class="card" aria-labelledby="fac-h">
+        <div class="card-head">
+            <h2 id="fac-h">Facilities (@Format.Number(d.Facilities.Count))</h2>
+            @if (d.Facilities.Count > 0){<a class="small" href="/facilities?system=@Uri.EscapeDataString(s.SystemId)&amp;status=all">On the facilities list →</a>}
+        </div>
+        @if (d.Facilities.Count == 0)
+        {
+            <p>AHRQ's linkage files place no facility in this system.</p>
+        }
+        else
+        {
+            @foreach (var (type, facilities) in Model.ByType)
+            {
+                <h3>@type.Plural (@facilities.Count)</h3>
+                <ul class="link-list">
+                    @foreach (var f in facilities)
+                    {
+                        <li>
+                            <a href="/facility/@Uri.EscapeDataString(f.Ccn)">@CityCatalog.TitleCase(f.Name)</a>
+                            <span class="muted">@(f.City is null ? "" : CityCatalog.TitleCase(f.City) + ", ")@f.State · CCN <span class="mono">@f.Ccn</span>@(f.Rating is { } r ? $" · {FacilitiesModel.Stars(r)}" : "")@(f.Active == false ? " · certification ended" : "")</span>
+                        </li>
+                    }
+                </ul>
+            }
+        }
+        <p class="src">AHRQ's hospital, nursing home and home health linkage files, by CMS Certification Number; names, ratings and status from the Facilities &amp; hospitals list.</p>
+    </section>
+
+    <section class="card" aria-labelledby="grp-h">
+        <h2 id="grp-h">Medicare groups (@Format.Number(d.Groups.Count))</h2>
+        @if (d.Groups.Count == 0)
+        {
+            <p>No Medicare group is enrolled under the same Medicare ID as one of these facilities.</p>
+        }
+        else
+        {
+            <ul class="link-list">
+                @foreach (var g in d.Groups)
+                {
+                    <li><a href="/group/@g.PacId">@CityCatalog.TitleCase(g.Name)</a> <span class="muted">@(g.State is null ? "" : g.State + " · ")@Format.Number(g.Clinicians) clinicians</span></li>
+                }
+            </ul>
+        }
+        <p class="src">
+            A Medicare group (PAC ID) is listed when its Medicare enrollment includes an NPI that bills for one of the facilities above
+            (CMS enrollment files): the group is the same organization. Groups the system owns under other legal entities aren't found this way.
+        </p>
+    </section>
+
+    <p class="src credit">Source: @HealthSystemText.Credit(s.DataYear) @HealthSystemText.Basis</p>
+</div>

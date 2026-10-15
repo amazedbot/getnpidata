@@ -1,0 +1,40 @@
+@model HealthSystemNote
+@inject Npi.Core.Search.AcoService Acos
+@{
+    // The Medicare ACOs an organization NPI or a Medicare group takes part in (docs/PRODUCT_PLAN.md step 3.6 part 2). CMS lists ACO
+    // participants by legal business name only, so these are NAME matches: the NPPES legal name is the participant's name, case,
+    // spacing and punctuation aside (owner, 2026-10-15). A group's come through the organization NPIs enrolled under its PAC ID.
+    IReadOnlyList<Npi.Core.Search.AcoMembership> memberships;
+    try
+    {
+        memberships = Model.Kind == HealthSystemNote.Pac
+            ? await Acos.ForPacAsync(Model.Id, Context.RequestAborted)
+            : await Acos.ForNpiAsync(Model.Id, Context.RequestAborted);
+    }
+    catch (MySqlConnector.MySqlException)
+    {
+        memberships = []; // before the ACO tables exist
+    }
+}
+@if (memberships.Count > 0)
+{
+    <section class="card" aria-labelledby="aco-h">
+        <h2 id="aco-h">Medicare ACO</h2>
+        <ul class="link-list">
+            @foreach (var m in memberships.DistinctBy(m => m.AcoId))
+            {
+                <li>
+                    In ACO <a href="/aco/@Uri.EscapeDataString(m.AcoId)">@m.AcoName</a> (@m.ProgramYear)
+                    @{ var reason = Npi.Core.Search.AcoNames.GroupReason(m.GroupedBy, m.GroupedValue); }
+                    <span class="pill plain name-match" title="Matched by name: CMS lists the participant as “@m.ParticipantName” without an NPI or tax ID, and this is the NPPES legal business name of @(m.Candidates == 1 ? "only this active organization" : m.HospitalGroup ? $"{m.Candidates} active hospital NPIs (a hospital and its subparts), this one among them" : $"{m.Candidates} active organizations, this one among them").@(reason is null ? "" : " " + reason)">name match</span>
+                    @if (m.HospitalGroup && reason is not null){<span class="muted small"> One of @m.Candidates hospital NPIs of this name. @reason</span>}
+                </li>
+            }
+        </ul>
+        <p class="src">
+            CMS, Accountable Care Organization Participants (data.cms.gov). CMS publishes participants by legal business name only, so this
+            is a name match@(Model.Kind == HealthSystemNote.Pac ? " of an organization NPI enrolled under this group's Medicare ID" : "")
+            and may be another organization of the same name.
+        </p>
+    </section>
+}

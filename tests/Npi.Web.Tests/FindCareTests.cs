@@ -45,9 +45,9 @@ public class FindCareTests
         Assert.Equal("Dana L Smith", FindCareModel.NaturalName(person));
         Assert.Equal("CITY URGENT CARE PC", FindCareModel.NaturalName(person with { EntityType = 2, Name = "CITY URGENT CARE PC" }));
 
-        var page = new FindCareModel(null!, null!) { Need = "back", Zip = "11702", Medicare = true, Gender = "F" };
+        var page = new FindCareModel(null!, null!, null!) { Need = "back", Zip = "11702", Medicare = true, Gender = "F" };
         Assert.Equal("/find-care?need=back&zip=11702&medicare=true&gender=F&p=2", page.Link(2));
-        Assert.Equal("/find-care?need=other&specialty=Hearing%20%26%20speech%7CAudiologists&zip=11702", new FindCareModel(null!, null!)
+        Assert.Equal("/find-care?need=other&specialty=Hearing%20%26%20speech%7CAudiologists&zip=11702", new FindCareModel(null!, null!, null!)
             { Need = "other", Specialty = "Hearing & speech|Audiologists", Zip = "11702" }.Link());
     }
 }

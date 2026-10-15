@@ -1,0 +1,32 @@
+@using Npi.Core.Search
+@model IReadOnlyList<NearbyHealthCenter>
+@* HRSA health center sites near the patient's ZIP on Find care (docs/PRODUCT_PLAN.md step 3.6 part 2). *@
+@if (Model.Count > 0)
+{
+    <section class="care-centers" aria-labelledby="hc-h">
+        <h3 id="hc-h">Community health centers nearby</h3>
+        <p class="care-note">Health centers see everyone, with or without insurance, and charge on a sliding fee scale based on income. Call to ask which services this site offers.</p>
+        <ul class="care-cards">
+            @foreach (var h in Model)
+            {
+                var site = h.Site;
+                <li class="care-card">
+                    <div class="care-who">
+                        <h3><a href="/health-center/@Uri.EscapeDataString(site.SiteId)">@CityCatalog.TitleCase(site.Name)</a></h3>
+                        <span>@(site.LookAlike ? "Health center look-alike" : "Community health center")@(site.HealthCenter is null ? "" : " · " + CityCatalog.TitleCase(site.HealthCenter)) · @FindCareModel.Miles(h.DistanceMiles) away</span>
+                        <span class="muted">@string.Join(", ", new[] { site.Address, site.City }.Where(x => !string.IsNullOrEmpty(x)).Select(x => CityCatalog.TitleCase(x!))), @site.State @site.Zip</span>
+                    </div>
+                    <div class="care-actions">
+                        @if (site.Phone is not null){<a class="button" href="tel:@site.Phone">Call @Format.Phone(site.Phone)</a>}else{<span class="muted small">No phone listed</span>}
+                        @if (site.Latitude is { } lat && site.Longitude is { } lon)
+                        {
+                            <a class="button secondary" href="@FindCareModel.Directions(lat, lon)">Directions</a>
+                        }
+                        <a class="small" href="/health-center/@Uri.EscapeDataString(site.SiteId)">About this site</a>
+                    </div>
+                </li>
+            }
+        </ul>
+        <p class="small muted">From HRSA's list of health center service sites.</p>
+    </section>
+}

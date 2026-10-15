@@ -1,0 +1,137 @@
+@page "/aco/{id}"
+@using System.Globalization
+@model AcoModel
+@{
+    var a = Model.Aco;
+    var d = Model.Detail;
+    ViewData["Title"] = a.Name;
+    var website = NetworkFormat.Website(a.Website);
+}
+
+<div class="profile">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a> › <a href="/acos">Medicare ACOs</a></nav>
+
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="Accountable care organization" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="52" class="bg" />
+                <circle cx="52" cy="36" r="9" class="org-fg" /><circle cx="32" cy="64" r="9" class="org-fg" /><circle cx="72" cy="64" r="9" class="org-fg" />
+                <path d="M52 45v10M44 58l-6 2M60 58l6 2" fill="none" class="stroke" stroke-width="4" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@a.Name</h1>
+                <p class="summary">@Model.Summary</p>
+                <ul class="pills" aria-label="Facts">
+                    @if (a.Track is not null){<li class="pill plain">Track: @a.Track</li>}
+                    @if (a.AgreementPeriod is { } period){<li class="pill plain">Agreement period @period</li>}
+                    <li class="pill plain">ACO ID <span class="mono">&nbsp;@a.AcoId</span></li>
+                </ul>
+            </div>
+            <div class="head-actions">
+                @if (website is not null){<a class="button secondary" href="@website" rel="noopener nofollow">Public reporting website</a>}
+            </div>
+        </div>
+    </section>
+
+    <div class="profile-row">
+        <section class="card grow" aria-labelledby="par-h">
+            <h2 id="par-h">Participants (@Format.Number(d.Participants.Count))</h2>
+            @if (d.Participants.Count == 0)
+            {
+                <p>CMS lists no participant.</p>
+            }
+            else
+            {
+                var linked = d.Participants.Count(x => x.Organizations.Count > 0);
+                <p class="lede">
+                    The practices, hospitals and other organizations (by tax ID) taking part, by legal business name. CMS doesn't publish their NPIs,
+                    so a participant is linked to an organization NPI only when its NPPES legal business name is the same name (case, spacing and
+                    punctuation aside): a <strong>name match</strong>. @Format.Number(linked) of @Format.Number(d.Participants.Count) are linked. When up to
+                    @(Npi.Core.Search.AcoNames.MaxCandidates) organizations share the name, all are listed as candidates; when more do, the name isn't linked,
+                    unless they are all hospitals (a hospital and its subpart NPIs): then up to @(Npi.Core.Search.AcoNames.MaxHospitalCandidates) are listed.
+                </p>
+                <ul class="link-list columns aco-participants">
+                    @foreach (var x in d.Participants)
+                    {
+                        <li>
+                            @if (x.Organizations.Count == 1)
+                            {
+                                var o = x.Organizations[0];
+                                <a href="/provider/@o.Npi">@x.Name</a>
+                                <span class="pill plain name-match" title="Matched by name: “@x.Name” is the NPPES legal business name of NPI @o.Npi@(o.City is null ? "" : $" ({Npi.Core.Search.CityCatalog.TitleCase(o.City)}, {o.State})"), the only active organization with that name.">name match</span>
+                            }
+                            else if (x.Organizations.Count > 1)
+                            {
+                                var reason = Npi.Core.Search.AcoNames.GroupReason(x.GroupedBy, x.GroupedValue);
+                                @x.Name
+                                if (x.HospitalGroup)
+                                {
+                                    <span class="pill plain name-match" title="Matched by name: @x.Organizations.Count active hospital NPIs have this legal business name, typically a hospital and its subparts. @(reason ?? "Nothing in NPPES or CMS's enrollments ties them together, so they may be different hospitals.")">name match · hospital, @x.Organizations.Count NPIs</span>
+                                    @if (reason is not null){<span class="muted small"> @reason</span>}
+                                }
+                                else
+                                {
+                                    <span class="pill plain name-match" title="Matched by name: @x.Organizations.Count active organizations have this legal business name; CMS doesn't say which one takes part.">name match · @x.Organizations.Count candidates</span>
+                                }
+                                <ul class="candidates">
+                                    @foreach (var o in x.Organizations)
+                                    {
+                                        <li><a href="/provider/@o.Npi">NPI @o.Npi</a>@if (o.City is not null){<span class="muted"> · @Npi.Core.Search.CityCatalog.TitleCase(o.City), @o.State</span>}</li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <a href="@AcoModel.SearchUrl(x.Name)" rel="nofollow" title="No single organization NPI has this exact legal name; opens a search">@x.Name</a>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+            <p class="src">CMS, Accountable Care Organization Participants (data.cms.gov), @a.ProgramYear. Links to NPIs are name matches against NPPES legal business names.</p>
+        </section>
+        <section class="card side-card" aria-labelledby="where-h">
+            <h2 id="where-h">Where</h2>
+            @if (Model.Map is { } map)
+            {
+                <div class="static-map small-map">
+                    @foreach (var t in map.Tiles)
+                    {
+                        <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
+                             style="left:@(StaticMap.Css(t.LeftPercent))%;top:@(StaticMap.Css(t.TopPercent))%;width:@(StaticMap.Css(t.WidthPercent))%;height:@(StaticMap.Css(t.HeightPercent))%" />
+                    }
+                    @foreach (var pin in map.Pins)
+                    {
+                        <span class="pin" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%" aria-hidden="true">●</span>
+                    }
+                </div>
+                <p class="src">@Html.Raw(Model.Attribution)</p>
+            }
+            <dl class="facts">
+                @if (d.Address is not null){<dt>Office</dt><dd>@d.Address</dd>}
+                @if (!string.IsNullOrWhiteSpace(a.ServiceArea)){<dt>Service area</dt><dd>@NetworkFormat.States(a.ServiceArea)</dd>}
+                @if (a.InitialStartDate is { } start){<dt>First agreement</dt><dd>@start.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>}
+                @if (a.CurrentStartDate is { } current){<dt>Current agreement</dt><dd>@current.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>}
+            </dl>
+        </section>
+    </div>
+
+    <section class="card" aria-labelledby="snf-h">
+        <h2 id="snf-h">Skilled nursing facility affiliates (@Format.Number(d.SnfAffiliates.Count))</h2>
+        @if (d.SnfAffiliates.Count == 0)
+        {
+            <p>CMS lists no skilled nursing facility affiliate.</p>
+        }
+        else
+        {
+            <p class="lede">Nursing facilities the ACO works with under Medicare's 3-day rule waiver (a patient can go there without a 3-day hospital stay first), by legal business name.</p>
+            <ul class="link-list columns">
+                @foreach (var name in d.SnfAffiliates)
+                {
+                    <li>@name</li>
+                }
+            </ul>
+        }
+        <p class="src">CMS, Accountable Care Organization Skilled Nursing Facility Affiliates (data.cms.gov), @a.ProgramYear. CMS publishes no CMS number for them, so they aren't linked to facility pages.</p>
+    </section>
+</div>

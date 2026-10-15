@@ -46,6 +46,10 @@ builder.Services.AddSingleton(_ => new ProductService(connectionString));
 // built once after the site starts (not in tests, which have no database).
 builder.Services.AddSingleton(_ => new FacilityDirectory(connectionString));
 builder.Services.AddSingleton(_ => new OrganizationDirectory(connectionString));
+// Health systems, ACOs and HRSA health center sites (step 3.6 part 2).
+builder.Services.AddSingleton(_ => new HealthSystemService(connectionString));
+builder.Services.AddSingleton(_ => new AcoService(connectionString));
+builder.Services.AddSingleton(_ => new HealthCenterService(connectionString));
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddHostedService<DirectoryWarmup>();
