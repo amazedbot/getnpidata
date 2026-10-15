@@ -24,6 +24,8 @@ public static class FacilityTypes
     public const string Rhc = "rhc";
     public const string Dialysis = "dialysis";
     public const string SurgeryCenter = "asc";
+    public const string Rehab = "rehab";
+    public const string LongTermCare = "ltch";
     public const string Other = "other";
 
     /// <summary>In the order the page lists them.</summary>
@@ -35,8 +37,10 @@ public static class FacilityTypes
         new(Hospice, "Hospices", "Hospice", "Family caregiver survey", "Home care & hospice", "Hospice"),
         new(Fqhc, "Federally qualified health centers", "Federally qualified health center", null, "Clinics & centers", "Primary care & community health centers"),
         new(Rhc, "Rural health clinics", "Rural health clinic", null, "Clinics & centers", "Primary care & community health centers"),
-        new(Dialysis, "Dialysis facilities", "Dialysis facility", null, "Clinics & centers", "Dialysis centers"),
+        new(Dialysis, "Dialysis facilities", "Dialysis facility", "CMS five-star rating", "Clinics & centers", "Dialysis centers"),
         new(SurgeryCenter, "Ambulatory surgery centers", "Ambulatory surgery center", null, "Clinics & centers", "Surgery centers"),
+        new(Rehab, "Inpatient rehabilitation facilities", "Inpatient rehabilitation facility", null, "Hospitals", "Rehabilitation hospitals"),
+        new(LongTermCare, "Long-term care hospitals", "Long-term care hospital", null, "Hospitals", "Long-term & specialty hospitals"),
         new(Other, "Other certified facilities", "Certified facility", null, null, null),
     ];
 
@@ -48,8 +52,9 @@ public static class FacilityTypes
     /// <summary>
     /// The type and kind a CCN's number range stands for (CMS State Operations Manual §2779A): the state's two digits, then four
     /// digits for the facility (0001–0879 short-term hospitals, 1300–1399 critical access hospitals, 5000–6499 nursing facilities …),
-    /// or a letter in the third place (E/F Medicaid nursing facilities; units and swing beds of a hospital). Ten-character numbers
-    /// with a C are ambulatory surgery centers.
+    /// or a letter in the third place (E/F Medicaid nursing facilities; units and swing beds of a hospital, R/T its rehabilitation units).
+    /// Ten-character numbers with a C are ambulatory surgery centers. Long-term care hospitals (2000–2299) and rehabilitation hospitals
+    /// and units are types of their own (step 3.6 part 2: Care Compare lists them apart).
     /// </summary>
     public static (string Type, string? Kind) FromCcn(string? ccn)
     {
@@ -70,7 +75,8 @@ public static class FacilityTypes
             {
                 'E' or 'F' => (NursingHome, "Medicaid nursing facility"),
                 'G' => (Other, "Intermediate care facility (intellectual disabilities)"),
-                'M' or 'R' or 'S' or 'T' => (Other, "Hospital unit"),
+                'R' or 'T' => (Rehab, "Rehabilitation unit of a hospital"),
+                'M' or 'S' => (Other, "Hospital unit"),
                 'U' or 'W' or 'Y' or 'Z' => (Other, "Hospital swing beds"),
                 _ => (Other, null),
             };
@@ -89,9 +95,9 @@ public static class FacilityTypes
             >= 1400 and <= 1499 or >= 4600 and <= 4799 or >= 4900 and <= 4999 => (Other, "Community mental health center"),
             >= 1500 and <= 1799 => (Hospice, null),
             >= 1990 and <= 1999 => (Other, "Religious nonmedical health care institution"),
-            >= 2000 and <= 2299 => (Hospital, "Long-term care hospital"),
+            >= 2000 and <= 2299 => (LongTermCare, null),
             >= 2300 and <= 2999 or >= 3500 and <= 3799 => (Dialysis, null),
-            >= 3025 and <= 3099 => (Hospital, "Rehabilitation hospital"),
+            >= 3025 and <= 3099 => (Rehab, "Rehabilitation hospital"),
             >= 3100 and <= 3199 or >= 7000 and <= 8499 or >= 9000 and <= 9799 => (HomeHealth, null),
             >= 3200 and <= 3299 or >= 4500 and <= 4599 or >= 4800 and <= 4899 => (Other, "Comprehensive outpatient rehabilitation facility"),
             >= 3300 and <= 3399 => (Hospital, "Children's hospital"),
@@ -290,7 +296,7 @@ public sealed record FacilityFilter
 /// <summary>
 /// Every Medicare-certified facility (docs/PRODUCT_PLAN.md step 3.6): the Provider of Services file (every CCN, active or closed)
 /// joined with the Care Compare listings of hospitals, nursing homes, home health agencies and hospices (names, ratings,
-/// ownership, beds). The loader writes the merged list to <c>directory_facility</c> (<see cref="ReadSourcesAsync"/>); the site
+/// ownership, beds) and, since part 2, dialysis facilities, surgery centers, inpatient rehabilitation facilities and long-term care hospitals. The loader writes the merged list to <c>directory_facility</c> (<see cref="ReadSourcesAsync"/>); the site
 /// keeps that table in memory (~130,000 rows) until the loader rebuilds it, so filters, sorts and pages need no query.
 /// </summary>
 public sealed class FacilityDirectory : IDisposable
@@ -598,15 +604,22 @@ public sealed class FacilityDirectory : IDisposable
                      (FacilityTypes.NursingHome, "SELECT ccn AS Ccn, name AS Name, address AS Address, city AS City, state AS State, zip AS Zip, phone AS Phone, CAST(NULL AS CHAR) AS Kind, ownership AS Ownership, CAST(certified_beds AS SIGNED) AS Beds, CAST(overall_rating AS DOUBLE) AS Rating FROM cms_nursing_home"),
                      (FacilityTypes.HomeHealth, "SELECT ccn AS Ccn, name AS Name, address AS Address, city AS City, state AS State, zip AS Zip, phone AS Phone, CAST(NULL AS CHAR) AS Kind, ownership AS Ownership, CAST(NULL AS SIGNED) AS Beds, quality_rating AS Rating FROM cms_home_health"),
                      (FacilityTypes.Hospice, "SELECT ccn AS Ccn, name AS Name, address AS Address, city AS City, state AS State, zip AS Zip, phone AS Phone, CAST(NULL AS CHAR) AS Kind, ownership AS Ownership, CAST(NULL AS SIGNED) AS Beds, CAST(family_rating AS DOUBLE) AS Rating FROM cms_hospice"),
+                     // Step 3.6 part 2: dialysis facilities (five-star rating), surgery centers (one row per CCN and NPI; no address, phone
+                     // or rating in the file), inpatient rehabilitation facilities and long-term care hospitals.
+                     (FacilityTypes.Dialysis, "SELECT ccn AS Ccn, name AS Name, address AS Address, city AS City, state AS State, zip AS Zip, phone AS Phone, CAST(NULL AS CHAR) AS Kind, ownership AS Ownership, CAST(NULL AS SIGNED) AS Beds, five_star AS Rating FROM cms_dialysis"),
+                     (FacilityTypes.SurgeryCenter, $"SELECT ccn AS Ccn, MAX(name) AS Name, CAST(NULL AS CHAR) AS Address, MAX(city) AS City, MAX(state) AS State, MAX(zip) AS Zip, CAST(NULL AS CHAR) AS Phone, CAST(NULL AS CHAR) AS Kind, CAST(NULL AS CHAR) AS Ownership, CAST(NULL AS SIGNED) AS Beds, CAST(NULL AS DOUBLE) AS Rating FROM cms_asc WHERE ccn <> '{FacilityMeasures.National}' GROUP BY ccn"),
+                     (FacilityTypes.Rehab, "SELECT ccn AS Ccn, name AS Name, address AS Address, city AS City, state AS State, zip AS Zip, phone AS Phone, CAST(NULL AS CHAR) AS Kind, ownership AS Ownership, CAST(beds AS SIGNED) AS Beds, CAST(NULL AS DOUBLE) AS Rating FROM cms_post_acute WHERE kind = 'rehab'"),
+                     (FacilityTypes.LongTermCare, "SELECT ccn AS Ccn, name AS Name, address AS Address, city AS City, state AS State, zip AS Zip, phone AS Phone, CAST(NULL AS CHAR) AS Kind, ownership AS Ownership, CAST(beds AS SIGNED) AS Beds, CAST(NULL AS DOUBLE) AS Rating FROM cms_post_acute WHERE kind = 'ltch'"),
                  })
         {
             listed.AddRange((await connection.QueryAsync<CareCompareRow>(new CommandDefinition(sql, commandTimeout: timeout, cancellationToken: ct)))
                 .Select(r => (type, r)));
         }
 
-        // The NPIs CMS's enrollment files link to each CCN (active ones), and the kind of enrollment (fqhc, rhc …).
+        // The NPIs CMS's enrollment files link to each CCN (active ones), and the kind of enrollment (fqhc, rhc …); and those the dialysis
+        // facility report and the surgery center file name (step 3.6 part 2).
         var npis = await connection.QueryAsync<NpiKindRow>(new CommandDefinition(
-            "SELECT f.ccn AS Ccn, f.kind AS Kind, COUNT(*) AS Npis FROM cms_facility_npi f JOIN provider p ON p.npi = f.npi GROUP BY f.ccn, f.kind",
+            $"SELECT f.ccn AS Ccn, f.kind AS Kind, COUNT(*) AS Npis FROM ({BillingNpiSql}) f JOIN provider p ON p.npi = f.npi GROUP BY f.ccn, f.kind",
             commandTimeout: timeout, cancellationToken: ct));
         var centroids = await connection.QueryAsync<CentroidRow>(new CommandDefinition(
             "SELECT zip5 AS Zip5, CAST(lat AS DOUBLE) AS Lat, CAST(lon AS DOUBLE) AS Lon FROM zip_centroid", commandTimeout: timeout, cancellationToken: ct));
@@ -636,11 +649,25 @@ public sealed class FacilityDirectory : IDisposable
     /// <summary>A nursing home's penalties in Care Compare's penalty file: how many, the fines' total, the newest.</summary>
     public sealed record FacilityPenalties(int Count, double? Fines, DateOnly? Last);
 
+    /// <summary>
+    /// Every (ccn, npi, kind) CMS links: the enrollment files (<c>cms_facility_npi</c>), the dialysis facility report (<c>cms_dialysis_npi</c>)
+    /// and the surgery center quality file (<c>cms_asc</c>). The record-quality label counts all three as holding a certified facility.
+    /// </summary>
+    public static readonly string BillingNpiSql =
+        $"""
+        SELECT ccn, npi, kind FROM cms_facility_npi
+        UNION SELECT ccn, npi, 'dialysis' FROM cms_dialysis_npi
+        UNION SELECT ccn, npi, 'asc' FROM cms_asc WHERE ccn <> '{FacilityMeasures.National}'
+        """;
+
     /// <summary>A row of the Provider of Services file.</summary>
     public sealed record PosFacility(string Ccn, string? Name, string? Address, string? City, string? State, string? Zip5, bool Active,
         string? TerminationCode, DateOnly? TerminationDate);
 
-    /// <summary>A facility listed in Care Compare (hospitals, nursing homes, home health agencies, hospices).</summary>
+    /// <summary>
+    /// A facility listed in Care Compare (hospitals, nursing homes, home health agencies, hospices, dialysis facilities, surgery centers,
+    /// inpatient rehabilitation facilities, long-term care hospitals).
+    /// </summary>
     public sealed record ListedFacility(string Type, string Ccn, string Name, string? Address, string? City, string? State, string? Zip, string? Phone,
         string? Kind, string? Ownership, int? Beds, double? Rating);
 

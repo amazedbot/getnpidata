@@ -1,6 +1,6 @@
 # Migrations: CMS and OIG datasets
 
-Exclusions, Medicare opt-out and order-and-refer, Care Compare, facilities, Medicare billing and prescribing, MIPS and facility quality, Medicare enrollment, and the CMS files used as signs of practice.
+Exclusions, Medicare opt-out and order-and-refer, Care Compare, facilities, Medicare billing and prescribing, MIPS and facility quality, Medicare enrollment, the CMS files used as signs of practice, and hospital performance and volume.
 
 Applied in number order together with the other folders (see [../README.md](../README.md)).
 
@@ -22,3 +22,6 @@ Applied in number order together with the other folders (see [../README.md](../R
 | `105_facility_owner.sql` | Facility owners from the CMS All Owners files: one row per enrollment, owner and role, and one per owner (step 3.6 part 2). |
 | `106_facility_ownership_change.sql` | Hospital and nursing home changes of ownership since 2016, and the sellers' owners before (step 3.6 part 2). |
 | `107_nursing_home_inspections.sql` | Nursing home health and fire safety deficiencies summarized per CCN (inspections, counts by cycle and scope and severity, the most serious and newest citations, tag wording) and penalties (step 3.6 part 2). |
+| `109_cms_facility_types.sql` | More facility types (Phase 3 step 3.6 part 2): dialysis facilities and their NPIs, ambulatory surgery centers, inpatient rehabilitation facilities and long-term care hospitals with their main measures. |
+| `110_cms_hospital_measures.sql` | Hospital measures (deaths, complications, infections, readmissions, emergency care, spending) and Medicare inpatient and outpatient volume with the top DRGs and APCs (step 3.6 part 2). |
+| `111_cms_facility_surveys.sql` | Surgery centers' patient survey (OAS CAHPS: the top box of its four questions) and dialysis facilities' ESRD Quality Incentive Program scores and payment reductions (step 3.6 part 2). |

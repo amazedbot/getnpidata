@@ -1,0 +1,4 @@
+"Facility ID","Facility Name","Address","City/Town","State","ZIP Code","County/Parish","Telephone Number","Condition","Measure ID","Measure Name","Score","Sample","Footnote","Start Date","End Date"
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,Emergency Department,OP_18b,Average (median) time patients spent in the emergency department before leaving from the visit,150,400,,10/01/2024,09/30/2025
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,Emergency Department,EDV,Emergency department volume,very high,,,01/01/2024,12/31/2024
+330045,GOOD SAMARITAN HOSPITAL,1000 MONTAUK HWY,WEST ISLIP,NY,11795,SUFFOLK,(631) 555-0105,Sepsis Care,SEP_1,Appropriate care for severe sepsis and septic shock,60,285,,10/01/2024,09/30/2025

@@ -16,7 +16,7 @@ public sealed record DatasetRelease(string Version, Uri Url, string? PeriodEnd =
 /// </summary>
 public sealed class CmsCatalog
 {
-    private readonly List<(string BaseTitle, string PeriodEnd, string Modified, string? CsvUrl)> _entries = [];
+    private readonly List<(string BaseTitle, string PeriodEnd, string Modified, string? CsvUrl, string? ApiUrl)> _entries = [];
 
     private CmsCatalog()
     {
@@ -44,7 +44,7 @@ public sealed class CmsCatalog
             }
 
             var modified = dataset.TryGetProperty("modified", out var m) ? m.GetString() ?? "" : "";
-            string? csv = null;
+            string? csv = null, csvResources = null, api = null;
             if (dataset.TryGetProperty("distribution", out var distributions) && distributions.ValueKind == JsonValueKind.Array)
             {
                 foreach (var distribution in distributions.EnumerateArray())
@@ -53,12 +53,24 @@ public sealed class CmsCatalog
                         && u.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
                     {
                         csv = u;
+                        csvResources = distribution.TryGetProperty("resourcesAPI", out var r) ? r.GetString() : null;
+                        break;
+                    }
+                }
+
+                // The data API of that file: the "API" distribution describing the same resources as the CSV.
+                foreach (var distribution in distributions.EnumerateArray())
+                {
+                    if (csvResources is not null && distribution.TryGetProperty("accessURL", out var access) && access.GetString() is { } a
+                        && distribution.TryGetProperty("resourcesAPI", out var r) && r.GetString() == csvResources)
+                    {
+                        api = a;
                         break;
                     }
                 }
             }
 
-            catalog._entries.Add((baseTitle, periodEnd, modified, csv));
+            catalog._entries.Add((baseTitle, periodEnd, modified, csv, api));
         }
 
         return catalog;
@@ -79,6 +91,27 @@ public sealed class CmsCatalog
 
         var url = new Uri(best.CsvUrl);
         return new DatasetRelease($"{best.PeriodEnd} {Path.GetFileName(url.AbsolutePath)}".Trim(), url, best.PeriodEnd.Length > 0 ? best.PeriodEnd : null);
+    }
+
+    /// <summary>
+    /// The newest release of <paramref name="title"/> (as <see cref="FindLatest"/>), with <see cref="DatasetRelease.Url"/> its data API
+    /// (<c>https://data.cms.gov/data-api/v1/dataset/&lt;id&gt;/data</c>, which filters and selects columns) instead of the CSV file; the
+    /// version is the CSV's, so it changes when CMS publishes another file. Null when the newest release has no data API.
+    /// </summary>
+    public DatasetRelease? FindLatestApi(string title)
+    {
+        var best = _entries
+            .Where(e => e.CsvUrl is not null && string.Equals(e.BaseTitle, title, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(e => e.PeriodEnd, StringComparer.Ordinal)
+            .ThenByDescending(e => e.Modified, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (best.CsvUrl is null || best.ApiUrl is null)
+        {
+            return null;
+        }
+
+        var csv = new Uri(best.CsvUrl);
+        return new DatasetRelease($"{best.PeriodEnd} {Path.GetFileName(csv.AbsolutePath)}".Trim(), new Uri(best.ApiUrl), best.PeriodEnd.Length > 0 ? best.PeriodEnd : null);
     }
 
     /// <summary>

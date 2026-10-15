@@ -731,6 +731,147 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Dialysis_surgery_rehabilitation_and_long_term_care_facilities_and_hospital_measures()
+    {
+        await using var db = await SeededAsync();
+        // Step 3.6 part 2: a dialysis facility (billing under D in the dialysis facility report), a surgery center (under D and under no
+        // valid NPI, with fewer cases), a hospital rehabilitation unit and a long-term care hospital, and a hospital with measures and
+        // Medicare volume. A is affiliated with the dialysis facility and the long-term care hospital.
+        await db.ExecuteAsync(
+            """
+            INSERT INTO cms_dialysis (ccn, name, address, city, state, zip, phone, ownership, chain, stations, in_center, peritoneal, home_hemodialysis,
+                                      five_star, five_star_period, survey_rating, survival, survival_period, hospitalization, hospitalization_period) VALUES
+              ('332301', 'BROOKLYN KIDNEY CENTER', '1 MAIN ST', 'BROOKLYN', 'NY', '11201', '(718) 555-0100', 'Profit', 'DaVita', 28, 1, 0, 1,
+               4, '01Jan2021-31Dec2024', 3, 'Better than Expected', '01Jan2021-31Dec2024', 'Worse than Expected', '01Jan2024-31Dec2024');
+            INSERT INTO cms_dialysis_npi (ccn, npi) VALUES ('332301', @D);
+            INSERT INTO cms_asc (ccn, npi, name, city, state, zip, data_year, asc9_rate, asc12_cases, asc12_category, asc12_rate, asc17_cases, asc17_category,
+                                 asc17_rate, asc18_category) VALUES
+              ('33C0001234', @D, 'ISLAND SURGERY CENTER', 'HAUPPAUGE', 'NY', '11788', 2024, 71.67, 1269, 'No Different Than the National Rate', 11.9,
+               145, 'Better Than the National Rate', 1.6, 'Number of Cases Too Small'),
+              ('33C0001234', '', 'ISLAND SURGERY CENTER', 'HAUPPAUGE', 'NY', '11788', 2024, 50, 20, 'No Different Than the National Rate', 14.2, NULL, NULL,
+               NULL, NULL),
+              ('NATION', '', 'National', NULL, NULL, NULL, 2024, 76.95, NULL, NULL, 9.9, NULL, NULL, 2.4, NULL);
+            INSERT INTO cms_post_acute (ccn, kind, name, address, city, state, zip, phone, ownership, certified_since, beds) VALUES
+              ('33T045', 'rehab', 'SOUTH SHORE REHABILITATION UNIT', '1000 MONTAUK HWY', 'WEST ISLIP', 'NY', '11795', '(631) 555-0102', 'Non-profit', '1983-10-01', NULL),
+              ('332001', 'ltch', 'LONG ISLAND SPECIALTY HOSPITAL', '30 MAIN ST', 'MINEOLA', 'NY', '11501', '(516) 555-0104', 'For profit', '1993-10-01', 40);
+            INSERT INTO cms_post_acute_measure (ccn, measure_id, score, compared, cases, start_date, end_date) VALUES
+              ('33T045', 'I_017_01', 9.88, 'No Different than the National Rate', 1458, '2023-10-01', '2025-09-30'),
+              ('33T045', 'I_006_01', NULL, 'Not Available', NULL, '2024-10-01', '2025-09-30'),
+              ('332001', 'L_019_01', 1.04, NULL, 210, '2022-10-01', '2024-09-30'),
+              ('NATION', 'I_017_01', 9.43, NULL, NULL, '2023-10-01', '2025-09-30'), ('NATION', 'L_019_01', 1, NULL, NULL, '2022-10-01', '2024-09-30');
+            INSERT INTO cms_hospital (ccn, name, address, city, state, zip, hospital_type, emergency_services, overall_rating) VALUES
+              ('330045', 'GOOD SAMARITAN HOSPITAL', '1000 MONTAUK HWY', 'WEST ISLIP', 'NY', '11795', 'Acute Care Hospitals', 1, 3);
+            INSERT INTO cms_facility_npi (ccn, npi, kind) VALUES ('330045', @D, 'hospital');
+            INSERT INTO cms_hospital_measure (ccn, measure_id, score, compared, cases, start_date, end_date) VALUES
+              ('330045', 'MORT_30_AMI', 13.5, 'No Different Than the National Rate', 234, '2022-07-01', '2025-06-30'),
+              ('330045', 'MORT_30_HF', NULL, 'Not Available', NULL, '2022-07-01', '2025-06-30'),
+              ('330045', 'SEP_1', 60, NULL, 285, '2024-10-01', '2025-09-30'),
+              ('NATION', 'MORT_30_AMI', 11.9, NULL, NULL, '2022-07-01', '2025-06-30'), ('NATION', 'MSPB_1', 1, NULL, NULL, '2024-01-01', '2024-12-31');
+            INSERT INTO cms_hospital_volume (ccn, inpatient_year, discharges, beneficiaries, covered_days, medicare_payments, total_payments, outpatient_year,
+                                             outpatient_services, outpatient_payments) VALUES
+              ('330045', 2024, 4299, 3177, 23739, 52228590, 65257547, 2024, 230, 281012.5);
+            INSERT INTO cms_hospital_service (ccn, setting, service_rank, code, description, cases, beneficiaries, avg_medicare_payment) VALUES
+              ('330045', 'I', 1, '470', 'MAJOR HIP AND KNEE JOINT REPLACEMENT', 300, NULL, 12000.5), ('330045', 'I', 2, '871', 'SEPTICEMIA', 250, NULL, 13500.25),
+              ('330045', 'O', 1, '5072', 'Level 2 Excision/ Biopsy/ Incision and Drainage', 188, 175, 1080.5);
+            INSERT INTO cc_clinician (npi, primary_specialty, accepts_assignment, telehealth) VALUES (@A, 'CHIROPRACTIC', 1, 0);
+            INSERT INTO cc_facility_affiliation (npi, facility_type, ccn) VALUES (@A, 'Dialysis facility', '332301'), (@A, 'Long-term care hospital', '332001');
+            """, new { A, D });
+
+        // The directory: each new type is a type of its own, with the dialysis five-star rating and the NPIs the report and the file name.
+        var built = await new DirectoryBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        Assert.Equal(5L, built["directory_facility"]);
+        using var facilities = new FacilityDirectory(db.ConnectionString);
+        var listed = (await facilities.SearchAsync(new FacilityFilter(), _ct)).Items;
+        Assert.Equal(
+            [("332301", FacilityTypes.Dialysis, (string?)null, (double?)4, 1, (int?)null), ("330045", FacilityTypes.Hospital, "Acute care hospital", 3, 1, null),
+             ("33C0001234", FacilityTypes.SurgeryCenter, null, null, 1, null), ("332001", FacilityTypes.LongTermCare, null, null, 0, 40),
+             ("33T045", FacilityTypes.Rehab, "Rehabilitation unit of a hospital", null, 0, null)],
+            listed.Select(f => (f.Ccn, f.Type, f.Kind, f.Rating, f.BillingNpis, f.Beds)));
+        Assert.Equal(["332301"], (await facilities.SearchAsync(new FacilityFilter { Type = FacilityTypes.Dialysis }, _ct)).Items.Select(f => f.Ccn));
+        Assert.Equal(("Profit", "(718) 555-0100", "1 MAIN ST"), (listed[0].Ownership, listed[0].Phone, listed[0].Address));
+        Assert.Contains((await facilities.GetOverviewAsync(_ct)).Ratings, r => r.Type == FacilityTypes.Dialysis && r.ByStars[3] == 1);
+
+        var service = new OrganizationService(db.ConnectionString);
+        var dialysis = (await service.GetFacilityAsync("332301", 1, _ct))!;
+        Assert.Equal((FacilityTypes.Dialysis, "BROOKLYN KIDNEY CENTER", "1 MAIN ST", "11201", (int?)4, (int?)3),
+            (dialysis.Facility.Kind, dialysis.Facility.Name, dialysis.Address, dialysis.Zip, dialysis.Facility.OverallRating, dialysis.Facility.PatientSurveyRating));
+        Assert.Equal(new DialysisFacts(28, "Profit", "DaVita", true, false, true, 4, new DateOnly(2021, 1, 1), new DateOnly(2024, 12, 31), 3), dialysis.Dialysis);
+        Assert.Equal([("hospitalization", MeasureComparisons.Worse), ("survival", MeasureComparisons.Better)], dialysis.Measures.Select(m => (m.Id, m.Comparison)));
+        Assert.Equal([D], dialysis.BillingNpis.Select(n => n.Npi));
+        Assert.Equal([A], dialysis.Clinicians.Page.Select(c => c.Npi));
+        Assert.Null(dialysis.MedicareVolume);
+
+        // The surgery center: the row with the most cases, against the national rates; "too few cases" is a comparison of its own.
+        var asc = (await service.GetFacilityAsync("33C0001234", 1, _ct))!;
+        Assert.Equal((FacilityTypes.SurgeryCenter, "ISLAND SURGERY CENTER", "11788"), (asc.Facility.Kind, asc.Facility.Name, asc.Zip));
+        Assert.Equal([D], asc.BillingNpis.Select(n => n.Npi));
+        var asc12 = asc.Measures.Single(m => m.Id == "ASC_12");
+        Assert.Equal(((double?)11.9, (double?)9.9, MeasureComparisons.Same, (int?)1269, new DateOnly(2022, 1, 1), new DateOnly(2024, 12, 31)),
+            (asc12.Value, asc12.National, asc12.Comparison, asc12.Cases, asc12.From!.Value, asc12.To!.Value));
+        Assert.Equal(MeasureComparisons.Better, asc.Measures.Single(m => m.Id == "ASC_17").Comparison);
+        Assert.Equal(MeasureComparisons.TooFew, asc.Measures.Single(m => m.Id == "ASC_18").Comparison);
+        Assert.Equal(((double?)71.67, (double?)76.95), asc.Measures.Where(m => m.Id == "ASC_9").Select(m => (m.Value, m.National)).Single());
+        Assert.DoesNotContain(asc.Measures, m => m.Id is "ASC_13" or "ASC_19");
+
+        // Rehabilitation and long-term care: their own measures (a measure with neither a value nor a comparison is left out).
+        var rehab = (await service.GetFacilityAsync("33T045", 1, _ct))!;
+        Assert.Equal((FacilityTypes.Rehab, new DateOnly(1983, 10, 1)), (rehab.Facility.Kind, rehab.CertifiedSince));
+        var readmissions = Assert.Single(rehab.Measures);
+        Assert.Equal(("I_017_01", (double?)9.88, (double?)9.43, MeasureComparisons.Same, (int?)1458, new DateOnly(2025, 9, 30)),
+            (readmissions.Id, readmissions.Value, readmissions.National, readmissions.Comparison, readmissions.Cases, readmissions.To!.Value));
+        var ltch = (await service.GetFacilityAsync("332001", 1, _ct))!;
+        Assert.Equal((FacilityTypes.LongTermCare, (int?)40, "MINEOLA"), (ltch.Facility.Kind, ltch.Facility.CertifiedBeds, ltch.Facility.City));
+        Assert.Equal([("L_019_01", (double?)1.04, (double?)1)], ltch.Measures.Select(m => (m.Id, m.Value, m.National)));
+
+        // The hospital: its measures with the national values, and its Medicare volume.
+        var hospital = (await service.GetFacilityAsync("330045", 1, _ct))!;
+        Assert.Equal([("MORT_30_AMI", (double?)13.5, (double?)11.9, (int?)234), ("SEP_1", 60, null, 285)],
+            hospital.Measures.Select(m => (m.Id, m.Value, m.National, m.Cases)));
+        var volume = hospital.MedicareVolume!;
+        Assert.Equal(((int?)4299, (int?)3177, (int?)230, (double?)281012.5), (volume.Discharges, volume.Beneficiaries, volume.OutpatientServices, volume.OutpatientPayments));
+        Assert.Equal(["470", "871"], volume.TopInpatient.Select(s => s.Code));
+        Assert.Equal(("5072", 188, (int?)175), volume.TopOutpatient.Select(s => (s.Code, s.Cases, s.Beneficiaries)).Single());
+
+        // The provider pages: D's facilities include the dialysis facility and the surgery center; A's affiliations name them.
+        var details = new ProviderDetailService(db.ConnectionString);
+        var billing = (await details.GetAsync(D, _ct))!.Facilities;
+        Assert.Equal([(FacilityTypes.SurgeryCenter, "33C0001234", "ISLAND SURGERY CENTER"), (FacilityTypes.Dialysis, "332301", "BROOKLYN KIDNEY CENTER"),
+                (FacilityTypes.Hospital, "330045", "GOOD SAMARITAN HOSPITAL")],
+            billing.Select(f => (f.Kind, f.Ccn, f.Name)));
+        Assert.Equal(((int?)4, (int?)3, "Profit"), billing.Where(f => f.Kind == FacilityTypes.Dialysis).Select(f => (f.OverallRating, f.PatientSurveyRating, f.Ownership)).Single());
+        Assert.Equal(
+            [new FacilityAffiliation("Dialysis facility", "332301", "BROOKLYN KIDNEY CENTER", "BROOKLYN", "NY", 4, D),
+             new FacilityAffiliation("Long-term care hospital", "332001", "LONG ISLAND SPECIALTY HOSPITAL", "MINEOLA", "NY", null, null)],
+            (await details.GetAsync(A, _ct))!.CareCompare!.Facilities);
+
+        // The patient survey of a surgery center and a dialysis facility's quality incentive score (owner, 2026-10-15).
+        await db.ExecuteAsync(
+            """
+            INSERT INTO cms_asc_survey (ccn, professional, communication, recommend, rating, surveys, response_rate, start_date, end_date) VALUES
+              ('33C0001234', 96, NULL, 92, 89, 217, 27, '2024-10-01', '2025-09-30'), ('NATION', 97, 92, 87, 89, 1150253, 25, '2024-10-01', '2025-09-30');
+            INSERT INTO cms_dialysis_qip (ccn, payment_year, total_score, state_average, national_average, payment_reduction) VALUES
+              ('332301', 2026, 39, 55, 54, 1.5);
+            """);
+        var surveyed = (await service.GetFacilityAsync("33C0001234", 1, _ct))!.Measures.Where(m => m.Group == FacilityMeasures.PatientExperience).ToList();
+        // In CMS's order; a question without the facility's share is left out.
+        Assert.Equal([("OAS_PROFESSIONAL", (double?)96, (double?)97, (int?)217, (string?)null), ("OAS_RATING", 89, 89, 217, null), ("OAS_RECOMMEND", 92, 87, 217, null)],
+            surveyed.Select(m => (m.Id, m.Value, m.National, m.Cases, m.Comparison)));
+        Assert.Equal(new DialysisQualityIncentive(2026, 39, 55, 54, 1.5), (await service.GetFacilityAsync("332301", 1, _ct))!.QualityIncentive);
+        Assert.Null(hospital.QualityIncentive);
+
+        // The record quality counts the dialysis report's and the surgery center file's NPIs as holding a certified facility.
+        await db.ExecuteAsync("DELETE FROM cms_facility_npi WHERE npi = @D", new { D });
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct);
+        await new QualityBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, allowIncremental: false);
+        Assert.Equal((int)QualityActivity.CertifiedFacility, await db.ScalarAsync<int>(
+            $"SELECT activity & {(int)QualityActivity.CertifiedFacility} FROM provider_quality WHERE npi = @D", new { D }));
+        await db.ExecuteAsync("DELETE FROM cms_dialysis_npi; DELETE FROM cms_asc WHERE npi = @D", new { D });
+        await new QualityBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, allowIncremental: false);
+        Assert.Equal(0, await db.ScalarAsync<int>(
+            $"SELECT activity & {(int)QualityActivity.CertifiedFacility} FROM provider_quality WHERE npi = @D", new { D }));
+    }
+
+    [Fact]
     public async Task Area_counts_and_pages()
     {
         await using var db = await SeededAsync();

@@ -117,6 +117,11 @@ public static class ApiEndpoints
             .WithDescription("Same filters as /facilities (paging ignored), every row with a link to its page. UTF-8 with BOM.")
             .Produces(StatusCodes.Status200OK, contentType: "text/csv").ProducesValidationProblem();
 
+        api.MapGet("/facilities/{ccn}", GetFacilityAsync)
+            .WithName("GetFacility").WithTags("Facilities")
+            .WithSummary("One Medicare-certified facility")
+            .WithDescription($"By CMS Certification Number (CCN): its Care Compare listing and ratings; how its main measures compare with the nation (hospitals' deaths, complications, infections, readmissions, emergency care and spending; rehabilitation facilities' and long-term care hospitals' infections, readmissions, discharge to the community and spending; surgery centers' hospital visits after procedures; dialysis facilities' outcome categories; unit = {MeasureUnits.Percent} | {MeasureUnits.PerHundred} | {MeasureUnits.PerThousand} | {MeasureUnits.Ratio} | {MeasureUnits.Minutes}; comparison = {MeasureComparisons.Better} | {MeasureComparisons.Same} | {MeasureComparisons.Worse} | {MeasureComparisons.TooFew}, null when CMS doesn't compare it); a hospital's Medicare inpatient and outpatient volume with its top DRGs and APCs; its certification; the NPIs it bills under; and one page of the clinicians affiliated with it (page, {OrganizationService.PageSize} a page). 404 for an unknown CCN.");
+
         api.MapGet("/groups", DirectoryEndpoints.SearchGroupsAsync)
             .WithName("SearchGroups").WithTags("Groups")
             .WithSummary("Medicare group practices")
@@ -327,6 +332,10 @@ public static class ApiEndpoints
             ? TypedResults.ValidationProblem(errors)
             : TypedResults.Ok(await products.SearchAsync(name, kind?.Trim(), page ?? 1, pageSize ?? 50, ct));
     }
+
+    private static async Task<Results<Ok<FacilityProfile>, ProblemHttpResult>> GetFacilityAsync(string ccn, int? page, OrganizationService organizations,
+        CancellationToken ct) =>
+        await organizations.GetFacilityAsync(ccn, Math.Max(page ?? 1, 1), ct) is { } facility ? TypedResults.Ok(facility) : NotFound($"No facility with CCN '{ccn}'.");
 
     private static async Task<Results<Ok<ProductDetail>, ProblemHttpResult>> GetProductAsync(string slug, ProductService products, CancellationToken ct) =>
         await products.GetAsync(slug, ct) is { } product ? TypedResults.Ok(product) : NotFound($"No product '{slug}'.");

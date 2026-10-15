@@ -156,6 +156,16 @@ public class ClientTests
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
     [InlineData(typeof(Server.FacilityPage), typeof(FacilityPage))]
     [InlineData(typeof(Server.FacilitySummary), typeof(FacilitySummary))]
+    [InlineData(typeof(Server.FacilityProfile), typeof(FacilityProfile))]
+    [InlineData(typeof(Server.FacilityCertification), typeof(FacilityCertification))]
+    [InlineData(typeof(Server.ClinicianList), typeof(ClinicianList))]
+    [InlineData(typeof(Server.SpecialtyCount), typeof(SpecialtyCount))]
+    [InlineData(typeof(Server.ClinicianRow), typeof(ClinicianRow))]
+    [InlineData(typeof(Server.FacilityMeasure), typeof(FacilityMeasure))]
+    [InlineData(typeof(Server.DialysisFacts), typeof(DialysisFacts))]
+    [InlineData(typeof(Server.DialysisQualityIncentive), typeof(DialysisQualityIncentive))]
+    [InlineData(typeof(Server.HospitalVolume), typeof(HospitalVolume))]
+    [InlineData(typeof(Server.HospitalService), typeof(HospitalService))]
     [InlineData(typeof(Server.GroupPage), typeof(GroupPage))]
     [InlineData(typeof(Server.GroupSummary), typeof(GroupSummary))]
     [InlineData(typeof(Server.AreaHistory), typeof(AreaHistory))]
@@ -205,6 +215,40 @@ public class ClientTests
         Assert.True(Assert.Single(client.Taxonomies).IsPrimary);
         Assert.Equal("20814-0001", Assert.Single(client.Locations).Zip);
         Assert.Equal(["OTHER NAME"], client.OtherNames);
+    }
+
+    [Fact]
+    public void A_facility_profile_reads_into_the_client_models()
+    {
+        var server = new Server.FacilityProfile(
+            new Server.CertifiedFacility("330045", "hospital", "GOOD SAMARITAN HOSPITAL", "Acute Care Hospitals", null, "WEST ISLIP", "NY", null, true, null, 3, null, null,
+                null, 812),
+            "1000 MONTAUK HWY", "11795", 40.7, -73.3, [new Server.OrganizationNpi("1000000038", "GOOD SAMARITAN HOSPITAL", "General hospital", "WEST ISLIP", "NY")],
+            new Server.ClinicianList(1, [new Server.SpecialtyCount("Cardiologist", 1)],
+                [new Server.ClinicianRow("1000000004", "JANE DOE", "MD", "F", "Cardiologist", "WEST ISLIP", "NY")], 1, 50))
+        {
+            Measures = [new Server.FacilityMeasure("MORT_30_AMI", Server.FacilityMeasures.Deaths, "Heart attack patients who died within 30 days", Server.MeasureUnits.Percent,
+                false, 13.5, 11.9, Server.MeasureComparisons.Same, 234, new DateOnly(2022, 7, 1), new DateOnly(2025, 6, 30))],
+            MedicareVolume = new Server.HospitalVolume(2024, 4299, 3177, 23739, 52228590, 65257547, 2024, 1200, 450000.5,
+                [new Server.HospitalService("470", "MAJOR HIP AND KNEE JOINT REPLACEMENT", 300, null, 12000)], []),
+        };
+        var json = JsonSerializer.Serialize(server, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var client = JsonSerializer.Deserialize<FacilityProfile>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal(("330045", "hospital", 812, 1), (client.Facility.Ccn, client.Facility.Kind, client.Facility.AffiliatedClinicians, client.Clinicians.Pages));
+        var measure = Assert.Single(client.Measures);
+        Assert.Equal(("MORT_30_AMI", 13.5, 11.9, "same", new DateTime(2025, 6, 30)), (measure.Id, measure.Value, measure.National, measure.Comparison, measure.To));
+        Assert.Equal((4299, "470", 300), (client.MedicareVolume!.Discharges, client.MedicareVolume.TopInpatient[0].Code, client.MedicareVolume.TopInpatient[0].Cases));
+        Assert.Equal("JANE DOE", Assert.Single(client.Clinicians.Page).Name);
+    }
+
+    [Fact]
+    public async Task An_unknown_facility_is_null()
+    {
+        await using var factory = new ApiFactory();
+        using var npi = new NpiClient(factory.CreateClient());
+        Assert.Null(await npi.GetFacilityAsync("not-a-ccn", cancellationToken: Ct)); // refused before the database
+        await Assert.ThrowsAsync<ArgumentException>(() => npi.GetFacilityAsync(" ", cancellationToken: Ct));
     }
 
     [Fact]

@@ -13,7 +13,8 @@ namespace Npi.Loader.Projection;
 /// migration 101), so the site reads a few small tables instead of aggregating millions of rows when it starts:
 /// <list type="bullet">
 /// <item><c>directory_facility</c>: every certified facility, the Provider of Services file merged with the Care Compare
-/// listings in C# (<see cref="FacilityDirectory.ReadSourcesAsync"/>, ~130,000 rows), with its newest change of ownership and its
+/// listings in C# (<see cref="FacilityDirectory.ReadSourcesAsync"/>, ~130,000 rows; since step 3.6 part 2 also dialysis facilities,
+/// surgery centers, inpatient rehabilitation facilities and long-term care hospitals), with its newest change of ownership and its
 /// nursing home penalties for the list's filters (migration 108);</item>
 /// <item><c>directory_group</c>: every Medicare group with an active clinician (~210,000): clinicians as its page counts them
 /// (reassigned to it or listed with it in Care Compare), organization NPIs enrolled under it, accepts assignment, group MIPS;</item>
@@ -35,6 +36,8 @@ public sealed class DirectoryBuilder(Database database, ILogger log, double minR
         "medicare_enrollment", "cc_clinicians", "cc_mips", "cc_hospitals", "cc_nursing_homes", "cc_home_health", "cc_hospices",
         "cms_facility_enrollments", "cms_provider_of_services", "cms_physician_by_provider", "census_gazetteer",
         "cms_ownership_changes", OwnershipService.InspectionsSource,
+        // Step 3.6 part 2: more facility types and their NPIs.
+        "cc_dialysis", "cms_dialysis_npis", "cc_surgery_centers", "cc_post_acute",
     ];
 
     /// <summary>

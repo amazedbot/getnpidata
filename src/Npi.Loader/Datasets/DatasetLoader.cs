@@ -115,6 +115,33 @@ public abstract class DatasetSource
         FileDownloader.Delete(path);
         return rows;
     }
+
+    /// <summary>
+    /// <see cref="WithDownloadAsync"/> for a source of several files (<paramref name="files"/>: each release and the name to save it
+    /// under): all are downloaded, <paramref name="load"/> gets their paths in the same order, and they are deleted once loaded.
+    /// </summary>
+    protected static async Task<long> WithDownloadsAsync(DatasetContext context, IReadOnlyList<(DatasetRelease Release, string FileName)> files,
+        Func<MySqlConnection, IReadOnlyList<string>, Task<long>> load, CancellationToken ct)
+    {
+        var paths = new List<string>();
+        foreach (var (release, fileName) in files)
+        {
+            paths.Add(await context.DownloadAsync(release, fileName, ct));
+        }
+
+        long rows;
+        await using (var connection = await context.Database.OpenAsync(ct))
+        {
+            rows = await load(connection, paths);
+        }
+
+        foreach (var path in paths)
+        {
+            FileDownloader.Delete(path);
+        }
+
+        return rows;
+    }
 }
 
 /// <summary>
@@ -146,6 +173,14 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new HcahpsSource(),
         new HomeHealthSource(),
         new HospiceSource(),
+        new DialysisFacilitySource(),
+        new DialysisNpiSource(),
+        new SurgeryCenterSource(),
+        new SurgeryCenterSurveySource(),
+        new DialysisQipSource(),
+        new PostAcuteSource(),
+        new HospitalMeasureSource(),
+        new HospitalVolumeSource(),
         new MipsSource(),
         new StateLicenseSource(),
         new StateMedicaidSource(),

@@ -68,19 +68,30 @@ public sealed class DatasetIntegrationTests : IDisposable
 
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture); // the API caches' version is the day
         Assert.Equal(
-            [("cc_clinicians", "2026-08-18 DAC_NationalDownloadableFile.csv"), ("cc_facility_affiliations", "2026-08-18 Facility_Affiliation.csv"),
+            [("cc_clinicians", "2026-08-18 DAC_NationalDownloadableFile.csv"),
+             ("cc_dialysis", "2026-06-16 DFC_FACILITY.csv | 2026-06-16 ICH_CAHPS_FACILITY.csv"),
+             ("cc_esrd_qip", "PY 2026 2025-12-15 TPS.csv"),
+             ("cc_facility_affiliations", "2026-08-18 Facility_Affiliation.csv"),
              ("cc_hcahps", "2026-07-22 HCAHPS-Hospital.csv"), ("cc_home_health", "2026-05-27 HH_Provider_Jul2026.csv"),
              ("cc_hospices", "2026-08-19 Hospice_General-Information_Aug2026_2.csv | 2026-08-07 Provider_CAHPS_Hospice_Survey_Data_Aug2026.csv"),
+             ("cc_hospital_measures", "10 files, newest 2026-07-22, 58cfad0a826a"), // the joined list is longer than reference_data.version holds
              ("cc_hospitals", "2026-07-22 Hospital_General_Information.csv"), ("cc_mips", "PY 2024 2026-08-18 ec_score_file.csv"),
              ("cc_nursing_home_inspections", "2026-09-30 NH_HealthCitations_Sep2026.csv | 2026-09-30 NH_FireSafetyCitations_Sep2026.csv | 2026-09-30 NH_Penalties_Sep2026.csv"),
              ("cc_nursing_homes", "2026-09-30 NH_ProviderInfo_Sep2026.csv"),
-             ("census_county_population", "vintage 2025"), ("cms_dme_suppliers", "2024-12-31 mup_dme_ry26_p05_v10_dy24_supr.csv"),
+             ("cc_oas_cahps", "2026-07-22 ASCQR_OAS_CAHPS_BY_ASC.csv | 2026-07-22 ASCQR_OAS_CAHPS_NATIONAL.csv"),
+             ("cc_post_acute", "2026-09-17 Inpatient_Rehabilitation_Facility-General_Information_Sep2026.csv | 2026-09-17 Inpatient_Rehabilitation_Facility-Provider_Data_Sep2026.csv | 2026-09-17 Inpatient_Rehabilitation_Facility-National_Data_Sep2026.csv"
+                 + " | 2026-09-17 Long-Term_Care_Hospital-General_Information_Sep2026.csv | 2026-09-17 Long-Term_Care_Hospital-Provider_Data_Sep2026.csv | 2026-09-17 Long-Term_Care_Hospital-National_Data_Sep2026.csv"),
+             ("cc_surgery_centers", "2025-12-16 ASC_Facility.csv | 2025-12-16 ASC_National.csv"),
+             ("census_county_population", "vintage 2025"), ("cms_dialysis_npis", "2026-12-31 dfr_facility_socrata_fy2026.csv"),
+             ("cms_dme_suppliers", "2024-12-31 mup_dme_ry26_p05_v10_dy24_supr.csv"),
              ("cms_facility_enrollments", "2026-07-31 Hospital_Enrollments_2026.07.31.csv | 2026-07-31 SNF_Enrollments_2026.07.31.csv"
                  + " | 2026-07-17 HHA_Enrollments_2026.07.17.csv | 2026-07-17 Hospice_Enrollments_2026.07.17.csv"
                  + " | 2026-07-17 FQHC_Enrollments_2026.07.17.csv | 2026-07-17 RHC_Enrollments_2026.07.17.csv | enrollments"),
              ("cms_facility_owners", "2026-08-31 Hospital_All_Owners_2026.07.31_update.csv | 2026-08-31 SNF_All_Owners_2026.07.31_update.csv"
                  + " | 2026-09-30 HHA_All_Owners_2026.07.17.csv | 2026-09-30 Hospice_All_Owners_2026.07.17.csv"
                  + " | 2026-09-30 FQHC_All_Owners_2026.07.17.csv | 2026-09-30 RHC_All_Owners_2026.07.17.csv"),
+             ("cms_hospital_volume", "2024-12-31 mup_inp_ry26_p04_v10_dy24_prv.csv | 2024-12-31 MUP_INP_RY26_P03_V10_DY24_PrvSvc.CSV"
+                 + " | 2024-12-31 MUP_OUT_RY26_P04_V10_DY24_Prov_Svc.csv"),
              ("cms_opt_out", "2026-08-31 OptOut_August2026.csv"), ("cms_order_referring", "2026-10-08 OrderReferring_20261008.csv"),
              ("cms_otp_providers", "2026-10-03 OPIOID_TREATMENT_PROGRAM_PROVIDERS_10052026.csv"),
              ("cms_ownership_changes", "2026-06-30 Hospital_CHOW_2026.07.17.csv | 2026-06-30 SNF_CHOW_2026.07.17.csv"
@@ -357,6 +368,96 @@ public sealed class DatasetIntegrationTests : IDisposable
         Assert.Equal(1L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM cc_mips WHERE npi IS NULL"));
         Assert.Equal(0L, await db.ScalarAsync<long>(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('cms_hcahps_raw_staging', 'cms_hospice_cahps_raw_staging')"));
+    }
+
+    [Fact]
+    public async Task Facility_types_hospital_measures_and_medicare_volume_load()
+    {
+        var db = (await Shared.Value).Db;
+
+        // Dialysis (step 3.6 part 2): the listing with its stars, services and categories, the patient survey's stars.
+        Assert.Equal(
+            [("332301", "BROOKLYN KIDNEY CENTER", (short?)28, (sbyte?)1, (sbyte?)0, (sbyte?)1, (double?)4, "01Jan2021-31Dec2024", (sbyte?)3, "Better than Expected", "Worse than Expected"),
+             ("332302", "ISLAND DIALYSIS", 12, 1, 1, 0, null, "01Jan2021-31Dec2024", null, "Not Available", "Not Available")],
+            await db.QueryAsync<(string, string, short?, sbyte?, sbyte?, sbyte?, double?, string, sbyte?, string, string)>(
+                """
+                SELECT ccn, name, stations, in_center, peritoneal, home_hemodialysis, five_star, five_star_period, survey_rating, survival, hospitalization
+                FROM cms_dialysis ORDER BY ccn
+                """));
+        Assert.Equal(("DaVita", "Profit", "(718) 555-0100", "As Expected", "01Jan2024-31Dec2024"), (await db.QueryAsync<(string, string, string, string, string)>(
+            "SELECT chain, ownership, phone, ed_visits, ed_visits_period FROM cms_dialysis WHERE ccn = '332301'")).Single());
+        // The report's NPIs: a facility may have several; rows without an NPI are left out.
+        Assert.Equal([("332301", "1000000046"), ("332301", "1000000087"), ("332303", "1000000095")],
+            await db.QueryAsync<(string, string)>("SELECT ccn, npi FROM cms_dialysis_npi ORDER BY ccn, npi"));
+
+        // Surgery centers: a row per center and NPI, the nation as CCN NATION, rows without a CCN left out.
+        Assert.Equal(
+            [("33C0001234", "1000000053", (int?)1269, "No Different Than the National Rate", (double?)11.9, (int?)145, (double?)71.67, (double?)null, (short?)2024),
+             ("33C0001234", "1000000061", 20, "No Different Than the National Rate", 14.2, null, 71.67, null, 2024),
+             ("NATION", "", null, null, 9.9, null, 76.95, 85.97, 2024)],
+            await db.QueryAsync<(string, string, int?, string?, double?, int?, double?, double?, short?)>(
+                "SELECT ccn, npi, asc12_cases, asc12_category, asc12_rate, asc17_cases, asc9_rate, asc13_rate, data_year FROM cms_asc ORDER BY ccn, npi"));
+
+        // Rehabilitation facilities and long-term care hospitals, and their measures pivoted to one row per facility and measure.
+        Assert.Equal(
+            [("332001", "ltch", "LONG ISLAND SPECIALTY HOSPITAL", "For profit", new DateTime(1993, 10, 1), (int?)40),
+             ("333025", "rehab", "ISLAND REHABILITATION HOSPITAL", "For profit", new DateTime(2001, 1, 15), null),
+             ("33T045", "rehab", "SOUTH SHORE REHABILITATION UNIT", "Non-profit", new DateTime(1983, 10, 1), null)],
+            await db.QueryAsync<(string, string, string, string, DateTime, int?)>(
+                "SELECT ccn, kind, name, ownership, certified_since, beds FROM cms_post_acute ORDER BY ccn"));
+        Assert.Equal(
+            [("332001", "L_017_01", (double?)19.85, "Worse than the National Rate", (int?)null), ("332001", "L_019_01", 1.04, null, null),
+             ("333025", "I_019_02", 71.2, "Better than the National Rate", 412),
+             ("33T045", "I_006_01", null, "Not Available", null), ("33T045", "I_017_01", 9.88, "No Different than the National Rate", 1458),
+             ("33T045", "I_020_01", 0.99, null, 1631),
+             ("NATION", "I_017_01", 9.43, null, null), ("NATION", "I_019_02", 65.1, null, null), ("NATION", "I_020_01", 1, null, null),
+             ("NATION", "L_017_01", 22.39, null, null), ("NATION", "L_019_01", 1, null, null)],
+            await db.QueryAsync<(string, string, double?, string?, int?)>(
+                "SELECT ccn, measure_id, score, compared, cases FROM cms_post_acute_measure ORDER BY ccn, measure_id"));
+        Assert.Equal((new DateTime(2023, 10, 1), new DateTime(2025, 9, 30)), (await db.QueryAsync<(DateTime, DateTime)>(
+            "SELECT start_date, end_date FROM cms_post_acute_measure WHERE ccn = '33T045' AND measure_id = 'I_017_01'")).Single());
+
+        // Hospital measures: only the catalog's, "MSPB-1" as MSPB_1, the national values under NATION (a duplicate national row once).
+        Assert.Equal(
+            [("330045", "HAI_1_SIR", (double?)0.302, "No Different than National Benchmark", (int?)null),
+             ("330045", "MORT_30_AMI", 13.5, "No Different Than the National Rate", 234), ("330045", "MORT_30_HF", null, "Not Available", null),
+             ("330045", "MSPB_1", 0.99, null, null), ("330045", "OP_18b", 150, null, 400), ("330045", "OP_36", 0.9, "Better than expected", 1212),
+             ("330045", "PSI_90", 0.85, "Better Than the National Value", null), ("330045", "READM_30_HF", 20.1, "No Different Than the National Rate", 300),
+             ("330045", "SEP_1", 60, null, 285),
+             ("NATION", "HAI_1_SIR", 1, null, null), ("NATION", "MORT_30_AMI", 11.9, null, null), ("NATION", "MSPB_1", 1, null, null),
+             ("NATION", "OP_18b", 160, null, null), ("NATION", "PSI_90", 1, null, null), ("NATION", "READM_30_HF", 19.9, null, null),
+             ("NATION", "SEP_1", 61, null, null)],
+            await db.QueryAsync<(string, string, double?, string?, int?)>(
+                "SELECT ccn, measure_id, score, compared, cases FROM cms_hospital_measure ORDER BY ccn, measure_id COLLATE utf8mb4_bin"));
+
+        // Medicare volume, data year 2024: inpatient totals per CCN, outpatient summed over the APCs listed, the top services by count.
+        Assert.Equal(
+            [("330045", (short?)2024, (int?)4299, (int?)3177, (int?)23739, (double?)52228590, (double?)65257547, (short?)2024, (int?)230, (double?)281012.5),
+             ("330046", 2024, 12, null, 40, 800.25, 900.5, null, null, null)],
+            await db.QueryAsync<(string, short?, int?, int?, int?, double?, double?, short?, int?, double?)>(
+                """
+                SELECT ccn, inpatient_year, discharges, beneficiaries, covered_days, medicare_payments, total_payments, outpatient_year, outpatient_services,
+                       outpatient_payments
+                FROM cms_hospital_volume ORDER BY ccn
+                """));
+        Assert.Equal(
+            [("I", (sbyte)1, "470", 300, (int?)null, (double?)12000.5), ("I", 2, "871", 250, null, 13500.25),
+             ("O", 1, "5072", 188, 175, 1080.5), ("O", 2, "5073", 42, null, 1854.25)],
+            await db.QueryAsync<(string, sbyte, string, int, int?, double?)>(
+                "SELECT setting, service_rank, code, cases, beneficiaries, avg_medicare_payment FROM cms_hospital_service WHERE ccn = '330045' ORDER BY setting, service_rank"));
+        // Surgery centers' patient survey (blank shares are NULL), the nation as NATION; the newest ESRD QIP payment year ("No Score" → NULL).
+        Assert.Equal(
+            [("33C0001234", (short?)96, (short?)91, (short?)92, (short?)89, (int?)217, (short?)27, new DateTime(2025, 9, 30)),
+             ("33C0005678", null, null, null, null, 9, 22, new DateTime(2025, 9, 30)),
+             ("NATION", 97, 92, 87, 89, 1150253, 25, new DateTime(2025, 9, 30))],
+            await db.QueryAsync<(string, short?, short?, short?, short?, int?, short?, DateTime)>(
+                "SELECT ccn, professional, communication, recommend, rating, surveys, response_rate, end_date FROM cms_asc_survey ORDER BY ccn"));
+        Assert.Equal(
+            [("332301", (short)2026, (short?)70, (short?)55, (short?)54, (double?)0), ("332302", 2026, 39, 55, 54, 1.5), ("332303", 2026, null, 55, 54, 0)],
+            await db.QueryAsync<(string, short, short?, short?, short?, double?)>(
+                "SELECT ccn, payment_year, total_score, state_average, national_average, payment_reduction FROM cms_dialysis_qip ORDER BY ccn"));
+        Assert.Equal(0L, await db.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE '%\\_raw\\_staging'"));
     }
 
     // The older Medicare years of the fixture catalog: Part B 2023 (2024 is the newest year).
@@ -819,6 +920,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://pdc.test/items/xubh-q36u", "https://pdc.test/items/4pq5-n9py", "https://pdc.test/items/dgck-syfz", "https://pdc.test/items/6jpm-sxkc",
                 "https://pdc.test/items/yc9t-dgbk", "https://pdc.test/items/gxki-hrr8", "https://fda.test/download.json", "https://fda.test/download.json",
                 "https://pdc.test/items/r5ix-sfxw", "https://pdc.test/items/ifjz-ge4w", "https://pdc.test/items/g6vv-u9sr",
+                "https://pdc.test/items/23ew-n7w9", "https://pdc.test/items/59mq-zhts", "https://pdc.test/items/4jcv-atw7", "https://pdc.test/items/48nr-hqxx", "https://pdc.test/items/tf3h-mrrs", "https://pdc.test/items/wue8-3vwe", "https://pdc.test/items/7t8x-u3ir", "https://pdc.test/items/v9e4-nwhh", "https://pdc.test/items/nasn-k89k", "https://pdc.test/items/azum-44iv", "https://pdc.test/items/fp6g-2gsn", "https://pdc.test/items/5zdx-ny2x",
+                "https://pdc.test/items/ynj2-r877", "https://pdc.test/items/qqw3-t4ie", "https://pdc.test/items/77hc-ibv8", "https://pdc.test/items/yd3s-jyhd", "https://pdc.test/items/632h-zaca", "https://pdc.test/items/cvcs-xecj", "https://pdc.test/items/yv7e-xc69", "https://pdc.test/items/isrn-hqyy", "https://pdc.test/items/rrqw-56er", "https://pdc.test/items/3n5g-6b7f",
             }.Order(StringComparer.Ordinal),
             server.Requests.Order(StringComparer.Ordinal)); // HRSA, Census, Open Payments and most FDA files are checked weekly; FDA's shortage list and adverse event export dates daily
 
@@ -891,6 +994,8 @@ public sealed class DatasetIntegrationTests : IDisposable
 
         public List<string> Requests { get; } = [];
 
+        public const string DialysisReportApi = "https://cms.test/data-api/v1/dataset/dfr-2026/data";
+
         private static readonly Dictionary<string, (string Modified, string File)> ProviderData = new()
         {
             ["https://pdc.test/items/mj5m-pzi6"] = ("2026-08-18", "DAC_NationalDownloadableFile.csv"),
@@ -904,6 +1009,28 @@ public sealed class DatasetIntegrationTests : IDisposable
             ["https://pdc.test/items/r5ix-sfxw"] = ("2026-09-30", "NH_HealthCitations_Sep2026.csv"),
             ["https://pdc.test/items/ifjz-ge4w"] = ("2026-09-30", "NH_FireSafetyCitations_Sep2026.csv"),
             ["https://pdc.test/items/g6vv-u9sr"] = ("2026-09-30", "NH_Penalties_Sep2026.csv"),
+            ["https://pdc.test/items/23ew-n7w9"] = ("2026-06-16", "DFC_FACILITY.csv"),
+            ["https://pdc.test/items/59mq-zhts"] = ("2026-06-16", "ICH_CAHPS_FACILITY.csv"),
+            ["https://pdc.test/items/4jcv-atw7"] = ("2025-12-16", "ASC_Facility.csv"),
+            ["https://pdc.test/items/48nr-hqxx"] = ("2026-07-22", "ASCQR_OAS_CAHPS_BY_ASC.csv"),
+            ["https://pdc.test/items/tf3h-mrrs"] = ("2026-07-22", "ASCQR_OAS_CAHPS_NATIONAL.csv"),
+            ["https://pdc.test/items/wue8-3vwe"] = ("2025-12-16", "ASC_National.csv"),
+            ["https://pdc.test/items/7t8x-u3ir"] = ("2026-09-17", "Inpatient_Rehabilitation_Facility-General_Information_Sep2026.csv"),
+            ["https://pdc.test/items/v9e4-nwhh"] = ("2026-09-17", "Inpatient_Rehabilitation_Facility-Provider_Data_Sep2026.csv"),
+            ["https://pdc.test/items/nasn-k89k"] = ("2026-09-17", "Inpatient_Rehabilitation_Facility-National_Data_Sep2026.csv"),
+            ["https://pdc.test/items/azum-44iv"] = ("2026-09-17", "Long-Term_Care_Hospital-General_Information_Sep2026.csv"),
+            ["https://pdc.test/items/fp6g-2gsn"] = ("2026-09-17", "Long-Term_Care_Hospital-Provider_Data_Sep2026.csv"),
+            ["https://pdc.test/items/5zdx-ny2x"] = ("2026-09-17", "Long-Term_Care_Hospital-National_Data_Sep2026.csv"),
+            ["https://pdc.test/items/ynj2-r877"] = ("2026-07-22", "Complications_and_Deaths-Hospital.csv"),
+            ["https://pdc.test/items/qqw3-t4ie"] = ("2026-07-22", "Complications_and_Deaths-National.csv"),
+            ["https://pdc.test/items/77hc-ibv8"] = ("2026-07-22", "Healthcare_Associated_Infections-Hospital.csv"),
+            ["https://pdc.test/items/yd3s-jyhd"] = ("2026-07-22", "Healthcare_Associated_Infections-National.csv"),
+            ["https://pdc.test/items/632h-zaca"] = ("2026-07-22", "Unplanned_Hospital_Visits-Hospital.csv"),
+            ["https://pdc.test/items/cvcs-xecj"] = ("2026-07-22", "Unplanned_Hospital_Visits-National.csv"),
+            ["https://pdc.test/items/yv7e-xc69"] = ("2026-07-22", "Timely_and_Effective_Care-Hospital.csv"),
+            ["https://pdc.test/items/isrn-hqyy"] = ("2026-07-22", "Timely_and_Effective_Care-National.csv"),
+            ["https://pdc.test/items/rrqw-56er"] = ("2026-07-22", "Medicare_Hospital_Spending_Per_Patient-Hospital.csv"),
+            ["https://pdc.test/items/3n5g-6b7f"] = ("2026-07-22", "Medicare_Hospital_Spending_Per_Patient-National.csv"),
         };
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -1008,6 +1135,17 @@ public sealed class DatasetIntegrationTests : IDisposable
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(roster) });
             }
 
+            // The dialysis facility report's data API (step 3.6 part 2): the first row's measure, then that measure's CCN/NPI pairs.
+            if (url.StartsWith(DialysisReportApi + "?", StringComparison.Ordinal))
+            {
+                var page = url.EndsWith("?size=1&column=Measure_ID", StringComparison.Ordinal)
+                    ? """[{"Measure_ID":"allmcpaty1_f"}]"""
+                    : url.EndsWith("&offset=0", StringComparison.Ordinal) && url.Contains("filter%5BMeasure_ID%5D=allmcpaty1_f", StringComparison.Ordinal)
+                        ? """[{"CCN":"332301","NPI":"1000000046"},{"CCN":"332301","NPI":"1000000087"},{"CCN":"332302","NPI":null},{"CCN":"332303","NPI":"1000000095"}]"""
+                        : "[]";
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(page) });
+            }
+
             string? fixture = url switch
             {
                 "https://wvbom.wv.gov/Rosters.asp" => "datasets/state_wv_rosters.html",
@@ -1083,6 +1221,32 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://fema.test/list" => "datasets/fema_listing_sample.xml",
                 "https://fema.test/files/usa-structures/geoparquet/fema_part1.parquet" => "datasets/fema_part1.parquet",
                 "https://fema.test/files/usa-structures/geoparquet/fema_part2.parquet" => "datasets/fema_part2.parquet",
+                "https://pdc.test/files/DFC_FACILITY.csv" => "datasets/cc_dialysis_sample.csv",
+                "https://pdc.test/files/ICH_CAHPS_FACILITY.csv" => "datasets/cc_dialysis_ich_cahps_sample.csv",
+                "https://pdc.test/files/ASC_Facility.csv" => "datasets/cc_asc_facility_sample.csv",
+                "https://pdc.test/files/ASCQR_OAS_CAHPS_BY_ASC.csv" => "datasets/cc_oas_cahps_facility_sample.csv",
+                "https://pdc.test/files/ASCQR_OAS_CAHPS_NATIONAL.csv" => "datasets/cc_oas_cahps_national_sample.csv",
+                "https://pdc.test/files/TPS.csv" => "datasets/cc_esrd_qip_tps_sample.csv",
+                "https://pdc.test/files/ASC_National.csv" => "datasets/cc_asc_national_sample.csv",
+                "https://pdc.test/files/Inpatient_Rehabilitation_Facility-General_Information_Sep2026.csv" => "datasets/cc_irf_general_sample.csv",
+                "https://pdc.test/files/Inpatient_Rehabilitation_Facility-Provider_Data_Sep2026.csv" => "datasets/cc_irf_measures_sample.csv",
+                "https://pdc.test/files/Inpatient_Rehabilitation_Facility-National_Data_Sep2026.csv" => "datasets/cc_irf_national_sample.csv",
+                "https://pdc.test/files/Long-Term_Care_Hospital-General_Information_Sep2026.csv" => "datasets/cc_ltch_general_sample.csv",
+                "https://pdc.test/files/Long-Term_Care_Hospital-Provider_Data_Sep2026.csv" => "datasets/cc_ltch_measures_sample.csv",
+                "https://pdc.test/files/Long-Term_Care_Hospital-National_Data_Sep2026.csv" => "datasets/cc_ltch_national_sample.csv",
+                "https://pdc.test/files/Complications_and_Deaths-Hospital.csv" => "datasets/cc_complications_deaths_sample.csv",
+                "https://pdc.test/files/Complications_and_Deaths-National.csv" => "datasets/cc_complications_deaths_national_sample.csv",
+                "https://pdc.test/files/Healthcare_Associated_Infections-Hospital.csv" => "datasets/cc_infections_sample.csv",
+                "https://pdc.test/files/Healthcare_Associated_Infections-National.csv" => "datasets/cc_infections_national_sample.csv",
+                "https://pdc.test/files/Unplanned_Hospital_Visits-Hospital.csv" => "datasets/cc_unplanned_visits_sample.csv",
+                "https://pdc.test/files/Unplanned_Hospital_Visits-National.csv" => "datasets/cc_unplanned_visits_national_sample.csv",
+                "https://pdc.test/files/Timely_and_Effective_Care-Hospital.csv" => "datasets/cc_timely_effective_sample.csv",
+                "https://pdc.test/files/Timely_and_Effective_Care-National.csv" => "datasets/cc_timely_effective_national_sample.csv",
+                "https://pdc.test/files/Medicare_Hospital_Spending_Per_Patient-Hospital.csv" => "datasets/cc_mspb_sample.csv",
+                "https://pdc.test/files/Medicare_Hospital_Spending_Per_Patient-National.csv" => "datasets/cc_mspb_national_sample.csv",
+                "https://cms.test/files/mup_inp_ry26_p04_v10_dy24_prv.csv" => "datasets/cms_inpatient_by_provider_sample.csv",
+                "https://cms.test/files/MUP_INP_RY26_P03_V10_DY24_PrvSvc.CSV" => "datasets/cms_inpatient_by_service_sample.csv",
+                "https://cms.test/files/MUP_OUT_RY26_P04_V10_DY24_Prov_Svc.csv" => "datasets/cms_outpatient_by_service_sample.csv",
                 _ => null,
             };
             if (fixture is null)

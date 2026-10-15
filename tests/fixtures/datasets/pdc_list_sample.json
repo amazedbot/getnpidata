@@ -28,5 +28,35 @@
     "downloadURL": "https://pdc.test/files/measures.csv"
    }
   ]
+ },
+ {
+  "identifier": "tps",
+  "title": "ESRD QIP - Total Performance Scores - Payment Year 2025",
+  "modified": "2024-12-16",
+  "distribution": [
+   {
+    "downloadURL": "https://pdc.test/files/TPS_PY2025.csv"
+   }
+  ]
+ },
+ {
+  "identifier": "tps",
+  "title": "ESRD QIP - Total Performance Scores - Payment Year 2026",
+  "modified": "2025-12-15",
+  "distribution": [
+   {
+    "downloadURL": "https://pdc.test/files/TPS.csv"
+   }
+  ]
+ },
+ {
+  "identifier": "srr",
+  "title": "ESRD QIP - Standardized Readmission Ratio - Payment Year 2026",
+  "modified": "2026-03-03",
+  "distribution": [
+   {
+    "downloadURL": "https://pdc.test/files/SRR.csv"
+   }
+  ]
  }
 ]

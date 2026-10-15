@@ -33,8 +33,8 @@ public sealed record FacilityProfile(CertifiedFacility Facility, string? Address
     public FacilityCertification? Certification { get; init; }
 
     /// <summary>
-    /// True for a facility only the Provider of Services file lists (an FQHC, rural health clinic, dialysis facility, surgery center,
-    /// a closed facility …): no Care Compare ratings, ownership or phone.
+    /// True for a facility only the Provider of Services file lists (an FQHC, rural health clinic, a closed facility …): no Care Compare
+    /// ratings, ownership or phone.
     /// </summary>
     public bool CertificationOnly { get; init; }
 
@@ -43,6 +43,26 @@ public sealed record FacilityProfile(CertifiedFacility Facility, string? Address
 
     /// <summary>A nursing home's inspections and penalties (step 3.6 part 2), when the caller looked them up (the raw data download).</summary>
     public NursingHomeInspections? Inspections { get; init; }
+
+    /// <summary>
+    /// How it compares (step 3.6 part 2): the type's main Care Compare measures with the national value and CMS's comparison, in
+    /// <see cref="FacilityMeasures.Groups"/> order. Hospitals: deaths, complications, infections, readmissions, emergency care, spending;
+    /// rehabilitation facilities and long-term care hospitals: infections, readmissions, discharge to the community, spending; surgery
+    /// centers: hospital visits after procedures; dialysis facilities: outcome categories. Empty when CMS publishes none.
+    /// </summary>
+    public IReadOnlyList<FacilityMeasure> Measures { get; init; } = [];
+
+    /// <summary>A hospital's Medicare inpatient and outpatient volume, with its top DRGs and APCs; null when CMS lists none for the CCN.</summary>
+    public HospitalVolume? MedicareVolume { get; init; }
+
+    /// <summary>A dialysis facility's stations, services, chain and star ratings; null for other types.</summary>
+    public DialysisFacts? Dialysis { get; init; }
+
+    /// <summary>When Medicare first certified it (rehabilitation facilities and long-term care hospitals list it).</summary>
+    public DateOnly? CertifiedSince { get; init; }
+
+    /// <summary>A dialysis facility's ESRD Quality Incentive Program score and payment reduction (newest payment year); null otherwise.</summary>
+    public DialysisQualityIncentive? QualityIncentive { get; init; }
 }
 
 /// <summary>
@@ -123,11 +143,14 @@ public sealed class OrganizationService(string connectionString)
         ccn = ccn.ToUpperInvariant();
         await using var connection = await OpenAsync(ct);
         var facility = await ProviderDetailService.FacilitiesAsync(connection,
-            """
+            $"""
             FROM (SELECT ccn, 'hospital' AS kind FROM cms_hospital WHERE ccn = @id
+                  UNION ALL SELECT ccn, kind FROM cms_post_acute WHERE ccn = @id
                   UNION ALL SELECT ccn, 'nursing_home' FROM cms_nursing_home WHERE ccn = @id
                   UNION ALL SELECT ccn, 'home_health' FROM cms_home_health WHERE ccn = @id
-                  UNION ALL SELECT ccn, 'hospice' FROM cms_hospice WHERE ccn = @id) f
+                  UNION ALL SELECT ccn, 'hospice' FROM cms_hospice WHERE ccn = @id
+                  UNION ALL SELECT ccn, 'dialysis' FROM cms_dialysis WHERE ccn = @id
+                  UNION ALL SELECT DISTINCT ccn, 'asc' FROM cms_asc WHERE ccn = @id AND ccn <> '{FacilityMeasures.National}') f
             """, "1 = 1", new { id = ccn }, ct);
         var pos = await connection.QueryFirstOrDefaultAsync<PosRow>(new CommandDefinition(
             """
@@ -140,12 +163,15 @@ public sealed class OrganizationService(string connectionString)
         if (facility.Count > 0)
         {
             found = facility[0];
+            // The surgery centers' file has no street address: the Provider of Services file's.
             place = await connection.QueryFirstOrDefaultAsync<(string? Address, string? Zip)>(new CommandDefinition(
                 """
-                SELECT COALESCE(h.address, n.address, hh.address, hs.address), COALESCE(h.zip, n.zip, hh.zip, hs.zip)
+                SELECT COALESCE(h.address, pa.address, n.address, hh.address, hs.address, d.address, pos.address),
+                       COALESCE(h.zip, pa.zip, n.zip, hh.zip, hs.zip, d.zip, (SELECT MIN(a.zip) FROM cms_asc a WHERE a.ccn = f.ccn), pos.zip5)
                 FROM (SELECT @id AS ccn) f
-                LEFT JOIN cms_hospital h ON h.ccn = f.ccn LEFT JOIN cms_nursing_home n ON n.ccn = f.ccn
-                LEFT JOIN cms_home_health hh ON hh.ccn = f.ccn LEFT JOIN cms_hospice hs ON hs.ccn = f.ccn
+                LEFT JOIN cms_hospital h ON h.ccn = f.ccn LEFT JOIN cms_post_acute pa ON pa.ccn = f.ccn LEFT JOIN cms_nursing_home n ON n.ccn = f.ccn
+                LEFT JOIN cms_home_health hh ON hh.ccn = f.ccn LEFT JOIN cms_hospice hs ON hs.ccn = f.ccn LEFT JOIN cms_dialysis d ON d.ccn = f.ccn
+                LEFT JOIN cms_pos_facility pos ON pos.ccn = f.ccn
                 """, new { id = ccn }, cancellationToken: ct));
         }
         else if (pos?.Name is { } posName)
@@ -166,12 +192,12 @@ public sealed class OrganizationService(string connectionString)
         {
             return null;
         }
-        var billing = await NpisAsync(connection, "SELECT DISTINCT npi FROM cms_facility_npi WHERE ccn = @id", ccn, ct);
+        var billing = await NpisAsync(connection, $"SELECT DISTINCT npi FROM ({FacilityDirectory.BillingNpiSql}) f WHERE ccn = @id", ccn, ct);
 
         // On the map: the primary practice address of a billing NPI, else the centre of the facility's ZIP.
         var point = await connection.QueryFirstOrDefaultAsync<(double Lat, double Lon)?>(new CommandDefinition(
-            """
-            SELECT m.lat, m.lon FROM cms_facility_npi f
+            $"""
+            SELECT m.lat, m.lon FROM ({FacilityDirectory.BillingNpiSql}) f
             JOIN provider_location l ON l.npi = f.npi AND l.is_primary = 1
             JOIN provider_map m ON m.npi = l.npi AND m.addr_key = l.addr_key
             WHERE f.ccn = @id AND m.approximate = 0 LIMIT 1
@@ -185,11 +211,17 @@ public sealed class OrganizationService(string connectionString)
         var clinicians = await ClinicianListAsync(connection, FacilityNpis, ccn, page, ct);
         // A Care Compare listing is a facility certified now, whatever an older Provider of Services row says.
         var active = facility.Count > 0 || pos?.Active == 1;
+        var details = await FacilityDetails.ReadAsync(connection, ccn, found.Kind, ct);
         return new FacilityProfile(found, place.Address, place.Zip, point?.Lat, point?.Lon, billing, clinicians)
         {
             Certification = pos is null ? null : new FacilityCertification(active, active || pos.TerminationDate is not { } ended ? null : DateOnly.FromDateTime(ended),
                 active ? null : FacilityTypes.TerminationReason(pos.TerminationCode)),
             CertificationOnly = facility.Count == 0,
+            Measures = details.Measures,
+            MedicareVolume = details.Volume,
+            Dialysis = details.Dialysis,
+            QualityIncentive = details.QualityIncentive,
+            CertifiedSince = details.CertifiedSince,
         };
     }
 

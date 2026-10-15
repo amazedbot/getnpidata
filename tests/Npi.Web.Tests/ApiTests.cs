@@ -259,7 +259,7 @@ public class ApiTests
             "/api/v1/taxonomy/categories/{category}/subcategories", "/api/v1/taxonomy/classifications",
             "/api/v1/taxonomy/classifications/{classification}/specializations", "/api/v1/states", "/api/v1/states/{state}/counties", "/api/v1/states/{state}/cities",
             "/api/v1/counties/{fips}", "/api/v1/meta", "/api/v1/credentials", "/api/v1/companies", "/api/v1/companies.csv", "/api/v1/companies/{id}", "/api/v1/products", "/api/v1/products.csv", "/api/v1/products/{slug}", "/api/v1/products/{slug}/prescribers", "/api/v1/products/{slug}/prescribers.csv",
-            "/api/v1/facilities", "/api/v1/facilities.csv", "/api/v1/groups", "/api/v1/groups.csv",
+            "/api/v1/facilities", "/api/v1/facilities.csv", "/api/v1/facilities/{ccn}", "/api/v1/groups", "/api/v1/groups.csv",
             "/api/v1/facilities/{ccn}/ownership", "/api/v1/facilities/{ccn}/inspections", "/api/v1/owners", "/api/v1/owners/{id}",
             "/api/v1/areas/us/history", "/api/v1/areas/{state}/history", "/api/v1/areas/{state}/{county}/history", "/api/v1/areas/map",
         ];

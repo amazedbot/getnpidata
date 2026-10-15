@@ -30,7 +30,7 @@
 <div class="profile industry">
     <div>
         <h1>Facilities &amp; hospitals</h1>
-        <p class="lede">Every Medicare-certified hospital, nursing home, home health agency, hospice, clinic and center, from CMS's Provider of Services file and Medicare Care Compare. Find one to see how CMS rates it, who works there, who owns it and the NPIs it bills under, or look up <a href="/owners">the facilities' owners</a>.</p>
+        <p class="lede">Every Medicare-certified hospital, nursing home, home health agency, hospice, dialysis facility, surgery center, rehabilitation facility, clinic and center, from CMS's Provider of Services file and Medicare Care Compare. Find one to see how CMS rates it, how it compares with the nation, who works there, who owns it and the NPIs it bills under, or look up <a href="/owners">the facilities' owners</a>.</p>
     </div>
 
     <form method="get" action="/facilities" class="industry-search" role="search">
@@ -93,7 +93,7 @@
                         <a class="chip" href="@Model.ListUrl(type: x.Type, minRating: null, maxRating: null, status: null, sort: "rating", q: null)#list">Lowest rated @x.Name.ToLowerInvariant()</a>
                     }
                 </p>
-                <p class="src">Medicare Care Compare star ratings, 1 to 5 (home health in half stars, counted down). Hospitals: the overall rating; nursing homes: the overall rating; home health: quality of patient care; hospices: the family caregiver survey. FQHCs, rural health clinics, dialysis facilities and surgery centers aren't rated here.</p>
+                <p class="src">Medicare Care Compare star ratings, 1 to 5 (home health in half stars, counted down). Hospitals: the overall rating; nursing homes: the overall rating; home health: quality of patient care; hospices: the family caregiver survey; dialysis facilities: the five-star rating. CMS gives FQHCs, rural health clinics, surgery centers, rehabilitation facilities and long-term care hospitals no star rating; their pages show how their measures compare with the nation.</p>
             </section>
         }
         <section class="card side-card" aria-labelledby="dl-h">
@@ -281,7 +281,8 @@
 
     <p class="src">
         Sources: CMS Provider of Services file (every certified facility by CMS Certification Number, active or closed) and Medicare Care Compare (hospitals, nursing homes,
-        home health agencies, hospices: names, ratings, ownership, beds). The type of a facility outside Care Compare comes from the enrollment that links it to an NPI, else
-        from its CMS number. A listing says nothing about whether a facility takes new patients or a plan.
+        home health agencies, hospices, dialysis facilities, surgery centers, inpatient rehabilitation facilities, long-term care hospitals: names, ratings, ownership, beds).
+        The type of a facility outside Care Compare comes from the enrollment that links it to an NPI, else from its CMS number. A listing says nothing about whether a
+        facility takes new patients or a plan.
     </p>
 </div>

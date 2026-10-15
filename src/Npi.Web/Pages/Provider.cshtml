@@ -326,7 +326,7 @@
             @foreach (var fac in p.Facilities)
             {
                 <dl class="facts">
-                    <dt>@(fac.Kind switch { "hospital" => "Hospital", "nursing_home" => "Nursing home", "home_health" => "Home health agency", "hospice" => "Hospice", _ => fac.Kind })</dt>
+                    <dt>@(fac.Kind switch { "hospital" => "Hospital", "nursing_home" => "Nursing home", "home_health" => "Home health agency", "hospice" => "Hospice", _ => FacilityTypes.Get(fac.Kind).Singular })</dt>
                     <dd><a href="/facility/@fac.Ccn"><strong>@CityCatalog.TitleCase(fac.Name)</strong></a> <span class="muted">CCN @fac.Ccn · @(fac.City is null ? null : CityCatalog.TitleCase(fac.City)), @fac.State</span></dd>
                     @if (fac.Type is not null){<dt>Type</dt><dd>@fac.Type</dd>}
                     @if (fac.Ownership is not null){<dt>Ownership</dt><dd>@fac.Ownership</dd>}
@@ -336,6 +336,7 @@
                     @if (fac.Kind == "home_health"){<dt>Quality of patient care</dt><dd>@HalfStars(fac.QualityOfCareRating)</dd>}
                     @if (fac.Kind == "hospital"){<dt>Patient survey (HCAHPS)</dt><dd>@Stars(fac.PatientSurveyRating)</dd>}
                     @if (fac.Kind == "hospice"){<dt>Family caregiver survey</dt><dd>@Stars(fac.PatientSurveyRating)</dd>}
+                    @if (fac.Kind == FacilityTypes.Dialysis){<dt>Five-star rating</dt><dd>@Stars(fac.OverallRating)</dd><dt>Patient survey (ICH CAHPS)</dt><dd>@Stars(fac.PatientSurveyRating)</dd>}
                     @if (fac.Outcomes is { } o)
                     {
                         <dt>Deaths</dt><dd>@Outcome(o.Mortality)</dd>

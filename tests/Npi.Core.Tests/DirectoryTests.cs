@@ -11,8 +11,11 @@ public class DirectoryTests
     [Theory]
     [InlineData("330045", FacilityTypes.Hospital, "Short-term hospital")]
     [InlineData("331301", FacilityTypes.Hospital, "Critical access hospital")]
-    [InlineData("332001", FacilityTypes.Hospital, "Long-term care hospital")]
-    [InlineData("333025", FacilityTypes.Hospital, "Rehabilitation hospital")]
+    [InlineData("332001", FacilityTypes.LongTermCare, null)]
+    [InlineData("333025", FacilityTypes.Rehab, "Rehabilitation hospital")]
+    [InlineData("33T001", FacilityTypes.Rehab, "Rehabilitation unit of a hospital")]
+    [InlineData("33R001", FacilityTypes.Rehab, "Rehabilitation unit of a hospital")]
+    [InlineData("33M001", FacilityTypes.Other, "Hospital unit")]
     [InlineData("333300", FacilityTypes.Hospital, "Children's hospital")]
     [InlineData("334001", FacilityTypes.Hospital, "Psychiatric hospital")]
     [InlineData("331000", FacilityTypes.Fqhc, null)]
@@ -195,7 +198,44 @@ public class DirectoryTests
         Assert.Equal([0, 0, 1, 0, 1], hospitals.ByStars);
         Assert.Equal(0, hospitals.NotRated);
         Assert.Equal([0, 0, 0, 1, 0], o.Ratings.Single(r => r.Type == FacilityTypes.HomeHealth).ByStars);
-        Assert.Equal(["hospital", "nursing_home", "home_health", "hospice"], o.Ratings.Select(r => r.Type));
+        Assert.Equal(["hospital", "nursing_home", "home_health", "hospice", "dialysis"], o.Ratings.Select(r => r.Type));
+        Assert.Equal("CMS five-star rating", o.Ratings.Single(r => r.Type == FacilityTypes.Dialysis).RatingName);
+    }
+
+    [Fact]
+    public async Task Dialysis_surgery_rehabilitation_and_long_term_care_listings_are_types_of_their_own()
+    {
+        // Step 3.6 part 2: Care Compare's dialysis, surgery center, rehabilitation and long-term care hospital listings.
+        var rows = FacilityDirectory.Merge(
+            [
+                new("332301", "DIALYSIS OLD NAME", "9 MAIN ST", "BROOKLYN", "NY", "11201", true, null, null),
+                new("33C0001234", "LONG ISLAND ENDOSCOPY", "4 PARK AVE", "BAY SHORE", "NY", "11706", true, null, null),
+            ],
+            [
+                new(FacilityTypes.Dialysis, "332301", "BROOKLYN KIDNEY CENTER", "9 MAIN ST", "BROOKLYN", "NY", "11201", "7185550100", null, "Profit", null, 4),
+                new(FacilityTypes.SurgeryCenter, "33C0001234", "LONG ISLAND ENDOSCOPY CENTER", null, "BAY SHORE", "NY", "11706", null, null, null, null, null),
+                new(FacilityTypes.Rehab, "33T045", "GOOD SAMARITAN REHAB UNIT", "1000 MONTAUK HWY", "WEST ISLIP", "NY", "11795", null, null, "Non-profit", null, null),
+                new(FacilityTypes.Rehab, "333025", "ISLAND REHABILITATION HOSPITAL", "1 REHAB WAY", "HAUPPAUGE", "NY", "11788", null, null, "For profit", null, null),
+                new(FacilityTypes.LongTermCare, "332001", "ISLAND SPECIALTY HOSPITAL", "2 LONG RD", "HAUPPAUGE", "NY", "11788", null, null, "For profit", 38, null),
+            ],
+            [("332301", "dialysis", 1), ("33C0001234", "asc", 2)],
+            new Dictionary<string, (double Lat, double Lon)>()).ToDictionary(r => r.Ccn);
+
+        Assert.Equal((FacilityTypes.Dialysis, "Dialysis facility", "BROOKLYN KIDNEY CENTER", 4.0, 1), (rows["332301"].Type, rows["332301"].TypeName, rows["332301"].Name,
+            rows["332301"].Rating, rows["332301"].BillingNpis));
+        // The surgery center file has no street address: the Provider of Services file's.
+        Assert.Equal((FacilityTypes.SurgeryCenter, "4 PARK AVE", (double?)null, 2), (rows["33C0001234"].Type, rows["33C0001234"].Address, rows["33C0001234"].Rating,
+            rows["33C0001234"].BillingNpis));
+        Assert.Equal((FacilityTypes.Rehab, "Rehabilitation unit of a hospital"), (rows["33T045"].Type, rows["33T045"].Kind));
+        Assert.Equal((FacilityTypes.Rehab, "Rehabilitation hospital"), (rows["333025"].Type, rows["333025"].Kind));
+        Assert.Equal((FacilityTypes.LongTermCare, "Long-term care hospital", (string?)null, 38), (rows["332001"].Type, rows["332001"].TypeName, rows["332001"].Kind,
+            rows["332001"].Beds));
+
+        using var directory = new FacilityDirectory([.. rows.Values]);
+        var page = await directory.SearchAsync(new FacilityFilter { Type = "rehab" }, Ct);
+        Assert.Equal(["33T045", "333025"], page.Items.Select(i => i.Ccn));          // by name
+        Assert.Equal(["332301"], (await directory.SearchAsync(new FacilityFilter { Type = "dialysis", MinRating = 4 }, Ct)).Items.Select(i => i.Ccn));
+        Assert.Equal([0, 0, 0, 1, 0], (await directory.GetOverviewAsync(Ct)).Ratings.Single(r => r.Type == FacilityTypes.Dialysis).ByStars);
     }
 
     [Theory]
