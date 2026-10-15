@@ -16,6 +16,8 @@ namespace Npi.Loader.Geocoding;
 /// so the map page never sees a half-built table. Its build time is kept in <c>reference_data</c> (source <c>provider_map</c>:
 /// <c>loaded_at</c> the last full build, <c>checked_at</c> the last update of any kind). After an incremental projection, or
 /// when addresses were geocoded or placed since, only those providers' rows are replaced (<see cref="BuilderPending"/>).
+/// <c>provider_map_credential</c> (credential × cell) is shared with <see cref="CredentialBuilder"/>: a full map build fills it,
+/// and so does an update when the credentials were rebuilt in full without filling it (<see cref="CredentialBuilder.MapCellsOwedSql"/>).
 /// </summary>
 public sealed class MapBuilder(Database database, ILogger log, double minRowRatio)
 {
@@ -54,11 +56,14 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
     private const string ChangedAddresses =
         "SELECT `addr_key` FROM `address_geocode` WHERE `geocoded_at` >= @since UNION SELECT `addr_key` FROM `address_point` WHERE `matched_at` >= @since";
 
-    /// <summary>True when the projection changed (in full, or NPIs are queued) or addresses were geocoded or placed since the last build.</summary>
+    /// <summary>
+    /// True when the projection changed (in full, or NPIs are queued), addresses were geocoded or placed since the last build,
+    /// or the credentials were rebuilt in full and left provider_map_credential to the map.
+    /// </summary>
     public async Task<bool> IsStaleAsync(CancellationToken ct)
     {
         await using var connection = await database.OpenAsync(ct);
-        return await NeedsFullBuildAsync(connection, ct) || await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+        return await NeedsFullBuildAsync(connection, ct) || await CredentialBuilder.MapCellsOwedAsync(connection, ct) || await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             """
             SELECT EXISTS (SELECT 1 FROM `builder_pending` WHERE `builder` = @builder)
                 OR (SELECT `checked_at` FROM `reference_data` WHERE `source` = @source)
@@ -66,6 +71,21 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
                               COALESCE((SELECT MAX(`matched_at`) FROM `address_point`), '1970-01-01'))
             """, new { source = Source, builder = BuilderPending.Map }, cancellationToken: ct)) != 0;
     }
+
+    /// <summary>
+    /// Waits for another process's build of this database's map tables (provider_map_credential included: the credential
+    /// builder takes the lock too) to finish, then holds the lock until <see cref="UnlockAsync"/>.
+    /// </summary>
+    internal static async Task LockAsync(MySqlConnection connection, CancellationToken ct)
+    {
+        if (await connection.ExecuteScalarAsync<long?>(new CommandDefinition("SELECT GET_LOCK(CONCAT('getnpidata.', DATABASE(), '.provider_map'), 7200)", cancellationToken: ct)) != 1)
+        {
+            throw new TimeoutException("Another provider_map build is still running after 2 hours.");
+        }
+    }
+
+    internal static Task UnlockAsync(MySqlConnection connection) =>
+        connection.ExecuteScalarAsync<long?>(new CommandDefinition("SELECT RELEASE_LOCK(CONCAT('getnpidata.', DATABASE(), '.provider_map'))", cancellationToken: CancellationToken.None));
 
     private static async Task<bool> NeedsFullBuildAsync(MySqlConnection connection, CancellationToken ct) =>
         await connection.ExecuteScalarAsync<long>(new CommandDefinition(
@@ -86,42 +106,52 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
         await Database.ExecuteAsync(connection, "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED", ct);
 
         // Both builds would use provider_map_staging: wait for another process's build of this database to finish first.
-        if (await connection.ExecuteScalarAsync<long?>(new CommandDefinition("SELECT GET_LOCK(CONCAT('getnpidata.', DATABASE(), '.provider_map'), 7200)", cancellationToken: ct)) != 1)
-        {
-            throw new TimeoutException("Another provider_map build is still running after 2 hours.");
-        }
-
+        await LockAsync(connection, ct);
         try
         {
             if (!full && !await NeedsFullBuildAsync(connection, ct))
             {
+                // The credentials were rebuilt in full and left provider_map_credential to the map: it is filled once, after the
+                // points moved, so the update leaves the batch's credential cells alone.
+                var cellsOwed = await CredentialBuilder.MapCellsOwedAsync(connection, ct);
+                long rows;
                 try
                 {
-                    return await BuildQueuedAsync(connection, watch, ct);
+                    rows = await BuildQueuedAsync(connection, watch, credentialCells: !cellsOwed, ct);
                 }
                 finally
                 {
                     await BuilderPending.DropBatchAsync(connection, BuilderPending.Map);
                 }
+
+                if (cellsOwed)
+                {
+                    await CredentialBuilder.FillMapCellsAsync(connection, minRowRatio, log, ct);
+                }
+
+                return rows;
             }
 
             return await BuildLockedAsync(connection, watch, ct);
         }
         finally
         {
-            await connection.ExecuteScalarAsync<long?>(new CommandDefinition("SELECT RELEASE_LOCK(CONCAT('getnpidata.', DATABASE(), '.provider_map'))", cancellationToken: CancellationToken.None));
+            await UnlockAsync(connection);
         }
     }
 
     private async Task<long> BuildLockedAsync(MySqlConnector.MySqlConnection connection, Stopwatch watch, CancellationToken ct)
     {
+        // provider_map_credential is filled from the credentials as they are now: the time they were read is kept with it.
+        var cellsAt = DateTime.UtcNow;
         var counts = await TableSwap.ReplaceAsync(connection, ["provider_map", "provider_map_specialty", "provider_map_credential"], minRowRatio, async () =>
         {
             await Database.ExecuteAsync(connection, FillSql("provider_map_staging", "`provider_location`"), ct);
             await Database.ExecuteAsync(connection, FillSpecialtySql("provider_map_specialty_staging", "`provider_map_staging`"), ct);
             await Database.ExecuteAsync(connection,
-                Projection.CredentialBuilder.MapCredentialSql("provider_map_credential_staging", "provider_credential", "provider_map_staging"), ct);
+                CredentialBuilder.MapCredentialSql("provider_map_credential_staging", "provider_credential", "provider_map_staging"), ct);
         }, ct);
+        await CredentialBuilder.RecordMapCellsAsync(connection, cellsAt, counts["provider_map_credential"], "filled by the map", ct);
         var rows = counts["provider_map"];
         var exact = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             "SELECT COUNT(*) FROM `provider_map` WHERE `approximate` = 0", cancellationToken: ct));
@@ -145,7 +175,8 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
     /// Replaces the points of the queued NPIs and of everyone at an address geocoded or placed since the last update, with their
     /// specialty and credential cells; those providers are queued for record quality (the "not mapped" reason).
     /// </summary>
-    private async Task<long> BuildQueuedAsync(MySqlConnection connection, Stopwatch watch, CancellationToken ct)
+    /// <param name="credentialCells">Replace the providers' provider_map_credential rows too (false: the caller refills that table).</param>
+    private async Task<long> BuildQueuedAsync(MySqlConnection connection, Stopwatch watch, bool credentialCells, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         var (batch, queued) = await BuilderPending.TakeAsync(connection, BuilderPending.Map, ct);
@@ -166,26 +197,37 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
                         UNION SELECT x.`npi`, x.`taxonomy_code` FROM `provider_taxonomy` x JOIN `{batch}` b3 ON b3.`npi` = x.`npi`) t ON t.`npi` = m.`npi`) k
               ON s.`taxonomy_code` = k.`taxonomy_code` AND s.`cell` = k.`cell` AND s.`npi` = k.`npi`
             """);
-        await RunAsync(
-            $"""
-            DELETE s FROM `provider_map_credential` s
-            JOIN (SELECT DISTINCT c.`credential`, {Cell} AS `cell`, m.`npi` FROM {points} m JOIN `provider_credential` c ON c.`npi` = m.`npi`) k
-              ON s.`credential` = k.`credential` AND s.`cell` = k.`cell` AND s.`npi` = k.`npi`
-            """);
+        // The credential cells by key: the credentials as they are now (an incremental credential build already replaced the
+        // batch's and their cells at these points, or left the cells of NPIs queued here to this update) at the old points.
+        if (credentialCells)
+        {
+            await RunAsync(
+                $"""
+                DELETE s FROM `provider_map_credential` s
+                JOIN (SELECT DISTINCT c.`credential`, {Cell} AS `cell`, m.`npi` FROM {points} m JOIN `provider_credential` c ON c.`npi` = m.`npi`) k
+                  ON s.`credential` = k.`credential` AND s.`cell` = k.`cell` AND s.`npi` = k.`npi`
+                """);
+        }
+
         await RunAsync($"DELETE m FROM `provider_map` m JOIN `{batch}` b ON b.`npi` = m.`npi`");
         var rows = await RunAsync(FillSql("provider_map",
             $"(SELECT l.`npi`, l.`addr_key`, l.`zip5` FROM `provider_location` l JOIN `{batch}` b ON b.`npi` = l.`npi`) bl"));
         await RunAsync(FillSpecialtySql("provider_map_specialty", points));
-        await RunAsync(
-            $"""
-            INSERT INTO `provider_map_credential` (`credential`, `cell`, `npi`)
-            SELECT DISTINCT c.`credential`, {Cell}, m.`npi` FROM {points} m JOIN `provider_credential` c ON c.`npi` = m.`npi`
-            """);
+        if (credentialCells)
+        {
+            await RunAsync(
+                $"""
+                INSERT INTO `provider_map_credential` (`credential`, `cell`, `npi`)
+                SELECT DISTINCT c.`credential`, {Cell}, m.`npi` FROM {points} m JOIN `provider_credential` c ON c.`npi` = m.`npi`
+                """);
+        }
+
         await RunAsync($"INSERT IGNORE INTO `{QualityBuilder.Pending}` (`npi`) SELECT `npi` FROM `{batch}`");
         await BuilderPending.DoneAsync(connection, BuilderPending.Map, tx, ct);
         await connection.ExecuteAsync(new CommandDefinition("UPDATE `reference_data` SET `checked_at` = @started WHERE `source` = @source",
             new { source = Source, started }, tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
+        await BuilderPending.CleanAsync(connection, null, ct);
         log.Information("provider_map: {Npis:N0} providers updated ({Queued:N0} queued, {Placed:N0} more at newly placed addresses), {Rows:N0} points, in {Seconds:N0}s",
             queued + placed, queued, placed, rows, watch.Elapsed.TotalSeconds);
         return rows;

@@ -178,6 +178,12 @@ public sealed class LoaderOptions
     /// <summary>How many NPI ranges the full export reads at once.</summary>
     public int ExportParts { get; set; } = 8;
 
+    /// <summary>
+    /// How many of the builders after the projection that read none of each other's tables (standardized credentials, practice
+    /// address types, area counts) run at once, each on its own MySQL connection (speed item 13); 1 = one after another.
+    /// </summary>
+    public int ParallelBuilders { get; set; } = 3;
+
     public string ResolvedLogFolder => Resolve(LogFolder, "logs");
 
     /// <summary>

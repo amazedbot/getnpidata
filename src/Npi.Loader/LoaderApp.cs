@@ -105,49 +105,13 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             }
         }
 
-        // Stage 5.5 item 12: standardized credentials, rebuilt after each projection.
-        var credentials = new CredentialBuilder(database, log, options.MinRowRatio);
-        if (projectionOk && await credentials.IsStaleAsync(ct))
+        // Stage 5.5 item 12 (standardized credentials), item 18 (practice address types: new addresses, providers at an address) and
+        // the area pages' counts (docs/PRODUCT_PLAN.md step 1.6), each brought up to date after the projection, side by side
+        // (speed item 13). The map is built next: the credentials leave provider_map_credential to it, so it is filled once.
+        if (projectionOk)
         {
-            try
-            {
-                await credentials.BuildAsync(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                log.Error(ex, "Building the standardized credentials failed");
-                projectionOk = false;
-            }
-        }
-
-        // Stage 5.5 item 18: practice address types, relabelled after each projection (new addresses, providers at an address).
-        var addressTypes = new AddressTypeBuilder(database, log, options.MinRowRatio);
-        if (projectionOk && await addressTypes.IsStaleAsync(ct))
-        {
-            try
-            {
-                await addressTypes.BuildAsync(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                log.Error(ex, "Labelling the practice address types failed");
-                projectionOk = false;
-            }
-        }
-
-        // Area pages (docs/PRODUCT_PLAN.md step 1.6): provider counts per area and specialty, recounted after each projection.
-        var areas = new AreaCountBuilder(database, log, options.MinRowRatio);
-        if (projectionOk && await areas.IsStaleAsync(ct))
-        {
-            try
-            {
-                await areas.BuildAsync(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                log.Error(ex, "Counting the providers per area failed");
-                projectionOk = false;
-            }
+            projectionOk = await BuilderSteps.RunAsync(AfterProjection(full: false, onlyIfStale: true, leaveMapCells: !options.SkipMapBuild),
+                options.ParallelBuilders, log, ct);
         }
 
         // Stage 5.5 item 10: geocode new practice addresses (a bounded number per run) and refresh the map table.
@@ -233,9 +197,11 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         await _downLog.SetSampleAsync(weekly.File, ct);
         var referenceOk = await new ReferenceLoader(options, database, http, log).RefreshAllAsync(force: false, ct);
         await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
-        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
-        await new AddressTypeBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
-        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full: true);
+        if (!await BuilderSteps.RunAsync(AfterProjection(full: true, onlyIfStale: false, leaveMapCells: !options.SkipMapBuild, everyAddressType: true), options.ParallelBuilders, log, ct))
+        {
+            return 1;
+        }
+
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: false);
         await new FullExportBuilder(database, log, options).BuildAsync(ct);
@@ -342,16 +308,35 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
     {
         await EnsureMigratedAsync(ct);
         await new ProjectionBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
-        await new CredentialBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
-        var addressTypes = new AddressTypeBuilder(database, log, options.MinRowRatio);
-        if (await addressTypes.IsStaleAsync(ct))
+        // No map build follows here: the credentials keep provider_map_credential current themselves.
+        if (!await BuilderSteps.RunAsync(AfterProjection(full, onlyIfStale: false, leaveMapCells: false), options.ParallelBuilders, log, ct))
         {
-            await addressTypes.BuildAsync(ct, full);
+            return 1;
         }
 
-        await new AreaCountBuilder(database, log, options.MinRowRatio).BuildAsync(ct, full);
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: !full);
         return 0;
+    }
+
+    /// <summary>
+    /// The builders after the projection that read none of each other's tables (<see cref="BuilderSteps"/>), run side by side.
+    /// </summary>
+    /// <param name="full">Rebuild each in full; otherwise each takes its incremental path when it can.</param>
+    /// <param name="onlyIfStale">Skip a builder with nothing to do (<c>run</c>). The address types are labelled only when stale
+    /// anyway (before a FEMA load there is nothing to label), unless <paramref name="everyAddressType"/>.</param>
+    /// <param name="leaveMapCells">The map is built after these in the same command: it fills provider_map_credential.</param>
+    /// <param name="everyAddressType">Label the addresses even without FEMA buildings (<c>sample</c>: by the business signs alone).</param>
+    private IReadOnlyList<BuilderStep> AfterProjection(bool full, bool onlyIfStale, bool leaveMapCells, bool everyAddressType = false)
+    {
+        var credentials = new CredentialBuilder(database, log, options.MinRowRatio);
+        var addressTypes = new AddressTypeBuilder(database, log, options.MinRowRatio);
+        var areas = new AreaCountBuilder(database, log, options.MinRowRatio);
+        return
+        [
+            new("Standardized credentials", onlyIfStale ? credentials.IsStaleAsync : null, c => credentials.BuildAsync(c, full, leaveMapCells)),
+            new("Practice address types", everyAddressType ? null : addressTypes.IsStaleAsync, async c => await addressTypes.BuildAsync(c, full)),
+            new("Area counts", onlyIfStale ? areas.IsStaleAsync : null, async c => await areas.BuildAsync(c, full)),
+        ];
     }
 
     /// <summary>The <c>export</c> command: write the ready-made file of every active provider now.</summary>

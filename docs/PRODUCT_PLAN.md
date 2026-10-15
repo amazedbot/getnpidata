@@ -462,7 +462,7 @@ of 2026-10-13 proposed these items; the owner chose the order below. The state o
 | 6 | ~~Socrata delta pulls (TX, WA, IL, CO, CT, DE), a full pull every few weeks~~ **dropped** (owner, 2026-10-15): only CT publishes real deltas; the other portals rewrite every row at each update | ~~changed rows only~~ 1–2 min a week |
 | 7 | Independent sources, states and the Vermont feed in parallel (2–4 at a time) | downloads overlap loads |
 | 10 | Deactivation flags by difference (**done** 2026-10-14) | 9.8M rows → a few thousand (measured: after a monthly under 1 s instead of 55–61 s; after a report a few seconds instead of ~57 s) |
-| 13 | The map-by-credential table built once; independent builders side by side | less after item 2 |
+| 13 | The map-by-credential table built once; independent builders side by side (**done** 2026-10-15; timings to measure) | less after item 2 |
 | 11 | API caches: the openFDA key (**done**, PR #62); ClinicalTrials.gov 3–5 requests at once (not scheduled) | the first fill in one run instead of ~10 days |
 | 9 | Stream zips instead of extracting them, where a loader still extracts (not scheduled) | disk and time |
 | 14 | Relax MySQL's disk flushing during big loads (**skipped** 2026-10-14 after measuring: a commit flush ~0.6 ms and the big loads are single statements; a bigger index-build buffer didn't help; approved 2026-10-13: a crash loses the last second of writes, which a reload repeats; any setting changed by hand is explained to the owner first) | faster big loads |

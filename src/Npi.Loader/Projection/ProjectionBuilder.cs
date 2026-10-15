@@ -153,6 +153,9 @@ public sealed class ProjectionBuilder(Database database, ILogger log, double min
         var started = DateTime.UtcNow;
         try
         {
+            // The builders drop the snapshots nobody needs after their commits; one a stopped builder left behind would stand for
+            // an NPI's old state again below (only NPIs without a snapshot get one).
+            await BuilderPending.CleanAsync(connection, null, ct);
             await CreateStagingAsync(connection, ct);
             await FillStagingAsync(connection, BatchScope, ct);
             var now = _clock.GetUtcNow().UtcDateTime;
