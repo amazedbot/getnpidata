@@ -20,6 +20,7 @@ public enum LoaderCommand
     Doctor,
     Sample,
     Export,
+    Directories,
 }
 
 /// <summary>A parsed command line: the command plus its positional arguments.</summary>
@@ -46,6 +47,7 @@ public static class LoaderCommandLine
         ["doctor"] = LoaderCommand.Doctor,
         ["sample"] = LoaderCommand.Sample,
         ["export"] = LoaderCommand.Export,
+        ["directories"] = LoaderCommand.Directories,
     };
 
     public const string Usage = """
@@ -68,6 +70,7 @@ public static class LoaderCommandLine
           export           Write the ready-made file of every active provider (run does it after a load
                            changed its data); the site serves it for an export with no filter
           areas            Recount the providers per area (US, states, counties) and specialty for the area pages
+          directories      Rebuild the facility, Medicare group and organization tables of the directory pages
           geocode [county] Geocode every new practice address (Census) and rebuild the map tables;
                            with a 5-digit county FIPS, only that county's addresses
           overture [area]  Place practice addresses at their building with Overture Maps data (address

@@ -40,6 +40,15 @@ builder.Services.AddSingleton(sp => new CareFinder(connectionString, sp.GetRequi
 builder.Services.AddSingleton(_ => new CompanyService(connectionString));
 builder.Services.AddSingleton(sp => new IndustryService(connectionString, sp.GetRequiredService<CompanyService>(), sp.GetRequiredService<ProductService>()));
 builder.Services.AddSingleton(_ => new ProductService(connectionString));
+// Facilities & hospitals and Groups & organizations (docs/PRODUCT_PLAN.md step 3.6): lists kept in memory until the data changes,
+// built once after the site starts (not in tests, which have no database).
+builder.Services.AddSingleton(_ => new FacilityDirectory(connectionString));
+builder.Services.AddSingleton(_ => new OrganizationDirectory(connectionString));
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddHostedService<DirectoryWarmup>();
+}
+
 builder.Services.AddSingleton(sp => new SearchVocabularyCatalog(connectionString, sp.GetRequiredService<TaxonomyCatalog>()));
 builder.Services.AddSingleton(sp => new SuggestService(connectionString, sp.GetRequiredService<SearchVocabularyCatalog>()));
 builder.Services.Configure<MapOptions>(builder.Configuration.GetSection(MapOptions.Section));
@@ -48,6 +57,8 @@ builder.Services.AddRazorPages(o =>
 {
     o.Conventions.AddPageRoute("/Index", "search");
     o.Conventions.AddPageRoute("/Verify", "lookup"); // the bulk lookup's first URL (docs/PRODUCT_PLAN.md §2.1)
+    o.Conventions.AddPageRoute("/Facilities", "hospitals"); // the facilities list on hospitals (step 3.6)
+    o.Conventions.AddPageRoute("/Organizations", "groups"); // the groups & organizations page on Medicare groups
 });
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
@@ -138,6 +149,9 @@ app.MapGet("/provider/{npi}/raw.csv", async (string npi, HttpContext http, Searc
 // Group practice and facility profiles (step 1.5): the record as JSON, and every clinician as CSV (the summary columns).
 // Companies & products (docs/PRODUCT_PLAN.md Phase 9, owner 2026-10-12): every company or product as CSV, and each one's full record.
 app.MapGet("/companies.csv", IndustryEndpoints.CompaniesCsvAsync);
+// Facilities & hospitals, Groups & organizations (step 3.6): the lists as CSV, the same filters as the pages and /api/v1.
+app.MapGet("/facilities.csv", DirectoryEndpoints.FacilitiesCsvAsync);
+app.MapGet("/groups.csv", DirectoryEndpoints.GroupsCsvAsync);
 app.MapGet("/products.csv", IndustryEndpoints.ProductsCsvAsync);
 app.MapGet("/company/{id}/raw.json", async (string id, HttpContext http, CompanyService companies, CancellationToken ct) =>
 {

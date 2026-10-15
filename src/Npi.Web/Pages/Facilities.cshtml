@@ -1,0 +1,255 @@
+@page "/facilities"
+@using System.Globalization
+@using Npi.Core.Search
+@model FacilitiesModel
+@if (Model.NotReady)
+{
+    ViewData["Title"] = "Facilities & hospitals";
+    <div class="profile industry">
+        <div>
+            <h1>Facilities &amp; hospitals</h1>
+            <p class="lede">Every Medicare-certified hospital, nursing home, home health agency, hospice, clinic and center, from CMS's Provider of Services file and Medicare Care Compare.</p>
+        </div>
+        <section class="card" role="status" aria-labelledby="prep-h">
+            <h2 id="prep-h">The list is being prepared</h2>
+            <p>It is built with the next data load and appears here then. Each facility's own page works already, for example from a hospital on a provider's profile.</p>
+        </section>
+    </div>
+    return;
+}
+@{
+    var o = Model.Overview;
+    var r = Model.Result;
+    var type = Model.SelectedType;
+    ViewData["Title"] = type is { Code: FacilityTypes.Hospital } ? "Hospitals" : "Facilities & hospitals";
+    var states = GeographyCatalog.AllStateNames.OrderBy(s => s.Value, StringComparer.Ordinal).ToList();
+    var ratings = o.Ratings.Where(x => type is null || x.Type == type.Code).ToList();
+    var first = (r.Page - 1) * FacilityFilter.DefaultPageSize;
+}
+
+<div class="profile industry">
+    <div>
+        <h1>Facilities &amp; hospitals</h1>
+        <p class="lede">Every Medicare-certified hospital, nursing home, home health agency, hospice, clinic and center, from CMS's Provider of Services file and Medicare Care Compare. Find one to see how CMS rates it, who works there and the NPIs it bills under.</p>
+    </div>
+
+    <form method="get" action="/facilities" class="industry-search" role="search">
+        <label for="q" class="visually-hidden">A facility name, city, ZIP or CMS ID</label>
+        <input id="q" name="q" type="search" value="@Model.Q" maxlength="@FacilityFilter.MaxQueryLength" placeholder="A name, city, ZIP or CMS ID, e.g. Good Samaritan West Islip" />
+        @if (type is not null){<input type="hidden" name="type" value="@type.Code" />}
+        <button type="submit">Search</button>
+    </form>
+    @if (Model.Errors.Count > 0)
+    {
+        <p class="error" role="alert">@string.Join(" ", Model.Errors.Select(e => $"{e.Key}: {string.Join(" ", e.Value)}")) The list below has no filters.</p>
+    }
+
+    <div class="stat-row">
+        @foreach (var t in o.Types.Where(t => t.Active > 0 || t.Closed > 0))
+        {
+            <a class="stat@(t.Type == type?.Code ? " current" : null)" href="@Model.ListUrl(type: t.Type, minRating: null, maxRating: null, sort: null, q: null)#list" aria-current="@(t.Type == type?.Code ? "true" : null)">
+                <span class="label">@t.Name</span>
+                <strong>@Format.Number(t.Active)</strong>
+                <span class="small">certified now@(t.Closed > 0 ? $" · {Format.Number(t.Closed)} closed" : "")</span>
+            </a>
+        }
+    </div>
+
+    <div class="profile-row top-align">
+        @if (ratings.Count > 0)
+        {
+            <section class="card grow-card" aria-labelledby="rt-h">
+                <h2 id="rt-h">How CMS rates them</h2>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Active facilities by CMS star rating; each number opens the list</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Type</th>
+                                @for (var s = 5; s >= 1; s--){<th scope="col">@s ★</th>}
+                                <th scope="col">Not rated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var x in ratings)
+                            {
+                                <tr>
+                                    <th scope="row"><span class="nowrap">@x.Name</span><br /><span class="muted small">@x.RatingName</span></th>
+                                    @for (var s = 5; s >= 1; s--)
+                                    {
+                                        var n = x.ByStars[s - 1];
+                                        <td>@if (n > 0){<a href="@Model.ListUrl(type: x.Type, minRating: s.ToString(CultureInfo.InvariantCulture), maxRating: s.ToString(CultureInfo.InvariantCulture), status: null, sort: null, q: null)#list">@Format.Number(n)</a>}else{<text>0</text>}</td>
+                                    }
+                                    <td>@Format.Number(x.NotRated)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="chips">
+                    @foreach (var x in ratings)
+                    {
+                        <a class="chip" href="@Model.ListUrl(type: x.Type, minRating: null, maxRating: null, status: null, sort: "-rating", q: null)#list">Best rated @x.Name.ToLowerInvariant()</a>
+                        <a class="chip" href="@Model.ListUrl(type: x.Type, minRating: null, maxRating: null, status: null, sort: "rating", q: null)#list">Lowest rated @x.Name.ToLowerInvariant()</a>
+                    }
+                </p>
+                <p class="src">Medicare Care Compare star ratings, 1 to 5 (home health in half stars, counted down). Hospitals: the overall rating; nursing homes: the overall rating; home health: quality of patient care; hospices: the family caregiver survey. FQHCs, rural health clinics, dialysis facilities and surgery centers aren't rated here.</p>
+            </section>
+        }
+        <section class="card side-card" aria-labelledby="dl-h">
+            <h2 id="dl-h">Download the data</h2>
+            <p>The list below, or every facility, active and closed, as a spreadsheet (CSV) with a link to each page:</p>
+            <p class="area-actions">
+                <a class="button" href="@Model.ListUrl("/facilities.csv")" download>This list (CSV)</a>
+                <a class="button secondary" href="/facilities.csv?status=all" download>Every facility (CSV)</a>
+            </p>
+            <p class="src">Programs can use <a href="/developers">the API</a>: <code>/api/v1/facilities</code> and <code>/api/v1/facilities.csv</code>, with the same filters as this page.</p>
+        </section>
+    </div>
+
+    <section class="card" id="list" aria-labelledby="list-h">
+        <div class="card-head">
+            <h2 id="list-h">@Model.ListTitle (@Format.Number(r.TotalCount))</h2>
+            <a class="small" href="@Model.ListUrl("/facilities.csv")" download>Export list (CSV)</a>
+        </div>
+
+        <form method="get" action="/facilities#list" class="directory-filters">
+            @if (!string.IsNullOrWhiteSpace(Model.Q)){<input type="hidden" name="q" value="@Model.Q" />}
+            @if (!string.IsNullOrWhiteSpace(Model.Sort)){<input type="hidden" name="sort" value="@Model.Sort" />}
+            <div class="field">
+                <label for="type">Type</label>
+                <select id="type" name="type">
+                    <option value="">Any type</option>
+                    @foreach (var t in FacilityTypes.All)
+                    {
+                        <option value="@t.Code" selected="@(t.Code == type?.Code)">@t.Plural</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label for="state">State</label>
+                <select id="state" name="state">
+                    <option value="">Any state</option>
+                    @foreach (var (code, name) in states)
+                    {
+                        <option value="@code" selected="@(string.Equals(code, Model.State, StringComparison.OrdinalIgnoreCase))">@name</option>
+                    }
+                </select>
+            </div>
+            <div class="field narrow">
+                <label for="minRating">Rated at least</label>
+                <select id="minRating" name="minRating">
+                    <option value="">Any</option>
+                    @for (var s = 1; s <= 5; s++){<option value="@s" selected="@(Model.MinRating == s)">@s ★</option>}
+                </select>
+            </div>
+            <div class="field narrow">
+                <label for="maxRating">Rated at most</label>
+                <select id="maxRating" name="maxRating">
+                    <option value="">Any</option>
+                    @for (var s = 1; s <= 5; s++){<option value="@s" selected="@(Model.MaxRating == s)">@s ★</option>}
+                </select>
+            </div>
+            <div class="field narrow">
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    <option value="">Certified now</option>
+                    <option value="@FacilityFilter.StatusClosed" selected="@(Model.Status == FacilityFilter.StatusClosed)">Closed</option>
+                    <option value="@FacilityFilter.StatusAll" selected="@(Model.Status == FacilityFilter.StatusAll)">Both</option>
+                </select>
+            </div>
+            <div class="field narrow directory-submit"><button type="submit">Show</button></div>
+        </form>
+
+        <p class="chips" aria-label="Types in this list">
+            <a class="chip" href="@Model.ListUrl(type: null)#list" aria-current="@(type is null ? "true" : null)">All types · @Format.Number(Model.TypeCounts.Sum(t => Model.ShowClosed ? t.Active + t.Closed : t.Active))</a>
+            @foreach (var t in Model.TypeCounts)
+            {
+                var n = Model.Status switch { FacilityFilter.StatusClosed => t.Closed, FacilityFilter.StatusAll => t.Active + t.Closed, _ => t.Active };
+                if (n == 0 && t.Type != type?.Code)
+                {
+                    continue;
+                }
+                <a class="chip" href="@Model.ListUrl(type: t.Type)#list" aria-current="@(t.Type == type?.Code ? "true" : null)">@t.Name · @Format.Number(n)</a>
+            }
+        </p>
+
+        @if (r.Items.Count == 0)
+        {
+            <p>No facility matches. Try another name, type or state@(Model.Status is null ? ", or include closed facilities" : "").</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">@Model.ListTitle, page @r.Page of @Model.PageCount</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col" aria-sort="@Model.AriaSort("name")"><a href="@Model.SortUrl("name")#list">Facility</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("type")"><a href="@Model.SortUrl("type")#list">Type</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("city")"><a href="@Model.SortUrl("city")#list">City</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("state")"><a href="@Model.SortUrl("state")#list">State</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("rating")"><a href="@Model.SortUrl("rating")#list">CMS rating</a></th>
+                            @if (Model.ShowClosed){<th scope="col" aria-sort="@Model.AriaSort("closed")"><a href="@Model.SortUrl("closed")#list">Status</a></th>}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < r.Items.Count; i++)
+                        {
+                            var f = r.Items[i];
+                            <tr>
+                                <td class="muted">@(first + i + 1)</td>
+                                <td class="break"><a href="/facility/@Uri.EscapeDataString(f.Ccn)">@FacilitiesModel.Name(f.Name)</a><br /><span class="muted small">@(f.Kind is null ? "" : f.Kind + " · ")CMS ID <span class="mono">@f.Ccn</span>@(f.Beds is { } beds ? $" · {Format.Number(beds)} beds" : "")</span></td>
+                                <td>@f.TypeName</td>
+                                <td>@(f.City is null ? "" : CityCatalog.TitleCase(f.City))</td>
+                                <td>@f.State</td>
+                                <td class="nowrap">@FacilitiesModel.Stars(f.Rating)</td>
+                                @if (Model.ShowClosed)
+                                {
+                                    <td>@if (f.Active){<span class="pill ok">Certified</span>}else{<span class="pill alert">Closed@(f.TerminationDate is { } d ? " " + d.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) : "")</span>@if (f.TerminationReason is not null){<br /><span class="muted small">@f.TerminationReason</span>}}</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (Model.PageCount > 1)
+            {
+                <nav class="pager" aria-label="Pages">
+                    @if (r.Page > 1) { <a href="@Model.ListUrl(page: r.Page - 1)#list" rel="prev">‹ Previous</a> }
+                    <span>Page @r.Page of @Format.Number(Model.PageCount)</span>
+                    @if (r.Page < Model.PageCount) { <a href="@Model.ListUrl(page: r.Page + 1)#list" rel="next">Next ›</a> }
+                </nav>
+            }
+        }
+    </section>
+
+    @if (Model.Map is { } map)
+    {
+        <section class="card" aria-labelledby="map-h">
+            <div class="card-head">
+                <h2 id="map-h">This page on a map</h2>
+                <a class="small" href="@Model.MapUrl">@(type?.Category is null ? "The full map" : $"{type.Plural} on the full map") →</a>
+            </div>
+            <div class="static-map">
+                @foreach (var t in map.Tiles)
+                {
+                    <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
+                         style="left:@(StaticMap.Css(t.LeftPercent))%;top:@(StaticMap.Css(t.TopPercent))%;width:@(StaticMap.Css(t.WidthPercent))%;height:@(StaticMap.Css(t.HeightPercent))%" />
+                }
+                @foreach (var pin in map.Pins.Reverse())
+                {
+                    <span class="pin approx" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%" aria-hidden="true">@pin.Label</span>
+                }
+            </div>
+            <p class="src">Numbered like the list above, at the centre of each facility's ZIP code (approximate). @Html.Raw(Model.Attribution)</p>
+        </section>
+    }
+
+    <p class="src">
+        Sources: CMS Provider of Services file (every certified facility by CMS Certification Number, active or closed) and Medicare Care Compare (hospitals, nursing homes,
+        home health agencies, hospices: names, ratings, ownership, beds). The type of a facility outside Care Compare comes from the enrollment that links it to an NPI, else
+        from its CMS number. A listing says nothing about whether a facility takes new patients or a plan.
+    </p>
+</div>

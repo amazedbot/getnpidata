@@ -1,0 +1,340 @@
+@page "/organizations"
+@using System.Globalization
+@using Npi.Core.Search
+@model OrganizationsModel
+@if (Model.NotReady)
+{
+    ViewData["Title"] = "Groups & organizations";
+    <div class="profile industry">
+        <div>
+            <h1>Groups &amp; organizations</h1>
+            <p class="lede">Medicare group practices and every organization with an NPI: clinics, practices, agencies, labs, pharmacies and suppliers.</p>
+        </div>
+        <section class="card" role="status" aria-labelledby="prep-h">
+            <h2 id="prep-h">The lists are being prepared</h2>
+            <p>They are built with the next data load and appear here then. Meanwhile, <a href="/search?entityType=2">search organization NPIs</a>; each group's own page works already, for example from a clinician's profile.</p>
+        </section>
+    </div>
+    return;
+}
+@{
+    var o = Model.Overview;
+    ViewData["Title"] = Model.GroupsView ? "Medicare groups" : "Groups & organizations";
+    var states = GeographyCatalog.AllStateNames.OrderBy(s => s.Value, StringComparer.Ordinal).ToList();
+    var large = o.Sizes.Where(s => s.Min >= 50).Sum(s => s.Groups);
+}
+
+<div class="profile industry">
+    <div>
+        <h1>Groups &amp; organizations</h1>
+        <p class="lede">Medicare group practices and every organization with an NPI: clinics, practices, agencies, labs, pharmacies and suppliers. See how big a group is, which organizations are enrolled under it, and how current each organization's record looks.</p>
+    </div>
+
+    <form method="get" action="@(Model.GroupsView ? "/groups" : "/organizations")" class="industry-search" role="search">
+        <label for="q" class="visually-hidden">An organization or group name, an NPI or a Medicare group ID (PAC ID)</label>
+        <input id="q" name="q" type="search" value="@Model.Q" maxlength="@GroupFilter.MaxQueryLength" placeholder="A name, NPI or Medicare group ID, e.g. Northwell" />
+        <button type="submit">Search</button>
+    </form>
+    @if (Model.Errors.Count > 0)
+    {
+        <p class="error" role="alert">@string.Join(" ", Model.Errors.Select(e => $"{e.Key}: {string.Join(" ", e.Value)}")) The list below has no filters.</p>
+    }
+
+    <nav aria-label="Views">
+        <ul class="view-tabs">
+            <li><a class="chip" href="/organizations" aria-current="@(Model.GroupsView ? null : "page")">Overview</a></li>
+            <li><a class="chip" href="/groups" aria-current="@(Model.GroupsView ? "page" : null)">Medicare groups · @Format.Number(o.Groups)</a></li>
+        </ul>
+    </nav>
+
+    <div class="stat-row">
+        <a class="stat" href="/groups">
+            <span class="label">Medicare groups</span>
+            <strong>@Format.Number(o.Groups)</strong>
+            <span class="small">group practices with an active clinician</span>
+        </a>
+        <a class="stat" href="@Model.GroupsUrl(state: null, minClinicians: "50", maxClinicians: null, sort: null, q: null)">
+            <span class="label">Groups of 50 or more</span>
+            <strong>@Format.Number(large)</strong>
+            <span class="small">clinicians billing through or listed with them</span>
+        </a>
+        <a class="stat" href="/search?entityType=2">
+            <span class="label">Organization NPIs</span>
+            <strong>@Format.Number(o.Organizations)</strong>
+            <span class="small">active, every kind of organization</span>
+        </a>
+        @if (o.BillingOrganizations > 0)
+        {
+            <div class="stat">
+                <span class="label">Paid by Medicare Part B@(o.BillingYear is { } by ? $", {by}" : "")</span>
+                <strong>@Format.ShortMoney(o.BillingTotal)</strong>
+                <span class="small">to @Format.Number(o.BillingOrganizations) organizations under their own NPI</span>
+            </div>
+        }
+    </div>
+
+    @if (Model.GroupsView)
+    {
+        var g = Model.Groups!;
+        <section class="card" id="list" aria-labelledby="list-h">
+            <div class="card-head">
+                <h2 id="list-h">Medicare groups@(Model.State is { } st ? " in " + GeographyCatalog.StateName(st) : "")@(Model.Searched ? $" matching “{Model.Q!.Trim()}”" : "") (@Format.Number(g.TotalCount))</h2>
+                <a class="small" href="@Model.GroupsUrl("/groups.csv")" download>Export list (CSV)</a>
+            </div>
+            <form method="get" action="/groups" class="directory-filters">
+                @if (Model.Searched){<input type="hidden" name="q" value="@Model.Q" />}
+                @if (!string.IsNullOrWhiteSpace(Model.Sort)){<input type="hidden" name="sort" value="@Model.Sort" />}
+                <div class="field">
+                    <label for="state">State</label>
+                    <select id="state" name="state">
+                        <option value="">Any state</option>
+                        @foreach (var (code, name) in states)
+                        {
+                            <option value="@code" selected="@(code == Model.State)">@name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field narrow">
+                    <label for="minClinicians">At least (clinicians)</label>
+                    <input id="minClinicians" name="minClinicians" type="number" min="0" inputmode="numeric" value="@Model.MinClinicians" />
+                </div>
+                <div class="field narrow">
+                    <label for="maxClinicians">At most (clinicians)</label>
+                    <input id="maxClinicians" name="maxClinicians" type="number" min="0" inputmode="numeric" value="@Model.MaxClinicians" />
+                </div>
+                <div class="field narrow directory-submit"><button type="submit">Show</button></div>
+            </form>
+            <p class="chips" aria-label="Group sizes">
+                @foreach (var b in o.Sizes)
+                {
+                    var current = Model.MinClinicians == b.Min && Model.MaxClinicians == b.Max;
+                    <a class="chip" href="@Model.BandUrl(b)" aria-current="@(current ? "true" : null)">@b.Label · @Format.Number(b.Groups)</a>
+                }
+            </p>
+
+            @if (g.Items.Count == 0)
+            {
+                <p>No group matches. Try another name or state, or a Medicare group ID (10 digits).</p>
+            }
+            else
+            {
+                var first = (g.Page - 1) * GroupFilter.DefaultPageSize;
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Medicare groups, page @g.Page of @Model.PageCount</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col" aria-sort="@Model.AriaSort("name")"><a href="@Model.SortUrl("name")#list">Group</a></th>
+                                <th scope="col" aria-sort="@Model.AriaSort("state")"><a href="@Model.SortUrl("state")#list">State</a></th>
+                                <th scope="col" class="num" aria-sort="@Model.AriaSort("clinicians")"><a href="@Model.SortUrl("clinicians")#list">Clinicians</a></th>
+                                <th scope="col" class="num" aria-sort="@Model.AriaSort("organizations")"><a href="@Model.SortUrl("organizations")#list">Organization NPIs</a></th>
+                                <th scope="col" class="num" aria-sort="@Model.AriaSort("mips")"><a href="@Model.SortUrl("mips")#list">MIPS score</a></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (var i = 0; i < g.Items.Count; i++)
+                            {
+                                var x = g.Items[i];
+                                <tr>
+                                    <td class="muted">@(first + i + 1)</td>
+                                    <td class="break"><a href="/group/@x.PacId">@OrganizationsModel.Name(x.Name)</a><br /><span class="muted small">Group ID <span class="mono">@x.PacId</span>@(x.AcceptsMedicare == true ? " · accepts Medicare" : "")</span></td>
+                                    <td>@x.State</td>
+                                    <td class="num">@Format.Number(x.Clinicians)</td>
+                                    <td class="num">@Format.Number(x.OrganizationNpis)</td>
+                                    <td class="num">@OrganizationsModel.Score(x.MipsScore)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (Model.PageCount > 1)
+                {
+                    <nav class="pager" aria-label="Pages">
+                        @if (g.Page > 1) { <a href="@Model.GroupsUrl(page: g.Page - 1)#list" rel="prev">‹ Previous</a> }
+                        <span>Page @g.Page of @Format.Number(Model.PageCount)</span>
+                        @if (g.Page < Model.PageCount) { <a href="@Model.GroupsUrl(page: g.Page + 1)#list" rel="next">Next ›</a> }
+                    </nav>
+                }
+            }
+            <p class="src">
+                A Medicare group is a practice that clinicians reassign their Medicare billing to, identified by its PECOS associate control ID (PAC ID). Clinicians: the active
+                NPIs reassigned to it (Medicare Fee-For-Service enrollment) or listed with it in Medicare Care Compare, as on each group's page. Organization NPIs: those
+                enrolled in Medicare under the group's ID. MIPS score: the group's final score in the Merit-based Incentive Payment System (0–100), when it reported as a group@(o.MipsYear is { } my ? $" (program year {my})" : "").
+            </p>
+        </section>
+    }
+    else
+    {
+        @if (Model.Searched)
+        {
+            <div class="profile-row top-align">
+                <section class="card grow-card" aria-labelledby="gm-h">
+                    <h2 id="gm-h">Medicare groups matching “@Model.Q!.Trim()”</h2>
+                    @if (Model.Groups is not { TotalCount: > 0 } gm)
+                    {
+                        <p class="muted">No group name or ID matches@(Model.SearchedNpi is not null ? ", and this NPI bills through no group" : "").</p>
+                    }
+                    else
+                    {
+                        <ul class="plain-list">
+                            @foreach (var x in gm.Items)
+                            {
+                                <li><a href="/group/@x.PacId">@OrganizationsModel.Name(x.Name)</a> <span class="muted">· @(x.State is null ? "" : x.State + " · ")@Format.Number(x.Clinicians) clinicians</span></li>
+                            }
+                        </ul>
+                        @if (gm.TotalCount > gm.Items.Count){<p><a href="/groups?q=@Uri.EscapeDataString(Model.Q!.Trim())">All @Format.Number(gm.TotalCount) matching groups →</a></p>}
+                    }
+                </section>
+                <section class="card grow-card" aria-labelledby="om-h">
+                    <h2 id="om-h">Organization NPIs</h2>
+                    @if (Model.SearchedNpi is { } npi)
+                    {
+                        <p><a href="/provider/@npi">Open NPI <span class="mono">@npi</span></a></p>
+                    }
+                    else if (Model.OrganizationMatches is not { TotalCount: > 0 } om)
+                    {
+                        <p class="muted">No organization name matches.</p>
+                    }
+                    else
+                    {
+                        <ul class="plain-list">
+                            @foreach (var p in om.Items)
+                            {
+                                <li><a href="/provider/@p.Npi">@p.Name</a> <span class="muted">· @(p.PlainSpecialty ?? p.PrimarySpecialty)@(p.City is null ? "" : $" · {CityCatalog.TitleCase(p.City)}, {p.State}")</span></li>
+                            }
+                        </ul>
+                        @if (om.TotalCount > om.Items.Count){<p><a href="/search?orgName=@Uri.EscapeDataString(Model.Q!.Trim())&amp;nameMatch=similar&amp;entityType=2">All @Format.Number(om.TotalCount) matching organizations →</a></p>}
+                    }
+                </section>
+            </div>
+        }
+
+        <div class="profile-row top-align">
+            <section class="card grow-card" aria-labelledby="sz-h">
+                <h2 id="sz-h">Medicare groups by size</h2>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Medicare groups and their clinicians by group size</caption>
+                        <thead><tr><th scope="col">Clinicians in the group</th><th scope="col" class="num">Groups</th><th scope="col" class="num">Clinicians</th></tr></thead>
+                        <tbody>
+                            @foreach (var b in o.Sizes)
+                            {
+                                <tr><th scope="row"><a href="@Model.BandUrl(b)">@b.Label</a></th><td class="num">@Format.Number(b.Groups)</td><td class="num">@Format.Number(b.Clinicians)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="src">Active clinicians per group: reassigned to it in Medicare enrollment or listed with it in Care Compare. A clinician in several groups counts in each.</p>
+            </section>
+            <section class="card side-card" aria-labelledby="dl-h">
+                <h2 id="dl-h">Download the data</h2>
+                <p>Every Medicare group, or every active organization NPI, as a spreadsheet (CSV):</p>
+                <p class="area-actions">
+                    <a class="button" href="/groups.csv" download>All @Format.Number(o.Groups) groups (CSV)</a>
+                    <a class="button secondary" href="/export.csv?entityType=2" download>All organization NPIs (CSV)</a>
+                </p>
+                <p class="src">Programs can use <a href="/developers">the API</a>: <code>/api/v1/groups</code>, <code>/api/v1/groups.csv</code>, and <code>/api/v1/providers?entityType=2</code> for organization NPIs.</p>
+            </section>
+        </div>
+
+        <section class="card" aria-labelledby="lg-h">
+            <div class="card-head">
+                <h2 id="lg-h">Largest Medicare groups</h2>
+                <a href="/groups">All @Format.Number(o.Groups) groups →</a>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">The @o.Largest.Count Medicare groups with the most active clinicians</caption>
+                    <thead><tr><th scope="col">Group</th><th scope="col">State</th><th scope="col" class="num">Clinicians</th><th scope="col" class="num">Organization NPIs</th><th scope="col" class="num">MIPS score</th></tr></thead>
+                    <tbody>
+                        @foreach (var x in o.Largest)
+                        {
+                            <tr>
+                                <td class="break"><a href="/group/@x.PacId">@OrganizationsModel.Name(x.Name)</a></td>
+                                <td>@x.State</td>
+                                <td class="num">@Format.Number(x.Clinicians)</td>
+                                <td class="num">@Format.Number(x.OrganizationNpis)</td>
+                                <td class="num">@OrganizationsModel.Score(x.MipsScore)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card" id="kinds" aria-labelledby="kinds-h">
+            <div class="card-head">
+                <h2 id="kinds-h">Organization NPIs by kind@(Model.State is { } cs ? " in " + GeographyCatalog.StateName(cs) : "")</h2>
+                <form method="get" action="/organizations#kinds" class="area-specialty">
+                    <label class="visually-hidden" for="state">State</label>
+                    <select id="state" name="state">
+                        <option value="">Every state</option>
+                        @foreach (var (code, name) in states)
+                        {
+                            <option value="@code" selected="@(code == Model.State)">@name</option>
+                        }
+                    </select>
+                    <button type="submit" class="secondary">Show</button>
+                </form>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">Active organization NPIs by the plain category of their main specialty and record quality; each number opens the list</caption>
+                    <thead>
+                        <tr><th scope="col">Kind</th><th scope="col" class="num">Organizations</th><th scope="col" class="num">Current</th><th scope="col" class="num">Check</th><th scope="col" class="num">Stale</th><th scope="col">Export</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in Model.Categories)
+                        {
+                            <tr>
+                                <th scope="row">@c.Category</th>
+                                <td class="num"><a href="@Model.OrganizationsUrl("/search", c.Category)">@Format.Number(c.Organizations)</a></td>
+                                <td class="num"><a href="@Model.OrganizationsUrl("/search", c.Category, "current")">@Format.Number(c.Current)</a></td>
+                                <td class="num"><a href="@Model.OrganizationsUrl("/search", c.Category, "check")">@Format.Number(c.Check)</a></td>
+                                <td class="num"><a href="@Model.OrganizationsUrl("/search", c.Category, "stale")">@Format.Number(c.Stale)</a></td>
+                                <td><a href="@Model.OrganizationsUrl("/export.csv", c.Category)" download>CSV</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="src">
+                Counted by each organization's main specialty (NPPES primary taxonomy, in plain categories) and main practice address. The lists behind the numbers include
+                organizations with the category as any of their specialties, at any practice location, so they can be longer. Record quality: Current, Check or Stale, from the
+                signs of practice in the public data (see any profile's "Record quality").
+            </p>
+        </section>
+
+        @if (o.TopBilling.Count > 0)
+        {
+            <section class="card" aria-labelledby="mb-h">
+                <h2 id="mb-h">Organizations Medicare Part B paid the most@(o.BillingYear is { } year ? $", {year}" : "")</h2>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Organization NPIs with the largest Medicare Part B payments under their own NPI</caption>
+                        <thead><tr><th scope="col">Organization</th><th scope="col">Kind</th><th scope="col">Location</th><th scope="col" class="num">Medicare paid</th><th scope="col" class="num">Patients</th></tr></thead>
+                        <tbody>
+                            @foreach (var b in o.TopBilling)
+                            {
+                                <tr>
+                                    <td class="break"><a href="/provider/@b.Npi">@b.Name</a></td>
+                                    <td>@b.Specialty</td>
+                                    <td>@(b.City is null ? "" : $"{CityCatalog.TitleCase(b.City)}, {b.State}")</td>
+                                    <td class="num">@Format.ShortMoney(b.Payments)</td>
+                                    <td class="num">@(b.Beneficiaries is { } n ? Format.Number(n) : "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="src">Medicare Physician &amp; Other Practitioners, by provider: what Medicare paid for services billed under the organization's own NPI (labs, ambulance services, clinics …). Groups bill most of their clinicians' services under each clinician's NPI, so these are not group totals.</p>
+            </section>
+        }
+    }
+
+    <p class="src">
+        Sources: Medicare Fee-For-Service Public Provider Enrollment and its group reassignments, Medicare Care Compare (group listings and MIPS scores), Medicare
+        Physician &amp; Other Practitioners, and NPPES. Facilities such as hospitals and nursing homes are on <a href="/facilities">Facilities &amp; hospitals</a>.
+    </p>
+</div>

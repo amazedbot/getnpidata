@@ -11,6 +11,8 @@
 }
 
 <div class="profile">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a> › <a href="/groups">Medicare groups</a></nav>
+
     <section class="card profile-head" aria-labelledby="who">
         <div class="head-row">
             <svg class="avatar-lg org" role="img" aria-label="Group practice" viewBox="0 0 104 104">
@@ -23,6 +25,7 @@
                 <p class="summary">@Model.Summary</p>
                 <ul class="pills" aria-label="Status">
                     @if (g.AcceptsMedicare == true){<li class="pill plain">Accepts Medicare</li>}
+                    @if (Model.Listing is { MipsScore: { } mips } listing){<li class="pill plain">Group MIPS score @mips.ToString("0.#", CultureInfo.InvariantCulture)@(listing.MipsYear is { } my ? $" ({my})" : "")</li>}
                     <li class="pill plain">Medicare group ID <span class="mono">&nbsp;@g.PacId</span></li>
                 </ul>
             </div>

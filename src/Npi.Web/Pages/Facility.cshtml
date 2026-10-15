@@ -12,6 +12,8 @@
 }
 
 <div class="profile">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/facilities">Facilities &amp; hospitals</a> › <a href="/facilities?type=@f.Kind">@Npi.Core.Search.FacilityTypes.Get(f.Kind).Plural</a></nav>
+
     <section class="card profile-head" aria-labelledby="who">
         <div class="head-row">
             <svg class="avatar-lg org" role="img" aria-label="@Model.KindName" viewBox="0 0 104 104">
@@ -22,7 +24,14 @@
                 <h1 id="who">@Model.Name</h1>
                 <p class="summary">@Model.Summary</p>
                 <ul class="pills" aria-label="Status">
-                    <li class="pill ok">Medicare certified</li>
+                    @if (p.Certification is { Active: false } ended)
+                    {
+                        <li class="pill alert">Certification ended@(ended.TerminationDate is { } d ? " " + d.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) : "")</li>
+                    }
+                    else
+                    {
+                        <li class="pill ok">Medicare certified</li>
+                    }
                     @if (f.EmergencyServices == true){<li class="pill plain">Emergency services</li>}
                     <li class="pill plain">CMS ID <span class="mono">&nbsp;@f.Ccn</span></li>
                 </ul>
@@ -39,6 +48,21 @@
         </p>
     </section>
 
+    @if (p.CertificationOnly)
+    {
+        <section class="card" aria-labelledby="cert-h">
+            <h2 id="cert-h">Medicare certification</h2>
+            <dl class="facts">
+                <dt>Type</dt><dd>@Model.KindName</dd>
+                <dt>CMS Certification Number</dt><dd class="mono">@f.Ccn</dd>
+                <dt>Status</dt>
+                <dd>@if (p.Certification is { Active: false } c){<text>Ended@(c.TerminationDate is { } d ? " on " + d.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) : "")@(c.TerminationReason is { } why ? $" ({why.ToLowerInvariant()})" : "")</text>}else{<text>Certified</text>}</dd>
+            </dl>
+            <p class="src">CMS Provider of Services file. Medicare Care Compare doesn't rate this kind of facility, so there are no star ratings, ownership or phone here.</p>
+        </section>
+    }
+    else
+    {
     <section class="card" aria-labelledby="ratings-h">
         <h2 id="ratings-h">How CMS rates it</h2>
         <div class="tiles">
@@ -63,6 +87,7 @@
         </div>
         <p class="src">Medicare Care Compare. Deaths, safety and readmissions count the measures CMS rates better or worse than the national rate; the rest are no different.</p>
     </section>
+    }
 
     <div class="profile-row">
         <div class="grow">
@@ -105,6 +130,6 @@
                 }
             </ul>
         }
-        <p class="src">CMS hospital, nursing home, home health and hospice enrollments (CCN to NPI).</p>
+        <p class="src">CMS hospital, nursing home, home health, hospice, FQHC and rural health clinic enrollments (CCN to NPI).</p>
     </section>
 </div>

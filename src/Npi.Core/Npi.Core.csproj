@@ -20,6 +20,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Npi.Core.Tests" />
     <InternalsVisibleTo Include="Npi.Loader.Tests" />
+    <!-- The facility and group directories built from rows, for the API tests (no database). -->
+    <InternalsVisibleTo Include="Npi.Web.Tests" />
+    <InternalsVisibleTo Include="Npi.Client.Tests" />
   </ItemGroup>
 
 </Project>

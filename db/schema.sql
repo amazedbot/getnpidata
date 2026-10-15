@@ -413,6 +413,56 @@ CREATE TABLE `dicomhosts` (
   PRIMARY KEY (`ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+CREATE TABLE `directory_facility` (
+  `ccn` varchar(10) NOT NULL,
+  `type` varchar(20) NOT NULL,
+  `kind` varchar(80) DEFAULT NULL,
+  `name` varchar(200) NOT NULL,
+  `address` varchar(200) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `zip5` char(5) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `ownership` varchar(100) DEFAULT NULL,
+  `beds` int DEFAULT NULL,
+  `rating` double DEFAULT NULL,
+  `active` tinyint NOT NULL,
+  `termination_date` date DEFAULT NULL,
+  `termination_reason` varchar(80) DEFAULT NULL,
+  `billing_npis` int NOT NULL,
+  `lat` double DEFAULT NULL,
+  `lon` double DEFAULT NULL,
+  PRIMARY KEY (`ccn`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `directory_group` (
+  `pac_id` varchar(10) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `state` varchar(2) DEFAULT NULL,
+  `clinicians` int NOT NULL,
+  `organization_npis` int NOT NULL,
+  `accepts_assignment` tinyint DEFAULT NULL,
+  `mips_score` double DEFAULT NULL,
+  `mips_year` smallint DEFAULT NULL,
+  PRIMARY KEY (`pac_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `directory_org_billing` (
+  `npi` char(10) NOT NULL,
+  `data_year` smallint NOT NULL,
+  `payments` double NOT NULL,
+  `beneficiaries` int DEFAULT NULL,
+  PRIMARY KEY (`npi`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `directory_org_count` (
+  `taxonomy_code` varchar(10) NOT NULL,
+  `state` varchar(2) NOT NULL,
+  `label` tinyint NOT NULL,
+  `organizations` int NOT NULL,
+  PRIMARY KEY (`taxonomy_code`,`state`,`label`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `downlog` (
   `id` int NOT NULL AUTO_INCREMENT,
   `filename` varchar(500) NOT NULL,

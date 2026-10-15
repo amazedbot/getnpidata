@@ -146,6 +146,9 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             }
         }
 
+        // Facilities & hospitals, Groups & organizations (docs/PRODUCT_PLAN.md step 3.6): their tables, after the labels they count.
+        projectionOk &= await BuildDirectoriesAsync(projectionOk, ct);
+
         // The ready-made file of every active provider (owner, 2026-10-14), when the load changed its data. A failure keeps the
         // previous file; the site keeps serving it.
         var export = new FullExportBuilder(database, log, options);
@@ -204,6 +207,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
 
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: false);
+        await new DirectoryBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         await new FullExportBuilder(database, log, options).BuildAsync(ct);
         log.Information("Sample loaded from {File}. A full load: Npi.Loader run (it loads the monthly file, then this weekly again)", weekly.File.FileName);
         return referenceOk && mapOk ? 0 : 1;
@@ -315,6 +319,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         }
 
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: !full);
+        await new DirectoryBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         return 0;
     }
 
@@ -337,6 +342,34 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             new("Practice address types", everyAddressType ? null : addressTypes.IsStaleAsync, async c => await addressTypes.BuildAsync(c, full)),
             new("Area counts", onlyIfStale ? areas.IsStaleAsync : null, async c => await areas.BuildAsync(c, full)),
         ];
+    }
+
+    /// <summary>The <c>directories</c> command: rebuild the facility, group and organization tables of the directory pages now.</summary>
+    public async Task<int> DirectoriesAsync(CancellationToken ct)
+    {
+        await EnsureMigratedAsync(ct);
+        await new DirectoryBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
+    }
+
+    /// <summary>In <c>run</c>: the directory tables when one of their inputs changed; false when building them failed.</summary>
+    private async Task<bool> BuildDirectoriesAsync(bool projectionOk, CancellationToken ct)
+    {
+        var directories = new DirectoryBuilder(database, log, options.MinRowRatio);
+        try
+        {
+            if (projectionOk && await directories.IsStaleAsync(ct))
+            {
+                await directories.BuildAsync(ct);
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log.Error(ex, "Building the facility and group directory tables failed");
+            return false;
+        }
     }
 
     /// <summary>The <c>export</c> command: write the ready-made file of every active provider now.</summary>
