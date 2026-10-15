@@ -430,6 +430,43 @@ a.stat:hover { border-color: var(--accent); }
 .grow-card { flex: 999 1 26rem; min-width: 0; }
 .pill.warn { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
 
+/* Areas over time (docs/PRODUCT_PLAN.md step 3.3): the map (js/area-map.js) and the monthly chart (js/area-history.js). */
+.choropleth { position: relative; display: flex; flex-direction: column; gap: 0.6rem; }
+.choropleth-controls { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: flex-end; }
+.choropleth-controls label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9rem; font-weight: 600; min-width: 0; }
+.choropleth-controls select { max-width: 100%; min-width: 0; }
+.choropleth-controls[hidden], .choropleth-controls [hidden], .history-chart .tabs[hidden] { display: none; }
+.segmented { display: flex; gap: 0.75rem; align-items: center; margin: 0; padding: 0; border: 0; }
+.segmented legend { float: left; margin-right: 0.25rem; font-size: 0.9rem; font-weight: 600; }
+.segmented label { flex-direction: row; align-items: center; gap: 0.3rem; font-weight: 500; }
+.choropleth-canvas svg { display: block; width: 100%; height: auto; }
+.choropleth-canvas .area { stroke: #FFFFFF; stroke-width: 0.5; cursor: pointer; }
+.choropleth-canvas .area:hover, .choropleth-canvas .area:focus { stroke: var(--fg); stroke-width: 1.5; outline: none; }
+.choropleth-canvas .area:focus-visible { stroke: var(--accent-hover); stroke-width: 3; }
+.choropleth-canvas .shortage path { pointer-events: none; }
+.choropleth-canvas .state-lines path { fill: none; stroke: #FFFFFF; stroke-width: 1.4; pointer-events: none; }
+.choropleth-canvas .current-line path { fill: none; stroke: var(--fg); stroke-width: 2.5; pointer-events: none; }
+.choropleth-tip { position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 0.1rem; max-width: min(18rem, 90%); padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 4px 14px rgb(23 35 31 / 0.15); font-size: 0.88rem; pointer-events: none; }
+.choropleth-tip[hidden] { display: none; }
+.choropleth-legend ul { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; margin: 0; padding: 0; list-style: none; font-size: 0.85rem; }
+.choropleth-legend li { display: flex; align-items: center; gap: 0.35rem; }
+.choropleth-legend .swatch { display: inline-block; width: 1.1rem; height: 0.8rem; border: 1px solid var(--border); border-radius: 3px; }
+.choropleth-legend .swatch.hatched { background: repeating-linear-gradient(45deg, rgb(23 35 31 / 0.55) 0 2px, transparent 2px 6px); }
+.choropleth-summary { margin: 0; font-size: 0.92rem; color: var(--muted); }
+.area-history .summary { margin: 0 0 0.75rem; }
+.history-tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); }
+.history-tiles .stat strong { font-size: 1.6rem; }
+.history-chart { margin-top: 1rem; }
+.history-chart .tabs { margin-bottom: 0.5rem; }
+.history-canvas svg { display: block; width: 100%; height: auto; font-family: var(--sans); }
+.history-canvas .tick text { font-size: 11px; fill: var(--muted); }
+.history-note { margin: 0.3rem 0 0; font-size: 0.88rem; color: var(--muted); }
+.history-table { margin-top: 0.75rem; }
+.history-table summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0; }
+.history-table th[scope="row"] { font-weight: 600; text-align: left; }
+.history-notes { padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.area-changes .summary { max-width: 46rem; }
+
 /* Verify NPIs (docs/PRODUCT_PLAN.md step 1.7). */
 .verify-input { display: flex; flex-direction: column; gap: 0.75rem; }
 .verify-fields { display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: stretch; }

@@ -167,6 +167,8 @@ public static class ApiEndpoints
             .WithDescription("Census population estimate and HRSA Health Professional Shortage Areas (primary care, dental, mental health) in force.")
             .CacheOutput(CachePolicy);
 
+        api.MapAreaApi();
+
         api.MapGet("/meta", GetMetaAsync)
             .WithName("GetMeta").WithTags("Meta").WithSummary("Data versions")
             .WithDescription("As-of date, source files and reference data versions of the data being served.").CacheOutput(CachePolicy);

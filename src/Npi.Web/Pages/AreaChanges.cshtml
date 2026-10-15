@@ -1,0 +1,103 @@
+@page "/area/changes"
+@using System.Globalization
+@using Npi.Core.Search
+@model AreaChangesModel
+@{
+    ViewData["Title"] = Model.Title;
+    var c = Model.Changes;
+    var a = Model.Area;
+}
+
+<div class="profile area area-changes">
+    <nav aria-label="Breadcrumb" class="crumbs">
+        <a href="/area">United States</a>
+        @if (a.Type != "us"){<text> › </text><a href="/area/@a.State">@GeographyCatalog.StateName(a.State!)</a>}
+        @if (a.Type == "county"){<text> › </text><a href="/area/@a.State/@a.Id">@a.Name</a>}
+        <text> › </text><span>@AreaChangeKinds.Label(Model.Kind!)</span>
+    </nav>
+
+    <h1>@Model.Title</h1>
+    <p class="summary">@c.Total.ToString("N0", CultureInfo.InvariantCulture) @(c.Total == 1 ? "provider" : "providers"). @Model.Description</p>
+    <p class="area-actions">
+        <a class="button secondary" href="@Model.AreaLink">Back to @Model.Place</a>
+        @if (c.Total > 0)
+        {
+            <a class="button secondary" href="@Model.Link(csv: true)" download>Download all @c.Total.ToString("N0", CultureInfo.InvariantCulture) (CSV)</a>
+        }
+    </p>
+
+    @if (c.Entries.Count == 0)
+    {
+        <p>None recorded for this month.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">@Model.Title</caption>
+                @if (Model.Kind == AreaChangeKinds.Deactivated)
+                {
+                    <thead><tr><th scope="col">NPI</th><th scope="col">Last name on file</th><th scope="col">Deactivated</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in c.Entries)
+                        {
+                            <tr>
+                                <td class="mono"><a href="/provider/@e.Npi">@e.Npi</a></td>
+                                <td>@(e.Name ?? "—")</td>
+                                <td class="nowrap">@(e.DeactivationDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture) ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                }
+                else
+                {
+                    <thead><tr><th scope="col">Provider</th><th scope="col">Specialty</th><th scope="col">Practises in</th><th scope="col">NPI issued</th><th scope="col">Last update</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in c.Entries)
+                        {
+                            Model.Providers.TryGetValue(e.Npi, out var p);
+                            <tr>
+                                <td><a href="/provider/@e.Npi">@(p?.Name ?? e.Npi)</a> <span class="muted mono">@e.Npi</span></td>
+                                <td>@(p?.PlainSpecialty ?? p?.PrimarySpecialty ?? "—")</td>
+                                <td>@(p is null ? "No longer active" : string.Join(", ", new[] { p.City is null ? null : CityCatalog.TitleCase(p.City), p.State }.OfType<string>()))</td>
+                                <td class="nowrap">@(p?.EnumerationDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) ?? "—")</td>
+                                <td class="nowrap">@(p?.LastUpdateDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                }
+            </table>
+        </div>
+
+        @if (Model.PageCount > 1)
+        {
+            <nav class="pager" aria-label="Pages">
+                @if (c.Page > 1)
+                {
+                    <a class="button secondary" href="@Model.Link(c.Page - 1)" rel="prev">Previous</a>
+                }
+                <span>Page @c.Page of @Model.PageCount</span>
+                @if (c.Page < Model.PageCount)
+                {
+                    <a class="button secondary" href="@Model.Link(c.Page + 1)" rel="next">Next</a>
+                }
+            </nav>
+        }
+    }
+
+    <p class="src">
+        @if (Model.Kind is AreaChangeKinds.MovedIn or AreaChangeKinds.MovedOut or AreaChangeKinds.Deactivated && a.Type != "us")
+        {
+            <text>Recorded by comparing each NPPES update's practice locations with the previous ones; a move counts in the month of the provider's NPPES update (or the first month still open). </text>
+        }
+        else if (Model.Kind is AreaChangeKinds.Specialty or AreaChangeKinds.License or AreaChangeKinds.Exclusion)
+        {
+            <text>From the change log, which records each NPPES update and each reload of the state license, OIG exclusion and Medicare opt-out lists. </text>
+        }
+        else if (Model.Kind == AreaChangeKinds.New)
+        {
+            <text>The list is who practises here now; a past month's count was taken at the end of that month, so a few may have moved or been deactivated since. </text>
+        }
+        Counties by the HUD ZIP–county crosswalk: a ZIP in two counties counts in both.
+    </p>
+</div>

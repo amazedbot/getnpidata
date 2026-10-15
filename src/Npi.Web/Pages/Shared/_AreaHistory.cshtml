@@ -1,0 +1,137 @@
+@model Npi.Web.Pages.AreaModel
+@using System.Globalization
+@using Npi.Core.Search
+@using Npi.Web.Pages
+@{
+    // The area's figures month by month (docs/PRODUCT_PLAN.md step 3.3): tiles for the latest month with every count, a chart
+    // drawn by js/area-history.js, and every month as a table (the chart's text version; it works without JavaScript).
+    var a = Model.Area;
+    var h = Model.History;
+    var us = a.Type == "us";
+    var tile = Model.TileMonth;
+    var byCategory = a.Selected.Category.Length > 0;
+
+    void Cell(int? value, string? kind, DateOnly month, bool withSign = false)
+    {
+        if (kind is not null && value is > 0)
+        {
+            <td class="mono"><a href="@Model.ChangesLink(kind, month)">@AreaModel.Count(value, withSign)</a></td>
+        }
+        else
+        {
+            <td class="mono">@AreaModel.Count(value, withSign)</td>
+        }
+    }
+
+    void Tile(string label, int? value, string? kind, DateOnly month, string note, bool withSign = false)
+    {
+        if (kind is not null && value is > 0)
+        {
+            <a class="stat" href="@Model.ChangesLink(kind, month)">
+                <span class="label">@label</span>
+                <strong>@AreaModel.Count(value, withSign)</strong>
+                <span class="small">@note</span>
+            </a>
+        }
+        else
+        {
+            <div class="stat">
+                <span class="label">@label</span>
+                <strong>@AreaModel.Count(value, withSign)</strong>
+                <span class="small">@note</span>
+            </div>
+        }
+    }
+}
+<section class="card area-history" aria-labelledby="hist-h">
+    <div class="card-head">
+        <h2 id="hist-h">Over time</h2>
+        @if (h?.Coverage.AsOfDate is { } asOf)
+        {
+            <span class="muted">Data as of @asOf.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</span>
+        }
+    </div>
+    @if (h is null || h.Months.Count == 0 || tile is null)
+    {
+        <p>Monthly figures for @Model.Place appear after the next data load.</p>
+    }
+    else
+    {
+        var month = tile.Month;
+        var monthName = AreaHistoryMath.MonthName(month) + (tile.Partial ? " so far" : "");
+        <p class="summary">@Model.HistorySentence</p>
+        <div class="stat-row history-tiles">
+            @{ Tile(byCategory ? $"New NPIs ({Model.Who.ToLowerInvariant()})" : "New NPIs", tile.NewProviders, AreaChangeKinds.New, month, monthName); }
+            @{ Tile("Deactivated", tile.Deactivated, AreaChangeKinds.Deactivated, month, monthName); }
+            @if (!us)
+            {
+                Tile("Moved in", tile.MovedIn, AreaChangeKinds.MovedIn, month, monthName);
+                Tile("Moved out", tile.MovedOut, AreaChangeKinds.MovedOut, month, monthName);
+            }
+            @{ Tile("Net change", tile.NetChange, null, month, tile.NetChange is null ? "needs two months of counts" : $"active {Model.Who.ToLowerInvariant()}, {monthName}", withSign: true); }
+        </div>
+
+        <div id="area-history-chart" class="history-chart">
+            <div class="tabs" role="group" aria-label="Figure to chart" hidden>
+                @foreach (var (key, label) in Model.ChartSeries)
+                {
+                    <button type="button" class="tab" data-series="@key" aria-pressed="@(key == "newProviders" ? "true" : "false")">@label</button>
+                }
+            </div>
+            <div class="history-canvas" aria-hidden="true"></div>
+            <p class="history-note" aria-live="polite"></p>
+            <noscript><p>The chart needs JavaScript; the table below has every month.</p></noscript>
+        </div>
+        <script type="application/json" id="area-history-data">@Json.Serialize(Model.ChartData)</script>
+
+        <details class="history-table">
+            <summary>Every month as a table</summary>
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">@Model.Title month by month</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Month</th><th scope="col">@Model.Who</th><th scope="col">New NPIs</th><th scope="col">Deactivated</th>
+                            @if (!us){<th scope="col">Moved in</th><th scope="col">Moved out</th>}
+                            <th scope="col">Net change</th><th scope="col">Specialty changes</th><th scope="col">License changes</th><th scope="col">Exclusions &amp; opt-outs</th>
+                            <th scope="col">Record quality</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in h.Months.Reverse())
+                        {
+                            <tr>
+                                <th scope="row" class="nowrap">@AreaHistoryMath.MonthName(m.Month)@(m.Partial ? " (so far)" : "")</th>
+                                @{ Cell(m.Providers, null, m.Month); Cell(m.NewProviders, AreaChangeKinds.New, m.Month); Cell(m.Deactivated, AreaChangeKinds.Deactivated, m.Month); }
+                                @if (!us)
+                                {
+                                    Cell(m.MovedIn, AreaChangeKinds.MovedIn, m.Month);
+                                    Cell(m.MovedOut, AreaChangeKinds.MovedOut, m.Month);
+                                }
+                                @{ Cell(m.NetChange, null, m.Month, withSign: true); Cell(m.SpecialtyChanges, AreaChangeKinds.Specialty, m.Month);
+                                   Cell(m.LicenseChanges, AreaChangeKinds.License, m.Month); Cell(m.ExclusionChanges, AreaChangeKinds.Exclusion, m.Month); }
+                                <td class="nowrap">@AreaModel.QualityMix(m)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+
+        <ul class="src history-notes">
+            <li><strong>New NPIs</strong>: NPIs issued in the month whose holders practise here now (@AreaModel.Since(h.Coverage.DerivedFrom)). Months before @(h.Coverage.TrackedFrom is { } tf ? AreaHistoryMath.MonthName(tf) : "the first count") are worked out from today's data, so NPIs deactivated or moved away since aren't in them.</li>
+            <li><strong>Deactivated</strong>: @(us ? $"by CMS's deactivation date ({AreaModel.Since(h.Coverage.DerivedFrom)})" : $"providers who practised here when their NPI was deactivated ({AreaModel.Since(h.Coverage.TrackedFrom)}; NPPES publishes no address for a deactivated NPI, so earlier ones can't be placed)").</li>
+            @if (!us)
+            {
+                <li><strong>Moved in, moved out</strong>: providers who added a first practice location here or dropped their last one (@AreaModel.Since(h.Coverage.TrackedFrom); the first month is partial). A provider with offices in two counties counts in both.</li>
+            }
+            <li><strong>Providers, net change and record quality</strong>: counted at each load (@AreaModel.Since(h.Coverage.TrackedFrom)); net change is the month's last count minus the month before's.</li>
+            <li><strong>Specialty, license and exclusion changes</strong>: providers practising here with such a change in the change log (@AreaModel.Since(h.Coverage.ChangesFrom)); licenses only for the states that publish them.</li>
+            @if (a.Selected.Subcategory.Length > 0)
+            {
+                <li>Monthly figures are by category: @a.Selected.Category.</li>
+            }
+            <li>Past months are final; the latest two are updated as weekly NPPES files arrive. The same figures: <a href="/developers">API</a> (<code>/api/v1/areas/…/history</code>).</li>
+        </ul>
+    }
+</section>

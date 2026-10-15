@@ -154,6 +154,11 @@ public class ClientTests
     [InlineData(typeof(Server.FacilitySummary), typeof(FacilitySummary))]
     [InlineData(typeof(Server.GroupPage), typeof(GroupPage))]
     [InlineData(typeof(Server.GroupSummary), typeof(GroupSummary))]
+    [InlineData(typeof(Server.AreaHistory), typeof(AreaHistory))]
+    [InlineData(typeof(Server.AreaMonth), typeof(AreaMonth))]
+    [InlineData(typeof(Server.AreaHistoryCoverage), typeof(AreaHistoryCoverage))]
+    [InlineData(typeof(Server.AreaMapData), typeof(AreaMapData))]
+    [InlineData(typeof(Server.AreaMapValue), typeof(AreaMapValue))]
     public void Client_models_have_every_field_the_server_sends(Type server, Type client)
     {
         // The names as JSON writes them: [JsonIgnore] properties aren't sent, [JsonPropertyName] renames.
@@ -280,6 +285,37 @@ public class ClientTests
         Assert.Contains("Family & primary care", await npi.GetSubcategoriesAsync("Nurse practitioners", Ct));
         var unknown = await Assert.ThrowsAsync<NpiApiException>(() => npi.GetSubcategoriesAsync("nope", Ct));
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [Fact]
+    public async Task Area_history_and_map_requests_are_checked_by_the_server()
+    {
+        await using var factory = new ApiFactory();
+        using var npi = new NpiClient(factory.CreateClient());
+
+        var category = await Assert.ThrowsAsync<NpiApiException>(() => npi.GetAreaHistoryAsync("NY", "36103", category: "Wizards", cancellationToken: Ct));
+        Assert.Equal(HttpStatusCode.BadRequest, category.StatusCode);
+        Assert.Contains("category", category.Errors.Keys);
+
+        var level = await Assert.ThrowsAsync<NpiApiException>(() => npi.GetAreaMapAsync("nation", cancellationToken: Ct));
+        Assert.Contains("level", level.Errors.Keys);
+        var stat = await Assert.ThrowsAsync<NpiApiException>(() => npi.GetAreaMapAsync("county", "bogus", state: "NY", month: new DateTime(2026, 10, 1), cancellationToken: Ct));
+        Assert.Contains("stat", stat.Errors.Keys);
+        await Assert.ThrowsAsync<ArgumentException>(() => npi.GetAreaHistoryAsync(county: "36103", cancellationToken: Ct));
+    }
+
+    [Fact]
+    public void Area_history_json_reads_into_client_models()
+    {
+        var server = new Server.AreaHistory("county", "36103", "Suffolk County", "NY", "",
+            [new Server.AreaMonth(new DateOnly(2026, 10, 1), 100, 4, 1, 2, 0, 3, 0, 1, 60, 20, 20) { NetChange = 3, Partial = true, Basis = "recorded" }],
+            new Server.AreaHistoryCoverage(new DateOnly(2021, 11, 1), new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 11)));
+        var json = JsonSerializer.Serialize(server, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var client = JsonSerializer.Deserialize<AreaHistory>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var month = Assert.Single(client.Months);
+        Assert.Equal((new DateTime(2026, 10, 1), 100, 2, 3, true, "recorded"), (month.Month, month.Providers!.Value, month.MovedIn!.Value, month.NetChange!.Value, month.Partial, month.Basis));
+        Assert.Equal(new DateTime(2021, 11, 1), client.Coverage.DerivedFrom);
     }
 
     [Fact]

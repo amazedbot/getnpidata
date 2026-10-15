@@ -35,6 +35,7 @@ builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
 builder.Services.AddSingleton(_ => new AreaProfileService(connectionString));
+builder.Services.AddSingleton(_ => new AreaHistoryService(connectionString));
 builder.Services.AddSingleton(_ => new MapService(connectionString));
 builder.Services.AddSingleton(sp => new CareFinder(connectionString, sp.GetRequiredService<SearchService>()));
 builder.Services.AddSingleton(_ => new CompanyService(connectionString));
@@ -59,6 +60,9 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AddPageRoute("/Verify", "lookup"); // the bulk lookup's first URL (docs/PRODUCT_PLAN.md §2.1)
     o.Conventions.AddPageRoute("/Facilities", "hospitals"); // the facilities list on hospitals (step 3.6)
     o.Conventions.AddPageRoute("/Organizations", "groups"); // the groups & organizations page on Medicare groups
+    // The providers behind an area's change counts (docs/PRODUCT_PLAN.md step 3.3), under the area's own URL.
+    o.Conventions.AddPageRoute("/AreaChanges", "area/{state}/changes");
+    o.Conventions.AddPageRoute("/AreaChanges", "area/{state}/{county}/changes");
 });
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
@@ -94,6 +98,9 @@ app.MapHealthChecks("/health");
 
 // The search box in the site header (docs/PRODUCT_PLAN.md step 1.2): an NPI opens its profile, other text searches names.
 app.MapGet("/go", ([FromQuery] string? q) => Results.Redirect(QuickSearch.Target(q))).ExcludeFromDescription();
+
+// The area pages' map (docs/PRODUCT_PLAN.md step 3.3): one statistic for every state or county.
+app.MapAreaEndpoints();
 
 // REST API (CLAUDE.md §7 Stage 5) and its docs: OpenAPI at /openapi/v1.json, Swagger UI at /swagger.
 app.MapApi();
