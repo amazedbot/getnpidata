@@ -274,6 +274,15 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 $"INSERT IGNORE INTO `{Pending}` (`npi`) SELECT `npi` FROM `provider` WHERE `last_update_date` >= @from AND `last_update_date` < @to",
                 new { from = from.AddYears(-years), to = to.AddYears(-years) }, commandTimeout: 0, cancellationToken: ct));
         }
+
+        // An organization's member crossing the two years of the "another NPI is current" reason (issued or updated then).
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"""
+            INSERT IGNORE INTO `{Pending}` (`npi`)
+            SELECT p.`npi` FROM `{OrgGroupBuilder.Table}` g JOIN `provider` p ON p.`npi` = g.`npi`
+            WHERE (p.`last_update_date` >= @from AND p.`last_update_date` < @to) OR (p.`enumeration_date` >= @from AND p.`enumeration_date` < @to)
+            """, new { from = from.AddYears(-RecordQuality.OtherNpiCurrentYears), to = to.AddYears(-RecordQuality.OtherNpiCurrentYears) },
+            commandTimeout: 0, cancellationToken: ct));
     }
 
     /// <summary>
@@ -470,7 +479,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 ) x
                 """, new { dates.old5, dates.old10, poBox = PoBox, nearMeters = RecordQuality.CareCompareMiles * 1609.344 });
             // Step 3.8 (owner, 2026-10-15): a member of an organization with no sign of practice, when another NPI of it is current with
-            // signs of practice (its main NPI when that one is), is stale with that NPI. The current NPIs keep their label (they have
+            // signs of practice (its main NPI when that one is), is stale with that NPI, unless it was issued or updated in the last two
+            // years (owner, 2026-10-16: a new registration that isn't billing yet isn't a leftover). The current NPIs keep their label (they have
             // signs, which this rule doesn't touch), so the labels don't depend on each other. The whole organization is in the staging
             // table: everyone in a full relabel, a queued member's whole organization in an incremental one.
             async Task<long> ApplyOrganizationsAsync()
@@ -489,11 +499,13 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                     UPDATE `provider_quality_staging` s
                     JOIN `{OrgGroupBuilder.Table}` g ON g.`npi` = s.`npi`
                     JOIN `{anchors}` a ON a.`main_npi` = g.`main_npi`
+                    JOIN `provider` p ON p.`npi` = s.`npi`
                     SET s.`reasons` = s.`reasons` | {I(QualityReason.OtherNpiCurrent)},
                         s.`label` = {RecordQuality.LabelSql($"(s.`reasons` | {I(QualityReason.OtherNpiCurrent)})")},
                         s.`other_npi` = a.`current_npi`
                     WHERE s.`activity` = 0 AND a.`current_npi` <> s.`npi`
-                    """, commandTimeout: 0, cancellationToken: ct));
+                      AND {RecordQuality.OtherNpiCurrentSql("p.`enumeration_date`", "p.`last_update_date`", "@old2")}
+                    """, new { old2 = asOf.AddYears(-RecordQuality.OtherNpiCurrentYears) }, commandTimeout: 0, cancellationToken: ct));
             }
 
             // Label × location, like building_search: the search's location conditions apply as they are.

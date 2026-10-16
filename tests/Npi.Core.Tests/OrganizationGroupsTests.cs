@@ -54,6 +54,21 @@ public class OrganizationGroupsTests
         Assert.Equal("", OrganizationGroups.Ties(0));
     }
 
+    [Theory]
+    [InlineData("2007-01-01", "2023-10-11", true)]   // updated three years before the as-of date: flagged
+    [InlineData("2007-01-01", "2025-10-11", false)]  // updated a year before: spared
+    [InlineData("2025-10-11", "2025-10-11", false)]  // issued a year before: spared
+    [InlineData("2025-10-11", "2023-10-11", false)]  // issued a year before, whatever the update
+    [InlineData("2007-01-01", "2024-10-10", true)]   // a day over two years
+    [InlineData("2007-01-01", "2024-10-11", false)]  // exactly two years: not before the limit, as the other age rules count
+    [InlineData(null, null, true)]                   // no dates: counts as old
+    public void Another_current_npi_spares_records_issued_or_updated_in_the_last_two_years(string? enumerated, string? updated, bool applies)
+    {
+        static DateOnly? D(string? s) => s is null ? null : DateOnly.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(applies, RecordQuality.OtherNpiCurrentApplies(D(enumerated), D(updated), new DateOnly(2026, 10, 11)));
+        Assert.Equal("COALESCE(p.e < @l, 1) AND COALESCE(p.u < @l, 1)", RecordQuality.OtherNpiCurrentSql("p.e", "p.u", "@l"));
+    }
+
     [Fact]
     public void Another_current_npi_names_that_npi_and_links_to_it()
     {

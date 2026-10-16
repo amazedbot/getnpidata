@@ -143,6 +143,20 @@ public sealed class OrgGroupIntegrationTests
         Assert.Equal(Hospital, duplicate.Quality?.OtherCurrentNpi);
         Assert.Contains($"{RecordQuality.OtherNpiCurrentText}: {Hospital}", duplicate.Quality!.ReasonTexts);
 
+        // A member issued or updated in the last two years is spared (owner, 2026-10-16): updated a year before the as-of date, it
+        // keeps its own label; three years before, it is flagged again.
+        async Task<(sbyte Label, int Other)> DuplicateAsync() => (await db.QueryAsync<(sbyte, int)>(
+            $"SELECT label, reasons & {(int)QualityReason.OtherNpiCurrent} FROM provider_quality WHERE npi = @Duplicate", new { Duplicate })).Single();
+        await db.ExecuteAsync("UPDATE provider SET last_update_date = '2025-10-11' WHERE npi = @Duplicate", new { Duplicate });
+        await Quality(db).BuildAsync(_ct, allowIncremental: false);
+        Assert.Equal(((sbyte)QualityLabel.Current, 0), await DuplicateAsync());
+        await db.ExecuteAsync("UPDATE provider SET last_update_date = '2023-10-11', enumeration_date = '2025-10-11' WHERE npi = @Duplicate", new { Duplicate });
+        await Quality(db).BuildAsync(_ct, allowIncremental: false);
+        Assert.Equal(((sbyte)QualityLabel.Current, 0), await DuplicateAsync()); // issued a year ago
+        await db.ExecuteAsync("UPDATE provider SET enumeration_date = '2007-01-01' WHERE npi = @Duplicate", new { Duplicate });
+        await Quality(db).BuildAsync(_ct, allowIncremental: false);
+        Assert.Equal(((sbyte)QualityLabel.Stale, (int)QualityReason.OtherNpiCurrent), await DuplicateAsync());
+
         // The duplicate moves away: the group changes, its NPIs are queued, and the incremental relabel drops the reason.
         await db.ExecuteAsync("UPDATE provider_location SET address1 = '300 ELM ST' WHERE npi = @Duplicate", new { Duplicate });
         await Builder(db).BuildAsync(_ct);

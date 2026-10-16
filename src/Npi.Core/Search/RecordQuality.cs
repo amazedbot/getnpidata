@@ -86,7 +86,8 @@ public enum QualityReason
     /// <summary>
     /// No sign of current practice, and another NPI of the same organization (docs/PRODUCT_PLAN.md step 3.8, <see cref="OrganizationGroups"/>)
     /// is current with signs of practice (<see cref="ProviderQuality.OtherCurrentNpi"/>): this NPI is probably a leftover or duplicate
-    /// registration (owner, 2026-10-15). Makes the record stale.
+    /// registration (owner, 2026-10-15). Makes the record stale. Set only on a member neither issued nor updated in the last
+    /// <see cref="RecordQuality.OtherNpiCurrentYears"/> years (<see cref="RecordQuality.OtherNpiCurrentApplies"/>; owner, 2026-10-16).
     /// </summary>
     OtherNpiCurrent = 65536,
 }
@@ -146,7 +147,7 @@ public sealed record ProviderQuality(QualityLabel Label, [property: JsonIgnore] 
 /// explains it). <b>Stale:</b> not updated in NPPES for <see cref="StaleYears"/>+ years and no sign of current practice in the public
 /// data (Medicare billing or prescribing, a Care Compare listing, Medicare enrollment or order-and-refer eligibility, industry
 /// payments, a certified facility, a current state license, a state Medicaid enrollment), a state record listing the provider as deceased, or no
-/// sign of practice while another NPI of the same organization is current (step 3.8). <b>Check:</b> not
+/// sign of practice while another NPI of the same organization is current, for a member neither issued nor updated in the last 2 years (step 3.8). <b>Check:</b> not
 /// updated for <see cref="CheckYears"/>+ years, or Medicare billing stopped, with no sign of practice, or a conflict or gap: Care Compare lists another address or
 /// profession, a lapsed state license, an address that couldn't be mapped or is a PO box, no phone. <b>Current:</b> everything else.
 /// A reactivated NPI and a home address are shown but don't change the label.
@@ -155,6 +156,30 @@ public static class RecordQuality
 {
     public const int CheckYears = 5;
     public const int StaleYears = 10;
+
+    /// <summary>
+    /// <see cref="QualityReason.OtherNpiCurrent"/> spares a member issued or updated in NPPES within this many years of the as-of
+    /// date (owner, 2026-10-16): a new registration that isn't billing yet is not a leftover.
+    /// </summary>
+    public const int OtherNpiCurrentYears = 2;
+
+    /// <summary>
+    /// Whether <see cref="QualityReason.OtherNpiCurrent"/> may apply to a member by its age: both its enumeration date and its last
+    /// NPPES update <see cref="OtherNpiCurrentYears"/>+ years before <paramref name="asOf"/> (compared as the other age rules are:
+    /// before the as-of date less the years; a missing date counts as old). <see cref="OtherNpiCurrentSql"/> is the same rule in SQL.
+    /// </summary>
+    public static bool OtherNpiCurrentApplies(DateOnly? enumerated, DateOnly? lastUpdate, DateOnly asOf)
+    {
+        var limit = asOf.AddYears(-OtherNpiCurrentYears);
+        return (enumerated is null || enumerated < limit) && (lastUpdate is null || lastUpdate < limit);
+    }
+
+    /// <summary>
+    /// <see cref="OtherNpiCurrentApplies"/> in SQL, over the provider's <paramref name="enumeration"/> and <paramref name="lastUpdate"/>
+    /// columns and <paramref name="limit"/> (the as-of date less <see cref="OtherNpiCurrentYears"/> years).
+    /// </summary>
+    public static string OtherNpiCurrentSql(string enumeration, string lastUpdate, string limit) =>
+        $"COALESCE({enumeration} < {limit}, 1) AND COALESCE({lastUpdate} < {limit}, 1)";
 
     /// <summary>A Care Compare practice this close to an NPPES practice location (ZIP centres) agrees with the record.</summary>
     public const int CareCompareMiles = 25;
