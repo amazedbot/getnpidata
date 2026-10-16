@@ -17,8 +17,12 @@ public sealed record MeasureRow(FacilityMeasure Measure, string Value, string Na
 /// rehabilitation facility or long-term care hospital (docs/PRODUCT_PLAN.md steps 1.5 and 3.6): how CMS rates it, how it compares with
 /// the nation, a hospital's Medicare volume, the clinicians affiliated with it, where it is and the NPIs it bills under.
 /// </summary>
-public class FacilityModel(OrganizationService organizations, OwnershipService ownership, IOptions<MapOptions> mapOptions) : PageModel
+public class FacilityModel(OrganizationService organizations, OwnershipService ownership, IOptions<MapOptions> mapOptions,
+    OrganizationGroupService? groups = null) : PageModel
 {
+    /// <summary>The organizations (step 3.8) its billing NPIs belong to, for a link to each combined profile; largest first.</summary>
+    public IReadOnlyList<ProviderOrganization> Organizations { get; private set; } = [];
+
     /// <summary>The facility shown (set by <see cref="OnGetAsync"/>; tests set it directly).</summary>
     public FacilityProfile Profile { get; set; } = null!;
 
@@ -42,6 +46,11 @@ public class FacilityModel(OrganizationService organizations, OwnershipService o
         Profile = profile;
         Ownership = await ownership.GetFacilityOwnershipAsync(profile.Facility.Ccn, ct);
         Inspections = IsNursingHome(profile.Facility) ? await ownership.GetInspectionsAsync(profile.Facility.Ccn, ct) : null;
+        if (groups is not null && profile.BillingNpis.Count > 0)
+        {
+            Organizations = [.. (await groups.GetMembershipsAsync([.. profile.BillingNpis.Select(n => n.Npi)], ct)).Values
+                .DistinctBy(o => o.MainNpi).OrderByDescending(o => o.Npis)];
+        }
         Map = mapOptions.Value.Enabled && profile.Latitude is { } lat && profile.Longitude is { } lon
             ? StaticMap.Create([("1", lat, lon, false)], mapOptions.Value.TileUrl)
             : null;

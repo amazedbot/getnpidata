@@ -38,7 +38,7 @@ public class ClientTests
         Classification = "Chiropractor", Specialization = "Sports Physician", Taxonomy = "111NS0005X", State = "NY", County = "36103",
         City = "Babylon", Zip = "11702", Radius = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
         EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true, Telehealth = false,
-        MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", Bbox = "-74,40.7,-73.9,40.8", Quality = "notStale", NewWithinDays = 30, UpdatedWithinDays = 7, Sort = "-city",
+        MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", Bbox = "-74,40.7,-73.9,40.8", Quality = "notStale", NewWithinDays = 30, UpdatedWithinDays = 7, AllNpis = true, Sort = "-city",
         Page = 3, PageSize = 100,
     };
 
@@ -63,7 +63,7 @@ public class ClientTests
             City = "Babylon", Zip5 = "11702", RadiusMiles = 10, LastName = "o'brien & co", FirstName = "jose", OrgName = "acme", NameMatch = "similar", Npi = "1234567893",
             EntityType = 1, Gender = "F", Credential = "MD", Excluded = false, OptedOut = true, OrderRefer = true, AcceptsAssignment = true,
             Telehealth = false, MinYears = 10, MedicareActive = true, Shortage = "dental", AddressType = "residential", Bbox = "-74,40.7,-73.9,40.8", Quality = "notStale", NewWithinDays = 30,
-            UpdatedWithinDays = 7, Sort = "-city", Page = 3, PageSize = 100,
+            UpdatedWithinDays = 7, AllNpis = true, Sort = "-city", Page = 3, PageSize = 100,
         }, filter);
 
         // And the client covers every parameter the server documents.
@@ -151,6 +151,10 @@ public class ClientTests
     [InlineData(typeof(Server.HistoryPlace), typeof(HistoryPlace))]
     [InlineData(typeof(Server.HistoryChange), typeof(HistoryChange))]
     [InlineData(typeof(Server.ProviderQuality), typeof(RecordQuality))]
+    [InlineData(typeof(Server.ProviderOrganization), typeof(ProviderOrganization))]
+    [InlineData(typeof(Server.OrganizationProfile), typeof(OrganizationProfile))]
+    [InlineData(typeof(Server.OrganizationMember), typeof(OrganizationMember))]
+    [InlineData(typeof(Server.OrganizationGroup), typeof(OrganizationGroup))]
     [InlineData(typeof(Server.MedicareHistory), typeof(MedicareHistory))]
     [InlineData(typeof(Server.MedicareHistoryYear), typeof(MedicareHistoryYear))]
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]

@@ -274,6 +274,15 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 $"INSERT IGNORE INTO `{Pending}` (`npi`) SELECT `npi` FROM `provider` WHERE `last_update_date` >= @from AND `last_update_date` < @to",
                 new { from = from.AddYears(-years), to = to.AddYears(-years) }, commandTimeout: 0, cancellationToken: ct));
         }
+
+        // An organization's member crossing the two years of the "another NPI is current" reason (issued or updated then).
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"""
+            INSERT IGNORE INTO `{Pending}` (`npi`)
+            SELECT p.`npi` FROM `{OrgGroupBuilder.Table}` g JOIN `provider` p ON p.`npi` = g.`npi`
+            WHERE (p.`last_update_date` >= @from AND p.`last_update_date` < @to) OR (p.`enumeration_date` >= @from AND p.`enumeration_date` < @to)
+            """, new { from = from.AddYears(-RecordQuality.OtherNpiCurrentYears), to = to.AddYears(-RecordQuality.OtherNpiCurrentYears) },
+            commandTimeout: 0, cancellationToken: ct));
     }
 
     /// <summary>
@@ -306,6 +315,18 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         }
 
         var onlyPending = allowIncremental && await OnlyPendingChangedAsync(connection, ct);
+        if (onlyPending)
+        {
+            // An NPI's "another NPI of this organization is current" reason reads its whole organization (step 3.8): a queued member
+            // brings the others with it.
+            await RunAsync(
+                $"""
+                INSERT IGNORE INTO `{Pending}` (`npi`)
+                SELECT g2.`npi` FROM `{Pending}` q JOIN `{OrgGroupBuilder.Table}` g ON g.`npi` = q.`npi`
+                JOIN `{OrgGroupBuilder.Table}` g2 ON g2.`main_npi` = g.`main_npi`
+                """);
+        }
+
         var pendingCount = onlyPending
             ? await connection.ExecuteScalarAsync<long>(new CommandDefinition($"SELECT COUNT(*) FROM `{Pending}`", cancellationToken: ct))
             : 0;
@@ -342,7 +363,8 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         const string flags = "quality_flag_scratch";
         const string specialties = "quality_cc_specialty_scratch";
         const string businesses = "quality_business_scratch";
-        string[] scratch = [activity, flags, specialties, businesses];
+        const string anchors = "quality_org_anchor_scratch";
+        string[] scratch = [activity, flags, specialties, businesses, anchors];
         try
         {
             foreach (var table in scratch)
@@ -456,6 +478,36 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                   {(onlyPending ? $"WHERE p.`npi` IN (SELECT `npi` FROM `{Pending}`)" : "")}
                 ) x
                 """, new { dates.old5, dates.old10, poBox = PoBox, nearMeters = RecordQuality.CareCompareMiles * 1609.344 });
+            // Step 3.8 (owner, 2026-10-15): a member of an organization with no sign of practice, when another NPI of it is current with
+            // signs of practice (its main NPI when that one is), is stale with that NPI, unless it was issued or updated in the last two
+            // years (owner, 2026-10-16: a new registration that isn't billing yet isn't a leftover). The current NPIs keep their label (they have
+            // signs, which this rule doesn't touch), so the labels don't depend on each other. The whole organization is in the staging
+            // table: everyone in a full relabel, a queued member's whole organization in an incremental one.
+            async Task<long> ApplyOrganizationsAsync()
+            {
+                await RunAsync($"CREATE TABLE `{anchors}` (`main_npi` CHAR(10) NOT NULL PRIMARY KEY, `current_npi` CHAR(10) NOT NULL) ENGINE=InnoDB");
+                await RunAsync(
+                    $"""
+                    INSERT INTO `{anchors}` (`main_npi`, `current_npi`)
+                    SELECT g.`main_npi`, COALESCE(MAX(CASE WHEN g.`is_main` = 1 THEN g.`npi` END), MIN(g.`npi`))
+                    FROM `{OrgGroupBuilder.Table}` g JOIN `provider_quality_staging` c ON c.`npi` = g.`npi`
+                    WHERE c.`label` = {(int)QualityLabel.Current} AND c.`activity` <> 0
+                    GROUP BY g.`main_npi`
+                    """);
+                return await connection.ExecuteAsync(new CommandDefinition(
+                    $"""
+                    UPDATE `provider_quality_staging` s
+                    JOIN `{OrgGroupBuilder.Table}` g ON g.`npi` = s.`npi`
+                    JOIN `{anchors}` a ON a.`main_npi` = g.`main_npi`
+                    JOIN `provider` p ON p.`npi` = s.`npi`
+                    SET s.`reasons` = s.`reasons` | {I(QualityReason.OtherNpiCurrent)},
+                        s.`label` = {RecordQuality.LabelSql($"(s.`reasons` | {I(QualityReason.OtherNpiCurrent)})")},
+                        s.`other_npi` = a.`current_npi`
+                    WHERE s.`activity` = 0 AND a.`current_npi` <> s.`npi`
+                      AND {RecordQuality.OtherNpiCurrentSql("p.`enumeration_date`", "p.`last_update_date`", "@old2")}
+                    """, new { old2 = asOf.AddYears(-RecordQuality.OtherNpiCurrentYears) }, commandTimeout: 0, cancellationToken: ct));
+            }
+
             // Label × location, like building_search: the search's location conditions apply as they are.
             const string searchRows =
                 """
@@ -465,11 +517,13 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 
             Dictionary<string, long> counts;
             var labelsChanged = true;
+            long otherCurrent = 0;
             if (onlyPending)
             {
                 await RunAsync("DROP TABLE IF EXISTS `provider_quality_staging`");
                 await RunAsync("CREATE TABLE `provider_quality_staging` LIKE `provider_quality`");
                 await InsertLabelsAsync();
+                otherCurrent = await ApplyOrganizationsAsync();
                 labelsChanged = await ReplacePendingAsync(connection, searchRows, ct);
                 counts = new() { ["provider_quality"] = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
                     "SELECT COUNT(*) FROM `provider_quality`", cancellationToken: ct)) };
@@ -479,6 +533,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 counts = new(await TableSwap.ReplaceAsync(connection, ["provider_quality", "quality_search"], minRowRatio, async () =>
                 {
                     await InsertLabelsAsync();
+                    otherCurrent = await ApplyOrganizationsAsync();
                     await RunAsync($"INSERT INTO `quality_search_staging` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
                 }, ct, deferIndexes: true, log: log));
                 await RunAsync($"DELETE FROM `{Pending}`"); // everyone was relabelled
@@ -497,9 +552,9 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `checked_at` = new.`checked_at`,
                   `loaded_at` = IF(@onlyPending, `reference_data`.`loaded_at`, new.`loaded_at`)
                 """, ct, param: new { onlyPending, source = Source, version, rows = counts["provider_quality"], now });
-            log.Information("Record quality: {Rows:N0} providers{Scope} ({Labels}) in {Seconds:N0}s", counts["provider_quality"],
-                onlyPending ? $", {pendingCount:N0} relabelled" : "",
-                string.Join(", ", byLabel.Select(b => $"{RecordQuality.Name((QualityLabel)b.Label)} {b.Rows:N0}")), watch.Elapsed.TotalSeconds);
+            log.Information("Record quality: {Rows:N0} providers{Scope} ({Labels}) in {Seconds:N0}s; {Other:N0} stale because another NPI of their organization is current",
+                counts["provider_quality"], onlyPending ? $", {pendingCount:N0} relabelled" : "",
+                string.Join(", ", byLabel.Select(b => $"{RecordQuality.Name((QualityLabel)b.Label)} {b.Rows:N0}")), watch.Elapsed.TotalSeconds, otherCurrent);
             return counts["provider_quality"];
         }
         finally
@@ -549,7 +604,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
 
         await RunAsync($"DELETE qs FROM {oldRows}");
         await RunAsync($"DELETE q FROM `provider_quality` q JOIN `{Pending}` s ON s.`npi` = q.`npi`");
-        await RunAsync("INSERT INTO `provider_quality` (`npi`, `label`, `reasons`, `activity`) SELECT `npi`, `label`, `reasons`, `activity` FROM `provider_quality_staging`");
+        await RunAsync("INSERT INTO `provider_quality` (`npi`, `label`, `reasons`, `activity`, `other_npi`) SELECT `npi`, `label`, `reasons`, `activity`, `other_npi` FROM `provider_quality_staging`");
         await RunAsync($"INSERT INTO `quality_search` (`label`, `state`, `city`, `zip5`, `npi`) {searchRows}");
         await RunAsync($"DELETE FROM `{Pending}`");
         await BuilderPending.CleanAsync(connection, transaction, ct);

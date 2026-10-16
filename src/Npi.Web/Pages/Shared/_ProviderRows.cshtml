@@ -34,7 +34,7 @@
                         <span class="@Format.AvatarClass(p.Gender, p.EntityType)" aria-hidden="true">@Format.Initials(p.Name, p.EntityType)</span>
                         <span>
                             <a href="/provider/@p.Npi" class="name">@p.Name@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</a>
-                            <span class="mono muted sub">@p.Npi@if (p.EntityType == 2){<span> · organization</span>}</span>
+                            <span class="mono muted sub">@p.Npi@if (p.EntityType == 2){<span> · organization</span>}@if (p.OrganizationNpis is { } orgNpis){<span> · <a href="/organization/@p.Npi" title="One of @orgNpis NPIs of the same organization: see them all on its combined profile">@orgNpis NPIs</a></span>}</span>
                         </span>
                     </td>
                     <td data-label="Specialty" title="@p.PrimarySpecialty">@(p.PlainSpecialty ?? p.PrimarySpecialty)</td>

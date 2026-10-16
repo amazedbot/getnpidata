@@ -263,6 +263,7 @@ public class ApiTests
             "/api/v1/facilities/{ccn}/ownership", "/api/v1/facilities/{ccn}/inspections", "/api/v1/owners", "/api/v1/owners/{id}",
             "/api/v1/areas/us/history", "/api/v1/areas/{state}/history", "/api/v1/areas/{state}/{county}/history", "/api/v1/areas/map",
             "/api/v1/systems", "/api/v1/systems/{id}", "/api/v1/acos", "/api/v1/acos/{id}", "/api/v1/health-center-sites/{id}", "/api/v1/providers/{npi}/acos", "/api/v1/groups/{pacId}/acos",
+            "/api/v1/organizations/{npi}",
         ];
         Assert.Equal(expected.Order(), paths.EnumerateObject().Select(p => p.Name).Order());
 

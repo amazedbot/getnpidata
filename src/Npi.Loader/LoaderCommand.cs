@@ -23,6 +23,7 @@ public enum LoaderCommand
     Export,
     Directories,
     History,
+    OrgGroups,
 }
 
 /// <summary>A parsed command line: the command plus its positional arguments.</summary>
@@ -52,6 +53,7 @@ public static class LoaderCommandLine
         ["export"] = LoaderCommand.Export,
         ["directories"] = LoaderCommand.Directories,
         ["history"] = LoaderCommand.History,
+        ["org-groups"] = LoaderCommand.OrgGroups,
     };
 
     public const string Usage = """
@@ -75,6 +77,10 @@ public static class LoaderCommandLine
                            changed its data); the site serves it for an export with no filter
           areas            Recount the providers per area (US, states, counties) and specialty for the area pages
           directories      Rebuild the facility, Medicare group and organization tables of the directory pages
+          org-groups       Rebuild the organization groups (the NPIs of one hospital or organization, for its combined
+                           profile and one search row), then relabel the records whose group changed
+          org-groups measure [csv] Group the organizations in memory only and log what each kind of tie adds;
+                           with a file name, write every grouped NPI to it as CSV
           area-history [full] Update the monthly area figures (moves, new and deactivated NPIs, changes);
                            with "full", compare every provider's locations, not only the queued ones
           history [yyyy-MM] Build the NPPES history from the archived monthly files (CMS from June 2015, NBER
@@ -152,6 +158,17 @@ public static class LoaderCommandLine
             }
 
             error = "Command 'history' takes a month (yyyy-MM: process up to it), 'discover', or 'measure' and one or more zip files, or nothing.";
+            return null;
+        }
+
+        if (command == LoaderCommand.OrgGroups && rest.Length >= 1)
+        {
+            if (string.Equals(rest[0], "measure", StringComparison.OrdinalIgnoreCase) && rest.Length <= 2)
+            {
+                return new LoaderInvocation(command, ["measure", .. rest.Skip(1)]);
+            }
+
+            error = "Command 'org-groups' takes nothing, or 'measure' and an optional CSV file name.";
             return null;
         }
 

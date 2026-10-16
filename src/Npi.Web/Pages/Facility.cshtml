@@ -255,6 +255,10 @@
                 }
             </ul>
         }
+        @foreach (var org in Model.Organizations)
+        {
+            <p>Part of <a href="/organization/@org.MainNpi">@Npi.Core.Search.CityCatalog.TitleCase(org.Name)</a>, an organization with @org.Npis NPIs: see its combined profile.</p>
+        }
         <p class="src">CMS hospital, nursing home, home health, hospice, FQHC and rural health clinic enrollments (CCN to NPI), the Medicare Dialysis Facility Report and Care Compare's surgery center file.</p>
     </section>
 </div>

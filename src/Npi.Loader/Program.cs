@@ -82,6 +82,7 @@ try
         LoaderCommand.Export => await app.ExportAsync(cts.Token),
         LoaderCommand.Areas => await app.AreasAsync(cts.Token),
         LoaderCommand.Directories => await app.DirectoriesAsync(cts.Token),
+        LoaderCommand.OrgGroups => await app.OrgGroupsAsync(invocation.Arguments, cts.Token),
         LoaderCommand.AreaHistory => await app.AreaHistoryAsync(full: invocation.Arguments.Count > 0, cts.Token),
         LoaderCommand.History => await app.HistoryAsync(invocation.Arguments, cts.Token),
         LoaderCommand.Overture => await app.OvertureAsync(invocation.Arguments.Count > 0 ? invocation.Arguments[0] : null, cts.Token),

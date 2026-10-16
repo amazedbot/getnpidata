@@ -204,6 +204,12 @@ else
                 <partial name="_ProviderFields" model="Model.Fields" />
             </details>
 
+            @* Step 3.8: one row per organization by default; this lists each of its NPIs (units, pharmacy, duplicate registrations). *@
+            <div class="field">
+                <label><input type="checkbox" name="allNpis" value="true" checked="@f.AllNpis" aria-describedby="allNpis-help" /> List every NPI of an organization</label>
+                <span id="allNpis-help" class="muted small">Otherwise an organization with several NPIs shows once, under its main NPI. Exports always list every NPI.</span>
+            </div>
+
             <div class="actions">
                 <button type="submit">Show results</button>
                 <a href="/search" class="secondary">Clear</a>
@@ -257,7 +263,7 @@ else
                             }
                         </select>
                         <button type="submit">Export all @N(result.TotalCount)</button>
-                        <span class="muted small">CSV has no row limit; Excel holds up to @N(ProviderXlsx.MaxRows)@(result.TotalCount > ProviderXlsx.MaxRows ? ", fewer than this list" : "").</span>
+                        <span class="muted small">CSV has no row limit; Excel holds up to @N(ProviderXlsx.MaxRows)@(result.TotalCount > ProviderXlsx.MaxRows ? ", fewer than this list" : ""). A row per NPI: an organization's every NPI is included.</span>
                     </form>
 
                     <div class="results-head">

@@ -60,6 +60,12 @@ public sealed class ProviderSummary
 
     /// <summary>How current and trustworthy the record looks; null when not labelled yet.</summary>
     public RecordQuality? Quality { get; set; }
+
+    /// <summary>
+    /// How many NPIs the provider's organization has (a hospital's units, pharmacy, duplicate registrations …); null when the NPI is
+    /// the only one. The combined record: <see cref="NpiClient.GetOrganizationAsync"/>.
+    /// </summary>
+    public int? OrganizationNpis { get; set; }
 }
 
 /// <summary>
@@ -76,6 +82,11 @@ public sealed class RecordQuality
 
     /// <summary>The signs of current practice found, e.g. "billed Medicare".</summary>
     public IReadOnlyList<string> Signs { get; set; } = [];
+
+    /// <summary>
+    /// When the record is stale because another NPI of its organization is current (and this one shows no sign of practice): that NPI.
+    /// </summary>
+    public string? OtherCurrentNpi { get; set; }
 }
 
 /// <summary>Yes/no facts from the joined datasets.</summary>
@@ -242,6 +253,9 @@ public sealed class ProviderDetail
 
     /// <summary>How current and trustworthy the record looks; null when not labelled yet.</summary>
     public RecordQuality? Quality { get; set; }
+
+    /// <summary>The organization this NPI is one of (its main NPI, name and number of NPIs); null when it is the only one.</summary>
+    public ProviderOrganization? Organization { get; set; }
 
     /// <summary>
     /// The record over the years in the archived monthly NPPES files (CMS NPPES; historical copies via NBER), newest version

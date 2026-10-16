@@ -101,6 +101,12 @@ public sealed class ProviderSearch
     /// <summary>NPPES record updated within the last this many days, 1–3650.</summary>
     public int? UpdatedWithinDays { get; set; }
 
+    /// <summary>
+    /// true: list every NPI of an organization. Default: one row per organization (a member is left out when its main NPI matches the
+    /// same filters; <see cref="ProviderSummary.OrganizationNpis"/> says how many it has). The CSV download always lists every NPI.
+    /// </summary>
+    public bool? AllNpis { get; set; }
+
     /// <summary>name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix "-" for descending.</summary>
     public string? Sort { get; set; }
 
@@ -158,6 +164,7 @@ public sealed class ProviderSearch
         Add("quality", Quality);
         AddInt("newWithinDays", NewWithinDays);
         AddInt("updatedWithinDays", UpdatedWithinDays);
+        AddBool("allNpis", AllNpis);
         Add("sort", Sort);
         AddInt("page", Page);
         AddInt("pageSize", PageSize);

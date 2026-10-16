@@ -82,6 +82,7 @@ public static class SearchQueryString
             Quality = Text(q, "quality"),
             NewWithinDays = Int("newWithinDays", nameof(SearchFilter.NewWithinDays)),
             UpdatedWithinDays = Int("updatedWithinDays", nameof(SearchFilter.UpdatedWithinDays)),
+            AllNpis = Bool("allNpis", nameof(SearchFilter.AllNpis)) ?? false,
             Sort = Text(q, "sort"),
             Page = Int("page", nameof(SearchFilter.Page)) ?? 1,
             PageSize = Int("pageSize", nameof(SearchFilter.PageSize)) ?? SearchFilter.DefaultPageSize,
@@ -147,6 +148,8 @@ public static class SearchQueryString
             "New providers: enumerated (NPI issued) within the last this many days, 1-3650. Sort by -enumeration for a newest-first feed."),
         new("updatedWithinDays", ParameterType.WholeNumber, nameof(SearchFilter.UpdatedWithinDays),
             "NPPES record updated within the last this many days, 1-3650 (NPPES doesn't say what changed; see the provider's recorded changes)."),
+        new("allNpis", ParameterType.TrueFalse, nameof(SearchFilter.AllNpis),
+            "true: list every NPI of an organization. Default: one row per organization (a hospital's units, pharmacy and duplicate registrations are left out when its main NPI matches the same filters; organizationNpis says how many it has). CSV exports always list every NPI."),
         new("sort", ParameterType.Text, nameof(SearchFilter.Sort), "name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix - for descending."),
         new("page", ParameterType.WholeNumber, nameof(SearchFilter.Page), "Page number, from 1. Paging stops at the first 10,000 matches; use the CSV beyond that."),
         new("pageSize", ParameterType.WholeNumber, nameof(SearchFilter.PageSize), "Results per page, 1-200 (default 50)."),
@@ -211,6 +214,7 @@ public static class SearchQueryString
         Add("quality", f.Quality);
         Add("newWithinDays", f.NewWithinDays?.ToString(CultureInfo.InvariantCulture));
         Add("updatedWithinDays", f.UpdatedWithinDays?.ToString(CultureInfo.InvariantCulture));
+        Add("allNpis", f.AllNpis ? "true" : null);
         Add("sort", sort ?? f.Sort);
         if (includePaging)
         {

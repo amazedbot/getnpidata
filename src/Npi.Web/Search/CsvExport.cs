@@ -123,7 +123,7 @@ public static class CsvExport
         }
 
         // More rows than a sheet holds: say so on the search page instead of a cut-off file.
-        if ((await search.SearchAsync(filter with { PageSize = 1 }, ct)).TotalCount > ProviderXlsx.MaxRows)
+        if ((await search.SearchAsync(filter with { PageSize = 1, AllNpis = true }, ct)).TotalCount > ProviderXlsx.MaxRows)
         {
             return BackToSearch(http, "excel-limit");
         }

@@ -37,6 +37,12 @@ public sealed record ProviderSummary(
 
     /// <summary>The kind of building at the shown location (<see cref="AddressTypes"/>, Stage 5.5 item 18); null when not labelled.</summary>
     public string? AddressType { get; init; }
+
+    /// <summary>
+    /// How many NPIs the provider's organization has (docs/PRODUCT_PLAN.md step 3.8), its combined profile at
+    /// <c>/organization/{npi}</c>; null when the NPI is the only one of its organization.
+    /// </summary>
+    public int? OrganizationNpis { get; init; }
 }
 
 /// <summary>The status of one NPI in a bulk lookup.</summary>

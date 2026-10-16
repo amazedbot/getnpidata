@@ -111,6 +111,21 @@
         }
     </section>
 
+    @if (p.Organization is { } org)
+    {
+        @* Step 3.8: an NPI of an organization with several; its combined profile lists them all with their roles. *@
+        <div class="notice" role="note">
+            @if (org.MainNpi == p.Npi)
+            {
+                <span>The main NPI of @org.Name, which has @org.Npis NPIs: <a href="/organization/@org.MainNpi">see the combined profile</a>.</span>
+            }
+            else
+            {
+                <span>One of @org.Npis NPIs of @org.Name: <a href="/organization/@org.MainNpi">see the combined profile</a> (main NPI <span class="mono">@org.MainNpi</span>).</span>
+            }
+        </div>
+    }
+
     @if (compliance.Exclusions.Count > 0)
     {
         <div class="notice alert" role="note">
@@ -424,7 +439,7 @@
             <ul class="checks">
                 @foreach (var note in Model.QualityNotes)
                 {
-                    <li class="@note.Kind"><span aria-hidden="true">@(note.Kind switch { "good" => "✓", "bad" => "✕", "warn" => "!", _ => "i" })</span>@note.Text</li>
+                    <li class="@note.Kind"><span aria-hidden="true">@(note.Kind switch { "good" => "✓", "bad" => "✕", "warn" => "!", _ => "i" })</span>@note.Text@if (note.Href is not null){<a href="@note.Href" class="mono">@note.LinkText</a>}</li>
                 }
             </ul>
             <p class="src">Our own check, rebuilt with each weekly load: the NPPES record's age and address, compared with Medicare (billing, enrollment,

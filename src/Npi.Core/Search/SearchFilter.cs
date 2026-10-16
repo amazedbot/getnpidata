@@ -124,6 +124,12 @@ public sealed record SearchFilter
     /// </summary>
     public string? NameMatch { get; init; }
 
+    /// <summary>
+    /// List every NPI of an organization (docs/PRODUCT_PLAN.md step 3.8). False (the default): one row per organization, a member left
+    /// out when its organization's main NPI matches the same filters. Exports always list every NPI.
+    /// </summary>
+    public bool AllNpis { get; init; }
+
     /// <summary>Sort key (<see cref="SearchSort"/>), optionally prefixed with "-" for descending. Default "name".</summary>
     public string? Sort { get; init; }
 

@@ -75,6 +75,20 @@ public class LoaderCommandLineTests
     }
 
     [Fact]
+    public void Org_groups_takes_nothing_or_measure_with_an_optional_csv()
+    {
+        var plain = LoaderCommandLine.Parse(["org-groups"], out var error);
+        Assert.Null(error);
+        Assert.Equal(LoaderCommand.OrgGroups, plain?.Command);
+        Assert.Empty(plain!.Arguments);
+        Assert.Equal(["measure"], LoaderCommandLine.Parse(["org-groups", "MEASURE"], out _)!.Arguments);
+        Assert.Equal(["measure", "groups.csv"], LoaderCommandLine.Parse(["org-groups", "measure", "groups.csv"], out _)!.Arguments);
+        Assert.Null(LoaderCommandLine.Parse(["org-groups", "all"], out error));
+        Assert.Contains("measure", error, StringComparison.Ordinal);
+        Assert.Null(LoaderCommandLine.Parse(["org-groups", "measure", "a.csv", "b.csv"], out _));
+    }
+
+    [Fact]
     public void History_takes_a_month_discover_or_measure_with_zips()
     {
         Assert.Equal((LoaderCommand.History, 0), (LoaderCommandLine.Parse(["history"], out _)!.Command, LoaderCommandLine.Parse(["history"], out _)!.Arguments.Count));

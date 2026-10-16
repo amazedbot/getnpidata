@@ -82,6 +82,14 @@ public enum QualityReason
     /// years, docs/PRODUCT_PLAN.md Phase 3). Counts like the 5-year age: with no sign of current practice the record needs a check.
     /// </summary>
     MedicareStopped = 32768,
+
+    /// <summary>
+    /// No sign of current practice, and another NPI of the same organization (docs/PRODUCT_PLAN.md step 3.8, <see cref="OrganizationGroups"/>)
+    /// is current with signs of practice (<see cref="ProviderQuality.OtherCurrentNpi"/>): this NPI is probably a leftover or duplicate
+    /// registration (owner, 2026-10-15). Makes the record stale. Set only on a member neither issued nor updated in the last
+    /// <see cref="RecordQuality.OtherNpiCurrentYears"/> years (<see cref="RecordQuality.OtherNpiCurrentApplies"/>; owner, 2026-10-16).
+    /// </summary>
+    OtherNpiCurrent = 65536,
 }
 
 /// <summary>Signs that the provider currently practises (<c>provider_quality.activity</c>); stored bits, never renumber them.</summary>
@@ -107,7 +115,13 @@ public enum QualityActivity
 }
 
 /// <summary>One line of a record-quality explanation: <c>good</c>, <c>warn</c>, <c>bad</c> or <c>info</c>, and the text.</summary>
-public sealed record QualityNote(string Kind, string Text);
+public sealed record QualityNote(string Kind, string Text)
+{
+    /// <summary>A page the note links to (the current NPI of the organization), with <see cref="LinkText"/>.</summary>
+    public string? Href { get; init; }
+
+    public string? LinkText { get; init; }
+}
 
 /// <summary>
 /// A provider's record-quality label with what it was based on. The API shows the label, the reasons and the signs of current
@@ -115,9 +129,14 @@ public sealed record QualityNote(string Kind, string Text);
 /// </summary>
 public sealed record ProviderQuality(QualityLabel Label, [property: JsonIgnore] QualityReason Reasons, [property: JsonIgnore] QualityActivity Activity)
 {
+    /// <summary>
+    /// With <see cref="QualityReason.OtherNpiCurrent"/>: the organization's current NPI (its main NPI when that one is current).
+    /// </summary>
+    public string? OtherCurrentNpi { get; init; }
+
     /// <summary>The reasons in a few words each, most serious first ("Not updated in 10+ years", "No sign of current practice").</summary>
     [JsonPropertyName("reasons")]
-    public IReadOnlyList<string> ReasonTexts => RecordQuality.ShortReasons(Reasons);
+    public IReadOnlyList<string> ReasonTexts => RecordQuality.ShortReasons(Reasons, OtherCurrentNpi);
 
     /// <summary>The signs of current practice found ("billed Medicare", "enrolled in Medicare").</summary>
     public IReadOnlyList<string> Signs => RecordQuality.SignTexts(Activity);
@@ -127,7 +146,8 @@ public sealed record ProviderQuality(QualityLabel Label, [property: JsonIgnore] 
 /// The record-quality rules (docs/PRODUCT_PLAN.md step 3.1), shared by the loader (which stores the label) and the site (which
 /// explains it). <b>Stale:</b> not updated in NPPES for <see cref="StaleYears"/>+ years and no sign of current practice in the public
 /// data (Medicare billing or prescribing, a Care Compare listing, Medicare enrollment or order-and-refer eligibility, industry
-/// payments, a certified facility, a current state license, a state Medicaid enrollment), or a state record listing the provider as deceased. <b>Check:</b> not
+/// payments, a certified facility, a current state license, a state Medicaid enrollment), a state record listing the provider as deceased, or no
+/// sign of practice while another NPI of the same organization is current, for a member neither issued nor updated in the last 2 years (step 3.8). <b>Check:</b> not
 /// updated for <see cref="CheckYears"/>+ years, or Medicare billing stopped, with no sign of practice, or a conflict or gap: Care Compare lists another address or
 /// profession, a lapsed state license, an address that couldn't be mapped or is a PO box, no phone. <b>Current:</b> everything else.
 /// A reactivated NPI and a home address are shown but don't change the label.
@@ -136,6 +156,30 @@ public static class RecordQuality
 {
     public const int CheckYears = 5;
     public const int StaleYears = 10;
+
+    /// <summary>
+    /// <see cref="QualityReason.OtherNpiCurrent"/> spares a member issued or updated in NPPES within this many years of the as-of
+    /// date (owner, 2026-10-16): a new registration that isn't billing yet is not a leftover.
+    /// </summary>
+    public const int OtherNpiCurrentYears = 2;
+
+    /// <summary>
+    /// Whether <see cref="QualityReason.OtherNpiCurrent"/> may apply to a member by its age: both its enumeration date and its last
+    /// NPPES update <see cref="OtherNpiCurrentYears"/>+ years before <paramref name="asOf"/> (compared as the other age rules are:
+    /// before the as-of date less the years; a missing date counts as old). <see cref="OtherNpiCurrentSql"/> is the same rule in SQL.
+    /// </summary>
+    public static bool OtherNpiCurrentApplies(DateOnly? enumerated, DateOnly? lastUpdate, DateOnly asOf)
+    {
+        var limit = asOf.AddYears(-OtherNpiCurrentYears);
+        return (enumerated is null || enumerated < limit) && (lastUpdate is null || lastUpdate < limit);
+    }
+
+    /// <summary>
+    /// <see cref="OtherNpiCurrentApplies"/> in SQL, over the provider's <paramref name="enumeration"/> and <paramref name="lastUpdate"/>
+    /// columns and <paramref name="limit"/> (the as-of date less <see cref="OtherNpiCurrentYears"/> years).
+    /// </summary>
+    public static string OtherNpiCurrentSql(string enumeration, string lastUpdate, string limit) =>
+        $"COALESCE({enumeration} < {limit}, 1) AND COALESCE({lastUpdate} < {limit}, 1)";
 
     /// <summary>A Care Compare practice this close to an NPPES practice location (ZIP centres) agrees with the record.</summary>
     public const int CareCompareMiles = 25;
@@ -152,7 +196,7 @@ public static class RecordQuality
 
     public static QualityLabel Classify(QualityReason r) =>
         (r & (QualityReason.NotUpdated10Years | QualityReason.NoActivity)) == (QualityReason.NotUpdated10Years | QualityReason.NoActivity)
-        || (r & QualityReason.Deceased) != 0
+        || (r & (QualityReason.Deceased | QualityReason.OtherNpiCurrent)) != 0
         || ((r & Closed) != 0 && (r & QualityReason.NoActivity) != 0)
             ? QualityLabel.Stale
             : ((r & QualityReason.NoActivity) != 0 && (r & Inactive) != 0)
@@ -166,7 +210,7 @@ public static class RecordQuality
         static int I(QualityReason r) => (int)r;
         var stale = I(QualityReason.NotUpdated10Years | QualityReason.NoActivity);
         return string.Create(CultureInfo.InvariantCulture,
-            $"CASE WHEN ({reasons} & {stale}) = {stale} OR ({reasons} & {I(QualityReason.Deceased)}) <> 0 " +
+            $"CASE WHEN ({reasons} & {stale}) = {stale} OR ({reasons} & {I(QualityReason.Deceased | QualityReason.OtherNpiCurrent)}) <> 0 " +
             $"OR (({reasons} & {I(Closed)}) <> 0 AND ({reasons} & {I(QualityReason.NoActivity)}) <> 0) THEN {(int)QualityLabel.Stale} " +
             $"WHEN (({reasons} & {I(QualityReason.NoActivity)}) <> 0 AND ({reasons} & {I(Inactive)}) <> 0) OR ({reasons} & {I(CheckAny)}) <> 0 " +
             $"THEN {(int)QualityLabel.Check} " +
@@ -218,6 +262,7 @@ public static class RecordQuality
         (QualityReason.Deceased, "Listed as deceased by a state board"),
         (QualityReason.FacilityClosed, "Medicare-certified facility closed"),
         (QualityReason.ListedClosed, "Listed as permanently closed"),
+        (QualityReason.OtherNpiCurrent, OtherNpiCurrentText),
         (QualityReason.NotUpdated10Years, $"Not updated in {StaleYears}+ years"),
         (QualityReason.ListingOnly, "Only a map listing shows it open"),
         (QualityReason.NotUpdated5Years, $"Not updated in {CheckYears}+ years"),
@@ -233,11 +278,17 @@ public static class RecordQuality
         (QualityReason.HomeAddress, "Home address"),
     ];
 
-    /// <summary>The reasons in a few words each, most serious first; the 5-year age is left out when the 10-year one applies.</summary>
-    public static IReadOnlyList<string> ShortReasons(QualityReason reasons) =>
+    /// <summary>The short text of <see cref="QualityReason.OtherNpiCurrent"/>; the NPI follows it after a colon.</summary>
+    public const string OtherNpiCurrentText = "Another NPI of this organization is current";
+
+    /// <summary>
+    /// The reasons in a few words each, most serious first; the 5-year age is left out when the 10-year one applies.
+    /// <paramref name="otherCurrentNpi"/> follows <see cref="QualityReason.OtherNpiCurrent"/>'s text ("…: 1245370717").
+    /// </summary>
+    public static IReadOnlyList<string> ShortReasons(QualityReason reasons, string? otherCurrentNpi = null) =>
         Short.Where(s => (reasons & s.Reason) != 0
                          && !(s.Reason == QualityReason.NotUpdated5Years && (reasons & QualityReason.NotUpdated10Years) != 0))
-            .Select(s => s.Text).ToList();
+            .Select(s => s.Reason == QualityReason.OtherNpiCurrent && otherCurrentNpi is not null ? $"{s.Text}: {otherCurrentNpi}" : s.Text).ToList();
 
     private static readonly (QualityActivity Activity, string Text)[] Signs =
     [
@@ -286,6 +337,16 @@ public static class RecordQuality
         if (Has(QualityReason.ListedClosed))
         {
             notes.Add(new("bad", "Maps list a business with this name at this address as permanently closed (Overture Maps)"));
+        }
+
+        if (Has(QualityReason.OtherNpiCurrent))
+        {
+            notes.Add(new("bad", "No sign of current practice under this NPI, while another NPI of this organization is current" +
+                                 (q.OtherCurrentNpi is null ? "" : ": "))
+            {
+                Href = q.OtherCurrentNpi is null ? null : "/provider/" + q.OtherCurrentNpi,
+                LinkText = q.OtherCurrentNpi,
+            });
         }
 
         var years = lastUpdate is { } u ? (today.DayNumber - u.DayNumber) / 365 : (int?)null;
