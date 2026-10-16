@@ -155,6 +155,13 @@ public class ClientTests
     [InlineData(typeof(Server.OrganizationProfile), typeof(OrganizationProfile))]
     [InlineData(typeof(Server.OrganizationMember), typeof(OrganizationMember))]
     [InlineData(typeof(Server.OrganizationGroup), typeof(OrganizationGroup))]
+    [InlineData(typeof(Server.OrganizationOwnership), typeof(OrganizationOwnership))]
+    [InlineData(typeof(Server.OrganizationOwner), typeof(OrganizationOwner))]
+    [InlineData(typeof(Server.OrganizationOwnerFacility), typeof(OrganizationOwnerFacility))]
+    [InlineData(typeof(Server.FacilityEnrollment), typeof(FacilityEnrollment))]
+    [InlineData(typeof(Server.OrganizationClinicianSummary), typeof(OrganizationClinicianSummary))]
+    [InlineData(typeof(Server.OrganizationMedicareNpi), typeof(OrganizationMedicareNpi))]
+    [InlineData(typeof(Server.OrganizationChange), typeof(OrganizationChange))]
     [InlineData(typeof(Server.MedicareHistory), typeof(MedicareHistory))]
     [InlineData(typeof(Server.MedicareHistoryYear), typeof(MedicareHistoryYear))]
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
@@ -215,6 +222,37 @@ public class ClientTests
                 .Select(p => p.GetCustomAttribute<System.Text.Json.Serialization.JsonPropertyNameAttribute>()?.Name ?? p.Name);
 
         Assert.Empty(Names(server).Except(Names(client), StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Organization_page_json_reads_into_client_models()
+    {
+        // The one page per organization (docs/PRODUCT_PLAN.md step 3.9): owners once with their facilities, the clinicians in numbers.
+        var server = new Server.OrganizationProfile("1245370717", "JAMAICA HOSPITAL",
+            [new Server.OrganizationMember("1245370717", "JAMAICA HOSPITAL", "Main NPI: Hospital (CCN 330014)", "General hospital", "8900 VAN WYCK EXPY",
+                "JAMAICA", "NY", "11418", new DateOnly(2024, 1, 2)) { IsMain = true, Ccn = "330014", Quality = "Current" }])
+        {
+            Ccns = ["330014", "33S014"],
+            Ownership = new Server.OrganizationOwnership(
+                [new Server.OrganizationOwner(null, false, "JANE ROE", null, "Director", "officer", ["Director"], null, null, [], null, null,
+                    [new Server.OrganizationOwnerFacility("330014", "JAMAICA HOSPITAL", "Director", null, null),
+                     new Server.OrganizationOwnerFacility("33S014", "JAMAICA HOSPITAL PSYCH", "Director", null, null)])],
+                [], [new Server.FacilityEnrollment("330014", "JAMAICA HOSPITAL", "O20000000001", "JAMAICA HOSPITAL")], new DateOnly(2026, 9, 1), null),
+            Clinicians = new Server.OrganizationClinicianSummary(3, 2, 2, 0, 1, [new Server.SpecialtyCount("Cardiologist", 3)]),
+            MedicareActivity = [new Server.OrganizationMedicareNpi("1245370717", "JAMAICA HOSPITAL", "Main NPI", 2024, 1200, 5000, 250000.5, null, null, null, 2024)],
+            Changes = [new Server.OrganizationChange("1245370717", new DateOnly(2026, 10, 11), "phone", "7185550100", "7185550101")],
+        };
+        var json = JsonSerializer.Serialize(server, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var client = JsonSerializer.Deserialize<OrganizationProfile>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        Assert.Equal(["330014", "33S014"], client.Ccns);
+        var owner = Assert.Single(client.Ownership!.Owners);
+        Assert.Null(owner.OwnerId);
+        Assert.Equal(["330014", "33S014"], owner.Facilities.Select(f => f.Ccn));
+        Assert.Equal("O20000000001", client.Ownership.Enrollments[0].EnrollmentId);
+        Assert.Equal((3, 1), (client.Clinicians!.Total, client.Clinicians.InSeveral));
+        Assert.Equal(250000.5, client.MedicareActivity[0].Payment);
+        Assert.Equal(new DateTime(2026, 10, 11), client.Changes[0].RecordedOn);
     }
 
     [Fact]

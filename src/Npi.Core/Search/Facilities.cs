@@ -51,6 +51,24 @@ public static class FacilityTypes
 
     public static FacilityType Get(string code) => Find(code) ?? All[^1];
 
+    /// <summary>A nursing home by its Care Compare listing or its CMS number (also a Medicaid-only nursing facility).</summary>
+    public static bool IsNursingHome(CertifiedFacility facility) => facility.Kind == NursingHome || FromCcn(facility.Ccn).Type == NursingHome;
+
+    /// <summary>The order an organization's page lists its facilities in (docs/PRODUCT_PLAN.md step 3.9): hospitals and their units first.</summary>
+    public static int Order(string? kind)
+    {
+        for (var i = 0; i < All.Count; i++)
+        {
+            if (string.Equals(All[i].Code, kind, StringComparison.OrdinalIgnoreCase))
+            {
+                // Rehabilitation and long-term care hospitals with the hospitals.
+                return kind is Rehab or LongTermCare ? 1 : i * 2;
+            }
+        }
+
+        return All.Count * 2;
+    }
+
     /// <summary>
     /// The type and kind a CCN's number range stands for (CMS State Operations Manual §2779A): the state's two digits, then four
     /// digits for the facility (0001–0879 short-term hospitals, 1300–1399 critical access hospitals, 5000–6499 nursing facilities …),

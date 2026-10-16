@@ -1,0 +1,84 @@
+@using System.Globalization
+@using Npi.Core.Search
+@model Npi.Web.Pages.ProviderPart
+@*
+    An NPI's Medicare billing and prescribing (Stage 5.5 item 5, older years from docs/PRODUCT_PLAN.md Phase 3): the provider page's
+    "Medicare activity", and the main NPI's on an organization's page (step 3.9).
+*@
+@{
+    var p = Model.Provider;
+}
+@if (p.MedicareServices is { } mu)
+{
+    <h3>Patients and services in @mu.Year</h3>
+    <div class="big-numbers">
+        <div><strong>@Count(mu.Beneficiaries)</strong><span>patients</span></div>
+        <div><strong>@Count(mu.Services)</strong><span>services</span></div>
+        <div><strong>@Money(mu.PaymentAmount)</strong><span>paid by Medicare</span></div>
+    </div>
+    <dl class="facts">
+        @if (mu.ProviderType is not null){<dt>Medicare provider type</dt><dd>@mu.ProviderType@if (mu.Participating == false){<span class="muted"> · non-participating</span>}</dd>}
+        @if (mu.DistinctServices is not null){<dt>Kinds of service</dt><dd>@mu.DistinctServices distinct procedure codes</dd>}
+        @if (mu.AllowedAmount is not null){<dt>Allowed amount</dt><dd>@Money(mu.AllowedAmount)</dd>}
+        @if (mu.AverageRiskScore is not null){<dt>Patients' average risk score</dt><dd>@mu.AverageRiskScore.Value.ToString("0.00", CultureInfo.InvariantCulture) <span class="muted">(1.00 = average Medicare patient)</span></dd>}
+    </dl>
+    @if (mu.TopServices.Count > 0)
+    {
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Most frequent Medicare services</caption>
+                <thead><tr><th scope="col">Code</th><th scope="col">Service</th><th scope="col">Setting</th><th scope="col">Patients</th><th scope="col">Services</th><th scope="col">Avg. Medicare payment</th></tr></thead>
+                <tbody>
+                    @foreach (var s in mu.TopServices)
+                    {
+                        <tr><td class="mono">@s.Hcpcs</td><td>@s.Description</td><td>@s.PlaceOfService</td><td>@Count(s.Beneficiaries)</td><td>@Count(s.Services)</td><td>@Money(s.AveragePayment)</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+@if (p.MedicarePrescribing is { } rx)
+{
+    <h3>Part D prescribing in @rx.Year</h3>
+    <div class="big-numbers">
+        <div><strong>@Count(rx.Claims)</strong><span>prescriptions</span></div>
+        @if (rx.Beneficiaries is not null){<div><strong>@Count(rx.Beneficiaries)</strong><span>patients</span></div>}
+        <div><strong>@Money(rx.DrugCost)</strong><span>drug cost</span></div>
+    </div>
+    <dl class="facts">
+        @if (rx.BrandClaims is not null && rx.Claims is > 0){<dt>Brand-name share</dt><dd>@((100.0 * rx.BrandClaims.Value / rx.Claims.Value).ToString("0", CultureInfo.InvariantCulture))% of claims</dd>}
+        @if (rx.OpioidRate is not null){<dt>Opioid prescribing rate</dt><dd>@rx.OpioidRate.Value.ToString("0.0", CultureInfo.InvariantCulture)% of claims</dd>}
+        @if (rx.AntibioticClaims is not null){<dt>Antibiotic claims</dt><dd>@Count(rx.AntibioticClaims)</dd>}
+    </dl>
+}
+@if (p.MedicareHistory is { } mh)
+{
+    <h3>Medicare by year</h3>
+    <p>@(mh.Stopped ? mh.LastBilledText + "; none since." : $"Billed Medicare in {mh.Spans}.")</p>
+    <ol class="medicare-years" aria-label="Medicare activity by data year">
+        @for (var y = mh.FirstDataYear; y <= mh.NewestDataYear; y++)
+        {
+            var year = mh.Years.FirstOrDefault(x => x.Year == y);
+            var parts = year is null ? "none" : year.PartB && year.PartD ? "Part B and Part D" : year.PartB ? "Part B" : "Part D";
+            var detail = year is null ? "" : string.Join(", ", new[]
+            {
+                year.Beneficiaries is { } b ? $"{b.ToString("N0", CultureInfo.InvariantCulture)} patients" : null,
+                year.Claims is { } c ? $"{c.ToString("N0", CultureInfo.InvariantCulture)} prescriptions" : null,
+            }.Where(x => x is not null));
+            <li class="@(year is null ? "off" : "on")" title="@y: @parts@(detail.Length > 0 ? " (" + detail + ")" : "")">
+                <span class="yr">@y</span>
+                <span class="parts" aria-hidden="true">@(year is null ? "–" : (year.PartB ? "B" : "") + (year.PartD ? "D" : ""))</span>
+                <span class="visually-hidden">: @parts@(detail.Length > 0 ? ", " + detail : "")</span>
+            </li>
+        }
+    </ol>
+    <p class="muted small">B = billed Part B (services), D = prescribed under Part D.</p>
+}
+<p class="src">CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers data by provider, @(p.MedicareHistory is { } h ? $"{h.FirstDataYear}–{h.NewestDataYear}" : "newest year") (traditional Medicare only; counts under 11 are suppressed by CMS).</p>
+
+@functions {
+    private static string Count(double? value) => value is null ? "Suppressed" : value.Value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string Money(double? value) => value is null ? "Suppressed" : value.Value.ToString("$#,##0", CultureInfo.InvariantCulture);
+}

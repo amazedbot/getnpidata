@@ -213,4 +213,84 @@ public sealed class OrgGroupIntegrationTests
         Assert.Equal(4, withoutMain.Items.Single(i => i.Npi == Duplicate).OrganizationNpis);
         Assert.Equal(3, (await search.SearchAsync(new SearchFilter { State = "NY", OrgName = "saint example", AllNpis = true }, _ct)).TotalCount);
     }
+
+    [Fact]
+    public async Task Every_organization_with_a_facility_or_a_medicare_group_has_one_page()
+    {
+        // One page per organization (docs/PRODUCT_PLAN.md step 3.9): the hospital's group with both its CCNs, and the imaging center
+        // alone with its Medicare group. Clinicians from three sources: Baker works at the hospital (Care Compare) and bills through
+        // the group; Cole only lists the group in Care Compare; a deactivated clinician (no provider row) isn't listed. Owners: one
+        // organization owns both the hospital and its unit, and one officer serves both.
+        await using var db = await TestDatabase.CreateAsync();
+        await SeedAsync(db);
+        await db.ExecuteAsync(
+            """
+            INSERT INTO provider (npi, entity_type, last_name, first_name, sort_name, primary_taxonomy_code, enumeration_date, last_update_date) VALUES
+              ('1000000192', 1, 'COLE', 'CAL', 'COLE, CAL', '207RC0000X', '2016-01-01', '2025-01-01');
+            INSERT INTO cc_facility_affiliation (npi, facility_type, ccn) VALUES ('1000000184', 'Hospital', '330014'), ('1000000200', 'Hospital', '330014');
+            INSERT INTO medicare_reassignment (group_pac_id, npi) VALUES ('9000000001', '1000000184');
+            INSERT INTO cc_group (npi, org_pac_id, group_name, accepts_assignment) VALUES ('1000000192', '9000000001', 'SAINT EXAMPLE HOSPITAL', 1);
+            INSERT INTO cms_facility_enrollment (enrollment_id, kind, ccn, npi, org_name) VALUES
+              ('O20200101000001', 'hospital', '330014', @Hospital, 'SAINT EXAMPLE HOSPITAL'),
+              ('O20200101000009', 'hospital', '33S014', @Unit, 'SAINT EXAMPLE PSYCHIATRIC UNIT');
+            INSERT INTO facility_owner (enrollment_id, owner_id, role_code, kind, owner_type, name, title, percentage, period_end) VALUES
+              ('O20200101000001', '1234567890', '34', 'hospital', 'O', 'EXAMPLE HEALTH NETWORK', NULL, 100, '2026-09-01'),
+              ('O20200101000009', '1234567890', '34', 'hospital', 'O', 'EXAMPLE HEALTH NETWORK', NULL, 100, '2026-09-01'),
+              ('O20200101000001', '5550000001', '41', 'hospital', 'I', 'ROE, JANE', 'DIRECTOR', NULL, '2026-09-01'),
+              ('O20200101000009', '5550000002', '41', 'hospital', 'I', 'ROE, JANE', 'DIRECTOR', NULL, '2026-09-01');
+            """, new { Hospital, Unit });
+        await Builder(db).BuildAsync(_ct);
+        var groups = new OrganizationGroupService(db.ConnectionString);
+
+        // Which NPI's page: a member's is its main NPI's; an organization alone with a Medicare group has its own; none otherwise.
+        Assert.Equal(Hospital, await groups.FindPageNpiAsync(Pharmacy, _ct));
+        Assert.Equal(Imaging, await groups.FindPageNpiAsync(Imaging, _ct));
+        Assert.Null(await groups.FindPageNpiAsync(SameNameElsewhere, _ct));
+        Assert.Null(await groups.FindPageNpiAsync("1000000184", _ct)); // a person
+        Assert.Equal(new ProviderOrganization(Imaging, "EXAMPLE IMAGING CENTER", 1), await groups.GetMembershipAsync(Imaging, _ct));
+        Assert.Equal(new ProviderOrganization(Imaging, "EXAMPLE IMAGING CENTER", 1), (await new ProviderDetailService(db.ConnectionString)
+            .GetAsync(Imaging, _ct))!.Organization);
+
+        // A list links a facility or a group to the organization covering most of its NPIs: the PAC ID enrolls the hospital and the
+        // pharmacy (the hospital's organization) and the imaging center (its own).
+        Assert.Equal([("330014", Hospital), ("33S014", Hospital)],
+            (await groups.GetPagesForCcnsAsync(["330014", "33S014", "999999"], _ct)).Select(p => (p.Key, p.Value.MainNpi)).Order());
+        Assert.Equal(Hospital, (await groups.GetPagesForPacIdsAsync(["9000000001"], _ct))["9000000001"].MainNpi);
+
+        // The imaging center's page: one NPI, its group, the single rule.
+        var details = new ProviderDetailService(db.ConnectionString);
+        var imaging = (await groups.GetCombinedAsync(Imaging, details, _ct))!;
+        Assert.Equal([Imaging], imaging.Npis.Select(m => m.Npi));
+        Assert.Equal(["9000000001"], imaging.Groups.Select(g => g.PacId));
+        Assert.Equal(OrganizationGroups.SingleRule, imaging.Grouping);
+
+        // The hospital's full page from its unit's NPI.
+        var pages = new OrganizationPageService(db.ConnectionString, groups, details, new OwnershipService(db.ConnectionString));
+        var page = (await pages.GetAsync(Unit, _ct))!;
+        Assert.Equal(Hospital, page.MainNpi);
+        Assert.Equal(["330014", "33S014"], page.Ccns);
+        Assert.Equal(["330014"], page.FacilityProfiles.Select(f => f.Facility.Ccn)); // the unit has no listing of its own
+        Assert.Equal(2, page.FacilityProfiles[0].Clinicians.Total); // as the facility page counts its affiliations; the list below is active only
+
+        var owners = page.Ownership!.Owners;
+        Assert.Equal(2, owners.Count);
+        Assert.Equal("1234567890", owners[0].OwnerId);
+        Assert.Equal(["330014", "33S014"], owners[0].Facilities.Select(f => f.Ccn));
+        Assert.Null(owners[1].OwnerId); // a person: by name only, once across the two facilities
+        Assert.Equal(["330014", "33S014"], owners[1].Facilities.Select(f => f.Ccn));
+
+        Assert.Equal((2, 1, 1, 1, 1), (page.Clinicians!.Total, page.Clinicians.FacilityAffiliations, page.Clinicians.Reassignments,
+            page.Clinicians.CareCompareGroups, page.Clinicians.InSeveral));
+        var list = await pages.GetCliniciansAsync(page, 1, "source", _ct);
+        Assert.Equal(["1000000184", "1000000192"], list.List.Page.Select(c => c.Npi));
+        Assert.Equal(["facilityAffiliation", "reassignment"], list.List.Page[0].Sources);
+        Assert.Equal(["1000000184", "1000000192"], (await pages.GetAllCliniciansAsync(page, _ct)).Select(c => c.Npi));
+
+        // The imaging center's page has no CCN: its clinicians come from its Medicare group only.
+        var alone = (await pages.GetAsync(Imaging, _ct))!;
+        Assert.Equal((0, 2, 0), (alone.Ccns.Count, alone.Clinicians!.Total, alone.Clinicians.InSeveral));
+
+        // An organization NPI with nothing to bring together has no page.
+        Assert.Null(await pages.GetAsync(Store1, _ct));
+    }
 }

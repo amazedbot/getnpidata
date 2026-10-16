@@ -1,10 +1,13 @@
 @page "/system/{id}"
 @using Npi.Core.Search
 @model SystemModel
+@inject OrganizationGroupService OrgGroups
 @{
     var s = Model.System;
     var d = Model.Detail;
     ViewData["Title"] = s.Name;
+    // Its facilities and groups link to their organizations' pages when they have one (docs/PRODUCT_PLAN.md step 3.9).
+    var links = await OrganizationLinks.ForAsync(OrgGroups, d.Facilities.Select(f => f.Ccn), d.Groups.Select(g => g.PacId), null, HttpContext.RequestAborted);
 }
 
 <div class="profile">
@@ -64,7 +67,7 @@
                     @foreach (var f in facilities)
                     {
                         <li>
-                            <a href="/facility/@Uri.EscapeDataString(f.Ccn)">@CityCatalog.TitleCase(f.Name)</a>
+                            <a href="@links.Facility(f.Ccn)">@CityCatalog.TitleCase(f.Name)</a>
                             <span class="muted">@(f.City is null ? "" : CityCatalog.TitleCase(f.City) + ", ")@f.State · CCN <span class="mono">@f.Ccn</span>@(f.Rating is { } r ? $" · {FacilitiesModel.Stars(r)}" : "")@(f.Active == false ? " · certification ended" : "")</span>
                         </li>
                     }
@@ -85,7 +88,7 @@
             <ul class="link-list">
                 @foreach (var g in d.Groups)
                 {
-                    <li><a href="/group/@g.PacId">@CityCatalog.TitleCase(g.Name)</a> <span class="muted">@(g.State is null ? "" : g.State + " · ")@Format.Number(g.Clinicians) clinicians</span></li>
+                    <li><a href="@links.Group(g.PacId)">@CityCatalog.TitleCase(g.Name)</a> <span class="muted">@(g.State is null ? "" : g.State + " · ")@Format.Number(g.Clinicians) clinicians</span></li>
                 }
             </ul>
         }

@@ -36,6 +36,11 @@
         </div>
     </section>
 
+    @if (Model.Organization is { } organization)
+    {
+        <partial name="_OrganizationBanner" model="new OrganizationBanner(organization, null, OrganizationBanner.GroupPage)" />
+    }
+
     <partial name="_HealthSystemNote" model="new HealthSystemNote(HealthSystemNote.Pac, g.PacId)" />
     <partial name="_AcoNote" model="new HealthSystemNote(HealthSystemNote.Pac, g.PacId)" />
 
@@ -56,10 +61,6 @@
                     <li><a href="/provider/@o.Npi">@o.Name</a> <span class="muted">@(o.Specialty)@(o.City is null ? "" : $" · {Npi.Core.Search.CityCatalog.TitleCase(o.City)}, {o.State}") · <span class="mono">@o.Npi</span></span></li>
                 }
             </ul>
-        }
-        @foreach (var org in Model.CombinedOrganizations)
-        {
-            <p>Enrolled under <a href="/organization/@org.MainNpi">@Npi.Core.Search.CityCatalog.TitleCase(org.Name)</a>, an organization with @org.Npis NPIs: see its combined profile.</p>
         }
         <p class="src">Medicare Fee-For-Service Public Provider Enrollment (NPI to Medicare group ID).</p>
     </section>

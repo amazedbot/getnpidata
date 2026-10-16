@@ -65,8 +65,8 @@ public static class ApiEndpoints
 
         api.MapGet("/organizations/{npi}", GetOrganizationAsync)
             .WithName("GetOrganization").WithTags("Providers")
-            .WithSummary("One organization with all its NPIs")
-            .WithDescription("The combined profile of the organization an NPI belongs to (any of its NPIs): every NPI with its role (main NPI, a unit or facility with its CCN, a possible duplicate registration, its specialty), the main NPI's record, the certified facilities, Medicare groups and practice locations of all of them, and how they were grouped (the same legal name at the same street address, or a shared CCN, the same PAC ID or the same parent organization in one ZIP code; never similar names alone). 404 when the NPI is the only one of its organization, or unknown.");
+            .WithSummary("One organization with all its NPIs, facilities and groups")
+            .WithDescription($"The organization page of an NPI (any of its NPIs): every NPI with its role (main NPI, a unit or facility with its CCN, a possible duplicate registration, its specialty), the main NPI's record, the certified facilities (ccns; facilityProfiles: the first {OrganizationPageService.MaxFacilityDetails} with their ratings, how they compare with the nation, Medicare volume and a nursing home's inspections), Medicare groups and practice locations of all of them; ownership (each owner once with the facilities it holds a role in; people by name and role only); clinicians (how many, and how many each source lists: Care Compare facility affiliations, Medicare reassignments, Care Compare groups; every clinician: /organization/{{npi}}/clinicians.csv); medicareActivity of its NPIs, the changes recorded for them, health systems, ACOs (name matches) and 340B registrations; and how the NPIs were grouped (the same legal name at the same street address, or a shared CCN, the same PAC ID or the same parent organization in one ZIP code; never similar names alone). An organization NPI with a certified facility or a Medicare group and no other NPIs has a page of one NPI. 404 when the NPI has no organization page (a person, an organization NPI with none of those, or unknown).");
 
         api.MapGet("/companies", SearchCompaniesAsync)
             .WithName("SearchCompanies").WithTags("Companies")
@@ -237,11 +237,11 @@ public static class ApiEndpoints
             ? TypedResults.Ok(provider)
             : NotFound($"No active provider with NPI '{npi}'.");
 
-    private static async Task<Results<Ok<OrganizationProfile>, ProblemHttpResult>> GetOrganizationAsync(string npi, OrganizationGroupService groups,
-        ProviderDetailService details, CancellationToken ct) =>
-        await groups.GetCombinedAsync(npi, details, ct) is { } organization
+    private static async Task<Results<Ok<OrganizationProfile>, ProblemHttpResult>> GetOrganizationAsync(string npi, OrganizationPageService pages,
+        CancellationToken ct) =>
+        await pages.GetAsync(npi, ct) is { } organization
             ? TypedResults.Ok(organization)
-            : NotFound($"NPI '{npi}' is not one of several NPIs of an organization (or not an active NPI).");
+            : NotFound($"NPI '{npi}' has no organization page: it isn't an active organization NPI with a certified facility, a Medicare group or other NPIs.");
 
     private static Results<Ok<IReadOnlyList<string>>, ProblemHttpResult> GetSubcategories(string category) =>
         TaxonomyCatalog.GetSubcategories(category) is { } subcategories

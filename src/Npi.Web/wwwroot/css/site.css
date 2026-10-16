@@ -622,3 +622,21 @@ main.care-main { padding-top: 1.75rem; padding-bottom: 3.5rem; display: flex; fl
 .chip[aria-current="true"] { background: var(--green); border-color: var(--green); color: #FFFFFF; }
 .view-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
 td.num, th.num { text-align: right; white-space: nowrap; }
+
+/* One page per organization (docs/PRODUCT_PLAN.md step 3.9): the section menu stays at the top on wide screens; a detail page's banner
+   points to it; the page prints as one document (folded lists opened by profile.js, navigation left out). */
+.on-page.sticky { margin: 0.25rem 0 1rem; }
+@media (min-width: 60rem) { .on-page.sticky { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 0.6rem 0; box-shadow: 0 1px 0 var(--border); } }
+.organization-page [id] { scroll-margin-top: 1rem; }
+@media (min-width: 60rem) { .organization-page [id] { scroll-margin-top: 7.5rem; } }
+.org-banner { border-color: var(--accent); background: #EEF6F6; }
+.facility-card h3 { margin-top: 1.25rem; }
+.facility-card h3:first-of-type { margin-top: 0.75rem; }
+@media print {
+  .side, .topbar, .site-footer, .skip, .on-page, .map-card, .pager, button, a.button { display: none !important; }
+  .shell, .content { display: block; }
+  body { background: #FFFFFF; }
+  .card { break-inside: avoid-page; box-shadow: none; }
+  .table-wrap { overflow: visible; }
+  a { color: inherit; text-decoration: none; }
+}

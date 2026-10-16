@@ -241,6 +241,11 @@ public sealed class ClinicianRow
     public string? City { get; set; }
 
     public string? State { get; set; }
+
+    /// <summary>
+    /// On an organization's list only: how the clinician is tied to it (facilityAffiliation, reassignment, careCompareGroup); null elsewhere.
+    /// </summary>
+    public IReadOnlyList<string>? Sources { get; set; }
 }
 
 /// <summary>

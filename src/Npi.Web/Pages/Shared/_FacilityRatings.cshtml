@@ -1,0 +1,48 @@
+@using System.Globalization
+@model Npi.Web.Pages.FacilitySection
+@*
+    How CMS rates a facility: its star and outcome tiles. A card on the facility page; inside a facility's card on an organization's
+    page (docs/PRODUCT_PLAN.md step 3.9).
+*@
+@{
+    var v = Model.View;
+    var id = Model.Id("ratings-h");
+    void Body()
+    {
+        if (Model.Level == 2){<h2 id="@id">How CMS rates it</h2>}else{<h3 id="@id">How CMS rates it</h3>}
+        <div class="tiles">
+            @foreach (var r in v.Ratings)
+            {
+                <div class="tile">
+                    <span class="label">@r.Label</span>
+                    @if (r.Stars is { } stars)
+                    {
+                        var full = (int)Math.Floor(stars);
+                        var half = stars - full >= 0.5;
+                        <span class="stars" role="img" aria-label="@stars.ToString("0.#", CultureInfo.InvariantCulture) out of 5 stars">@(new string('★', full))@(half ? "½" : "")<span class="off">@(new string('★', 5 - full - (half ? 1 : 0)))</span></span>
+                        <span class="small">@stars.ToString("0.#", CultureInfo.InvariantCulture) of 5 stars · @r.Note</span>
+                    }
+                    else
+                    {
+                        <strong class="@(r.Bad ? "bad" : null)">@r.Value</strong>
+                        <span class="small">@r.Note</span>
+                    }
+                </div>
+            }
+        </div>
+        <p class="src">Medicare Care Compare.@if (v.Facility.Kind == "hospital"){<text> Deaths, safety and readmissions count the measures CMS rates better or worse than the national rate; the rest are no different.</text>}</p>
+    }
+}
+@if (v.Ratings.Any())
+{
+    if (Model.Nested)
+    {
+        Body();
+    }
+    else
+    {
+        <section class="card" aria-labelledby="@id">
+            @{ Body(); }
+        </section>
+    }
+}

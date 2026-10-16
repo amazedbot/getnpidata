@@ -611,7 +611,7 @@ public sealed class AcoService(string connectionString)
         }
 
         await using var connection = await OpenAsync(ct);
-        return await MembershipsAsync(connection, "m.npi = @id", npi, ct);
+        return await MembershipsAsync(connection, "m.npi = @id", new { id = npi }, ct);
     }
 
     /// <summary>The ACOs of a Medicare group: those its organization NPIs (enrolled under its PAC ID) are participants of, by name.</summary>
@@ -623,10 +623,10 @@ public sealed class AcoService(string connectionString)
         }
 
         await using var connection = await OpenAsync(ct);
-        return await MembershipsAsync(connection, "m.npi IN (SELECT npi FROM medicare_enrollment WHERE pac_id = @id)", pacId, ct);
+        return await MembershipsAsync(connection, "m.npi IN (SELECT npi FROM medicare_enrollment WHERE pac_id = @id)", new { id = pacId }, ct);
     }
 
-    private static async Task<IReadOnlyList<AcoMembership>> MembershipsAsync(MySqlConnection connection, string condition, string id, CancellationToken ct) =>
+    internal static async Task<IReadOnlyList<AcoMembership>> MembershipsAsync(MySqlConnection connection, string condition, object parameters, CancellationToken ct) =>
         (await connection.QueryAsync<MembershipRow>(new CommandDefinition(
             $"""
             SELECT a.aco_id AS AcoId, a.name AS AcoName, a.program_year AS ProgramYear, m.name AS ParticipantName, m.npi AS Npi,
@@ -636,7 +636,7 @@ public sealed class AcoService(string connectionString)
             WHERE {condition}
             ORDER BY a.name, a.aco_id, m.npi
             LIMIT 50
-            """, new { id }, cancellationToken: ct)))
+            """, parameters, cancellationToken: ct)))
         .Select(r => new AcoMembership(r.AcoId, r.AcoName, r.ProgramYear, r.ParticipantName, r.Npi, (int)r.Candidates)
         {
             HospitalGroup = r.HospitalGroup == 1, GroupedBy = r.GroupedBy, GroupedValue = r.GroupedValue,

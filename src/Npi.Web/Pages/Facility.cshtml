@@ -57,6 +57,11 @@
         </p>
     </section>
 
+    @if (Model.Organization is { } organization)
+    {
+        <partial name="_OrganizationBanner" model="new OrganizationBanner(organization, null, OrganizationBanner.FacilityPage)" />
+    }
+
     @if (p.CertificationOnly)
     {
         <section class="card" aria-labelledby="cert-h">
@@ -70,32 +75,9 @@
             <p class="src">CMS Provider of Services file. Medicare Care Compare doesn't rate this kind of facility, so there are no star ratings, ownership or phone here.</p>
         </section>
     }
-    else if (Model.Ratings.Any())
+    else
     {
-    <section class="card" aria-labelledby="ratings-h">
-        <h2 id="ratings-h">How CMS rates it</h2>
-        <div class="tiles">
-            @foreach (var r in Model.Ratings)
-            {
-                <div class="tile">
-                    <span class="label">@r.Label</span>
-                    @if (r.Stars is { } stars)
-                    {
-                        var full = (int)Math.Floor(stars);
-                        var half = stars - full >= 0.5;
-                        <span class="stars" role="img" aria-label="@stars.ToString("0.#", CultureInfo.InvariantCulture) out of 5 stars">@(new string('★', full))@(half ? "½" : "")<span class="off">@(new string('★', 5 - full - (half ? 1 : 0)))</span></span>
-                        <span class="small">@stars.ToString("0.#", CultureInfo.InvariantCulture) of 5 stars · @r.Note</span>
-                    }
-                    else
-                    {
-                        <strong class="@(r.Bad ? "bad" : null)">@r.Value</strong>
-                        <span class="small">@r.Note</span>
-                    }
-                </div>
-            }
-        </div>
-        <p class="src">Medicare Care Compare.@if (f.Kind == "hospital"){<text> Deaths, safety and readmissions count the measures CMS rates better or worse than the national rate; the rest are no different.</text>}</p>
-    </section>
+        <partial name="_FacilityRatings" model="new FacilitySection(Model.View)" />
     }
 
     @if (p.Systems.Count > 0 || p.HealthCenterSites.Count > 0 || p.Covered340B.Count > 0)
@@ -123,89 +105,9 @@
         </section>
     }
 
-    @if (p.Measures.Count > 0)
-    {
-        <section class="card" aria-labelledby="cmp-h">
-            <h2 id="cmp-h">How it compares</h2>
-            @foreach (var g in Model.MeasureGroups)
-            {
-                <h3>@g.Key</h3>
-                <div class="table-wrap">
-                    <table class="measures">
-                        <caption class="visually-hidden">@g.Key: this facility, the national value and CMS's comparison</caption>
-                        <thead>
-                            <tr><th scope="col">Measure</th><th scope="col">This facility</th><th scope="col">US</th><th scope="col">CMS compares it as</th><th scope="col">Period</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var m in g)
-                            {
-                                <tr>
-                                    <th scope="row">@m.Measure.Name@if (m.Measure.Cases is { } cases){<br /><span class="muted small">@Format.Number(cases) @(m.Measure.Group == FacilityMeasures.PatientExperience ? "completed surveys" : "patients or cases")</span>}</th>
-                                    <td class="nowrap">@m.Value</td>
-                                    <td class="nowrap">@m.National</td>
-                                    <td>@if (m.Comparison is not null){<span class="@m.PillClass">@m.Comparison</span>}else{<span class="muted">Not compared</span>}</td>
-                                    <td class="nowrap small">@m.Period</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-            <p class="src">@Model.MeasureSource</p>
-        </section>
-    }
-
-    @if (p.QualityIncentive is { } qip)
-    {
-        <section class="card" aria-labelledby="qip-h">
-            <h2 id="qip-h">Medicare quality incentive (ESRD QIP, payment year @qip.PaymentYear)</h2>
-            <div class="tiles">
-                <div class="tile"><span class="label">Total performance score</span><strong>@(qip.TotalPerformanceScore is { } score ? $"{score} of 100" : "No score")</strong><span class="small">@Model.QipAverages</span></div>
-                <div class="tile"><span class="label">Payment reduction</span><strong>@(qip.PaymentReduction is { } cut ? cut.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "%" : "—")</strong><span class="small">@(qip.PaymentReduction is 0.0 ? "No cut to its Medicare payments" : "Cut to its Medicare payments for the year")</span></div>
-            </div>
-            <p class="src">Medicare Care Compare: ESRD QIP – Total Performance Scores – Payment Year @qip.PaymentYear. The score (0–100) combines the program's clinical, safety, patient experience and reporting measures; facilities below CMS's minimum score have their Medicare payments cut by up to 2% for that year.</p>
-        </section>
-    }
-
-    @if (p.MedicareVolume is { } v)
-    {
-        <section class="card" aria-labelledby="vol-h">
-            <h2 id="vol-h">Medicare volume</h2>
-            <div class="tiles">
-                @if (v.Discharges is { } discharges){<div class="tile"><span class="label">Inpatient stays@(v.InpatientYear is { } iy ? $" ({iy})" : "")</span><strong>@Format.Number(discharges)</strong><span class="small">Medicare discharges</span></div>}
-                @if (v.Beneficiaries is { } benes){<div class="tile"><span class="label">Inpatients</span><strong>@Format.Number(benes)</strong><span class="small">Medicare patients</span></div>}
-                @if (v.CoveredDays is { } days){<div class="tile"><span class="label">Covered days</span><strong>@Format.Number(days)</strong><span class="small">in the hospital</span></div>}
-                @if (v.MedicarePayments is { } paid){<div class="tile"><span class="label">Medicare paid, inpatient</span><strong>@Format.ShortMoney(paid)</strong><span class="small">@(v.TotalPayments is { } total ? $"{Format.ShortMoney(total)} with patients' and other payers' shares" : "Medicare's share")</span></div>}
-                @if (v.OutpatientServices is { } svc){<div class="tile"><span class="label">Outpatient services@(v.OutpatientYear is { } oy ? $" ({oy})" : "")</span><strong>@Format.Number(svc)</strong><span class="small">in the service groups CMS lists</span></div>}
-                @if (v.OutpatientPayments is { } outPaid){<div class="tile"><span class="label">Medicare paid, outpatient</span><strong>@Format.ShortMoney(outPaid)</strong><span class="small">for those services</span></div>}
-            </div>
-            @foreach (var (title, caption, list, unit) in new[] { ("Most frequent inpatient stays (DRGs)", "DRG", v.TopInpatient, "Discharges"), ("Most frequent outpatient services (APCs)", "APC", v.TopOutpatient, "Services") })
-            {
-                if (list.Count == 0)
-                {
-                    continue;
-                }
-                <h3>@title</h3>
-                <div class="table-wrap">
-                    <table>
-                        <caption class="visually-hidden">@title, most cases first</caption>
-                        <thead><tr><th scope="col">@caption</th><th scope="col">@unit</th><th scope="col">Avg. Medicare payment</th></tr></thead>
-                        <tbody>
-                            @foreach (var x in list)
-                            {
-                                <tr>
-                                    <th scope="row"><span class="mono">@x.Code</span> @x.Description</th>
-                                    <td>@Format.Number(x.Cases)</td>
-                                    <td>@(x.AverageMedicarePayment is { } avg ? Format.Money(avg) : "—")</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-            <p class="src">@Model.VolumeSource</p>
-        </section>
-    }
+    <partial name="_FacilityCompares" model="new FacilitySection(Model.View)" />
+    <partial name="_FacilityQip" model="new FacilitySection(Model.View)" />
+    <partial name="_FacilityVolume" model="new FacilitySection(Model.View)" />
 
     <partial name="_FacilityOwnership" model="new FacilityOwnershipSection(Model.Ownership, FacilityModel.IsNursingHome(f) ? Npi.Core.Search.FacilityTypes.NursingHome : f.Kind)" />
 
@@ -254,10 +156,6 @@
                     <li><a href="/provider/@o.Npi">@o.Name</a> <span class="muted">@(o.Specialty)@(o.City is null ? "" : $" · {Npi.Core.Search.CityCatalog.TitleCase(o.City)}, {o.State}") · <span class="mono">@o.Npi</span></span></li>
                 }
             </ul>
-        }
-        @foreach (var org in Model.Organizations)
-        {
-            <p>Part of <a href="/organization/@org.MainNpi">@Npi.Core.Search.CityCatalog.TitleCase(org.Name)</a>, an organization with @org.Npis NPIs: see its combined profile.</p>
         }
         <p class="src">CMS hospital, nursing home, home health, hospice, FQHC and rural health clinic enrollments (CCN to NPI), the Medicare Dialysis Facility Report and Care Compare's surgery center file.</p>
     </section>

@@ -1,0 +1,33 @@
+@using System.Globalization
+@model Npi.Web.Pages.FacilitySection
+@*
+    A dialysis facility's ESRD Quality Incentive Program score (docs/PRODUCT_PLAN.md step 3.6 part 2). A card on the facility page;
+    inside a facility's card on an organization's page (step 3.9).
+*@
+@{
+    var v = Model.View;
+    var id = Model.Id("qip-h");
+    void Body(Npi.Core.Search.DialysisQualityIncentive qip)
+    {
+        var title = $"Medicare quality incentive (ESRD QIP, payment year {qip.PaymentYear})";
+        if (Model.Level == 2){<h2 id="@id">@title</h2>}else{<h3 id="@id">@title</h3>}
+        <div class="tiles">
+            <div class="tile"><span class="label">Total performance score</span><strong>@(qip.TotalPerformanceScore is { } score ? $"{score} of 100" : "No score")</strong><span class="small">@v.QipAverages</span></div>
+            <div class="tile"><span class="label">Payment reduction</span><strong>@(qip.PaymentReduction is { } cut ? cut.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "—")</strong><span class="small">@(qip.PaymentReduction is 0.0 ? "No cut to its Medicare payments" : "Cut to its Medicare payments for the year")</span></div>
+        </div>
+        <p class="src">Medicare Care Compare: ESRD QIP – Total Performance Scores – Payment Year @qip.PaymentYear. The score (0–100) combines the program's clinical, safety, patient experience and reporting measures; facilities below CMS's minimum score have their Medicare payments cut by up to 2% for that year.</p>
+    }
+}
+@if (v.Profile.QualityIncentive is { } incentive)
+{
+    if (Model.Nested)
+    {
+        Body(incentive);
+    }
+    else
+    {
+        <section class="card" aria-labelledby="@id">
+            @{ Body(incentive); }
+        </section>
+    }
+}

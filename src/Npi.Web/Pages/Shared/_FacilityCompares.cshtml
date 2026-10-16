@@ -1,0 +1,52 @@
+@using Npi.Core.Search
+@model Npi.Web.Pages.FacilitySection
+@*
+    How a facility compares with the nation (docs/PRODUCT_PLAN.md step 3.6 part 2), by measure group. A card on the facility page;
+    inside a facility's card on an organization's page (step 3.9).
+*@
+@{
+    var v = Model.View;
+    var id = Model.Id("cmp-h");
+    void Body()
+    {
+        if (Model.Level == 2){<h2 id="@id">How it compares</h2>}else{<h3 id="@id">How it compares</h3>}
+        foreach (var g in v.MeasureGroups)
+        {
+            if (Model.Level == 2){<h3>@g.Key</h3>}else{<h4>@g.Key</h4>}
+            <div class="table-wrap">
+                <table class="measures">
+                    <caption class="visually-hidden">@g.Key: this facility, the national value and CMS's comparison</caption>
+                    <thead>
+                        <tr><th scope="col">Measure</th><th scope="col">This facility</th><th scope="col">US</th><th scope="col">CMS compares it as</th><th scope="col">Period</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in g)
+                        {
+                            <tr>
+                                <th scope="row">@m.Measure.Name@if (m.Measure.Cases is { } cases){<br /><span class="muted small">@Format.Number(cases) @(m.Measure.Group == FacilityMeasures.PatientExperience ? "completed surveys" : "patients or cases")</span>}</th>
+                                <td class="nowrap">@m.Value</td>
+                                <td class="nowrap">@m.National</td>
+                                <td>@if (m.Comparison is not null){<span class="@m.PillClass">@m.Comparison</span>}else{<span class="muted">Not compared</span>}</td>
+                                <td class="nowrap small">@m.Period</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <p class="src">@v.MeasureSource</p>
+    }
+}
+@if (v.Profile.Measures.Count > 0)
+{
+    if (Model.Nested)
+    {
+        Body();
+    }
+    else
+    {
+        <section class="card" aria-labelledby="@id">
+            @{ Body(); }
+        </section>
+    }
+}

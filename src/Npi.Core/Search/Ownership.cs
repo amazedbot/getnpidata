@@ -253,10 +253,10 @@ public sealed class OwnershipService(string connectionString)
     public const string InspectionsSource = "cc_nursing_home_inspections";
 
 
-    private sealed record EnrollmentRow(string EnrollmentId, string? OrgName, string? AssociateId);
+    private sealed record EnrollmentRow(string EnrollmentId, string? OrgName, string? AssociateId, string? Ccn);
 
     private sealed record OwnerRow(string OwnerId, string OwnerType, string? Name, string? DbaName, string? Title, string RoleCode, string? RoleText,
-        double? Percentage, DateTime? AssociationDate, string? OwnerKinds, string? City, string? State, DateTime? PeriodEnd);
+        double? Percentage, DateTime? AssociationDate, string? OwnerKinds, string? City, string? State, DateTime? PeriodEnd, string EnrollmentId);
 
     private sealed record ChangeRow(long Id, string Kind, string? ChowTypeCode, string? ChowType, DateTime? EffectiveDate, string? BuyerEnrollmentId,
         string? BuyerCcn, string? BuyerNpi, string? BuyerAssociateId, string? BuyerName, string? BuyerDbaName, string? SellerEnrollmentId, string? SellerCcn,
@@ -477,44 +477,77 @@ public sealed class OwnershipService(string connectionString)
             return null;
         }
 
-        ccn = ccn.ToUpperInvariant();
         await using var connection = await OpenAsync(ct);
+        return (await ForCcnsAsync(connection, [ccn.ToUpperInvariant()], ct)).GetValueOrDefault(ccn.ToUpperInvariant());
+    }
+
+    /// <summary>
+    /// The owners and ownership changes of several facilities at once (an organization's page, docs/PRODUCT_PLAN.md step 3.9), by
+    /// CCN; a CCN for which CMS lists neither is left out.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, FacilityOwnership>> GetFacilitiesOwnershipAsync(IReadOnlyCollection<string> ccns, CancellationToken ct)
+    {
+        var valid = ccns.Where(OrganizationService.IsCcn).Select(c => c.ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToList();
+        if (valid.Count == 0)
+        {
+            return new Dictionary<string, FacilityOwnership>();
+        }
+
+        await using var connection = await OpenAsync(ct);
+        return await ForCcnsAsync(connection, valid, ct);
+    }
+
+    private static async Task<Dictionary<string, FacilityOwnership>> ForCcnsAsync(MySqlConnection connection, IReadOnlyList<string> ccns, CancellationToken ct)
+    {
         var enrollments = (await connection.QueryAsync<EnrollmentRow>(new CommandDefinition(
-            "SELECT enrollment_id AS EnrollmentId, org_name AS OrgName, associate_id AS AssociateId FROM cms_facility_enrollment WHERE ccn = @ccn ORDER BY enrollment_id",
-            new { ccn }, cancellationToken: ct))).ToList();
+            """
+            SELECT enrollment_id AS EnrollmentId, org_name AS OrgName, associate_id AS AssociateId, ccn AS Ccn
+            FROM cms_facility_enrollment WHERE ccn IN @ccns ORDER BY enrollment_id
+            """, new { ccns }, cancellationToken: ct))).ToList();
         var owners = enrollments.Count == 0
             ? []
             : (await connection.QueryAsync<OwnerRow>(new CommandDefinition(
                 """
                 SELECT owner_id AS OwnerId, owner_type AS OwnerType, name AS Name, dba_name AS DbaName, title AS Title, role_code AS RoleCode,
                        role_text AS RoleText, percentage AS Percentage, association_date AS AssociationDate, owner_kinds AS OwnerKinds, city AS City,
-                       state AS State, period_end AS PeriodEnd
+                       state AS State, period_end AS PeriodEnd, enrollment_id AS EnrollmentId
                 FROM facility_owner WHERE enrollment_id IN @ids
                 """, new { ids = enrollments.Select(e => e.EnrollmentId).ToList() }, cancellationToken: ct))).ToList();
-        var changes = await ChangesAsync(connection, "c.buyer_ccn = @ccn OR c.seller_ccn = @ccn", new { ccn }, ct);
-        if (enrollments.Count == 0 && changes.Count == 0)
-        {
-            return null;
-        }
-
-        var list = owners
-            .Select(o => o.OwnerType == "O"
-                ? new FacilityOwner(o.OwnerId, true, OwnerName(o.Name, o.OwnerId), o.DbaName, o.Title, o.RoleCode, OwnerRoles.Label(o.RoleCode, o.RoleText),
-                    OwnerRoles.Group(o.RoleCode), o.Percentage, Date(o.AssociationDate), OwnerKinds.Parse(o.OwnerKinds), o.City, o.State)
-                : new FacilityOwner(null, false, PersonName(o.Name), null, o.Title, o.RoleCode, OwnerRoles.Label(o.RoleCode, o.RoleText),
-                    OwnerRoles.Group(o.RoleCode), o.Percentage, Date(o.AssociationDate), [], null, null))
-            // Each group in the page's order; the largest stake, organizations and then names first within it.
-            .OrderBy(o => OwnerRoles.Order(o.RoleGroup))
-            .ThenByDescending(o => o.Percentage ?? -1)
-            .ThenByDescending(o => o.IsOrganization)
-            .ThenBy(o => o.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(o => o.RoleCode, StringComparer.Ordinal)
-            .ToList();
-        var first = enrollments.FirstOrDefault();
+        var changes = await ChangesAsync(connection, "c.buyer_ccn IN @ccns OR c.seller_ccn IN @ccns", new { ccns }, ct);
         var changesAsOf = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
             "SELECT MAX(period_end) FROM facility_ownership_change", cancellationToken: ct));
-        return new FacilityOwnership(ccn, first?.EnrollmentId, first?.OrgName, first?.AssociateId, Date(owners.Max(o => o.PeriodEnd)), list,
-            Date(changesAsOf), changes);
+        var ownersOf = owners.ToLookup(o => o.EnrollmentId, StringComparer.Ordinal);
+        var result = new Dictionary<string, FacilityOwnership>(StringComparer.Ordinal);
+        foreach (var ccn in ccns)
+        {
+            var mine = enrollments.Where(e => string.Equals(e.Ccn, ccn, StringComparison.OrdinalIgnoreCase)).ToList();
+            var itsChanges = changes.Where(c => string.Equals(c.BuyerCcn, ccn, StringComparison.OrdinalIgnoreCase)
+                                                || string.Equals(c.SellerCcn, ccn, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (mine.Count == 0 && itsChanges.Count == 0)
+            {
+                continue;
+            }
+
+            var rows = mine.SelectMany(e => ownersOf[e.EnrollmentId]).ToList();
+            var list = rows
+                .Select(o => o.OwnerType == "O"
+                    ? new FacilityOwner(o.OwnerId, true, OwnerName(o.Name, o.OwnerId), o.DbaName, o.Title, o.RoleCode, OwnerRoles.Label(o.RoleCode, o.RoleText),
+                        OwnerRoles.Group(o.RoleCode), o.Percentage, Date(o.AssociationDate), OwnerKinds.Parse(o.OwnerKinds), o.City, o.State)
+                    : new FacilityOwner(null, false, PersonName(o.Name), null, o.Title, o.RoleCode, OwnerRoles.Label(o.RoleCode, o.RoleText),
+                        OwnerRoles.Group(o.RoleCode), o.Percentage, Date(o.AssociationDate), [], null, null))
+                // Each group in the page's order; the largest stake, organizations and then names first within it.
+                .OrderBy(o => OwnerRoles.Order(o.RoleGroup))
+                .ThenByDescending(o => o.Percentage ?? -1)
+                .ThenByDescending(o => o.IsOrganization)
+                .ThenBy(o => o.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(o => o.RoleCode, StringComparer.Ordinal)
+                .ToList();
+            var first = mine.FirstOrDefault();
+            result[ccn] = new FacilityOwnership(ccn, first?.EnrollmentId, first?.OrgName, first?.AssociateId, Date(rows.Max(o => o.PeriodEnd)), list,
+                Date(changesAsOf), itsChanges);
+        }
+
+        return result;
     }
 
     /// <summary>A nursing home's inspections and penalties, or null when Care Compare lists none for the CCN.</summary>

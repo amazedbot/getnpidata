@@ -2,6 +2,7 @@
 @using System.Globalization
 @using Npi.Core.Search
 @model OrganizationsModel
+@inject OrganizationGroupService OrgGroups
 @if (Model.NotReady)
 {
     ViewData["Title"] = "Groups & organizations";
@@ -22,6 +23,10 @@
     ViewData["Title"] = Model.GroupsView ? "Medicare groups" : "Groups & organizations";
     var states = GeographyCatalog.AllStateNames.OrderBy(s => s.Value, StringComparer.Ordinal).ToList();
     var large = o.Sizes.Where(s => s.Min >= 50).Sum(s => s.Groups);
+    // Groups and organization NPIs with an organization page link there (docs/PRODUCT_PLAN.md step 3.9).
+    var links = await OrganizationLinks.ForAsync(OrgGroups, null,
+        (Model.Groups?.Items.Select(x => x.PacId) ?? []).Concat(o.Largest.Select(x => x.PacId)),
+        (Model.OrganizationMatches?.Items.Select(x => x.Npi) ?? []).Concat(o.TopBilling.Select(x => x.Npi)), HttpContext.RequestAborted);
 }
 
 <div class="profile industry">
@@ -139,7 +144,7 @@
                                 var x = g.Items[i];
                                 <tr>
                                     <td class="muted">@(first + i + 1)</td>
-                                    <td class="break"><a href="/group/@x.PacId">@OrganizationsModel.Name(x.Name)</a><br /><span class="muted small">Group ID <span class="mono">@x.PacId</span>@(x.AcceptsMedicare == true ? " · accepts Medicare" : "")</span></td>
+                                    <td class="break"><a href="@links.Group(x.PacId)">@OrganizationsModel.Name(x.Name)</a><br /><span class="muted small">Group ID <span class="mono">@x.PacId</span>@(x.AcceptsMedicare == true ? " · accepts Medicare" : "")</span></td>
                                     <td>@x.State</td>
                                     <td class="num">@Format.Number(x.Clinicians)</td>
                                     <td class="num">@Format.Number(x.OrganizationNpis)</td>
@@ -181,7 +186,7 @@
                         <ul class="plain-list">
                             @foreach (var x in gm.Items)
                             {
-                                <li><a href="/group/@x.PacId">@OrganizationsModel.Name(x.Name)</a> <span class="muted">· @(x.State is null ? "" : x.State + " · ")@Format.Number(x.Clinicians) clinicians</span></li>
+                                <li><a href="@links.Group(x.PacId)">@OrganizationsModel.Name(x.Name)</a> <span class="muted">· @(x.State is null ? "" : x.State + " · ")@Format.Number(x.Clinicians) clinicians</span></li>
                             }
                         </ul>
                         @if (gm.TotalCount > gm.Items.Count){<p><a href="/groups?q=@Uri.EscapeDataString(Model.Q!.Trim())">All @Format.Number(gm.TotalCount) matching groups →</a></p>}
@@ -202,7 +207,7 @@
                         <ul class="plain-list">
                             @foreach (var p in om.Items)
                             {
-                                <li><a href="/provider/@p.Npi">@p.Name</a> <span class="muted">· @(p.PlainSpecialty ?? p.PrimarySpecialty)@(p.City is null ? "" : $" · {CityCatalog.TitleCase(p.City)}, {p.State}")</span></li>
+                                <li><a href="@links.Provider(p.Npi)">@p.Name</a> <span class="muted">· @(p.PlainSpecialty ?? p.PrimarySpecialty)@(p.City is null ? "" : $" · {CityCatalog.TitleCase(p.City)}, {p.State}")</span></li>
                             }
                         </ul>
                         @if (om.TotalCount > om.Items.Count){<p><a href="/search?orgName=@Uri.EscapeDataString(Model.Q!.Trim())&amp;nameMatch=similar&amp;entityType=2">All @Format.Number(om.TotalCount) matching organizations →</a></p>}
@@ -254,7 +259,7 @@
                         @foreach (var x in o.Largest)
                         {
                             <tr>
-                                <td class="break"><a href="/group/@x.PacId">@OrganizationsModel.Name(x.Name)</a></td>
+                                <td class="break"><a href="@links.Group(x.PacId)">@OrganizationsModel.Name(x.Name)</a></td>
                                 <td>@x.State</td>
                                 <td class="num">@Format.Number(x.Clinicians)</td>
                                 <td class="num">@Format.Number(x.OrganizationNpis)</td>
@@ -321,7 +326,7 @@
                             @foreach (var b in o.TopBilling)
                             {
                                 <tr>
-                                    <td class="break"><a href="/provider/@b.Npi">@b.Name</a></td>
+                                    <td class="break"><a href="@links.Provider(b.Npi)">@b.Name</a></td>
                                     <td>@b.Specialty</td>
                                     <td>@(b.City is null ? "" : $"{CityCatalog.TitleCase(b.City)}, {b.State}")</td>
                                     <td class="num">@Format.ShortMoney(b.Payments)</td>
