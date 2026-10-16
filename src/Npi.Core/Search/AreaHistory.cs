@@ -30,7 +30,7 @@ public sealed record AreaHistoryCoverage(DateOnly? DerivedFrom, DateOnly? Tracke
     public DateOnly? ArchiveFrom { get; init; }
 
     /// <summary>
-    /// The first archive month counted by every practice location (the first file listing secondary ones, September 2018), as
+    /// The first archive month counted by every practice location (the first file listing secondary ones, July 2018), as
     /// the recorded and derived series count; the archive's earlier months count primary practice locations only.
     /// </summary>
     public DateOnly? AnyLocationFrom { get; init; }
@@ -189,7 +189,7 @@ public static class AreaHistoryMath
                 Count(r => r.ExclusionChanges, From(m, coverage.ChangesFrom)),
                 a?.QualityCurrent, a?.QualityCheck, a?.QualityStale)
             {
-                // Not where the definition changes (the archive counts primary practice locations before September 2018, every one after).
+                // Not where the definition changes (the archive counts primary practice locations before July 2018, every one after).
                 NetChange = providers is { } now && previousProviders is { } before && previousEvery == coverage.EveryLocation(m) ? now - before : null,
                 Partial = coverage.AsOfMonth == m,
                 Basis = basis,

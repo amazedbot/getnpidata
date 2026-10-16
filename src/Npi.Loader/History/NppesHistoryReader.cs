@@ -7,7 +7,7 @@ namespace Npi.Loader.History;
 
 /// <summary>What one archived NPPES file held (docs/PRODUCT_PLAN.md step 3.4).</summary>
 /// <param name="DataDate">The file's own date: the end of <c>npidata_20050523-YYYYMMDD</c>, else null.</param>
-/// <param name="HasLocations">The zip listed secondary practice locations (<c>pl_pfile_*.csv</c>, from September 2018).</param>
+/// <param name="HasLocations">The zip listed secondary practice locations (<c>pl_pfile_*.csv</c>, from July 2018).</param>
 /// <param name="SecondaryRows">The secondary location rows read (0 without a pl_pfile).</param>
 public sealed record HistoryFileSummary(string EntryName, DateOnly? DataDate, int Columns, long Rows, long DeactivatedRows, long BadRows,
     bool HasLocations = false, long SecondaryRows = 0);
@@ -18,7 +18,7 @@ public sealed record HistoryFileSummary(string EntryName, DateOnly? DataDate, in
 /// 2007, 314 in 2011, 329 from 2012 with the taxonomy groups, 330 from 2024; V2 says "Provider Sex Code"). The entry is
 /// <c>npidata_*.csv</c> (<c>npidata_pfile_*</c> from 2018), in any folder of the zip, matched case-insensitively; the header
 /// files (<c>…NPIDataDisseminationFileHeader.csv</c>, <c>…FileHeader.csv</c>, <c>…_fileheader.csv</c>) are skipped. From
-/// September 2018 the zip also holds <c>pl_pfile_*.csv</c>, the secondary practice locations, read first: each NPI's state and
+/// July 2018 the zip also holds <c>pl_pfile_*.csv</c>, the secondary practice locations, read first: each NPI's state and
 /// ZIP pairs become its location set (<see cref="NpiVersion.LocationSet"/>); a zip without one leaves every NPI's set unknown
 /// (-1), which keeps its previous set.
 /// </summary>

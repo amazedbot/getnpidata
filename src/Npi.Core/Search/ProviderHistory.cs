@@ -76,7 +76,7 @@ public sealed record ProviderHistoryVersion(
 /// <param name="ArchiveTo">The archive's newest file (its month).</param>
 /// <param name="FirstListed">The date of the first file that listed the NPI.</param>
 /// <param name="InFirstFile">The NPI was already in the archive's first file (so it may be older).</param>
-/// <param name="SecondaryFrom">The first file that listed secondary practice locations (September 2018); none before.</param>
+/// <param name="SecondaryFrom">The first file that listed secondary practice locations (July 2018); none before.</param>
 public sealed record ProviderHistory(DateOnly ArchiveFrom, DateOnly ArchiveTo, DateOnly FirstListed, bool InFirstFile, DateOnly? SecondaryFrom,
     IReadOnlyList<ProviderHistoryVersion> Versions)
 {
@@ -284,8 +284,7 @@ public static class ProviderHistoryReader
                 SpecialtyName(r.PrimaryTaxonomy), codes, D(r.EnumerationDate), D(r.LastUpdateDate), D(r.DeactivationDate), D(r.ReactivationDate), source, []);
             var month = period is null ? (DateOnly?)null : DateOnly.FromDateTime(period.Period);
             var missing = beforePeriod is { } b && month is { } m
-                ? periods.All.Where(p => p.Status == "Missing" && DateOnly.FromDateTime(p.Period) > b && DateOnly.FromDateTime(p.Period) < m)
-                    .Select(p => DateOnly.FromDateTime(p.Period)).ToList()
+                ? MonthsWithoutFileBefore(periods.All.Select(p => (DateOnly.FromDateTime(p.Period), p.Status)), b, m)
                 : [];
             version = version with
             {
@@ -298,6 +297,18 @@ public static class ProviderHistoryReader
         }
 
         return versions;
+    }
+
+    /// <summary>
+    /// The months without a file (status Missing) that a change first seen in month <paramref name="m"/> may date from: those
+    /// after the last month with a file before it (at least <paramref name="b"/>, the previous version's month) and before it.
+    /// A version unchanged through several files can't have changed in a missing month before the last of them.
+    /// </summary>
+    internal static IReadOnlyList<DateOnly> MonthsWithoutFileBefore(IEnumerable<(DateOnly Period, string Status)> periods, DateOnly b, DateOnly m)
+    {
+        var list = periods.ToList();
+        var lastFile = list.Where(p => p.Status == "Completed" && p.Period >= b && p.Period < m).Select(p => p.Period).DefaultIfEmpty(b).Max();
+        return list.Where(p => p.Status == "Missing" && p.Period > lastFile && p.Period < m).Select(p => p.Period).OrderBy(p => p).ToList();
     }
 
     private static HistoryPlace? Place(string? state, string? zip, string? country, Lookups lookups) =>
