@@ -614,6 +614,43 @@ public sealed class SearchIntegrationTests : IDisposable
         }
     }
 
+    // A point saved just after a map build is placed by the next update. The build kept its end in C# as checked_at, which
+    // DATETIME rounded up to the next second when its fraction was .5 or more, while the point's matched_at (MySQL's
+    // UTC_TIMESTAMP()) dropped the fraction: the point looked older than the build, so the update skipped it and kept the Census
+    // point (a full rebuild didn't; the builders test failed on CI once). The build starts just past the middle of a second so it
+    // ends there too, in a database this small.
+    [Fact]
+    public async Task A_point_placed_right_after_a_map_build_is_placed_by_the_next_update()
+    {
+        await using var db = await SeededAsync();
+        var census = new CensusGeocoder(new HttpClient(new FakeCensus()), "https://census.test/batch", "Public_AR_Current");
+        await new AddressGeocoder(db.Database, census, Logger.None, batchSize: 10, parallelism: 1) { Delays = [] }.GeocodePendingAsync(maxBatches: 0, _ct);
+        await new CredentialBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct, full: true);
+        var map = new MapBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 };
+
+        foreach (var lon in new[] { -73.1452, -73.1552 })
+        {
+            while (await db.ScalarAsync<double>("SELECT MICROSECOND(UTC_TIMESTAMP(6)) / 1e6") is < 0.55 or > 0.65)
+            {
+                await Task.Delay(10, _ct);
+            }
+
+            await map.BuildAsync(_ct, full: true);
+            await db.ExecuteAsync(
+                """
+                DELETE FROM address_point;
+                INSERT INTO address_point (addr_key, source, lat, lon, matched, `release`, matched_at)
+                SELECT addr_key, 'address', 40.9331, @lon, '200 MAIN ST', '2026-09-23.1', UTC_TIMESTAMP() FROM provider_location WHERE npi = @E;
+                """, new { E, lon });
+            Assert.True(await db.ScalarAsync<DateTime>("SELECT checked_at FROM reference_data WHERE source = 'provider_map'")
+                <= await db.ScalarAsync<DateTime>("SELECT MAX(matched_at) FROM address_point"));
+            Assert.True(await map.IsStaleAsync(_ct));
+
+            await map.BuildAsync(_ct);
+            Assert.Equal([(40.9331, lon)], await db.QueryAsync<(double, double)>("SELECT lat, lon FROM provider_map WHERE npi = @E", new { E }));
+        }
+    }
+
     // Every row of each projection table (or the given ones) as text (all columns but AUTO_INCREMENT ids), sorted.
     private static async Task<Dictionary<string, IReadOnlyList<string>>> ProjectionSnapshotAsync(TestDatabase db, IEnumerable<string>? tables = null)
     {

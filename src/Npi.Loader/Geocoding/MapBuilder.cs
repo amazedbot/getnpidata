@@ -62,7 +62,8 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
         JOIN `provider_taxonomy` t ON t.`npi` = m.`npi`
         """;
 
-    // Addresses geocoded or placed since @since.
+    // Addresses geocoded or placed since @since: the start of the last build or update (StartedAsync), so an address saved
+    // while it read address_point / address_geocode is placed again, at worst once more than needed.
     private const string ChangedAddresses =
         "SELECT `addr_key` FROM `address_geocode` WHERE `geocoded_at` >= @since UNION SELECT `addr_key` FROM `address_point` WHERE `matched_at` >= @since";
 
@@ -77,7 +78,7 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
             """
             SELECT EXISTS (SELECT 1 FROM `builder_pending` WHERE `builder` = @builder)
                 OR (SELECT `checked_at` FROM `reference_data` WHERE `source` = @source)
-                   < GREATEST(COALESCE((SELECT MAX(`geocoded_at`) FROM `address_geocode`), '1970-01-01'),
+                   <= GREATEST(COALESCE((SELECT MAX(`geocoded_at`) FROM `address_geocode`), '1970-01-01'),
                               COALESCE((SELECT MAX(`matched_at`) FROM `address_point`), '1970-01-01'))
             """, new { source = Source, builder = BuilderPending.Map }, cancellationToken: ct)) != 0;
     }
@@ -96,6 +97,20 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
 
     internal static Task UnlockAsync(MySqlConnection connection) =>
         connection.ExecuteScalarAsync<long?>(new CommandDefinition("SELECT RELEASE_LOCK(CONCAT('getnpidata.', DATABASE(), '.provider_map'))", cancellationToken: CancellationToken.None));
+
+    /// <summary>
+    /// The start of a build, kept as <c>checked_at</c>: MySQL's clock at the next whole second, waited for (under a second)
+    /// before the build reads the points. The geocoder and the Overture matcher stamp their rows with the same clock to the
+    /// second (UTC_TIMESTAMP() drops the fraction), so a row saved before the build is older than its start and a row saved
+    /// after it is not: <see cref="IsStaleAsync"/> and the update's <c>&gt;= @since</c> then agree exactly. The build's end in
+    /// C# (as before) could be a second later, rounded up by DATETIME, and an address placed right after a build was then left
+    /// out of the next update, keeping its Census point where a full build used the new one.
+    /// </summary>
+    private static async Task<DateTime> StartedAsync(MySqlConnection connection, CancellationToken ct)
+    {
+        await connection.ExecuteAsync(new CommandDefinition("DO SLEEP(1 - MICROSECOND(UTC_TIMESTAMP(6)) / 1e6)", cancellationToken: ct));
+        return await connection.ExecuteScalarAsync<DateTime>(new CommandDefinition("SELECT UTC_TIMESTAMP()", cancellationToken: ct));
+    }
 
     private static async Task<bool> NeedsFullBuildAsync(MySqlConnection connection, CancellationToken ct) =>
         await connection.ExecuteScalarAsync<long>(new CommandDefinition(
@@ -158,6 +173,7 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
     {
         // provider_map_credential is filled from the credentials as they are now: the time they were read is kept with it.
         var cellsAt = DateTime.UtcNow;
+        var started = await StartedAsync(connection, ct);
         var counts = await TableSwap.ReplaceAsync(connection, ["provider_map", "provider_map_specialty", "provider_map_credential"], minRowRatio, async () =>
         {
             await Database.ExecuteAsync(connection, FillSql("provider_map_staging", "`provider_location`"), ct);
@@ -176,9 +192,9 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
         await Database.ExecuteAsync(connection,
             """
             INSERT INTO `reference_data` (`source`, `version`, `source_url`, `rows_loaded`, `loaded_at`, `checked_at`)
-            VALUES (@source, @version, '', @rows, @now, @now) AS new
+            VALUES (@source, @version, '', @rows, @now, @started) AS new
             ON DUPLICATE KEY UPDATE `version` = new.`version`, `rows_loaded` = new.`rows_loaded`, `loaded_at` = new.`loaded_at`, `checked_at` = new.`checked_at`
-            """, ct, param: new { source = Source, version = string.Create(CultureInfo.InvariantCulture, $"{exact:N0} of {rows:N0} at the street address"), rows, now });
+            """, ct, param: new { source = Source, version = string.Create(CultureInfo.InvariantCulture, $"{exact:N0} of {rows:N0} at the street address"), rows, now, started });
         log.Information("provider_map: {Rows:N0} provider addresses, {Exact:N0} at the street address ({BySource}), in {Seconds:N0}s",
             rows, exact, bySource, watch.Elapsed.TotalSeconds);
         await BuilderPending.ClearAsync(connection, BuilderPending.Map, ct);
@@ -193,7 +209,7 @@ public sealed class MapBuilder(Database database, ILogger log, double minRowRati
     /// <returns>The points written, or null when the batch is too large to update in place (nothing was changed).</returns>
     private async Task<long?> BuildQueuedAsync(MySqlConnection connection, Stopwatch watch, bool credentialCells, CancellationToken ct)
     {
-        var started = DateTime.UtcNow;
+        var started = await StartedAsync(connection, ct);
         var (batch, queued) = await BuilderPending.TakeAsync(connection, BuilderPending.Map, ct);
         var since = await connection.ExecuteScalarAsync<DateTime>(new CommandDefinition(
             "SELECT `checked_at` FROM `reference_data` WHERE `source` = @source", new { source = Source }, cancellationToken: ct));

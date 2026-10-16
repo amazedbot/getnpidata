@@ -120,9 +120,9 @@ public sealed class AddressGeocoder(Database database, CensusGeocoder census, IL
         }
     }
 
+    // geocoded_at is MySQL's clock when the row is written: MapBuilder compares it with its own start, read from MySQL too.
     private async Task SaveAsync(MySqlConnection connection, IReadOnlyList<GeocodeResult> results, CancellationToken ct)
     {
-        var now = DateTime.UtcNow;
         foreach (var chunk in results.Chunk(1000))
         {
             var p = new DynamicParameters();
@@ -130,7 +130,7 @@ public sealed class AddressGeocoder(Database database, CensusGeocoder census, IL
             for (var i = 0; i < chunk.Length; i++)
             {
                 var r = chunk[i];
-                values.Add($"(@k{i}, @s{i}, @t{i}, @m{i}, @lat{i}, @lon{i}, @benchmark, @now)");
+                values.Add($"(@k{i}, @s{i}, @t{i}, @m{i}, @lat{i}, @lon{i}, @benchmark, UTC_TIMESTAMP())");
                 p.Add($"k{i}", r.Key);
                 p.Add($"s{i}", r.Status);
                 p.Add($"t{i}", r.MatchType);
@@ -140,7 +140,6 @@ public sealed class AddressGeocoder(Database database, CensusGeocoder census, IL
             }
 
             p.Add("benchmark", census.Benchmark);
-            p.Add("now", now);
             await Database.ExecuteAsync(connection,
                 "INSERT INTO `address_geocode` (`addr_key`, `status`, `match_type`, `matched_address`, `lat`, `lon`, `benchmark`, `geocoded_at`) VALUES " +
                 string.Join(", ", values) +
