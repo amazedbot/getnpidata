@@ -31,6 +31,7 @@ builder.Services.AddSingleton(_ => new CredentialCatalog(connectionString));
 builder.Services.AddSingleton(sp => new SearchService(connectionString, sp.GetRequiredService<TaxonomyCatalog>(), sp.GetRequiredService<CredentialCatalog>()));
 builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new OrganizationService(connectionString));
+builder.Services.AddSingleton(_ => new OrganizationGroupService(connectionString));
 builder.Services.AddSingleton(_ => new OwnershipService(connectionString));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
@@ -214,6 +215,45 @@ app.MapGet("/facility/{ccn}/raw.json", async (string ccn, HttpContext http, Orga
     return Results.Json(facility);
 });
 
+// A combined organization profile (step 3.8): the record as the API returns it, every NPI as CSV (the summary columns) and the
+// clinicians of all its Medicare groups.
+app.MapGet("/organization/{npi}/raw.json", async (string npi, HttpContext http, OrganizationGroupService groups, ProviderDetailService details, CancellationToken ct) =>
+{
+    if (await groups.GetCombinedAsync(npi, details, ct) is not { } organization)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"organization_{organization.MainNpi}.json\"";
+    return Results.Json(organization);
+});
+
+app.MapGet("/organization/{npi}/npis.csv", async (string npi, HttpContext http, OrganizationGroupService groups, SearchService search, CancellationToken ct) =>
+{
+    if (await groups.GetAsync(npi, ct) is not { } organization)
+    {
+        return Results.NotFound();
+    }
+
+    var rows = (await search.LookupAsync([.. organization.Npis.Select(m => m.Npi)], ct)).Select(r => r.Provider).OfType<ProviderSummary>().ToList();
+    http.Response.ContentType = "text/csv; charset=utf-8";
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"organization_{organization.MainNpi}_npis.csv\"";
+    await ProviderCsv.WriteAsync(rows.ToAsyncEnumerable(), http.Response.Body, ct);
+    return Results.Empty;
+});
+
+app.MapGet("/organization/{npi}/clinicians.csv", async (string npi, HttpContext http, OrganizationGroupService groups, ProviderDetailService details,
+    OrganizationService organizations, SearchService search, CancellationToken ct) =>
+{
+    if (await groups.GetCombinedAsync(npi, details, ct) is not { } organization)
+    {
+        return Results.NotFound();
+    }
+
+    var npis = await organizations.GetClinicianNpisForGroupsAsync([.. organization.Groups.Select(g => g.PacId)], ct);
+    return await CliniciansCsvAsync($"organization_{organization.MainNpi}", npis, http, search, ct);
+});
+
 // A facility owner's record (step 3.6 part 2), as the API returns it.
 app.MapGet("/owner/{id}/raw.json", async (string id, HttpContext http, OwnershipService ownership, CancellationToken ct) =>
 {
@@ -227,9 +267,9 @@ app.MapGet("/owner/{id}/raw.json", async (string id, HttpContext http, Ownership
 });
 
 app.MapGet("/group/{pacId}/clinicians.csv", (string pacId, HttpContext http, OrganizationService organizations, SearchService search, CancellationToken ct) =>
-    CliniciansCsvAsync(pacId, facility: false, http, organizations, search, ct));
+    GroupCliniciansCsvAsync(pacId, facility: false, http, organizations, search, ct));
 app.MapGet("/facility/{ccn}/clinicians.csv", (string ccn, HttpContext http, OrganizationService organizations, SearchService search, CancellationToken ct) =>
-    CliniciansCsvAsync(ccn, facility: true, http, organizations, search, ct));
+    GroupCliniciansCsvAsync(ccn, facility: true, http, organizations, search, ct));
 
 // Type-ahead for the search box (step 1.3).
 app.MapGet("/suggest", async ([FromQuery] string? q, SuggestService suggestions, CancellationToken ct) =>
@@ -277,10 +317,13 @@ app.MapGet("/map/search", async (HttpContext http, SearchService search, Cancell
 });
 
 // Every active clinician of a group or facility as CSV, looked up in batches (SearchService.MaxLookupBatch) and streamed.
-static async Task<IResult> CliniciansCsvAsync(string id, bool facility, HttpContext http, OrganizationService organizations, SearchService search,
-    CancellationToken ct)
+static async Task<IResult> GroupCliniciansCsvAsync(string id, bool facility, HttpContext http, OrganizationService organizations, SearchService search,
+    CancellationToken ct) =>
+    await CliniciansCsvAsync($"{(facility ? "facility" : "group")}_{id.ToUpperInvariant()}", await organizations.GetClinicianNpisAsync(id, facility, ct),
+        http, search, ct);
+
+static async Task<IResult> CliniciansCsvAsync(string name, IReadOnlyList<string> npis, HttpContext http, SearchService search, CancellationToken ct)
 {
-    var npis = await organizations.GetClinicianNpisAsync(id, facility, ct);
     if (npis.Count == 0)
     {
         return Results.NotFound();
@@ -301,7 +344,7 @@ static async Task<IResult> CliniciansCsvAsync(string id, bool facility, HttpCont
     }
 
     http.Response.ContentType = "text/csv; charset=utf-8";
-    http.Response.Headers.ContentDisposition = $"attachment; filename=\"{(facility ? "facility" : "group")}_{id.ToUpperInvariant()}_clinicians.csv\"";
+    http.Response.Headers.ContentDisposition = $"attachment; filename=\"{name}_clinicians.csv\"";
     await ProviderCsv.WriteAsync(Rows(), http.Response.Body, ct);
     return Results.Empty;
 }

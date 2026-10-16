@@ -280,8 +280,10 @@ internal static class EnrichmentSql
         "CAST(COALESCE(cc.accepts_assignment, 0) AS SIGNED) AS AcceptsAssignment, CAST(COALESCE(cc.telehealth, 0) AS SIGNED) AS Telehealth, " +
         "CAST(" + BilledMedicare.Replace("{0}", "p", StringComparison.Ordinal) + " AS SIGNED) AS BilledMedicare, " +
         "CAST(COALESCE(pq.label, 0) AS SIGNED) AS QualityLabelCode, CAST(COALESCE(pq.reasons, 0) AS SIGNED) AS QualityReasonBits, " +
-        "CAST(COALESCE(pq.activity, 0) AS SIGNED) AS QualityActivityBits " +
-        "FROM provider p LEFT JOIN cc_clinician cc ON cc.npi = p.npi LEFT JOIN provider_quality pq ON pq.npi = p.npi WHERE p.npi IN @npis";
+        "CAST(COALESCE(pq.activity, 0) AS SIGNED) AS QualityActivityBits, pq.other_npi AS QualityOtherNpi, " +
+        "CAST(COALESCE(og.members, 0) AS SIGNED) AS OrganizationNpis " +
+        "FROM provider p LEFT JOIN cc_clinician cc ON cc.npi = p.npi LEFT JOIN provider_quality pq ON pq.npi = p.npi " +
+        "LEFT JOIN org_group_member og ON og.npi = p.npi WHERE p.npi IN @npis";
 }
 
 /// <summary>Descriptions of the HHS-OIG exclusion authorities (LEIE EXCLTYPE codes).</summary>

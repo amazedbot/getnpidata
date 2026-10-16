@@ -11,7 +11,60 @@ public class SearchQueryTests
 
         Assert.True(query.IsUnfiltered);
         Assert.True(query.MayBeBroad); // a page walks the name index
-        Assert.Equal("SELECT COALESCE((SELECT provider_count FROM data_version WHERE id = 1), (SELECT COUNT(*) FROM provider))", query.CountSql);
+        // One row per organization: everyone less the organizations' other NPIs (a stored total).
+        Assert.True(query.OneRowPerOrganization);
+        Assert.Equal("SELECT (SELECT COALESCE((SELECT provider_count FROM data_version WHERE id = 1), (SELECT COUNT(*) FROM provider))) - "
+            + "(SELECT COALESCE((SELECT total FROM search_total WHERE name = 'org_group:members'), (SELECT COUNT(*) FROM org_group_member og WHERE og.is_main = 0)))",
+            query.CountSql);
+        Assert.Equal(query.CountSql, query.PageCountSql);
+
+        var all = new SearchQuery(SearchValidation.Normalize(new SearchFilter { AllNpis = true }), null, null);
+        Assert.False(all.OneRowPerOrganization);
+        Assert.Equal("SELECT COALESCE((SELECT provider_count FROM data_version WHERE id = 1), (SELECT COUNT(*) FROM provider))", all.CountSql);
+    }
+
+    [Fact]
+    public void One_row_per_organization_leaves_out_members_whose_main_npi_matches_too()
+    {
+        var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Chiropractor", CountyFips = "36103" });
+        var query = new SearchQuery(filter, ["111N00000X"], null);
+
+        Assert.True(query.OneRowPerOrganization);
+        Assert.Contains("NOT (p.entity_type = 2 AND EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM org_group_member og JOIN provider pm ON pm.npi = og.main_npi "
+            + "WHERE og.npi = p.npi AND og.is_main = 0 AND ", query.PageSql, StringComparison.Ordinal);
+        // The main NPI must match the same filters: its specialty and its location, checked on pm.
+        Assert.Contains("ot.npi = pm.npi", query.PageSql, StringComparison.Ordinal);
+        Assert.Contains("ol.npi = pm.npi", query.PageSql, StringComparison.Ordinal);
+        // The total stays per NPI (cheap); a page past the end counts the collapsed rows.
+        Assert.DoesNotContain("org_group_member", query.CountSql, StringComparison.Ordinal);
+        Assert.Contains("org_group_member", query.PageCountSql, StringComparison.Ordinal);
+
+        var all = new SearchQuery(filter with { AllNpis = true }, ["111N00000X"], null);
+        Assert.False(all.OneRowPerOrganization);
+        Assert.DoesNotContain("org_group_member", all.PageSql, StringComparison.Ordinal);
+        Assert.Equal(all.CountSql, all.PageCountSql);
+    }
+
+    [Theory]
+    [InlineData("individuals")]
+    [InlineData("lastName")]
+    [InlineData("credential")]
+    [InlineData("npi")]
+    [InlineData("map")]
+    public void Searches_that_find_no_organizations_or_one_npi_are_not_collapsed(string kind)
+    {
+        var (filter, areaSearch) = kind switch
+        {
+            "individuals" => (new SearchFilter { State = "NY", EntityType = 1 }, false),
+            "lastName" => (new SearchFilter { State = "NY", LastName = "smith" }, false),
+            "credential" => (new SearchFilter { State = "NY", Credential = "MD" }, false),
+            "npi" => (new SearchFilter { Npi = "1234567893" }, false),
+            _ => (new SearchFilter { Bbox = "-74,40.7,-73.9,40.8" }, true),
+        };
+        var query = new SearchQuery(SearchValidation.Normalize(filter), null, null, areaSearch: areaSearch);
+
+        Assert.False(query.OneRowPerOrganization);
+        Assert.DoesNotContain("org_group_member", query.PageSql, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -117,7 +170,7 @@ public class SearchQueryTests
     [Fact]
     public void Specialty_matches_any_slot_and_location_filters_any_location()
     {
-        var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Chiropractor", CountyFips = "36103" });
+        var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Chiropractor", CountyFips = "36103", AllNpis = true });
 
         var query = new SearchQuery(filter, ["111N00000X", "111NI0013X"], null);
 
@@ -143,7 +196,7 @@ public class SearchQueryTests
     [Fact]
     public void Practice_building_is_checked_on_the_same_location_as_the_other_location_filters()
     {
-        var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Psychologist", State = "NY", AddressType = "residential" });
+        var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Psychologist", State = "NY", AddressType = "residential", AllNpis = true });
 
         var query = new SearchQuery(filter, ["103T00000X"], null);
 
@@ -188,7 +241,7 @@ public class SearchQueryTests
         Assert.Equal("POLYGON((-74 40.7, -73.9 40.7, -73.9 40.8, -74 40.8, -74 40.7))", alone.Parameters.Get<string>("box"));
 
         // A specialty: its providers in the area's grid cells, each one's location then checked against the area.
-        var dentists = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Dentist", Bbox = "-74,40.7,-73.9,40.8" }), ["122300000X"], null);
+        var dentists = new SearchQuery(SearchValidation.Normalize(new SearchFilter { Classification = "Dentist", Bbox = "-74,40.7,-73.9,40.8", AllNpis = true }), ["122300000X"], null);
         Assert.Equal("FROM (SELECT DISTINCT s.npi FROM provider_map_specialty s WHERE s.taxonomy_code IN @taxonomyCodes AND s.cell IN @cells) c JOIN provider p ON p.npi = c.npi " +
             "WHERE EXISTS (SELECT 1 FROM provider_location l WHERE l.npi = p.npi AND " +
             "EXISTS (SELECT 1 FROM provider_map am FORCE INDEX (PRIMARY) WHERE am.npi = l.npi AND am.addr_key = l.addr_key AND MBRContains(ST_GeomFromText(@box, 0), am.pt)))", dentists.From);
@@ -288,7 +341,7 @@ public class SearchQueryTests
         var (filter, codes) = kind switch
         {
             "state" => (new SearchFilter { State = "CA", Gender = "F" }, (string[]?)null),
-            "attributes" => (new SearchFilter { EntityType = 2 }, null),
+            "attributes" => (new SearchFilter { EntityType = 2, AllNpis = true }, null),
             "specialty" => (new SearchFilter { Classification = "Chiropractor", State = "CA" }, ["111N00000X"]),
             _ => (new SearchFilter { LastName = "smith", State = "CA" }, null),
         };

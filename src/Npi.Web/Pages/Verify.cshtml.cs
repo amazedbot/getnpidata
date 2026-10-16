@@ -204,7 +204,9 @@ public partial class VerifyModel(SearchService search) : PageModel
         if (row.Provider.Quality is { Label: not QualityLabel.Current } quality)
         {
             var reasons = quality.ReasonTexts;
-            results.Add(((quality.Label == QualityLabel.Stale ? "Stale record" : "Record to check") + (reasons.Count > 0 ? ": " + reasons[0].ToLowerInvariant() : ""),
+            // The first letter lower-cased, unless it starts an abbreviation ("NPI reactivated").
+            static string Lower(string r) => r.Length > 1 && char.IsLower(r[1]) ? char.ToLowerInvariant(r[0]) + r[1..] : r;
+            results.Add(((quality.Label == QualityLabel.Stale ? "Stale record" : "Record to check") + (reasons.Count > 0 ? ": " + Lower(reasons[0]) : ""),
                 quality.Label == QualityLabel.Stale ? "warn" : null));
         }
 

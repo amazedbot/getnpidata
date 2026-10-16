@@ -9,8 +9,11 @@ namespace Npi.Web.Pages;
 /// /group/{pacId}: a Medicare group practice (docs/PRODUCT_PLAN.md step 1.5): who it is, the organization NPIs enrolled under it,
 /// and its clinicians by specialty, with a list and an export.
 /// </summary>
-public class GroupModel(OrganizationService organizations, OrganizationDirectory directory) : PageModel
+public class GroupModel(OrganizationService organizations, OrganizationDirectory directory, OrganizationGroupService? groups = null) : PageModel
 {
+    /// <summary>The organizations (step 3.8) its organization NPIs belong to, for a link to each combined profile; largest first.</summary>
+    public IReadOnlyList<ProviderOrganization> CombinedOrganizations { get; private set; } = [];
+
     public GroupProfile Group { get; private set; } = null!;
 
     /// <summary>The group in the Groups &amp; organizations list (its group MIPS score); null while that list is being built.</summary>
@@ -25,6 +28,11 @@ public class GroupModel(OrganizationService organizations, OrganizationDirectory
 
         Group = group;
         Listing = directory.PeekGroup(group.PacId);
+        if (groups is not null && group.Organizations.Count > 0)
+        {
+            CombinedOrganizations = [.. (await groups.GetMembershipsAsync([.. group.Organizations.Select(o => o.Npi)], ct)).Values
+                .DistinctBy(o => o.MainNpi).OrderByDescending(o => o.Npis)];
+        }
         return Page();
     }
 

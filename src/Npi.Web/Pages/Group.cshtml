@@ -57,6 +57,10 @@
                 }
             </ul>
         }
+        @foreach (var org in Model.CombinedOrganizations)
+        {
+            <p>Enrolled under <a href="/organization/@org.MainNpi">@Npi.Core.Search.CityCatalog.TitleCase(org.Name)</a>, an organization with @org.Npis NPIs: see its combined profile.</p>
+        }
         <p class="src">Medicare Fee-For-Service Public Provider Enrollment (NPI to Medicare group ID).</p>
     </section>
 </div>

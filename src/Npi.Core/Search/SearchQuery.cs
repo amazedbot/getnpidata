@@ -40,6 +40,8 @@ public sealed class SearchQuery
     private readonly List<string> _broadWhere = [];          // all conditions on p, for the sort-index plan
     private string? _driverKind;
     private readonly List<string> _relevance = [];          // "similar" names: best matches first (default sort only)
+    private readonly List<string> _conditionTemplates = []; // every condition on "{0}" (a provider alias), for an organization's main NPI
+    private readonly bool _oneRowPerOrganization;            // step 3.8: a member is left out when its main NPI matches too
 
     /// <param name="taxonomyCodes">The codes the Classification/Specialization/TaxonomyCode filters resolved to, or null for no specialty filter.</param>
     /// <param name="radiusCenter">The ZIP centroid for a radius search.</param>
@@ -443,9 +445,48 @@ public sealed class SearchQuery
             }
         }
 
+        // One row per organization (docs/PRODUCT_PLAN.md step 3.8): every condition, on the main NPI's alias, so a member is left out
+        // only when its main NPI is in the same results. Not for an NPI search (that NPI is asked for), the map (a pin per address) or a
+        // search only individuals can match (a person's name, gender, credential or Care Compare facts): it would cost a lookup per
+        // candidate for nothing.
+        var individualsOnly = filter.EntityType == 1 || filter.LastName is not null || filter.FirstName is not null || filter.Gender is not null
+                              || filter.Credential is not null || careCompare.Count > 0;
+        _oneRowPerOrganization = !filter.AllNpis && filter.Npi is null && !areaSearch && !individualsOnly;
+        _conditionTemplates.AddRange(providerTemplates.Select(t => t.Template));
+        if (taxonomyCodes is not null)
+        {
+            _conditionTemplates.Add("EXISTS (SELECT 1 FROM provider_taxonomy ot WHERE ot.npi = {0}.npi AND ot.taxonomy_code IN @taxonomyCodes)");
+        }
+
+        if (_hasLocationFilter)
+        {
+            _conditionTemplates.Add("EXISTS (SELECT 1 FROM provider_location ol WHERE ol.npi = {0}.npi AND " + Location("ol") + ")");
+        }
+
         Parameters.Add("take", filter.PageSize);
         Parameters.Add("skip", (filter.Page - 1) * filter.PageSize);
     }
+
+    /// <summary>The conditions of the search on provider alias <paramref name="alias"/>, joined with AND ("" for none).</summary>
+    private string Conditions(string alias) => string.Join(" AND ", _conditionTemplates.Select(t => Format(t, alias)));
+
+    /// <summary>
+    /// "Not an organization's member whose main NPI matches too" on provider alias <paramref name="alias"/>, or null when every NPI is
+    /// listed. Only organizations are looked up (the entity type is on the provider row already read), one at a time (NO_SEMIJOIN):
+    /// as an antijoin MySQL first checked every member's main NPI against the conditions (5 s for doctors in Suffolk County).
+    /// </summary>
+    private string? NotHiddenMember(string alias) =>
+        _oneRowPerOrganization ? $"NOT ({alias}.entity_type = 2 AND {OrganizationSearchSql.HiddenMember(alias, Conditions("pm"))})" : null;
+
+    /// <summary>True when the search lists one row per organization (<see cref="SearchFilter.AllNpis"/> false, and organizations can match).</summary>
+    public bool OneRowPerOrganization => _oneRowPerOrganization;
+
+    /// <summary>
+    /// With no filter, one row per organization leaves out every member that isn't its organization's main NPI: their count (kept in
+    /// <c>search_total</c> by the loader's organization groups, else counted, ~190,000 rows) comes off the projection's total.
+    /// </summary>
+    internal const string HiddenMembersCountSql =
+        $"SELECT COALESCE((SELECT total FROM search_total WHERE name = '{OrganizationGroups.MembersTotal}'), (SELECT COUNT(*) FROM org_group_member og WHERE og.is_main = 0))";
 
     public SearchFilter Filter { get; }
 
@@ -493,17 +534,23 @@ public sealed class SearchQuery
     /// <summary>Location conditions on alias <c>l</c> (provider_location), "1 = 1" when there are none.</summary>
     public string LocationWhere => Location("l");
 
-    /// <summary>FROM … WHERE … selecting matching providers as alias <c>p</c>.</summary>
-    public string From
+    /// <summary>FROM … WHERE … selecting matching providers as alias <c>p</c> (one row per organization unless every NPI is asked for).</summary>
+    public string From => FromSql(collapse: true);
+
+    private string FromSql(bool collapse)
     {
-        get
-        {
-            var where = _remaining.Count > 0 ? " WHERE " + string.Join(" AND ", _remaining) : "";
-            return _driver is null
-                ? $"FROM provider p{where}"
-                : $"FROM ({_driver}) c JOIN provider p ON p.npi = c.npi{where}";
-        }
+        var conditions = collapse && NotHiddenMember("p") is { } member ? _remaining.Append(member).ToList() : _remaining;
+        var where = conditions.Count > 0 ? " WHERE " + string.Join(" AND ", conditions) : "";
+        return _driver is null
+            ? $"FROM provider p{where}"
+            : $"FROM ({_driver}) c JOIN provider p ON p.npi = c.npi{where}";
     }
+
+    /// <summary>
+    /// The count of the listed rows, for a page past the end: <see cref="CountSql"/> counts every NPI (an organization's members
+    /// too, except with no filter at all), which is what decides whether a search is broad.
+    /// </summary>
+    public string PageCountSql => _oneRowPerOrganization && !IsUnfiltered ? $"SELECT {Hint}COUNT(*) {From}" : CountSql;
 
     private string Hint => _driver is null ? "" : "/*+ JOIN_ORDER(c, p) */ ";
 
@@ -552,21 +599,29 @@ public sealed class SearchQuery
     /// <summary>
     /// The match count. A location-only search with nothing else to check counts straight from the
     /// location index: every provider_location row belongs to a projected provider, so joining
-    /// provider (a million random lookups for a whole state) adds nothing.
+    /// provider (a million random lookups for a whole state) adds nothing. It counts every NPI, an organization's members too
+    /// (step 3.8; with no filter at all, less them): a page's own total (<see cref="PageSql"/>) leaves them out, and for a broad
+    /// search (≥ <see cref="SearchFilter.BroadSearchThreshold"/>) this count is the total shown, members included, because leaving
+    /// them out of a whole state's count cost a lookup per located provider (CA: 1.2M).
     /// </summary>
     public string CountSql
     {
         get
         {
+            // A total kept for a single broad filter nationwide counts every NPI, an organization's members too (one row per organization
+            // leaves out ~190,000 members, ~2% of the providers): working out which of them match would read every member and its main
+            // NPI for each count (seconds). The pages leave them out.
             if (NationwideTotalSql is { } nationwide)
             {
                 return nationwide;
             }
 
-            // No filter at all (every active provider): the projection's own count, instead of counting 9.5M rows.
+            // No filter at all (every active provider): the projection's own count, instead of counting 9.5M rows; with one row per
+            // organization, less every member that isn't its organization's main NPI.
             if (IsUnfiltered)
             {
-                return "SELECT COALESCE((SELECT provider_count FROM data_version WHERE id = 1), (SELECT COUNT(*) FROM provider))";
+                const string everyone = "SELECT COALESCE((SELECT provider_count FROM data_version WHERE id = 1), (SELECT COUNT(*) FROM provider))";
+                return _oneRowPerOrganization ? $"SELECT ({everyone}) - ({HiddenMembersCountSql})" : everyone;
             }
 
             if (_driverKind == "location" && _remaining.Count == 0)
@@ -583,7 +638,7 @@ public sealed class SearchQuery
                 return $"SELECT COUNT(*) FROM ({_driver}) c{flags}";
             }
 
-            return $"SELECT {Hint}COUNT(*) {From}";
+            return $"SELECT {Hint}COUNT(*) {FromSql(collapse: false)}";
         }
     }
 
@@ -620,8 +675,9 @@ public sealed class SearchQuery
 
             // Every EXISTS is checked per provider as the index is walked (NO_SEMIJOIN): as a semijoin MySQL first collected every
             // match (1.8M stale records: 21 s for the first page instead of 0.1 s).
-            var where = _broadWhere.Count > 0
-                ? " WHERE " + string.Join(" AND ", _broadWhere).Replace("EXISTS (SELECT 1 ", "EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 ", StringComparison.Ordinal)
+            var broad = NotHiddenMember("p") is { } member ? _broadWhere.Append(member).ToList() : _broadWhere;
+            var where = broad.Count > 0
+                ? " WHERE " + string.Join(" AND ", broad).Replace("EXISTS (SELECT 1 ", "EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 ", StringComparison.Ordinal)
                 : "";
             return $"SELECT p.npi FROM provider p FORCE INDEX FOR ORDER BY ({index}){where} ORDER BY {OrderBy} LIMIT @take OFFSET @skip";
         }

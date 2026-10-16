@@ -116,6 +116,21 @@ public sealed class NpiClient : IDisposable
         return all;
     }
 
+    /// <summary>
+    /// GET /api/v1/organizations/{npi}: the organization an NPI belongs to, with every NPI and its role; null when the NPI is the only
+    /// one of its organization or unknown.
+    /// </summary>
+    public async Task<OrganizationProfile?> GetOrganizationAsync(string npi, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync("api/v1/organizations/" + Segment(npi, nameof(npi)), cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadJsonAsync<OrganizationProfile>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Everything published for one NPI, or null when it is unknown or deactivated.</summary>
     public async Task<ProviderDetail?> GetProviderAsync(string npi, CancellationToken cancellationToken = default)
     {

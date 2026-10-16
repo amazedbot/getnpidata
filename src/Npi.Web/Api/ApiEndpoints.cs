@@ -63,6 +63,11 @@ public static class ApiEndpoints
             .WithSummary("One provider")
             .WithDescription("All taxonomies with licenses, all practice locations and other names. 404 for unknown or deactivated NPIs.");
 
+        api.MapGet("/organizations/{npi}", GetOrganizationAsync)
+            .WithName("GetOrganization").WithTags("Providers")
+            .WithSummary("One organization with all its NPIs")
+            .WithDescription("The combined profile of the organization an NPI belongs to (any of its NPIs): every NPI with its role (main NPI, a unit or facility with its CCN, a possible duplicate registration, its specialty), the main NPI's record, the certified facilities, Medicare groups and practice locations of all of them, and how they were grouped (the same legal name at the same street address, or a shared CCN, the same PAC ID or the same parent organization in one ZIP code; never similar names alone). 404 when the NPI is the only one of its organization, or unknown.");
+
         api.MapGet("/companies", SearchCompaniesAsync)
             .WithName("SearchCompanies").WithTags("Companies")
             .WithSummary("Companies that report to Open Payments")
@@ -231,6 +236,12 @@ public static class ApiEndpoints
         await details.GetAsync(npi, ct) is { } provider
             ? TypedResults.Ok(provider)
             : NotFound($"No active provider with NPI '{npi}'.");
+
+    private static async Task<Results<Ok<OrganizationProfile>, ProblemHttpResult>> GetOrganizationAsync(string npi, OrganizationGroupService groups,
+        ProviderDetailService details, CancellationToken ct) =>
+        await groups.GetCombinedAsync(npi, details, ct) is { } organization
+            ? TypedResults.Ok(organization)
+            : NotFound($"NPI '{npi}' is not one of several NPIs of an organization (or not an active NPI).");
 
     private static Results<Ok<IReadOnlyList<string>>, ProblemHttpResult> GetSubcategories(string category) =>
         TaxonomyCatalog.GetSubcategories(category) is { } subcategories

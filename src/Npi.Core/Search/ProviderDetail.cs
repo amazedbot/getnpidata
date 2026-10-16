@@ -120,6 +120,12 @@ public sealed record ProviderDetail(
     /// <summary>How current and trustworthy the record looks (docs/PRODUCT_PLAN.md step 3.1); null when not labelled yet.</summary>
     public ProviderQuality? Quality { get; init; }
 
+    /// <summary>
+    /// The organization this NPI is one of (docs/PRODUCT_PLAN.md step 3.8): its main NPI, name and number of NPIs, for the combined
+    /// profile (<c>/organization/{mainNpi}</c>); null when the NPI is the only one of its organization.
+    /// </summary>
+    public ProviderOrganization? Organization { get; init; }
+
     /// <summary>What Care Compare lists for the clinician (its practices by ZIP code), behind the record-quality check; null when not listed.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public QualityCareCompare? QualityCareCompare { get; init; }
@@ -191,7 +197,7 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record PaymentCompanyRow(string Company, double Total, double General, double Research, double AssociatedResearch,
         double Ownership, int Records, string? CompanyId);
 
-    private sealed record QualityRow(sbyte Label, int Reasons, short Activity);
+    private sealed record QualityRow(sbyte Label, int Reasons, short Activity, string? OtherNpi);
 
     private sealed record MedicaidRow(string State, DateTime? EnrolledSince, string? ProviderType);
 
@@ -468,7 +474,7 @@ public sealed class ProviderDetailService(string connectionString)
             new { npi }, cancellationToken: ct));
 
         var quality = await connection.QuerySingleOrDefaultAsync<QualityRow>(new CommandDefinition(
-            "SELECT label AS Label, reasons AS Reasons, activity AS Activity FROM provider_quality WHERE npi = @npi", new { npi }, cancellationToken: ct));
+            "SELECT label AS Label, reasons AS Reasons, activity AS Activity, other_npi AS OtherNpi FROM provider_quality WHERE npi = @npi", new { npi }, cancellationToken: ct));
         List<QualityCareCompareLocation> ccLocations = clinician is null ? [] : (await connection.QueryAsync<QualityCareCompareLocation>(new CommandDefinition(
             "SELECT address1 AS Address1, city AS City, state AS State, zip5 AS Zip5 FROM cc_clinician_location WHERE npi = @npi ORDER BY zip5",
             new { npi }, cancellationToken: ct))).ToList();
@@ -510,7 +516,9 @@ public sealed class ProviderDetailService(string connectionString)
                     y.AssociatedResearchRecords, y.OwnershipInvested, y.OwnershipValue, y.OwnershipRecords)).ToList(),
                 paymentCompanies.Select(c => new IndustryPaymentCompany(c.Company, c.Total, c.General, c.Research, c.AssociatedResearch, c.Ownership,
                     c.Records, c.CompanyId)).ToList()),
-            Quality = quality is null ? null : new ProviderQuality((QualityLabel)quality.Label, (QualityReason)quality.Reasons, (QualityActivity)quality.Activity),
+            Quality = quality is null ? null
+                : new ProviderQuality((QualityLabel)quality.Label, (QualityReason)quality.Reasons, (QualityActivity)quality.Activity) { OtherCurrentNpi = quality.OtherNpi },
+            Organization = await OrganizationGroupService.MembershipAsync(connection, npi, ct),
             QualityCareCompare = clinician is null ? null : new QualityCareCompare(clinician.PrimarySpecialty, ccLocations),
             Changes = changes.Select(c => new ProviderChange(DateOnly.FromDateTime(c.DetectedAt), c.ChangeType, c.OldValue, c.NewValue)).ToList(),
             MedicareServices = utilization is null ? null : new MedicareServices(utilization.DataYear, utilization.ProviderType,

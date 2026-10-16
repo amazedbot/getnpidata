@@ -22,10 +22,10 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
     // EXISTS yields a BIGINT; CAST keeps the type fixed for Dapper.
     private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer, long AcceptsAssignment, long Telehealth, long BilledMedicare,
-        long QualityLabelCode, long QualityReasonBits, long QualityActivityBits)
+        long QualityLabelCode, long QualityReasonBits, long QualityActivityBits, string? QualityOtherNpi, long OrganizationNpis)
     {
         public ProviderQuality? Quality => QualityLabelCode == 0 ? null
-            : new ProviderQuality((QualityLabel)QualityLabelCode, (QualityReason)QualityReasonBits, (QualityActivity)QualityActivityBits);
+            : new ProviderQuality((QualityLabel)QualityLabelCode, (QualityReason)QualityReasonBits, (QualityActivity)QualityActivityBits) { OtherCurrentNpi = QualityOtherNpi };
     }
 
     private sealed record PageRow(string Npi, long Total);
@@ -205,7 +205,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             // The total comes with the page (COUNT(*) OVER ()); only a page past the end needs a separate count.
             total = page.Count > 0 ? page[0].Total
                 : query.Filter.Page == 1 ? 0
-                : await connection.ExecuteScalarAsync<long>(new CommandDefinition(query.CountSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct));
+                : await connection.ExecuteScalarAsync<long>(new CommandDefinition(query.PageCountSql, query.Parameters, commandTimeout: SearchFilter.SearchTimeoutSeconds, cancellationToken: ct));
             npis = page.Select(r => r.Npi).ToList();
         }
 
@@ -215,12 +215,15 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
         return new SearchResult(items, query.Filter.Page, query.Filter.PageSize, total, asOf is null ? null : DateOnly.FromDateTime(asOf.Value));
     }
 
-    /// <summary>Every matching provider in sort order, fetched in batches (CSV export: streamed, no row cap).</summary>
+    /// <summary>
+    /// Every matching provider in sort order, fetched in batches (CSV export: streamed, no row cap). Exports list every NPI of an
+    /// organization (docs/PRODUCT_PLAN.md step 3.8: a row per NPI), whatever <see cref="SearchFilter.AllNpis"/> says.
+    /// </summary>
     public async IAsyncEnumerable<ProviderSummary> SearchAllAsync(SearchFilter filter, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         const int batchSize = 1000;
         await using var connection = await OpenAsync(ct);
-        var query = await PrepareAsync(connection, filter with { Page = 1, PageSize = SearchFilter.DefaultPageSize }, ct);
+        var query = await PrepareAsync(connection, filter with { Page = 1, PageSize = SearchFilter.DefaultPageSize, AllNpis = true }, ct);
 
         // The NPI list streams from an unbuffered reader on a second connection, so memory stays flat.
         await using var listConnection = await OpenAsync(ct);
@@ -482,6 +485,7 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
             {
                 Flags = flags.GetValueOrDefault(npi, ProviderFlags.None),
                 Quality = flagRows.GetValueOrDefault(npi)?.Quality,
+                OrganizationNpis = flagRows.GetValueOrDefault(npi) is { OrganizationNpis: > 1 } org ? (int)org.OrganizationNpis : null,
                 AddressType = l?.AddressType,
                 Category = plain?.Category,
                 Subcategory = plain?.Subcategory,

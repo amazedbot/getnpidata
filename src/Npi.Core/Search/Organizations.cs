@@ -137,7 +137,7 @@ public sealed class OrganizationService(string connectionString)
         var accepts = await connection.ExecuteScalarAsync<long?>(new CommandDefinition(
             "SELECT MAX(accepts_assignment) FROM cc_group WHERE org_pac_id = @id", new { id = pacId }, cancellationToken: ct));
         var organizations = await NpisAsync(connection, "SELECT DISTINCT npi FROM medicare_enrollment WHERE pac_id = @id", pacId, ct);
-        var clinicians = await ClinicianListAsync(connection, GroupNpis, pacId, page, ct);
+        var clinicians = await ClinicianListAsync(connection, GroupNpis, new { id = pacId }, page, ct);
         return new GroupProfile(pacId, name, state, accepts is null ? null : accepts != 0, organizations, clinicians);
     }
 
@@ -216,7 +216,7 @@ public sealed class OrganizationService(string connectionString)
                 "SELECT lat, lon FROM zip_centroid WHERE zip5 = @zip", new { zip = zip[..5] }, cancellationToken: ct));
         }
 
-        var clinicians = await ClinicianListAsync(connection, FacilityNpis, ccn, page, ct);
+        var clinicians = await ClinicianListAsync(connection, FacilityNpis, new { id = ccn }, page, ct);
         var systems = await HealthSystemService.ForCcnAsync(connection, ccn, ct);
         var sites = await HealthCenterService.ForCcnAsync(connection, ccn, ct);
         var covered340B = await Program340BService.ForCcnAsync(connection, ccn, ct);
@@ -283,6 +283,39 @@ public sealed class OrganizationService(string connectionString)
             .ToList();
     }
 
+    // Every clinician of several groups (an organization's, docs/PRODUCT_PLAN.md step 3.8).
+    private const string GroupsNpis = """
+        SELECT npi FROM medicare_reassignment WHERE group_pac_id IN @ids AND npi IS NOT NULL
+        UNION SELECT npi FROM cc_group WHERE org_pac_id IN @ids
+        """;
+
+    /// <summary>The active clinicians of several Medicare groups together (a combined organization profile's), one page.</summary>
+    public async Task<ClinicianList> GetCliniciansForGroupsAsync(IReadOnlyList<string> pacIds, int page, CancellationToken ct)
+    {
+        var ids = pacIds.Where(IsPacId).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0)
+        {
+            return new ClinicianList(0, [], [], 1, PageSize);
+        }
+
+        await using var connection = await OpenAsync(ct);
+        return await ClinicianListAsync(connection, GroupsNpis, new { ids }, page, ct);
+    }
+
+    /// <summary>Every active clinician NPI of several Medicare groups together, by name, for the CSV export.</summary>
+    public async Task<IReadOnlyList<string>> GetClinicianNpisForGroupsAsync(IReadOnlyList<string> pacIds, CancellationToken ct)
+    {
+        var ids = pacIds.Where(IsPacId).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = await OpenAsync(ct);
+        return (await connection.QueryAsync<string>(new CommandDefinition(
+            $"SELECT p.npi FROM ({GroupsNpis}) g JOIN provider p ON p.npi = g.npi ORDER BY p.sort_name, p.npi", new { ids }, cancellationToken: ct))).ToList();
+    }
+
     /// <summary>Every active clinician NPI of a group (PAC ID) or facility (CCN), for the CSV export.</summary>
     public async Task<IReadOnlyList<string>> GetClinicianNpisAsync(string id, bool facility, CancellationToken ct)
     {
@@ -297,12 +330,12 @@ public sealed class OrganizationService(string connectionString)
             new { id = facility ? id.ToUpperInvariant() : id }, cancellationToken: ct))).ToList();
     }
 
-    private static async Task<ClinicianList> ClinicianListAsync(MySqlConnection connection, string npisSql, string id, int page, CancellationToken ct)
+    private static async Task<ClinicianList> ClinicianListAsync(MySqlConnection connection, string npisSql, object param, int page, CancellationToken ct)
     {
         // Only active providers (in the projection); the breakdown is by primary taxonomy, named in plain words.
         var byCode = (await connection.QueryAsync<CodeCount>(new CommandDefinition(
             $"SELECT p.primary_taxonomy_code AS Code, COUNT(*) AS Clinicians FROM ({npisSql}) g JOIN provider p ON p.npi = g.npi GROUP BY p.primary_taxonomy_code",
-            new { id }, cancellationToken: ct))).ToList();
+            param, cancellationToken: ct))).ToList();
         var total = (int)byCode.Sum(c => c.Clinicians);
         var bySpecialty = byCode
             .GroupBy(c => PlainSpecialty(c.Code) ?? "Other or not listed")
@@ -324,7 +357,7 @@ public sealed class OrganizationService(string connectionString)
             JOIN provider p ON p.npi = pg.npi
             LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
             ORDER BY p.sort_name, p.npi
-            """, new { id }, cancellationToken: ct));
+            """, param, cancellationToken: ct));
         var list = rows.Select(r => new ClinicianRow(r.Npi,
                 ProviderNames.Display(r.EntityType, r.LastName, r.FirstName, r.MiddleName, r.NameSuffix, r.OrgName),
                 r.Credential, r.Gender, PlainSpecialty(r.PrimaryTaxonomyCode), r.City, r.State))

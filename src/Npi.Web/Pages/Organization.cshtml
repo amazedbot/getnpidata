@@ -1,0 +1,132 @@
+@page "/organization/{npi}"
+@using System.Globalization
+@using Npi.Core.Search
+@model OrganizationModel
+@*
+    The combined profile of an organization with several NPIs (docs/PRODUCT_PLAN.md step 3.8): every NPI with its role, then what
+    they hold together. Each NPI keeps its own profile (credentialing and billing need the exact NPI).
+*@
+@{
+    var o = Model.Profile;
+    var main = o.Main;
+    var mainMember = Model.MainMember;
+    ViewData["Title"] = Model.Name;
+}
+
+@section Scripts {
+    <script src="~/js/profile.js" asp-append-version="true" defer></script>
+}
+
+<div class="profile">
+    <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a></nav>
+
+    <section class="card profile-head" aria-labelledby="who">
+        <div class="head-row">
+            <svg class="avatar-lg org" role="img" aria-label="Organization" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="52" class="bg" />
+                <path d="M30 78V40l22-13 22 13v38M44 78V62h16v16M40 46h6M58 46h6M40 54h6M58 54h6" fill="none" class="stroke" stroke-width="4" stroke-linejoin="round" />
+            </svg>
+            <div class="head-main">
+                <h1 id="who">@Model.Name</h1>
+                <p class="summary">@Model.Summary</p>
+                <ul class="pills" aria-label="Status">
+                    <li class="pill plain">Main NPI <span class="mono">&nbsp;@o.MainNpi</span></li>
+                    @if (main?.Quality is { } q)
+                    {
+                        <li class="pill @(q.Label == QualityLabel.Current ? "ok" : "warn")">Main NPI's record: @RecordQuality.Name(q.Label).ToLowerInvariant()</li>
+                    }
+                    <li class="pill plain">@o.Npis.Count NPIs</li>
+                </ul>
+            </div>
+            <div class="head-actions">
+                <button type="button" class="secondary" data-copy="@o.MainNpi">Copy main NPI</button>
+                <a class="button" href="/organization/@o.MainNpi/raw.json" download>Download raw data</a>
+                <a class="small" href="/organization/@o.MainNpi/npis.csv" download>Every NPI as CSV</a>
+                <a class="small" href="/provider/@o.MainNpi">Main NPI's full profile</a>
+            </div>
+        </div>
+        @if (main is not null)
+        {
+            <p class="head-facts">
+                <span>@(mainMember.Role)</span>
+                @if (main.EnumerationDate is { } issued){<span>Main NPI issued @issued.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</span>}
+                @if (main.LastUpdateDate is { } updated){<span>Updated in NPPES @updated.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</span>}
+                @if (main.Profile?.AuthorizedOfficial is { } official){<span>Authorized official: @CityCatalog.TitleCase(official.Name)@(official.Title is null ? "" : ", " + official.Title)</span>}
+            </p>
+        }
+    </section>
+
+    <section class="card" id="npis" aria-labelledby="npis-h">
+        <h2 id="npis-h">All NPIs of this organization (@o.Npis.Count)</h2>
+        <p class="lede">Each NPI keeps its own registration and profile; credentialing and billing need the exact one.</p>
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">The organization's NPIs</caption>
+                <thead><tr><th scope="col">NPI</th><th scope="col">Name as registered</th><th scope="col">Role</th><th scope="col">Specialty</th><th scope="col">Address</th><th scope="col">Last NPPES update</th><th scope="col">Record</th><th scope="col">Grouped by</th></tr></thead>
+                <tbody>
+                    @foreach (var m in o.Npis)
+                    {
+                        <tr>
+                            <td class="mono"><a href="/provider/@m.Npi">@m.Npi</a></td>
+                            <td>@m.Name</td>
+                            <td>@m.Role</td>
+                            <td>@m.Specialty</td>
+                            <td>@m.Address@if (m.City is not null){<br /><span class="muted">@CityCatalog.TitleCase(m.City), @m.State @m.Zip</span>}</td>
+                            <td class="nowrap">@m.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                            <td>@if (m.Quality is not null){<span class="@OrganizationModel.QualityClass(m.Quality)">@m.Quality</span>}</td>
+                            <td class="muted small">@m.JoinedBy</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="src">How they were grouped: @OrganizationGroups.Rule @OrganizationGroups.MainRule
+            @if (Model.TieCounts.Any())
+            {
+                <span>Here: @string.Join("; ", Model.TieCounts.Select(t => $"{t.Tie} {t.Npis}")).</span>
+            }
+            From NPPES (names, addresses, parent organizations) and CMS's enrollment files (CCNs, PAC IDs).</p>
+    </section>
+
+    @if (o.Facilities.Count > 0)
+    {
+        <section class="card" id="facilities" aria-labelledby="fac-h">
+            <h2 id="fac-h">Medicare-certified facilities (@o.Facilities.Count)</h2>
+            <ul class="link-list">
+                @foreach (var f in o.Facilities)
+                {
+                    <li><a href="/facility/@f.Ccn">@CityCatalog.TitleCase(f.Name)</a>
+                        <span class="muted">@FacilityTypes.Get(f.Kind).Singular · CCN <span class="mono">@f.Ccn</span>@(f.City is null ? "" : $" · {CityCatalog.TitleCase(f.City)}, {f.State}")@(f.OverallRating is { } stars ? $" · {stars} of 5 stars" : "")</span></li>
+                }
+            </ul>
+            <p class="src">The facilities CMS ties any of these NPIs to: hospital, nursing home, home health, hospice, FQHC and rural health clinic enrollments, the Medicare Dialysis Facility Report and Care Compare's surgery center file.</p>
+        </section>
+    }
+
+    @if (o.Groups.Count > 0)
+    {
+        <section class="card" id="groups" aria-labelledby="groups-h">
+            <h2 id="groups-h">Medicare groups (@o.Groups.Count)</h2>
+            <ul class="link-list">
+                @foreach (var g in o.Groups)
+                {
+                    <li><a href="/group/@g.PacId">@CityCatalog.TitleCase(g.Name)</a> <span class="muted">@(g.Clinicians > 0 ? $"{g.Clinicians.ToString("N0", CultureInfo.InvariantCulture)} clinicians · " : "")group ID <span class="mono">@g.PacId</span></span></li>
+                }
+            </ul>
+            <p class="src">Medicare Fee-For-Service Public Provider Enrollment (NPI to Medicare group ID).</p>
+        </section>
+
+        <partial name="_ClinicianList" model="Model.ClinicianView" />
+    }
+
+    <section class="card" id="locations" aria-labelledby="loc-h">
+        <h2 id="loc-h">Practice locations (@o.Locations.Count)</h2>
+        <ul class="link-list">
+            @foreach (var l in o.Locations)
+            {
+                <li>@l.Address1@(l.Address2 is null ? "" : ", " + l.Address2), @(l.City is null ? "" : CityCatalog.TitleCase(l.City)), @l.State @l.Zip@if (l.Phone is not null){<span class="muted"> · @Format.Phone(l.Phone)</span>}</li>
+            }
+        </ul>
+        <p class="src">Every practice address of these NPIs in NPPES; an address written the same way (case and punctuation aside) is shown once.</p>
+    </section>
+</div>
