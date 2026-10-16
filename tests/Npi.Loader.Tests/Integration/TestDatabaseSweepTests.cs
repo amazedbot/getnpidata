@@ -50,9 +50,21 @@ public sealed class TestDatabaseSweepTests
             await TestDatabase.SweepStaleAsync(sweeper, DateTime.UtcNow, TestDatabase.SchemaHash);
             Assert.Equal(names.Order(StringComparer.Ordinal), await LeftAsync());
 
-            // No run of it any more: the pool and its template go.
+            // No run of it any more: the pool and its template go. Swept again while they're still there: a start-of-run sweep
+            // (this process's, from the first test's TestDatabase.CreateAsync running beside this one, or another run's) may hold
+            // their template lock at that moment, and a sweep that can't take it leaves the schema to the next sweep, not waiting.
             await other.ExecuteAsync("SELECT RELEASE_LOCK(@name)", new { name = names[0] });
-            await TestDatabase.SweepStaleAsync(sweeper, DateTime.UtcNow, TestDatabase.SchemaHash);
+            for (var attempt = 0; attempt < 50; attempt++)
+            {
+                await TestDatabase.SweepStaleAsync(sweeper, DateTime.UtcNow, TestDatabase.SchemaHash);
+                if ((await LeftAsync()).Length == 0)
+                {
+                    break;
+                }
+
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+
             Assert.Empty(await LeftAsync());
         }
         finally
