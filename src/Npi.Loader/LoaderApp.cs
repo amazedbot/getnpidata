@@ -132,6 +132,9 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             }
         }
 
+        // Combined organization profiles (docs/PRODUCT_PLAN.md step 3.8): the organization groups, before the record quality reads them.
+        projectionOk &= await BuildOrgGroupsAsync(projectionOk, ct);
+
         // Record quality (docs/PRODUCT_PLAN.md step 3.1): relabelled after the projection, the map and the datasets it reads.
         var quality = new QualityBuilder(database, log, options.MinRowRatio);
         if (projectionOk && await quality.IsStaleAsync(ct))
@@ -210,6 +213,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         }
 
         var mapOk = await RefreshMapAsync(options.GeocodeBatchesPerRun, ct);
+        await new OrgGroupBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: false);
         await new DirectoryBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         await new AreaHistoryBuilder(database, log).BuildAsync(ct);
@@ -323,6 +327,7 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
             return 1;
         }
 
+        await new OrgGroupBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct, allowIncremental: !full);
         await new DirectoryBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         await new AreaHistoryBuilder(database, log).BuildAsync(ct, full);
@@ -356,6 +361,45 @@ public sealed class LoaderApp(LoaderOptions options, Database database, HttpClie
         await EnsureMigratedAsync(ct);
         await new DirectoryBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
         return 0;
+    }
+
+    /// <summary>
+    /// The <c>org-groups</c> command (docs/PRODUCT_PLAN.md step 3.8): rebuild the organization groups now and relabel the records
+    /// whose group changed; <c>org-groups measure [csv]</c> groups in memory only (no migration needed, nothing written).
+    /// </summary>
+    public async Task<int> OrgGroupsAsync(IReadOnlyList<string> arguments, CancellationToken ct)
+    {
+        var builder = new OrgGroupBuilder(database, log, options.MinRowRatio);
+        if (arguments.Count > 0 && arguments[0] == "measure")
+        {
+            await builder.MeasureAsync(arguments.Count > 1 ? arguments[1] : null, ct);
+            return 0;
+        }
+
+        await EnsureMigratedAsync(ct);
+        await builder.BuildAsync(ct);
+        await new QualityBuilder(database, log, options.MinRowRatio).BuildAsync(ct);
+        return 0;
+    }
+
+    /// <summary>In <c>run</c>: the organization groups when the projection or one of their inputs changed; false when building them failed.</summary>
+    private async Task<bool> BuildOrgGroupsAsync(bool projectionOk, CancellationToken ct)
+    {
+        var groups = new OrgGroupBuilder(database, log, options.MinRowRatio);
+        try
+        {
+            if (projectionOk && await groups.IsStaleAsync(ct))
+            {
+                await groups.BuildAsync(ct);
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log.Error(ex, "Building the organization groups failed");
+            return false;
+        }
     }
 
     /// <summary>In <c>run</c>: the directory tables when one of their inputs changed; false when building them failed.</summary>

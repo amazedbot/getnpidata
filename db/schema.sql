@@ -2142,6 +2142,18 @@ CREATE TABLE `open_payments_year_raw` (
   `ownership_records` int DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `org_group_member` (
+  `npi` char(10) NOT NULL,
+  `main_npi` char(10) NOT NULL,
+  `members` int NOT NULL,
+  `is_main` tinyint NOT NULL,
+  `ccn` varchar(10) DEFAULT NULL,
+  `facility_kind` varchar(20) DEFAULT NULL,
+  `joined_by` smallint NOT NULL,
+  PRIMARY KEY (`npi`),
+  KEY `ix_org_group_member_main` (`main_npi`,`npi`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `other_names` (
   `ID` int unsigned NOT NULL AUTO_INCREMENT,
   `NPI` char(10) DEFAULT NULL,
@@ -2482,6 +2494,7 @@ CREATE TABLE `provider_quality` (
   `label` tinyint NOT NULL,
   `reasons` int NOT NULL,
   `activity` smallint NOT NULL,
+  `other_npi` char(10) DEFAULT NULL,
   PRIMARY KEY (`npi`),
   KEY `ix_provider_quality_label` (`label`,`npi`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

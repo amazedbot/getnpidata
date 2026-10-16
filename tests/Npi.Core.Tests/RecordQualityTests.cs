@@ -35,12 +35,14 @@ public class RecordQualityTests
     [InlineData(Old5 | QualityReason.MedicareStopped | QualityReason.NoActivity, QualityLabel.Check)] // never stale on its own
     [InlineData(Old10 | QualityReason.MedicareStopped | QualityReason.NoActivity, QualityLabel.Stale)]
     [InlineData(QualityReason.MedicareStopped | QualityReason.PoBox, QualityLabel.Check)]
+    [InlineData(QualityReason.OtherNpiCurrent | QualityReason.NoActivity, QualityLabel.Stale)] // another NPI of its organization is current
+    [InlineData(QualityReason.OtherNpiCurrent | QualityReason.NoActivity | QualityReason.NoPhone, QualityLabel.Stale)]
     public void Labels_follow_the_rules(QualityReason reasons, QualityLabel expected) => Assert.Equal(expected, RecordQuality.Classify(reasons));
 
     [Fact]
     public void The_SQL_rule_uses_the_same_bits()
     {
-        Assert.Equal("CASE WHEN (r & 6) = 6 OR (r & 512) <> 0 OR ((r & 12288) <> 0 AND (r & 4) <> 0) THEN 3 " +
+        Assert.Equal("CASE WHEN (r & 6) = 6 OR (r & 66048) <> 0 OR ((r & 12288) <> 0 AND (r & 4) <> 0) THEN 3 " +
                      "WHEN ((r & 4) <> 0 AND (r & 32769) <> 0) OR (r & 29176) <> 0 THEN 2 ELSE 1 END", RecordQuality.LabelSql("r"));
         Assert.Equal(32768, (int)QualityReason.MedicareStopped); // a stored bit
     }
@@ -102,7 +104,7 @@ public class RecordQualityTests
         // With only a location, the label drives from quality_search (one index range), and isn't checked again.
         var located = new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "CA", Quality = "stale" }), null, null);
         Assert.StartsWith("FROM (SELECT DISTINCT qs.npi FROM quality_search qs WHERE qs.label IN @qualityLabels AND ", located.From, StringComparison.Ordinal);
-        Assert.DoesNotContain("provider_quality", located.From, StringComparison.Ordinal);
+        Assert.DoesNotContain("provider_quality q WHERE q.npi = p.npi", located.From, StringComparison.Ordinal); // (the main NPI of an organization is checked, pm)
         Assert.Equal([3], located.Parameters.Get<IReadOnlyList<int>>("qualityLabels"));
         Assert.False(located.MayBeBroad); // sorting a sparse label's candidates beats walking the name index (CA + stale: 20 s → 3.8 s)
         Assert.True(new SearchQuery(SearchValidation.Normalize(new SearchFilter { State = "CA", Quality = "notStale" }), null, null).MayBeBroad);
