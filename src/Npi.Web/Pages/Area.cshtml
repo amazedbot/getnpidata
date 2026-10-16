@@ -2,12 +2,15 @@
 @using System.Globalization
 @using Npi.Core.Search
 @model AreaModel
+@inject OrganizationGroupService OrgGroups
 @{
     var a = Model.Area;
     ViewData["Title"] = Model.Title;
     var categories = SpecialtyCategories.Default.Categories;
     var subcategories = Model.SelectedCategory?.Subcategories ?? [];
     var topCity = a.Cities.Count > 0 ? a.Cities[0].Providers : 1;
+    // A hospital with an organization page links there (docs/PRODUCT_PLAN.md step 3.9).
+    var links = await OrganizationLinks.ForAsync(OrgGroups, a.Hospitals.Select(h => h.Ccn), null, null, HttpContext.RequestAborted);
 }
 
 @section Scripts {
@@ -154,7 +157,7 @@
                     <ul class="link-list">
                         @foreach (var h in a.Hospitals)
                         {
-                            <li><a href="/facility/@h.Ccn">@h.Name</a> <span class="muted">@h.City@(h.Rating is { } r ? $" · {r} of 5 CMS stars" : "")@(h.Emergency == true ? " · emergency" : "")</span></li>
+                            <li><a href="@links.Facility(h.Ccn)">@h.Name</a> <span class="muted">@h.City@(h.Rating is { } r ? $" · {r} of 5 CMS stars" : "")@(h.Emergency == true ? " · emergency" : "")</span></li>
                         }
                     </ul>
                 }

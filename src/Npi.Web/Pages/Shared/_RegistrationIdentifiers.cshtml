@@ -1,0 +1,101 @@
+@using System.Globalization
+@using Npi.Core.Search
+@model Npi.Web.Pages.ProviderPart
+@*
+    An NPI's registration in NPPES and its other identifiers and endpoints: the provider page's "Registration & identifiers", and the
+    main NPI's on an organization's page (docs/PRODUCT_PLAN.md step 3.9).
+*@
+@{
+    var p = Model.Provider;
+    var cc = p.CareCompare;
+}
+<dl class="facts">
+    <dt>NPI</dt><dd class="mono">@p.Npi</dd>
+    <dt>Type</dt><dd>@p.EntityTypeName</dd>
+    <dt>NPI issued</dt><dd>@p.EnumerationDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>
+    <dt>Last updated</dt><dd>@p.LastUpdateDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>
+    @if (cc?.MedicalSchool is not null)
+    {
+        <dt>Education</dt>
+        <dd>@(cc.MedicalSchool == "OTHER" ? "Other school" : CityCatalog.TitleCase(cc.MedicalSchool))@if (cc.GraduationYear is { } year){<span>, graduated @year</span>}</dd>
+    }
+    @if (cc?.PrimarySpecialty is not null)
+    {
+        <dt>Medicare specialty</dt><dd>@cc.PrimarySpecialty@if (cc.SecondarySpecialties is not null){<span class="muted"> · also @cc.SecondarySpecialties</span>}</dd>
+    }
+    @if (p.Profile is { } profile)
+    {
+        @if (profile.AuthorizedOfficial is { } official)
+        {
+            <dt>Authorized official</dt>
+            <dd>
+                @official.Name@if (official.Credential is not null){<span>, @official.Credential</span>}
+                @if (official.Title is not null){<br /><span class="muted">@official.Title</span>}
+                @if (official.Phone is not null){<br />@Format.Phone(official.Phone)}
+            </dd>
+        }
+        @if (profile.ParentOrganization is not null)
+        {
+            <dt>Parent organization</dt><dd>@profile.ParentOrganization@if (profile.IsOrganizationSubpart == true){<span class="muted"> (this NPI is a subpart)</span>}</dd>
+        }
+        @if (profile.IsSoleProprietor == true)
+        {
+            <dt>Sole proprietor</dt><dd>Yes</dd>
+        }
+        @if (profile.MailingAddress is { } mail)
+        {
+            <dt>Mailing address</dt>
+            <dd>
+                @mail.Address1@if (mail.Address2 is not null){<br />@mail.Address2}<br />
+                @mail.City, @mail.State @mail.PostalCode@if (mail.CountryCode is not null && mail.CountryCode != "US"){<span> @mail.CountryCode</span>}
+                @if (mail.Phone is not null){<br /><span>Phone @Format.Phone(mail.Phone)</span>}
+                @if (mail.Fax is not null){<br /><span>Fax @Format.Phone(mail.Fax)</span>}
+            </dd>
+        }
+        @if (profile.PracticeFax is not null)
+        {
+            <dt>Practice fax</dt><dd>@Format.Phone(profile.PracticeFax)</dd>
+        }
+    }
+    @if (p.OtherNames.Count > 0)
+    {
+        <dt>Other names</dt><dd>@string.Join("; ", p.OtherNames)</dd>
+    }
+</dl>
+
+@if (p.Identifiers.Count > 0)
+{
+    <h3>Other identifiers</h3>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Identifier</th><th scope="col">Type</th><th scope="col">State</th><th scope="col">Issuer</th></tr></thead>
+            <tbody>
+                @foreach (var i in p.Identifiers)
+                {
+                    <tr><td class="mono">@i.Identifier</td><td>@i.Type</td><td>@i.State</td><td>@i.Issuer</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (p.Endpoints.Count > 0)
+{
+    <h3>Electronic endpoints</h3>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Type</th><th scope="col">Endpoint</th><th scope="col">Use</th><th scope="col">Affiliation</th></tr></thead>
+            <tbody>
+                @foreach (var e in p.Endpoints)
+                {
+                    <tr>
+                        <td>@(e.TypeDescription ?? e.Type)</td>
+                        <td class="break">@e.Endpoint@if (e.Description is not null){<br /><span class="muted">@e.Description</span>}</td>
+                        <td>@e.Use</td>
+                        <td>@e.AffiliationName@if (e.AffiliationCity is not null){<br /><span class="muted">@e.AffiliationCity, @e.AffiliationState</span>}</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

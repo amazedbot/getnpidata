@@ -11,8 +11,13 @@
     var grid = OwnershipView.Grid(i, InspectionSeverity.Health);
 }
 
-<section class="card" id="inspections" aria-labelledby="insp-h">
-    <h2 id="insp-h">Inspections and penalties</h2>
+@{
+    // An organization's page (docs/PRODUCT_PLAN.md step 3.9) can hold several nursing homes: each gets its own id and names itself.
+    var sectionId = ViewData["InspectionsId"] as string ?? "inspections";
+    var heading = ViewData["InspectionsHeading"] as string ?? "Inspections and penalties";
+}
+<section class="card" id="@sectionId" aria-labelledby="@sectionId-h">
+    <h2 id="@sectionId-h">@heading</h2>
     @if (latest.Harm > 0 || fines.Count > 0)
     {
         <p class="error" role="note">

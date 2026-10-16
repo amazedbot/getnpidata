@@ -1,0 +1,16 @@
+@model Npi.Web.Pages.OrganizationBanner
+@*
+    The banner on a detail page (one NPI, one CCN, one PAC ID) of an organization that has a page of its own (docs/PRODUCT_PLAN.md
+    step 3.9, owner 2026-10-16): "Part of [organization]: see everything on one page".
+*@
+@{
+    var o = Model.Organization;
+    var href = "/organization/" + o.MainNpi;
+    var name = Npi.Core.Search.CityCatalog.TitleCase(o.Name);
+    var npis = o.Npis > 1 ? $" ({o.Npis.ToString(System.Globalization.CultureInfo.InvariantCulture)} NPIs)" : "";
+}
+<div class="notice org-banner" role="note">
+    <span>Part of <a href="@href"><strong>@name</strong></a>@npis:
+        <a href="@href">see everything on one page</a>@if (Model.Npi is { } npi && o.Npis > 1){<span class="muted">@(npi == o.MainNpi ? " · this is its main NPI" : " · main NPI ")@if (npi != o.MainNpi){<span class="mono">@o.MainNpi</span>}</span>}.
+        <span class="muted small">This page is @Model.ThisPage.</span></span>
+</div>

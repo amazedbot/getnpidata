@@ -113,17 +113,8 @@
 
     @if (p.Organization is { } org)
     {
-        @* Step 3.8: an NPI of an organization with several; its combined profile lists them all with their roles. *@
-        <div class="notice" role="note">
-            @if (org.MainNpi == p.Npi)
-            {
-                <span>The main NPI of @org.Name, which has @org.Npis NPIs: <a href="/organization/@org.MainNpi">see the combined profile</a>.</span>
-            }
-            else
-            {
-                <span>One of @org.Npis NPIs of @org.Name: <a href="/organization/@org.MainNpi">see the combined profile</a> (main NPI <span class="mono">@org.MainNpi</span>).</span>
-            }
-        </div>
+        @* Step 3.9: the NPI's organization has a page with everything (its NPIs, facilities, groups); this page is the one NPI's record. *@
+        <partial name="_OrganizationBanner" model="new OrganizationBanner(org, p.Npi, OrganizationBanner.NpiPage)" />
     }
 
     @if (compliance.Exclusions.Count > 0)
@@ -254,54 +245,7 @@
 
     <section class="card" id="specialties" aria-labelledby="spec-h">
         <h2 id="spec-h">Specialties &amp; licenses</h2>
-        <p class="lede">@(p.Taxonomies.Count == 1 ? "One specialty" : $"{p.Taxonomies.Count} specialties") listed in NPPES@(p.Taxonomies.Count(t => t.LicenseNumber is not null) is var licenses and > 0 ? $", with {licenses} license number{(licenses == 1 ? "" : "s")}" : "").</p>
-        <div class="table-wrap">
-            <table>
-                <caption class="visually-hidden">Specialties and licenses</caption>
-                <thead><tr><th scope="col">Specialty</th><th scope="col">NUCC classification</th><th scope="col">Code</th><th scope="col">License</th></tr></thead>
-                <tbody>
-                    @foreach (var t in p.Taxonomies)
-                    {
-                        <tr>
-                            <td>@(ProviderModel.PlainName(t.Code) ?? t.Classification)@if (t.IsPrimary){<span class="badge good">Primary</span>}</td>
-                            <td>@t.Classification@if (t.Specialization is not null){<br /><span class="muted">@t.Specialization</span>}</td>
-                            <td><a class="mono" href="/search?taxonomy=@t.Code">@t.Code</a></td>
-                            <td>@t.LicenseNumber@if (t.LicenseState is not null){<span class="muted"> @t.LicenseState</span>}</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-
-        @if (p.StateLicenses.Count > 0 || coveredLicenses.Count > 0)
-        {
-            <h3>State licenses and board actions</h3>
-            @if (p.StateLicenses.Count == 0)
-            {
-                <p>No record matching this provider's @string.Join(", ", coveredLicenses.Select(t => t.LicenseState).Distinct()) license was found in the state's published data
-                    (for New York, that means no public Board for Professional Medical Conduct action; a state that lists current licenses only may not list a lapsed one).</p>
-            }
-            @foreach (var lic in p.StateLicenses)
-            {
-                <dl class="facts">
-                    <dt>@lic.State license</dt>
-                    <dd><strong>@lic.LicenseNumber</strong>@if (lic.LicenseType is not null){<span class="muted"> · @lic.LicenseType</span>}</dd>
-                    @if (lic.Status is not null){<dt>Status</dt><dd>@lic.Status</dd>}
-                    @if (lic.ExpirationDate is { } exp){<dt>Expires</dt><dd>@exp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>}
-                    @if (lic.Discipline is not null){<dt>Discipline on record</dt><dd>@(lic.Discipline.ToUpperInvariant() switch { "Y" or "YES" => "Yes", "N" or "NO" => "No", "NONE" => "None", _ => lic.Discipline })</dd>}
-                    @foreach (var a in lic.Actions)
-                    {
-                        <dt>Board action @(a.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))</dt>
-                        <dd>@a.Action@if (a.Description is not null){<br /><span class="muted">@a.Description</span>}</dd>
-                    }
-                    <dt>Source</dt>
-                    <dd><a href="@lic.SourceUrl">@lic.SourceName</a>@if (lic.VerifyUrl is not null){<text> · </text><a href="@lic.VerifyUrl">verify this license</a>}</dd>
-                </dl>
-            }
-            <p class="src">From state licensing boards (@string.Join(", ", StateLicenseSources.States); New York publishes board actions only; Alabama, Maryland, Michigan, Rhode Island and West Virginia current licenses only; the Florida complaints list recent cases only), matched to this NPI by
-                license state, number and last name. Always confirm with the state board before relying on it.</p>
-        }
-        <p class="src">Specialties and license numbers from NPPES (NUCC taxonomy).</p>
+        <partial name="_SpecialtiesLicenses" model="new ProviderPart(p, Model.IsPerson)" />
     </section>
 
     @if (Model.HasAffiliations)
@@ -451,74 +395,7 @@
     {
         <section class="card" id="medicare" aria-labelledby="med-h">
             <h2 id="med-h">Medicare activity</h2>
-            @if (p.MedicareServices is { } mu)
-            {
-                <h3>Patients and services in @mu.Year</h3>
-                <div class="big-numbers">
-                    <div><strong>@Count(mu.Beneficiaries)</strong><span>patients</span></div>
-                    <div><strong>@Count(mu.Services)</strong><span>services</span></div>
-                    <div><strong>@Money(mu.PaymentAmount)</strong><span>paid by Medicare</span></div>
-                </div>
-                <dl class="facts">
-                    @if (mu.ProviderType is not null){<dt>Medicare provider type</dt><dd>@mu.ProviderType@if (mu.Participating == false){<span class="muted"> · non-participating</span>}</dd>}
-                    @if (mu.DistinctServices is not null){<dt>Kinds of service</dt><dd>@mu.DistinctServices distinct procedure codes</dd>}
-                    @if (mu.AllowedAmount is not null){<dt>Allowed amount</dt><dd>@Money(mu.AllowedAmount)</dd>}
-                    @if (mu.AverageRiskScore is not null){<dt>Patients' average risk score</dt><dd>@mu.AverageRiskScore.Value.ToString("0.00", CultureInfo.InvariantCulture) <span class="muted">(1.00 = average Medicare patient)</span></dd>}
-                </dl>
-                @if (mu.TopServices.Count > 0)
-                {
-                    <div class="table-wrap">
-                        <table>
-                            <caption class="visually-hidden">Most frequent Medicare services</caption>
-                            <thead><tr><th scope="col">Code</th><th scope="col">Service</th><th scope="col">Setting</th><th scope="col">Patients</th><th scope="col">Services</th><th scope="col">Avg. Medicare payment</th></tr></thead>
-                            <tbody>
-                                @foreach (var s in mu.TopServices)
-                                {
-                                    <tr><td class="mono">@s.Hcpcs</td><td>@s.Description</td><td>@s.PlaceOfService</td><td>@Count(s.Beneficiaries)</td><td>@Count(s.Services)</td><td>@Money(s.AveragePayment)</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            }
-            @if (p.MedicarePrescribing is { } rx)
-            {
-                <h3>Part D prescribing in @rx.Year</h3>
-                <div class="big-numbers">
-                    <div><strong>@Count(rx.Claims)</strong><span>prescriptions</span></div>
-                    @if (rx.Beneficiaries is not null){<div><strong>@Count(rx.Beneficiaries)</strong><span>patients</span></div>}
-                    <div><strong>@Money(rx.DrugCost)</strong><span>drug cost</span></div>
-                </div>
-                <dl class="facts">
-                    @if (rx.BrandClaims is not null && rx.Claims is > 0){<dt>Brand-name share</dt><dd>@((100.0 * rx.BrandClaims.Value / rx.Claims.Value).ToString("0", CultureInfo.InvariantCulture))% of claims</dd>}
-                    @if (rx.OpioidRate is not null){<dt>Opioid prescribing rate</dt><dd>@rx.OpioidRate.Value.ToString("0.0", CultureInfo.InvariantCulture)% of claims</dd>}
-                    @if (rx.AntibioticClaims is not null){<dt>Antibiotic claims</dt><dd>@Count(rx.AntibioticClaims)</dd>}
-                </dl>
-            }
-            @if (p.MedicareHistory is { } mh)
-            {
-                <h3>Medicare by year</h3>
-                <p>@(mh.Stopped ? mh.LastBilledText + "; none since." : $"Billed Medicare in {mh.Spans}.")</p>
-                <ol class="medicare-years" aria-label="Medicare activity by data year">
-                    @for (var y = mh.FirstDataYear; y <= mh.NewestDataYear; y++)
-                    {
-                        var year = mh.Years.FirstOrDefault(x => x.Year == y);
-                        var parts = year is null ? "none" : year.PartB && year.PartD ? "Part B and Part D" : year.PartB ? "Part B" : "Part D";
-                        var detail = year is null ? "" : string.Join(", ", new[]
-                        {
-                            year.Beneficiaries is { } b ? $"{b.ToString("N0", CultureInfo.InvariantCulture)} patients" : null,
-                            year.Claims is { } c ? $"{c.ToString("N0", CultureInfo.InvariantCulture)} prescriptions" : null,
-                        }.Where(x => x is not null));
-                        <li class="@(year is null ? "off" : "on")" title="@y: @parts@(detail.Length > 0 ? " (" + detail + ")" : "")">
-                            <span class="yr">@y</span>
-                            <span class="parts" aria-hidden="true">@(year is null ? "–" : (year.PartB ? "B" : "") + (year.PartD ? "D" : ""))</span>
-                            <span class="visually-hidden">: @parts@(detail.Length > 0 ? ", " + detail : "")</span>
-                        </li>
-                    }
-                </ol>
-                <p class="muted small">B = billed Part B (services), D = prescribed under Part D.</p>
-            }
-            <p class="src">CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers data by provider, @(p.MedicareHistory is { } h ? $"{h.FirstDataYear}–{h.NewestDataYear}" : "newest year") (traditional Medicare only; counts under 11 are suppressed by CMS).</p>
+            <partial name="_MedicareActivity" model="new ProviderPart(p, Model.IsPerson)" />
         </section>
     }
 
@@ -695,146 +572,13 @@
     {
         <section class="card" id="history" aria-labelledby="hist-h">
             <h2 id="hist-h">Over the years</h2>
-            <p>@(past.InFirstFile
-                    ? $"In the archived NPPES files since the first one ({AreaHistoryMath.MonthName(past.ArchiveFrom)})"
-                    : $"First listed in the {past.FirstListed.ToString("MMMM yyyy", CultureInfo.InvariantCulture)} file")@(past.Versions.Count == 1
-                    ? ", with no change in its location, specialty or status since."
-                    : $"; {past.Versions.Count - 1} change{(past.Versions.Count == 2 ? "" : "s")} seen from one monthly file to the next up to {AreaHistoryMath.MonthName(past.ArchiveTo)}.")</p>
-            @{
-                void Version(ProviderHistoryVersion v)
-                {
-                    <li>
-                        <strong title="@v.Source">@v.ListedFrom.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</strong>
-                        <ul>
-                            @foreach (var c in v.Changes)
-                            {
-                                <li>@c.Text</li>
-                            }
-                        </ul>
-                        @if (v.MonthsWithoutFileBefore.Count > 0)
-                        {
-                            <span class="muted">No file survives for @string.Join(", ", v.MonthsWithoutFileBefore.Select(AreaHistoryMath.MonthName)), so it may date from then.</span>
-                        }
-                    </li>
-                }
-            }
-            <ol class="history-list" reversed>
-                @foreach (var v in past.Versions.Take(ProviderModel.HistoryShown))
-                {
-                    Version(v);
-                }
-            </ol>
-            @if (past.Versions.Count > ProviderModel.HistoryShown)
-            {
-                <details>
-                    <summary>Show all @past.Versions.Count versions</summary>
-                    <ol class="history-list" reversed start="@(past.Versions.Count - ProviderModel.HistoryShown)">
-                        @foreach (var v in past.Versions.Skip(ProviderModel.HistoryShown))
-                        {
-                            Version(v);
-                        }
-                    </ol>
-                </details>
-            }
-            <p class="src">From the archived monthly NPPES files, @AreaHistoryMath.MonthName(past.ArchiveFrom) to @AreaHistoryMath.MonthName(past.ArchiveTo)
-                (@ProviderHistory.Attribution before June 2015, <a href="@ProviderHistory.Doi">doi.org/10.60592/bjwk-8n62</a>), each compared with the one before:
-                the primary practice location (and from @(past.SecondaryFrom is { } sf ? AreaHistoryMath.MonthName(sf) : "July 2018") the other practice locations),
-                the specialties, the status and the dates. A change is dated by the first file that shows it. Changes since then are under Changes.</p>
+            <partial name="_OverTheYears" model="past" />
         </section>
     }
 
     <section class="card" id="record" aria-labelledby="rec-h">
         <h2 id="rec-h">Registration &amp; identifiers</h2>
-        <dl class="facts">
-            <dt>NPI</dt><dd class="mono">@p.Npi</dd>
-            <dt>Type</dt><dd>@p.EntityTypeName</dd>
-            <dt>NPI issued</dt><dd>@p.EnumerationDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>
-            <dt>Last updated</dt><dd>@p.LastUpdateDate?.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)</dd>
-            @if (cc?.MedicalSchool is not null)
-            {
-                <dt>Education</dt>
-                <dd>@(cc.MedicalSchool == "OTHER" ? "Other school" : CityCatalog.TitleCase(cc.MedicalSchool))@if (cc.GraduationYear is { } year){<span>, graduated @year</span>}</dd>
-            }
-            @if (cc?.PrimarySpecialty is not null)
-            {
-                <dt>Medicare specialty</dt><dd>@cc.PrimarySpecialty@if (cc.SecondarySpecialties is not null){<span class="muted"> · also @cc.SecondarySpecialties</span>}</dd>
-            }
-            @if (p.Profile is { } profile)
-            {
-                @if (profile.AuthorizedOfficial is { } official)
-                {
-                    <dt>Authorized official</dt>
-                    <dd>
-                        @official.Name@if (official.Credential is not null){<span>, @official.Credential</span>}
-                        @if (official.Title is not null){<br /><span class="muted">@official.Title</span>}
-                        @if (official.Phone is not null){<br />@Format.Phone(official.Phone)}
-                    </dd>
-                }
-                @if (profile.ParentOrganization is not null)
-                {
-                    <dt>Parent organization</dt><dd>@profile.ParentOrganization@if (profile.IsOrganizationSubpart == true){<span class="muted"> (this NPI is a subpart)</span>}</dd>
-                }
-                @if (profile.IsSoleProprietor == true)
-                {
-                    <dt>Sole proprietor</dt><dd>Yes</dd>
-                }
-                @if (profile.MailingAddress is { } mail)
-                {
-                    <dt>Mailing address</dt>
-                    <dd>
-                        @mail.Address1@if (mail.Address2 is not null){<br />@mail.Address2}<br />
-                        @mail.City, @mail.State @mail.PostalCode@if (mail.CountryCode is not null && mail.CountryCode != "US"){<span> @mail.CountryCode</span>}
-                        @if (mail.Phone is not null){<br /><span>Phone @Format.Phone(mail.Phone)</span>}
-                        @if (mail.Fax is not null){<br /><span>Fax @Format.Phone(mail.Fax)</span>}
-                    </dd>
-                }
-                @if (profile.PracticeFax is not null)
-                {
-                    <dt>Practice fax</dt><dd>@Format.Phone(profile.PracticeFax)</dd>
-                }
-            }
-            @if (p.OtherNames.Count > 0)
-            {
-                <dt>Other names</dt><dd>@string.Join("; ", p.OtherNames)</dd>
-            }
-        </dl>
-
-        @if (p.Identifiers.Count > 0)
-        {
-            <h3>Other identifiers</h3>
-            <div class="table-wrap">
-                <table>
-                    <thead><tr><th scope="col">Identifier</th><th scope="col">Type</th><th scope="col">State</th><th scope="col">Issuer</th></tr></thead>
-                    <tbody>
-                        @foreach (var i in p.Identifiers)
-                        {
-                            <tr><td class="mono">@i.Identifier</td><td>@i.Type</td><td>@i.State</td><td>@i.Issuer</td></tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-
-        @if (p.Endpoints.Count > 0)
-        {
-            <h3>Electronic endpoints</h3>
-            <div class="table-wrap">
-                <table>
-                    <thead><tr><th scope="col">Type</th><th scope="col">Endpoint</th><th scope="col">Use</th><th scope="col">Affiliation</th></tr></thead>
-                    <tbody>
-                        @foreach (var e in p.Endpoints)
-                        {
-                            <tr>
-                                <td>@(e.TypeDescription ?? e.Type)</td>
-                                <td class="break">@e.Endpoint@if (e.Description is not null){<br /><span class="muted">@e.Description</span>}</td>
-                                <td>@e.Use</td>
-                                <td>@e.AffiliationName@if (e.AffiliationCity is not null){<br /><span class="muted">@e.AffiliationCity, @e.AffiliationState</span>}</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
+        <partial name="_RegistrationIdentifiers" model="new ProviderPart(p, Model.IsPerson)" />
         <p class="src">CMS NPPES, updated @Format.Ago(p.LastUpdateDate). Verify with the official <a href="https://npiregistry.cms.hhs.gov/provider-view/@p.Npi">NPPES NPI Registry</a>.
             <a href="/provider/@p.Npi/raw.json" download>Download raw data</a> (everything on this page, as JSON).</p>
     </section>

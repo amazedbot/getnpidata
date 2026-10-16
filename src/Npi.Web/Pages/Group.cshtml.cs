@@ -7,12 +7,13 @@ namespace Npi.Web.Pages;
 
 /// <summary>
 /// /group/{pacId}: a Medicare group practice (docs/PRODUCT_PLAN.md step 1.5): who it is, the organization NPIs enrolled under it,
-/// and its clinicians by specialty, with a list and an export.
+/// and its clinicians by specialty, with a list and an export. Since step 3.9 it is the detail page of one PAC ID: when its organization
+/// NPIs have an organization page, a banner links to everything on one page.
 /// </summary>
 public class GroupModel(OrganizationService organizations, OrganizationDirectory directory, OrganizationGroupService? groups = null) : PageModel
 {
-    /// <summary>The organizations (step 3.8) its organization NPIs belong to, for a link to each combined profile; largest first.</summary>
-    public IReadOnlyList<ProviderOrganization> CombinedOrganizations { get; private set; } = [];
+    /// <summary>The organization page (step 3.9) its organization NPIs are part of, for the banner; null when they have none.</summary>
+    public ProviderOrganization? Organization { get; private set; }
 
     public GroupProfile Group { get; private set; } = null!;
 
@@ -30,8 +31,7 @@ public class GroupModel(OrganizationService organizations, OrganizationDirectory
         Listing = directory.PeekGroup(group.PacId);
         if (groups is not null && group.Organizations.Count > 0)
         {
-            CombinedOrganizations = [.. (await groups.GetMembershipsAsync([.. group.Organizations.Select(o => o.Npi)], ct)).Values
-                .DistinctBy(o => o.MainNpi).OrderByDescending(o => o.Npis)];
+            Organization = (await groups.GetPagesForPacIdsAsync([group.PacId], ct)).GetValueOrDefault(group.PacId);
         }
         return Page();
     }

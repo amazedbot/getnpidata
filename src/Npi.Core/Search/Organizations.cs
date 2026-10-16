@@ -4,7 +4,15 @@ using MySqlConnector;
 namespace Npi.Core.Search;
 
 /// <summary>A clinician in a group's or facility's list, with the specialty in plain words.</summary>
-public sealed record ClinicianRow(string Npi, string Name, string? Credential, string? Gender, string? Specialty, string? City, string? State);
+public sealed record ClinicianRow(string Npi, string Name, string? Credential, string? Gender, string? Specialty, string? City, string? State)
+{
+    /// <summary>
+    /// On an organization's list (docs/PRODUCT_PLAN.md step 3.9): where the tie comes from, as <see cref="ClinicianSources"/> codes
+    /// (facilityAffiliation, reassignment, careCompareGroup); null on a single facility's or group's list, and then not sent.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Sources { get; init; }
+}
 
 /// <summary>How many clinicians have this plain specialty.</summary>
 public sealed record SpecialtyCount(string Specialty, int Clinicians);
@@ -148,8 +156,16 @@ public sealed class OrganizationService(string connectionString)
             return null;
         }
 
-        ccn = ccn.ToUpperInvariant();
         await using var connection = await OpenAsync(ct);
+        return await FacilityAsync(connection, ccn.ToUpperInvariant(), page, clinicians: true, ct);
+    }
+
+    /// <summary>
+    /// A facility's profile on an open connection; without <paramref name="clinicians"/> its clinician list is only the count (an
+    /// organization's page lists the clinicians of all its facilities and groups together, docs/PRODUCT_PLAN.md step 3.9).
+    /// </summary>
+    internal static async Task<FacilityProfile?> FacilityAsync(MySqlConnection connection, string ccn, int page, bool clinicians, CancellationToken ct)
+    {
         var facility = await ProviderDetailService.FacilitiesAsync(connection,
             $"""
             FROM (SELECT ccn, 'hospital' AS kind FROM cms_hospital WHERE ccn = @id
@@ -216,14 +232,16 @@ public sealed class OrganizationService(string connectionString)
                 "SELECT lat, lon FROM zip_centroid WHERE zip5 = @zip", new { zip = zip[..5] }, cancellationToken: ct));
         }
 
-        var clinicians = await ClinicianListAsync(connection, FacilityNpis, new { id = ccn }, page, ct);
+        var affiliatedList = clinicians
+            ? await ClinicianListAsync(connection, FacilityNpis, new { id = ccn }, page, ct)
+            : new ClinicianList(found.AffiliatedClinicians, [], [], 1, PageSize);
         var systems = await HealthSystemService.ForCcnAsync(connection, ccn, ct);
         var sites = await HealthCenterService.ForCcnAsync(connection, ccn, ct);
         var covered340B = await Program340BService.ForCcnAsync(connection, ccn, ct);
         // A Care Compare listing is a facility certified now, whatever an older Provider of Services row says.
         var active = facility.Count > 0 || pos?.Active == 1;
         var details = await FacilityDetails.ReadAsync(connection, ccn, found.Kind, ct);
-        return new FacilityProfile(found, place.Address, place.Zip, point?.Lat, point?.Lon, billing, clinicians)
+        return new FacilityProfile(found, place.Address, place.Zip, point?.Lat, point?.Lon, billing, affiliatedList)
         {
             Certification = pos is null ? null : new FacilityCertification(active, active || pos.TerminationDate is not { } ended ? null : DateOnly.FromDateTime(ended),
                 active ? null : FacilityTypes.TerminationReason(pos.TerminationCode)),
@@ -365,6 +383,32 @@ public sealed class OrganizationService(string connectionString)
         return new ClinicianList(total, bySpecialty, list, page, PageSize);
     }
 
+    /// <summary>The list rows of these clinicians (active NPIs only), in the order given.</summary>
+    internal static async Task<IReadOnlyList<ClinicianRow>> ClinicianRowsAsync(MySqlConnection connection, IReadOnlyList<string> npis, CancellationToken ct)
+    {
+        if (npis.Count == 0)
+        {
+            return [];
+        }
+
+        var rows = (await connection.QueryAsync<ClinicianDbRow>(new CommandDefinition(
+                """
+                SELECT p.npi AS Npi, p.entity_type AS EntityType, p.last_name AS LastName, p.first_name AS FirstName, p.middle_name AS MiddleName,
+                       p.name_suffix AS NameSuffix,
+                       COALESCE((SELECT GROUP_CONCAT(pc.credential ORDER BY pc.ord SEPARATOR ', ') FROM provider_credential pc WHERE pc.npi = p.npi AND pc.ord < 100),
+                                p.credential) AS Credential,
+                       p.org_name AS OrgName, p.gender AS Gender,
+                       p.primary_taxonomy_code AS PrimaryTaxonomyCode, l.city AS City, l.state AS State
+                FROM provider p
+                LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
+                WHERE p.npi IN @npis
+                """, new { npis }, cancellationToken: ct)))
+            .ToDictionary(r => r.Npi, StringComparer.Ordinal);
+        return [.. npis.Where(rows.ContainsKey).Select(n => rows[n]).Select(r => new ClinicianRow(r.Npi,
+            ProviderNames.Display(r.EntityType, r.LastName, r.FirstName, r.MiddleName, r.NameSuffix, r.OrgName),
+            r.Credential, r.Gender, PlainSpecialty(r.PrimaryTaxonomyCode), r.City, r.State))];
+    }
+
     private static async Task<IReadOnlyList<OrganizationNpi>> NpisAsync(MySqlConnection connection, string npisSql, string id, CancellationToken ct) =>
         (await connection.QueryAsync<NpiRow>(new CommandDefinition(
             $"""
@@ -379,7 +423,7 @@ public sealed class OrganizationService(string connectionString)
             PlainSpecialty(r.PrimaryTaxonomyCode), r.City, r.State))
         .ToList();
 
-    private static string? PlainSpecialty(string? code) =>
+    internal static string? PlainSpecialty(string? code) =>
         SpecialtyCategories.Default.Place(code) is { } p && p.Category != SpecialtyCategories.FallbackCategory ? p.Singular : null;
 
     private async Task<MySqlConnection> OpenAsync(CancellationToken ct)

@@ -3,24 +3,26 @@
 @using Npi.Core.Search
 @model OrganizationModel
 @*
-    The combined profile of an organization with several NPIs (docs/PRODUCT_PLAN.md step 3.8): every NPI with its role, then what
-    they hold together. Each NPI keeps its own profile (credentialing and billing need the exact NPI).
+    One page per organization (docs/PRODUCT_PLAN.md step 3.9, owner 2026-10-16): everything public about an organization on one
+    scrolling page, with a section menu. Each NPI, facility (CCN) and Medicare group (PAC ID) keeps its own detail page.
 *@
 @{
     var o = Model.Profile;
     var main = o.Main;
     var mainMember = Model.MainMember;
+    var mainFacility = Model.MainFacility;
     ViewData["Title"] = Model.Name;
+    var quality = main?.Quality;
 }
 
 @section Scripts {
     <script src="~/js/profile.js" asp-append-version="true" defer></script>
 }
 
-<div class="profile">
+<div class="profile organization-page">
     <nav aria-label="Breadcrumb" class="crumbs"><a href="/organizations">Groups &amp; organizations</a></nav>
 
-    <section class="card profile-head" aria-labelledby="who">
+    <section class="card profile-head" id="overview" aria-labelledby="who">
         <div class="head-row">
             <svg class="avatar-lg org" role="img" aria-label="Organization" viewBox="0 0 104 104">
                 <circle cx="52" cy="52" r="52" class="bg" />
@@ -30,103 +32,370 @@
                 <h1 id="who">@Model.Name</h1>
                 <p class="summary">@Model.Summary</p>
                 <ul class="pills" aria-label="Status">
-                    <li class="pill plain">Main NPI <span class="mono">&nbsp;@o.MainNpi</span></li>
-                    @if (main?.Quality is { } q)
+                    @if (mainFacility is { } mf)
                     {
-                        <li class="pill @(q.Label == QualityLabel.Current ? "ok" : "warn")">Main NPI's record: @RecordQuality.Name(q.Label).ToLowerInvariant()</li>
+                        if (mf.Profile.Certification is { Active: false })
+                        {
+                            <li class="pill alert">Main facility's certification ended</li>
+                        }
+                        else
+                        {
+                            <li class="pill ok">Medicare certified</li>
+                        }
+                        if (mf.Facility.OverallRating is { } stars && mf.Facility.Kind is "hospital" or "nursing_home" or FacilityTypes.Dialysis)
+                        {
+                            <li class="pill plain" title="CMS's overall rating of @mf.Name">@stars of 5 CMS stars</li>
+                        }
+                        if (mf.Facility.EmergencyServices == true){<li class="pill plain">Emergency services</li>}
                     }
-                    <li class="pill plain">@o.Npis.Count NPIs</li>
+                    @if (o.Covered340B.Any(e => e.Participating)){<li class="pill plain" title="HRSA 340B Drug Pricing Program">340B covered entity</li>}
+                    @if (quality is { } q)
+                    {
+                        <li class="pill @(q.Label == QualityLabel.Current ? "ok" : "warn")" title="@string.Join("; ", q.ReasonTexts)">Main NPI's record: @RecordQuality.Name(q.Label).ToLowerInvariant()</li>
+                    }
+                    <li class="pill plain">Main NPI <span class="mono">&nbsp;@o.MainNpi</span></li>
                 </ul>
             </div>
             <div class="head-actions">
+                @if (Model.Phone is { } phone){<a class="button secondary" href="tel:@phone">Call @Format.Phone(phone)</a>}
+                @if (Model.Directions is { } directions){<a class="button secondary" href="@directions">Directions</a>}
                 <button type="button" class="secondary" data-copy="@o.MainNpi">Copy main NPI</button>
                 <a class="button" href="/organization/@o.MainNpi/raw.json" download>Download raw data</a>
                 <a class="small" href="/organization/@o.MainNpi/npis.csv" download>Every NPI as CSV</a>
-                <a class="small" href="/provider/@o.MainNpi">Main NPI's full profile</a>
+                @if (Model.Clinicians.Summary.Total > 0){<a class="small" href="/organization/@o.MainNpi/clinicians.csv" download>Every clinician as CSV</a>}
             </div>
         </div>
-        @if (main is not null)
+        <p class="head-facts">
+            <span>@Model.KindName</span>
+            @if (Model.PrimaryLocation is { } l){<span>@(l.Address1 is null ? null : CityCatalog.TitleCase(l.Address1)), @ProviderModel.Place(l) @l.Zip?.Split('-')[0]</span>}
+            @if (mainFacility?.Facility.Ownership is { } ownership){<span>Ownership: @ownership</span>}
+            @if (main?.EnumerationDate is { } issued){<span>Main NPI issued @issued.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</span>}
+            @if (main?.Profile?.AuthorizedOfficial is { } official){<span>Authorized official: @CityCatalog.TitleCase(official.Name)@(official.Title is null ? "" : ", " + official.Title)</span>}
+        </p>
+        @if (o.HealthSystems.Count > 0 || o.Acos.Count > 0 || o.Covered340B.Count > 0)
         {
-            <p class="head-facts">
-                <span>@(mainMember.Role)</span>
-                @if (main.EnumerationDate is { } issued){<span>Main NPI issued @issued.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</span>}
-                @if (main.LastUpdateDate is { } updated){<span>Updated in NPPES @updated.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</span>}
-                @if (main.Profile?.AuthorizedOfficial is { } official){<span>Authorized official: @CityCatalog.TitleCase(official.Name)@(official.Title is null ? "" : ", " + official.Title)</span>}
-            </p>
+            <dl class="facts networks">
+                @if (o.HealthSystems.Count > 0)
+                {
+                    <dt>Health system</dt>
+                    <dd>@for (var i = 0; i < o.HealthSystems.Count; i++){@(i > 0 ? ", " : "")<a href="/system/@Uri.EscapeDataString(o.HealthSystems[i].SystemId)">@o.HealthSystems[i].Name</a>}
+                        <span class="src">@HealthSystemText.Credit(null) By CMS Certification Number.</span></dd>
+                }
+                @if (o.Acos.Count > 0)
+                {
+                    <dt>Medicare ACO</dt>
+                    <dd>
+                        @for (var i = 0; i < o.Acos.Count; i++)
+                        {
+                            var a = o.Acos[i];
+                            @(i > 0 ? "; " : "")<a href="/aco/@Uri.EscapeDataString(a.AcoId)">@a.AcoName</a><text> (@a.ProgramYear) </text><span class="pill plain name-match" title="Matched by name: CMS lists the participant as “@a.ParticipantName” without an NPI or tax ID; this is the NPPES legal business name of NPI @a.Npi.">name match</span>
+                        }
+                        <span class="src">CMS, Accountable Care Organization Participants: listed by legal business name only, so a name match that may be another organization of the same name.</span>
+                    </dd>
+                }
+                @if (o.Covered340B.Count > 0)
+                {
+                    <dt>340B</dt>
+                    <dd>
+                        <partial name="_Covered340B" model="o.Covered340B.Take(3).ToList()" />
+                        @if (o.Covered340B.Count > 3)
+                        {
+                            <details><summary>@((o.Covered340B.Count - 3).ToString("N0", CultureInfo.InvariantCulture)) more registrations (@o.Covered340B.Count(e => e.Participating).ToString("N0", CultureInfo.InvariantCulture) of all @o.Covered340B.Count.ToString("N0", CultureInfo.InvariantCulture) participating)</summary>
+                                <partial name="_Covered340B" model="o.Covered340B.Skip(3).ToList()" />
+                            </details>
+                        }
+                        <span class="src">HRSA 340B OPAIS, by the Medicare number, NPI or HRSA site ID it lists.</span></dd>
+                }
+            </dl>
         }
     </section>
 
-    <section class="card" id="npis" aria-labelledby="npis-h">
-        <h2 id="npis-h">All NPIs of this organization (@o.Npis.Count)</h2>
-        <p class="lede">Each NPI keeps its own registration and profile; credentialing and billing need the exact one.</p>
-        <div class="table-wrap">
-            <table>
-                <caption class="visually-hidden">The organization's NPIs</caption>
-                <thead><tr><th scope="col">NPI</th><th scope="col">Name as registered</th><th scope="col">Role</th><th scope="col">Specialty</th><th scope="col">Address</th><th scope="col">Last NPPES update</th><th scope="col">Record</th><th scope="col">Grouped by</th></tr></thead>
-                <tbody>
-                    @foreach (var m in o.Npis)
-                    {
-                        <tr>
-                            <td class="mono"><a href="/provider/@m.Npi">@m.Npi</a></td>
-                            <td>@m.Name</td>
-                            <td>@m.Role</td>
-                            <td>@m.Specialty</td>
-                            <td>@m.Address@if (m.City is not null){<br /><span class="muted">@CityCatalog.TitleCase(m.City), @m.State @m.Zip</span>}</td>
-                            <td class="nowrap">@m.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                            <td>@if (m.Quality is not null){<span class="@OrganizationModel.QualityClass(m.Quality)">@m.Quality</span>}</td>
-                            <td class="muted small">@m.JoinedBy</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-        <p class="src">How they were grouped: @OrganizationGroups.Rule @OrganizationGroups.MainRule
-            @if (Model.TieCounts.Any())
-            {
-                <span>Here: @string.Join("; ", Model.TieCounts.Select(t => $"{t.Tie} {t.Npis}")).</span>
-            }
-            From NPPES (names, addresses, parent organizations) and CMS's enrollment files (CCNs, PAC IDs).</p>
-    </section>
-
-    @if (o.Facilities.Count > 0)
+    @if (Model.Map is { } map)
     {
-        <section class="card" id="facilities" aria-labelledby="fac-h">
-            <h2 id="fac-h">Medicare-certified facilities (@o.Facilities.Count)</h2>
-            <ul class="link-list">
-                @foreach (var f in o.Facilities)
+        <section class="card map-card" aria-labelledby="map-title">
+            <h2 id="map-title" class="visually-hidden">Map of the practice locations</h2>
+            <a class="static-map" href="@Model.MapLink">
+                <span class="visually-hidden">Open the locations on the map</span>
+                @foreach (var t in map.Tiles)
                 {
-                    <li><a href="/facility/@f.Ccn">@CityCatalog.TitleCase(f.Name)</a>
-                        <span class="muted">@FacilityTypes.Get(f.Kind).Singular · CCN <span class="mono">@f.Ccn</span>@(f.City is null ? "" : $" · {CityCatalog.TitleCase(f.City)}, {f.State}")@(f.OverallRating is { } stars ? $" · {stars} of 5 stars" : "")</span></li>
+                    <img src="@t.Url" alt="" loading="lazy" decoding="async" referrerpolicy="strict-origin-when-cross-origin"
+                         style="left:@(StaticMap.Css(t.LeftPercent))%;top:@(StaticMap.Css(t.TopPercent))%;width:@(StaticMap.Css(t.WidthPercent))%;height:@(StaticMap.Css(t.HeightPercent))%" />
                 }
-            </ul>
-            <p class="src">The facilities CMS ties any of these NPIs to: hospital, nursing home, home health, hospice, FQHC and rural health clinic enrollments, the Medicare Dialysis Facility Report and Care Compare's surgery center file.</p>
+                @foreach (var pin in map.Pins.Reverse())
+                {
+                    <span aria-hidden="true" class="pin@(pin.Approximate ? " approx" : "")" style="left:@(StaticMap.Css(pin.LeftPercent))%;top:@(StaticMap.Css(pin.TopPercent))%">@pin.Label</span>
+                }
+            </a>
+            <p class="map-foot"><a href="@Model.MapLink">Open the map</a><span>Numbered as under Locations. @Html.Raw(Model.Attribution)</span></p>
         </section>
     }
 
-    @if (o.Groups.Count > 0)
+    <nav class="on-page sticky" aria-label="On this page">
+        <a class="chip" href="#overview">Overview</a>
+        @foreach (var (id, title) in Model.Sections)
+        {
+            <a class="chip" href="#@id">@title</a>
+        }
+    </nav>
+
+    @if (o.FacilityProfiles.Count > 0)
     {
-        <section class="card" id="groups" aria-labelledby="groups-h">
-            <h2 id="groups-h">Medicare groups (@o.Groups.Count)</h2>
+        <div id="quality" class="section-group">
+            @foreach (var f in o.FacilityProfiles)
+            {
+                var view = new FacilityView(f);
+                var section = new FacilitySection(view, Nested: true);
+                <section class="card facility-card" id="fac-@f.Facility.Ccn" aria-labelledby="fac-h-@f.Facility.Ccn">
+                    <div class="card-head">
+                        <h2 id="fac-h-@f.Facility.Ccn">@(OrganizationGroups.IsUnitCcn(f.Facility.Ccn) ? OrganizationGroups.FacilityName(f.Facility.Ccn, f.Facility.Kind) + ": " : "")@view.Name</h2>
+                        <a class="small" href="/facility/@f.Facility.Ccn">Facility page</a>
+                    </div>
+                    <p class="lede">@view.KindName · CCN <span class="mono">@f.Facility.Ccn</span>@(f.Facility.City is null ? "" : $" · {CityCatalog.TitleCase(f.Facility.City)}, {f.Facility.State}")@(f.Facility.CertifiedBeds is { } beds ? $" · {beds.ToString("N0", CultureInfo.InvariantCulture)} certified beds" : "")@(f.Clinicians.Total > 0 ? $" · {f.Clinicians.Total.ToString("N0", CultureInfo.InvariantCulture)} affiliated clinician{(f.Clinicians.Total == 1 ? "" : "s")}" : "")@if (f.Certification is { Active: false } ended){<strong class="bad"> · certification ended@(ended.TerminationDate is { } d ? " " + d.ToString("MMM d, yyyy", CultureInfo.InvariantCulture) : "")</strong>}</p>
+                    @if (f.CertificationOnly)
+                    {
+                        <p class="src">CMS Provider of Services file. Medicare Care Compare doesn't rate this kind of facility, so there are no star ratings here.</p>
+                    }
+                    else
+                    {
+                        <partial name="_FacilityRatings" model="section" />
+                    }
+                    <partial name="_FacilityCompares" model="section" />
+                    <partial name="_FacilityQip" model="section" />
+                    @if (!view.HasQuality && !f.CertificationOnly)
+                    {
+                        <p class="muted">Medicare Care Compare publishes no ratings or measures for this facility.</p>
+                    }
+                </section>
+                if (f.Inspections is { } inspections)
+                {
+                    ViewData["InspectionsId"] = "inspections-" + f.Facility.Ccn;
+                    ViewData["InspectionsHeading"] = "Inspections and penalties: " + view.Name;
+                    <partial name="_NursingHomeInspections" model="inspections" />
+                }
+            }
+            @if (Model.MoreCcns.Count > 0)
+            {
+                <section class="card" aria-labelledby="more-fac-h">
+                    <h2 id="more-fac-h">@(o.FacilityProfiles.Count == 0 ? "Certified facilities" : "Other certified facilities") (@Model.MoreCcns.Count)</h2>
+                    <p class="lede">CMS ties these CMS numbers (CCNs) to the organization's NPIs too@(Model.MoreCcns.Count + o.FacilityProfiles.Count > OrganizationPageService.MaxFacilityDetails ? $"; the first {OrganizationPageService.MaxFacilityDetails} with a record of their own are shown above in full" : ", without a Care Compare or Provider of Services record of their own"). Each has its own page.</p>
+                    <ul class="link-list">
+                        @foreach (var ccn in Model.MoreCcns)
+                        {
+                            var listed = o.Facilities.FirstOrDefault(x => string.Equals(x.Ccn, ccn, StringComparison.OrdinalIgnoreCase));
+                            var unnamed = OrganizationGroups.IsUnitCcn(ccn) ? OrganizationGroups.FacilityName(ccn, "hospital") + " · CCN " + ccn : "CCN " + ccn;
+                            <li><a href="/facility/@ccn">@(listed is null ? unnamed : CityCatalog.TitleCase(listed.Name))</a>
+                                <span class="muted">@(listed is null ? FacilityTypes.Get(FacilityTypes.FromCcn(ccn).Type).Singular : FacilityTypes.Get(listed.Kind).Singular) · CCN <span class="mono">@ccn</span>@(listed?.City is null ? "" : $" · {CityCatalog.TitleCase(listed.City)}, {listed.State}")@(listed?.OverallRating is { } r ? $" · {r} of 5 stars" : "")</span></li>
+                        }
+                    </ul>
+                </section>
+            }
+        </div>
+    }
+
+    @if (Model.WithVolume.Count > 0)
+    {
+        <section class="card" id="volume" aria-labelledby="volume-h">
+            <h2 id="volume-h">Medicare volume</h2>
+            @foreach (var v in Model.WithVolume)
+            {
+                <h3>@v.Name <span class="muted small">CCN @v.Facility.Ccn</span></h3>
+                <partial name="_FacilityVolume" model="new FacilitySection(v, Nested: true)" />
+            }
+        </section>
+    }
+
+    @if (o.MedicareActivity.Count > 0 || main?.MedicareHistory is not null)
+    {
+        <section class="card" id="medicare" aria-labelledby="medicare-h">
+            <h2 id="medicare-h">Medicare activity</h2>
+            @if (o.MedicareActivity.Count > 0)
+            {
+                <p class="lede">@(o.MedicareActivity.Count == 1 ? "One of its NPIs bills" : $"{o.MedicareActivity.Count} of its NPIs bill") Medicare in the CMS data.</p>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Medicare billing of the organization's NPIs</caption>
+                        <thead><tr><th scope="col">NPI</th><th scope="col">Role</th><th scope="col">Part B patients</th><th scope="col">Part B services</th><th scope="col">Medicare paid (Part B)</th><th scope="col">Part D prescriptions</th><th scope="col">Last billed</th></tr></thead>
+                        <tbody>
+                            @foreach (var m in o.MedicareActivity)
+                            {
+                                <tr>
+                                    <td class="mono"><a href="/provider/@m.Npi">@m.Npi</a></td>
+                                    <td>@m.Role</td>
+                                    <td>@(m.PartBYear is null ? "—" : OrganizationModel.Number(m.Beneficiaries))</td>
+                                    <td>@(m.PartBYear is null ? "—" : OrganizationModel.Number(m.Services))</td>
+                                    <td>@(m.PartBYear is null ? "—" : OrganizationModel.Money(m.Payment))</td>
+                                    <td>@(m.PartDYear is null ? "—" : OrganizationModel.Number(m.PartDClaims))</td>
+                                    <td>@m.LastBilledYear</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="src">CMS Medicare Physician &amp; Other Practitioners and Part D Prescribers by provider, newest data year@(o.MedicareActivity.FirstOrDefault(x => x.PartBYear is not null)?.PartBYear is { } py ? $" ({py})" : ""); "last billed" also reads the older years since 2013. Traditional Medicare only; CMS suppresses counts under 11. A hospital's inpatient and outpatient stays are under Medicare volume.</p>
+            }
+            @if (main is not null && (main.MedicareServices is not null || main.MedicarePrescribing is not null || main.MedicareHistory is not null))
+            {
+                <h3>The main NPI in detail</h3>
+                <partial name="_MedicareActivity" model="new ProviderPart(main, false)" />
+            }
+        </section>
+    }
+
+    <partial name="_FacilityOwnership" model="Model.Ownership" />
+
+    <partial name="_ClinicianList" model="Model.ClinicianView" />
+
+    <section class="card" id="npis" aria-labelledby="npis-h">
+        <h2 id="npis-h">@(o.Npis.Count == 1 ? "Its NPI" : $"All NPIs of this organization ({o.Npis.Count})")</h2>
+        <p class="lede">Each NPI keeps its own registration and page; credentialing and billing need the exact one.</p>
+        @{
+            void NpiTable(IEnumerable<OrganizationMember> members, string caption)
+            {
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">@caption</caption>
+                        <thead><tr><th scope="col">NPI</th><th scope="col">Name as registered</th><th scope="col">Role</th><th scope="col">Specialty</th><th scope="col">Address</th><th scope="col">Last NPPES update</th><th scope="col">Record</th>@if (o.Npis.Count > 1){<th scope="col">Grouped by</th>}</tr></thead>
+                        <tbody>
+                            @foreach (var m in members)
+                            {
+                                <tr>
+                                    <td class="mono"><a href="/provider/@m.Npi">@m.Npi</a></td>
+                                    <td>@m.Name</td>
+                                    <td>@m.Role</td>
+                                    <td>@m.Specialty</td>
+                                    <td>@m.Address@if (m.City is not null){<br /><span class="muted">@CityCatalog.TitleCase(m.City), @m.State @m.Zip</span>}</td>
+                                    <td class="nowrap">@m.LastUpdateDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                    <td>@if (m.Quality is not null){<span class="@OrganizationModel.QualityClass(m.Quality)">@m.Quality</span>}</td>
+                                    @if (o.Npis.Count > 1){<td class="muted small">@m.JoinedBy</td>}
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            NpiTable(o.Npis.Take(OrganizationModel.Shown), "The organization's NPIs");
+            if (o.Npis.Count > OrganizationModel.Shown)
+            {
+                <details>
+                    <summary>Show the other @(o.Npis.Count - OrganizationModel.Shown) NPIs</summary>
+                    @{ NpiTable(o.Npis.Skip(OrganizationModel.Shown), "The organization's other NPIs"); }
+                </details>
+            }
+        }
+        @if (o.Groups.Count > 0)
+        {
+            <h3>Medicare groups (@o.Groups.Count)</h3>
             <ul class="link-list">
                 @foreach (var g in o.Groups)
                 {
                     <li><a href="/group/@g.PacId">@CityCatalog.TitleCase(g.Name)</a> <span class="muted">@(g.Clinicians > 0 ? $"{g.Clinicians.ToString("N0", CultureInfo.InvariantCulture)} clinicians · " : "")group ID <span class="mono">@g.PacId</span></span></li>
                 }
             </ul>
-            <p class="src">Medicare Fee-For-Service Public Provider Enrollment (NPI to Medicare group ID).</p>
-        </section>
-
-        <partial name="_ClinicianList" model="Model.ClinicianView" />
-    }
+        }
+        <p class="src">
+            @if (o.Npis.Count > 1)
+            {
+                <text>How they were grouped: @OrganizationGroups.Rule @OrganizationGroups.MainRule</text>
+                if (Model.TieCounts.Any())
+                {
+                    <span>Here: @string.Join("; ", Model.TieCounts.Select(t => $"{t.Tie} {t.Npis}")).</span>
+                }
+            }
+            else
+            {
+                <text>@OrganizationGroups.SingleRule</text>
+            }
+            From NPPES (names, addresses, parent organizations) and CMS's enrollment files (CCNs, PAC IDs: Medicare Fee-For-Service Public Provider Enrollment).
+        </p>
+    </section>
 
     <section class="card" id="locations" aria-labelledby="loc-h">
         <h2 id="loc-h">Practice locations (@o.Locations.Count)</h2>
-        <ul class="link-list">
-            @foreach (var l in o.Locations)
+        @{
+            void LocationList(IEnumerable<ProviderLocation> locations, int start)
             {
-                <li>@l.Address1@(l.Address2 is null ? "" : ", " + l.Address2), @(l.City is null ? "" : CityCatalog.TitleCase(l.City)), @l.State @l.Zip@if (l.Phone is not null){<span class="muted"> · @Format.Phone(l.Phone)</span>}</li>
+                <ol class="link-list" start="@start">
+                    @foreach (var l in locations)
+                    {
+                        <li>@(l.Address1 is null ? null : CityCatalog.TitleCase(l.Address1))@(l.Address2 is null ? "" : ", " + CityCatalog.TitleCase(l.Address2)), @ProviderModel.Place(l) @l.Zip@if (l.Phone is not null){<span class="muted"> · @Format.Phone(l.Phone)</span>}@if (ProviderModel.Directions(l) is { } dir){<span class="muted"> · </span><a class="small" href="@dir">Directions</a>}</li>
+                    }
+                </ol>
             }
-        </ul>
+            LocationList(o.Locations.Take(OrganizationModel.Shown), 1);
+            if (o.Locations.Count > OrganizationModel.Shown)
+            {
+                <details>
+                    <summary>Show the other @(o.Locations.Count - OrganizationModel.Shown) locations</summary>
+                    @{ LocationList(o.Locations.Skip(OrganizationModel.Shown), OrganizationModel.Shown + 1); }
+                </details>
+            }
+        }
         <p class="src">Every practice address of these NPIs in NPPES; an address written the same way (case and punctuation aside) is shown once.</p>
     </section>
+
+    @if (main is not null)
+    {
+        <section class="card" id="specialties" aria-labelledby="spec-h">
+            <h2 id="spec-h">Specialties &amp; licenses <span class="muted small">of the main NPI</span></h2>
+            <partial name="_SpecialtiesLicenses" model="new ProviderPart(main, false)" />
+        </section>
+    }
+
+    @if (main?.History is { Versions.Count: > 0 } || o.Changes.Count > 0)
+    {
+        <section class="card" id="history" aria-labelledby="hist-h">
+            <h2 id="hist-h">History</h2>
+            @if (main?.History is { Versions.Count: > 0 } past)
+            {
+                <h3>The main NPI over the years</h3>
+                <partial name="_OverTheYears" model="past" />
+            }
+            @if (o.Changes.Count > 0)
+            {
+                <h3>Changes recorded for its NPIs (@o.Changes.Count)</h3>
+                {
+                    void ChangeTable(IEnumerable<OrganizationChange> changes)
+                    {
+                        <div class="table-wrap">
+                            <table>
+                                <caption class="visually-hidden">Recorded changes of the organization's NPIs</caption>
+                                <thead><tr><th scope="col">Recorded</th><th scope="col">NPI</th><th scope="col">What changed</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+                                <tbody>
+                                    @foreach (var c in changes)
+                                    {
+                                        <tr>
+                                            <td class="nowrap">@c.RecordedOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                            <td class="mono"><a href="/provider/@c.Npi">@c.Npi</a></td>
+                                            <td>@ChangeTypes.Label(c.Type)</td>
+                                            <td>@(c.OldValue ?? "(none)")</td>
+                                            <td>@(c.NewValue ?? "(none)")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    ChangeTable(o.Changes.Take(OrganizationModel.Shown));
+                    if (o.Changes.Count > OrganizationModel.Shown)
+                    {
+                        <details>
+                            <summary>Show the other @(o.Changes.Count - OrganizationModel.Shown) changes</summary>
+                            @{ ChangeTable(o.Changes.Skip(OrganizationModel.Shown)); }
+                        </details>
+                    }
+                }
+                <p class="src">Tracked since October 2026: NPPES changes from the weekly files; state licenses and board actions, OIG exclusions and Medicare opt-outs from each reload of those lists (since October 14, 2026). Newest first, at most 200.</p>
+            }
+        </section>
+    }
+
+    @if (main is not null)
+    {
+        <section class="card" id="record" aria-labelledby="rec-h">
+            <h2 id="rec-h">Registration &amp; identifiers <span class="muted small">of the main NPI</span></h2>
+            <partial name="_RegistrationIdentifiers" model="new ProviderPart(main, false)" />
+            <p class="src">CMS NPPES, updated @Format.Ago(main.LastUpdateDate). Verify with the official <a href="https://npiregistry.cms.hhs.gov/provider-view/@main.Npi">NPPES NPI Registry</a>.
+                The main NPI's own page: <a href="/provider/@main.Npi">/provider/@main.Npi</a>. <a href="/organization/@o.MainNpi/raw.json" download>Download raw data</a> (everything on this page, as JSON).</p>
+        </section>
+    }
 </div>

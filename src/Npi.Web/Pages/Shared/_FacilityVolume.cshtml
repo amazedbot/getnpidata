@@ -1,0 +1,58 @@
+@model Npi.Web.Pages.FacilitySection
+@*
+    A hospital's Medicare inpatient and outpatient volume (docs/PRODUCT_PLAN.md step 3.6 part 2). A card on the facility page; on an
+    organization's page (step 3.9) the part under the facility's own heading, which that page writes.
+*@
+@{
+    var v = Model.View;
+    void Body(Npi.Core.Search.HospitalVolume vol)
+    {
+        <div class="tiles">
+            @if (vol.Discharges is { } discharges){<div class="tile"><span class="label">Inpatient stays@(vol.InpatientYear is { } iy ? $" ({iy})" : "")</span><strong>@Format.Number(discharges)</strong><span class="small">Medicare discharges</span></div>}
+            @if (vol.Beneficiaries is { } benes){<div class="tile"><span class="label">Inpatients</span><strong>@Format.Number(benes)</strong><span class="small">Medicare patients</span></div>}
+            @if (vol.CoveredDays is { } days){<div class="tile"><span class="label">Covered days</span><strong>@Format.Number(days)</strong><span class="small">in the hospital</span></div>}
+            @if (vol.MedicarePayments is { } paid){<div class="tile"><span class="label">Medicare paid, inpatient</span><strong>@Format.ShortMoney(paid)</strong><span class="small">@(vol.TotalPayments is { } total ? $"{Format.ShortMoney(total)} with patients' and other payers' shares" : "Medicare's share")</span></div>}
+            @if (vol.OutpatientServices is { } svc){<div class="tile"><span class="label">Outpatient services@(vol.OutpatientYear is { } oy ? $" ({oy})" : "")</span><strong>@Format.Number(svc)</strong><span class="small">in the service groups CMS lists</span></div>}
+            @if (vol.OutpatientPayments is { } outPaid){<div class="tile"><span class="label">Medicare paid, outpatient</span><strong>@Format.ShortMoney(outPaid)</strong><span class="small">for those services</span></div>}
+        </div>
+        foreach (var (title, caption, list, unit) in new[] { ("Most frequent inpatient stays (DRGs)", "DRG", vol.TopInpatient, "Discharges"), ("Most frequent outpatient services (APCs)", "APC", vol.TopOutpatient, "Services") })
+        {
+            if (list.Count == 0)
+            {
+                continue;
+            }
+            if (Model.Nested){<h4>@title</h4>}else{<h3>@title</h3>}
+            <div class="table-wrap">
+                <table>
+                    <caption class="visually-hidden">@title, most cases first</caption>
+                    <thead><tr><th scope="col">@caption</th><th scope="col">@unit</th><th scope="col">Avg. Medicare payment</th></tr></thead>
+                    <tbody>
+                        @foreach (var x in list)
+                        {
+                            <tr>
+                                <th scope="row"><span class="mono">@x.Code</span> @x.Description</th>
+                                <td>@Format.Number(x.Cases)</td>
+                                <td>@(x.AverageMedicarePayment is { } avg ? Format.Money(avg) : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <p class="src">@v.VolumeSource</p>
+    }
+}
+@if (v.Profile.MedicareVolume is { } volume)
+{
+    if (Model.Nested)
+    {
+        Body(volume);
+    }
+    else
+    {
+        <section class="card" aria-labelledby="vol-h">
+            <h2 id="vol-h">Medicare volume</h2>
+            @{ Body(volume); }
+        </section>
+    }
+}

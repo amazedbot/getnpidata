@@ -12,7 +12,7 @@ namespace Npi.Web.Pages;
 /// Medicare-certified facility by type, how CMS rates them, a list with type, state, rating and status filters, the listed page on
 /// a map, and the list as CSV. Each row leads to /facility/{ccn}.
 /// </summary>
-public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> mapOptions) : PageModel
+public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> mapOptions, OrganizationGroupService? groups = null) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public string? Q { get; set; }
@@ -61,6 +61,12 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
     public FacilityOverview Overview { get; private set; } = null!;
 
     public FacilityPage Result { get; private set; } = null!;
+
+    /// <summary>The organization pages of the listed facilities (step 3.9).</summary>
+    public OrganizationLinks Links { get; private set; } = OrganizationLinks.None;
+
+    /// <summary>A row's link: its organization's page when it has one, else its own page.</summary>
+    public string Link(FacilitySummary f) => f.Source == FacilitySummary.SourceHrsa ? f.PagePath : Links.Facility(f.Ccn);
 
     public IReadOnlyList<FacilityTypeCount> TypeCounts { get; private set; } = [];
 
@@ -125,6 +131,8 @@ public class FacilitiesModel(FacilityDirectory facilities, IOptions<MapOptions> 
             Result = await facilities.SearchAsync(Filter(PageNumber), ct);
         }
 
+        // A facility with an organization page links there (docs/PRODUCT_PLAN.md step 3.9).
+        Links = await OrganizationLinks.ForAsync(groups, Result.Items.Where(i => i.Source != FacilitySummary.SourceHrsa).Select(i => i.Ccn), null, null, ct);
         TypeCounts = await facilities.CountByTypeAsync(filter, ct);
         Map = mapOptions.Value.Enabled
             ? StaticMap.Create(Result.Items.Select((f, i) => (f, i)).Where(x => x.f.Latitude is not null)

@@ -33,6 +33,9 @@ builder.Services.AddSingleton(_ => new ProviderDetailService(connectionString));
 builder.Services.AddSingleton(_ => new OrganizationService(connectionString));
 builder.Services.AddSingleton(_ => new OrganizationGroupService(connectionString));
 builder.Services.AddSingleton(_ => new OwnershipService(connectionString));
+// One page per organization (docs/PRODUCT_PLAN.md step 3.9).
+builder.Services.AddSingleton(sp => new OrganizationPageService(connectionString, sp.GetRequiredService<OrganizationGroupService>(),
+    sp.GetRequiredService<ProviderDetailService>(), sp.GetRequiredService<OwnershipService>()));
 builder.Services.AddSingleton(_ => new GeographyCatalog(connectionString));
 builder.Services.AddSingleton(_ => new CityCatalog(connectionString));
 builder.Services.AddSingleton(_ => new AreaService(connectionString));
@@ -215,11 +218,11 @@ app.MapGet("/facility/{ccn}/raw.json", async (string ccn, HttpContext http, Orga
     return Results.Json(facility);
 });
 
-// A combined organization profile (step 3.8): the record as the API returns it, every NPI as CSV (the summary columns) and the
-// clinicians of all its Medicare groups.
-app.MapGet("/organization/{npi}/raw.json", async (string npi, HttpContext http, OrganizationGroupService groups, ProviderDetailService details, CancellationToken ct) =>
+// An organization's page (steps 3.8 and 3.9): the record as the API returns it, every NPI as CSV (the summary columns) and every
+// clinician of all its facilities and Medicare groups, with where the tie comes from.
+app.MapGet("/organization/{npi}/raw.json", async (string npi, HttpContext http, OrganizationPageService pages, CancellationToken ct) =>
 {
-    if (await groups.GetCombinedAsync(npi, details, ct) is not { } organization)
+    if (await pages.GetAsync(npi, ct) is not { } organization)
     {
         return Results.NotFound();
     }
@@ -243,15 +246,19 @@ app.MapGet("/organization/{npi}/npis.csv", async (string npi, HttpContext http, 
 });
 
 app.MapGet("/organization/{npi}/clinicians.csv", async (string npi, HttpContext http, OrganizationGroupService groups, ProviderDetailService details,
-    OrganizationService organizations, SearchService search, CancellationToken ct) =>
+    OrganizationPageService pages, SearchService search, CancellationToken ct) =>
 {
     if (await groups.GetCombinedAsync(npi, details, ct) is not { } organization)
     {
         return Results.NotFound();
     }
 
-    var npis = await organizations.GetClinicianNpisForGroupsAsync([.. organization.Groups.Select(g => g.PacId)], ct);
-    return await CliniciansCsvAsync($"organization_{organization.MainNpi}", npis, http, search, ct);
+    // The CCNs the clinicians' facility affiliations are read for (the combined profile has only the Care Compare listings).
+    organization = organization with { Ccns = await pages.GetCcnsAsync(organization, ct) };
+    var clinicians = await pages.GetAllCliniciansAsync(organization, ct);
+    var sources = clinicians.ToDictionary(c => c.Npi, c => ClinicianSources.Text(c.Sources), StringComparer.Ordinal);
+    return await CliniciansCsvAsync($"organization_{organization.MainNpi}", [.. clinicians.Select(c => c.Npi)], http, search, ct,
+        [.. ProviderColumns.SummaryColumns, new ProviderColumn("Tied Through", p => sources.GetValueOrDefault(p.Npi))]);
 });
 
 // A facility owner's record (step 3.6 part 2), as the API returns it.
@@ -322,7 +329,8 @@ static async Task<IResult> GroupCliniciansCsvAsync(string id, bool facility, Htt
     await CliniciansCsvAsync($"{(facility ? "facility" : "group")}_{id.ToUpperInvariant()}", await organizations.GetClinicianNpisAsync(id, facility, ct),
         http, search, ct);
 
-static async Task<IResult> CliniciansCsvAsync(string name, IReadOnlyList<string> npis, HttpContext http, SearchService search, CancellationToken ct)
+static async Task<IResult> CliniciansCsvAsync(string name, IReadOnlyList<string> npis, HttpContext http, SearchService search, CancellationToken ct,
+    IReadOnlyList<ProviderColumn>? columns = null)
 {
     if (npis.Count == 0)
     {
@@ -345,7 +353,7 @@ static async Task<IResult> CliniciansCsvAsync(string name, IReadOnlyList<string>
 
     http.Response.ContentType = "text/csv; charset=utf-8";
     http.Response.Headers.ContentDisposition = $"attachment; filename=\"{name}_clinicians.csv\"";
-    await ProviderCsv.WriteAsync(Rows(), http.Response.Body, ct);
+    await ProviderCsv.WriteAsync(Rows(), http.Response.Body, ct, columns);
     return Results.Empty;
 }
 

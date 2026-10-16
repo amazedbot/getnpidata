@@ -5,11 +5,27 @@ namespace Npi.Web.Pages;
 
 /// <summary>One owner in a group of the facility page's "Who owns it": every role it holds in that group in one line.</summary>
 public sealed record OwnerLine(string? OwnerId, bool IsOrganization, string Name, string? DoingBusinessAs, string? Title, string Roles, double? Percentage,
-    DateOnly? Since, IReadOnlyList<string> Kinds, string? Place);
+    DateOnly? Since, IReadOnlyList<string> Kinds, string? Place)
+{
+    /// <summary>On an organization's page (docs/PRODUCT_PLAN.md step 3.9): the facilities it holds a role of this group in, with the role where it differs.</summary>
+    public IReadOnlyList<OrganizationOwnerFacility> Facilities { get; init; } = [];
+}
 
-/// <summary>The facility page's ownership sections: what CMS lists (null: nothing) and the facility's type (changes exist for hospitals and nursing homes only).</summary>
+/// <summary>
+/// The facility page's ownership sections: what CMS lists (null: nothing) and the facility's type (changes exist for hospitals and
+/// nursing homes only). On an organization's page (step 3.9) <see cref="Combined"/> holds the owners of all its facilities, each once.
+/// </summary>
 public sealed record FacilityOwnershipSection(FacilityOwnership? Ownership, string FacilityType)
 {
+    /// <summary>The owners of all an organization's facilities, each once with its facilities; null on a facility page.</summary>
+    public OrganizationOwnership? Combined { get; init; }
+
+    /// <summary>The CCNs whose cards are on the organization's page (#fac-{ccn}); the others link to their own page.</summary>
+    public IReadOnlySet<string> Anchored { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True when the owners table names each owner's facilities (an organization with owners at more than one facility).</summary>
+    public bool ShowFacilities => Combined is { } c && c.Owners.SelectMany(o => o.Facilities).Select(f => f.Ccn).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1;
+
     /// <summary>CMS publishes change-of-ownership files for hospitals and skilled nursing facilities only.</summary>
     public bool ChangesPublished => FacilityType is FacilityTypes.Hospital or FacilityTypes.NursingHome;
 
@@ -37,6 +53,18 @@ public static class OwnershipView
                         o.Min(x => x.Since), [.. first.Kinds.Select(k => OwnerKinds.Label(k) ?? k)], Place(first.City, first.State));
                 })
                 .OrderByDescending(l => l.Percentage ?? -1).ThenByDescending(l => l.IsOrganization).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)]))];
+
+    /// <summary>An organization's owners (step 3.9) by group, each once with the facilities it holds a role of that group in.</summary>
+    public static IReadOnlyList<(string Group, IReadOnlyList<OwnerLine> Lines)> Groups(OrganizationOwnership ownership) =>
+        [.. ownership.Owners
+            .GroupBy(o => o.RoleGroup)
+            .OrderBy(g => OwnerRoles.Order(g.Key))
+            .Select(g => (g.Key, (IReadOnlyList<OwnerLine>)[.. g.Select(o => new OwnerLine(o.OwnerId, o.IsOrganization, DisplayName(o.Name),
+                o.DoingBusinessAs is { } dba ? DisplayName(dba) : null, o.Title is { } title ? CityCatalog.TitleCase(title) : null,
+                string.Join("; ", o.Roles), o.Percentage, o.Since, [.. o.Kinds.Select(k => OwnerKinds.Label(k) ?? k)], Place(o.City, o.State))
+            {
+                Facilities = o.Facilities,
+            })]))];
 
     // Kept in capitals when a name is title-cased: legal forms, abbreviations and roman numerals.
     private static readonly HashSet<string> Capitals = new(StringComparer.OrdinalIgnoreCase)

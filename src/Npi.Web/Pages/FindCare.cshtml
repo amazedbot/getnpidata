@@ -4,6 +4,7 @@
 @using Microsoft.Extensions.Options
 @model FindCareModel
 @inject IOptions<MapOptions> MapOptions
+@inject OrganizationGroupService OrgGroups
 @{
     Layout = "_FindCareLayout";
     ViewData["Title"] = Model.Chosen is { } c && Model.Results is not null ? $"{c.Plural} near {Model.Zip}" : "Find care near you";
@@ -11,6 +12,9 @@
     var categories = SpecialtyCategories.Default.Categories.Where(cat => cat.Name != SpecialtyCategories.FallbackCategory);
     var results = Model.Results;
     var pages = results is null ? 0 : (results.Items.Count + FindCareModel.PerPage - 1) / FindCareModel.PerPage;
+    // An organization (an urgent care centre, a clinic) and a hospital with an organization page link there (docs/PRODUCT_PLAN.md step 3.9).
+    var links = results is null ? OrganizationLinks.None : await OrganizationLinks.ForAsync(OrgGroups, results.Items.Select(r => r.HospitalCcn).OfType<string>(), null,
+        results.Items.Where(r => r.Nearest.Provider.EntityType == 2).Select(r => r.Nearest.Provider.Npi), HttpContext.RequestAborted);
     string submitLabel = Model.Chosen is { } chosen && Model.Zip is { Length: 5 } ? $"Show {chosen.Plural.ToLowerInvariant()} near {Model.Zip}" : "Show care near me";
 }
 
@@ -135,7 +139,7 @@
                             }
                         </svg>
                         <div class="care-who">
-                            <h3><span class="num">@Model.Number(i).</span> <a href="/provider/@p.Npi">@FindCareModel.NaturalName(p)</a>@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</h3>
+                            <h3><span class="num">@Model.Number(i).</span> <a href="@links.Provider(p.Npi)">@FindCareModel.NaturalName(p)</a>@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</h3>
                             <span>@(p.PlainSpecialty ?? p.PrimarySpecialty) · @(FindCareModel.Miles(r.Nearest.DistanceMiles) + " away" + (r.Nearest.Approximate ? " (about)" : ""))</span>
                             <span class="muted">@string.Join(", ", new[] { p.Address1, p.Address2, p.City }.Where(s => !string.IsNullOrEmpty(s)).Select(s => CityCatalog.TitleCase(s!))), @p.State @p.Zip</span>
                             @{
@@ -147,14 +151,14 @@
                             {
                                 <ul class="care-tags">
                                     @foreach (var t in tags){<li>@t</li>}
-                                    @if (r.Hospital is not null){<li>Works with <a href="/facility/@r.HospitalCcn">@CityCatalog.TitleCase(r.Hospital)</a></li>}
+                                    @if (r.Hospital is not null){<li>Works with <a href="@links.Facility(r.HospitalCcn!)">@CityCatalog.TitleCase(r.Hospital)</a></li>}
                                 </ul>
                             }
                         </div>
                         <div class="care-actions">
                             @if (p.Phone is not null){<a class="button" href="tel:@p.Phone">Call @Format.Phone(p.Phone)</a>}else{<span class="muted small">No phone listed</span>}
                             <a class="button secondary" href="@FindCareModel.Directions(r.Nearest)">Directions</a>
-                            <a class="small" href="/provider/@p.Npi">Full profile</a>
+                            <a class="small" href="@links.Provider(p.Npi)">Full profile</a>
                         </div>
                     </li>
                 }

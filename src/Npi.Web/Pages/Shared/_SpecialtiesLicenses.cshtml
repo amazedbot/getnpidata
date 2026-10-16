@@ -1,0 +1,62 @@
+@using System.Globalization
+@using Npi.Core.Search
+@model Npi.Web.Pages.ProviderPart
+@*
+    An NPI's specialties, license numbers and state license records: the provider page's "Specialties & licenses", and the main
+    NPI's on an organization's page (docs/PRODUCT_PLAN.md step 3.9).
+*@
+@{
+    var p = Model.Provider;
+    // State board data covers individual licensees; an organization's facility license isn't in it.
+    var coveredLicenses = Model.IsPerson
+        ? p.Taxonomies.Where(t => t.LicenseState is not null && StateLicenseSources.States.Contains(t.LicenseState)).ToList()
+        : [];
+}
+<p class="lede">@(p.Taxonomies.Count == 1 ? "One specialty" : $"{p.Taxonomies.Count} specialties") listed in NPPES@(p.Taxonomies.Count(t => t.LicenseNumber is not null) is var licenses and > 0 ? $", with {licenses} license number{(licenses == 1 ? "" : "s")}" : "").</p>
+<div class="table-wrap">
+    <table>
+        <caption class="visually-hidden">Specialties and licenses</caption>
+        <thead><tr><th scope="col">Specialty</th><th scope="col">NUCC classification</th><th scope="col">Code</th><th scope="col">License</th></tr></thead>
+        <tbody>
+            @foreach (var t in p.Taxonomies)
+            {
+                <tr>
+                    <td>@(ProviderModel.PlainName(t.Code) ?? t.Classification)@if (t.IsPrimary){<span class="badge good">Primary</span>}</td>
+                    <td>@t.Classification@if (t.Specialization is not null){<br /><span class="muted">@t.Specialization</span>}</td>
+                    <td><a class="mono" href="/search?taxonomy=@t.Code">@t.Code</a></td>
+                    <td>@t.LicenseNumber@if (t.LicenseState is not null){<span class="muted"> @t.LicenseState</span>}</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (p.StateLicenses.Count > 0 || coveredLicenses.Count > 0)
+{
+    <h3>State licenses and board actions</h3>
+    @if (p.StateLicenses.Count == 0)
+    {
+        <p>No record matching this provider's @string.Join(", ", coveredLicenses.Select(t => t.LicenseState).Distinct()) license was found in the state's published data
+            (for New York, that means no public Board for Professional Medical Conduct action; a state that lists current licenses only may not list a lapsed one).</p>
+    }
+    @foreach (var lic in p.StateLicenses)
+    {
+        <dl class="facts">
+            <dt>@lic.State license</dt>
+            <dd><strong>@lic.LicenseNumber</strong>@if (lic.LicenseType is not null){<span class="muted"> · @lic.LicenseType</span>}</dd>
+            @if (lic.Status is not null){<dt>Status</dt><dd>@lic.Status</dd>}
+            @if (lic.ExpirationDate is { } exp){<dt>Expires</dt><dd>@exp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>}
+            @if (lic.Discipline is not null){<dt>Discipline on record</dt><dd>@(lic.Discipline.ToUpperInvariant() switch { "Y" or "YES" => "Yes", "N" or "NO" => "No", "NONE" => "None", _ => lic.Discipline })</dd>}
+            @foreach (var a in lic.Actions)
+            {
+                <dt>Board action @(a.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))</dt>
+                <dd>@a.Action@if (a.Description is not null){<br /><span class="muted">@a.Description</span>}</dd>
+            }
+            <dt>Source</dt>
+            <dd><a href="@lic.SourceUrl">@lic.SourceName</a>@if (lic.VerifyUrl is not null){<text> · </text><a href="@lic.VerifyUrl">verify this license</a>}</dd>
+        </dl>
+    }
+    <p class="src">From state licensing boards (@string.Join(", ", StateLicenseSources.States); New York publishes board actions only; Alabama, Maryland, Michigan, Rhode Island and West Virginia current licenses only; the Florida complaints list recent cases only), matched to this NPI by
+        license state, number and last name. Always confirm with the state board before relying on it.</p>
+}
+<p class="src">Specialties and license numbers from NPPES (NUCC taxonomy).</p>

@@ -12,7 +12,7 @@
         ("Verify NPIs", "/verify", Under("/verify") || path.Equals("/lookup", StringComparison.OrdinalIgnoreCase)),
         ("Areas", "/area", Under("/area")),
         ("Facilities & hospitals", "/facilities", Under("/facilit") || Under("/hospitals") || Under("/health-center/")),
-        ("Groups & organizations", "/organizations", Under("/organizations") || Under("/groups") || Under("/group/") || Under("/system") || Under("/aco")),
+        ("Groups & organizations", "/organizations", Under("/organizations") || Under("/organization/") || Under("/groups") || Under("/group/") || Under("/system") || Under("/aco")),
         ("Companies & products", "/companies-and-products", Under("/compan") || Under("/product")),
         ("Developers & API", "/developers", Under("/developers")),
         ("Find care (patients)", "/find-care", false),

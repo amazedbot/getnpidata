@@ -38,10 +38,30 @@
                 <p class="small muted">and @((list.BySpecialty.Count - top.Count).ToString("N0", CultureInfo.InvariantCulture)) more specialties</p>
             }
         </div>
+        @if (Model.Organization?.Summary is { } sources)
+        {
+            @* An organization's list (docs/PRODUCT_PLAN.md step 3.9): where the ties come from. *@
+            <p class="small">Tied through: @Format.Number(sources.FacilityAffiliations) work at its facilities (Care Compare) · @Format.Number(sources.Reassignments) bill Medicare
+                through its groups · @Format.Number(sources.CareCompareGroups) listed in its groups (Care Compare) · @Format.Number(sources.InSeveral) of them in more than one way.</p>
+        }
         <div class="table-wrap">
             <table class="results-table">
                 <caption class="visually-hidden">@Model.Title</caption>
-                <thead><tr><th scope="col">Clinician</th><th scope="col">Specialty</th><th scope="col">Location</th></tr></thead>
+                @if (Model.Organization is not null)
+                {
+                    <thead>
+                        <tr>
+                            <th scope="col" aria-sort="@Model.AriaSort("name")"><a href="@Model.SortLink("name")">Clinician</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("specialty")"><a href="@Model.SortLink("specialty")">Specialty</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("location")"><a href="@Model.SortLink("location")">Location</a></th>
+                            <th scope="col" aria-sort="@Model.AriaSort("source")"><a href="@Model.SortLink("source")">Tied through</a></th>
+                        </tr>
+                    </thead>
+                }
+                else
+                {
+                    <thead><tr><th scope="col">Clinician</th><th scope="col">Specialty</th><th scope="col">Location</th></tr></thead>
+                }
                 <tbody>
                     @foreach (var c in rows)
                     {
@@ -55,6 +75,10 @@
                             </td>
                             <td data-label="Specialty" class="@(c.Specialty is null ? "empty" : null)">@c.Specialty</td>
                             <td data-label="Location" class="@(c.City is null ? "empty" : null)">@(c.City is null ? null : Npi.Core.Search.CityCatalog.TitleCase(c.City))@(c.State is null ? "" : ", " + c.State)</td>
+                            @if (Model.Organization is not null)
+                            {
+                                <td data-label="Tied through" class="small">@string.Join("; ", (c.Sources ?? []).Select(s => Npi.Core.Search.ClinicianSources.TextOf(s)))</td>
+                            }
                         </tr>
                     }
                 </tbody>

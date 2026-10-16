@@ -1,10 +1,15 @@
 @using Npi.Core.Search
 @using Npi.Web.Pages
 @model Npi.Web.Pages.ProviderRows
+@inject OrganizationGroupService Groups
 @*
     Compact two-line result rows (docs/PRODUCT_PLAN.md step 1.3): avatar, name and NPI, specialty, location, phone, at most three
-    badges, last update. On phones each row becomes a card (site.css, .results-table).
+    badges, last update. On phones each row becomes a card (site.css, .results-table). An organization with a page of its own
+    (docs/PRODUCT_PLAN.md step 3.9) links there; its NPI links to the NPI's own record.
 *@
+@{
+    var links = await OrganizationLinks.ForAsync(Groups, null, null, Model.Items.Where(i => i.EntityType == 2).Select(i => i.Npi), Context.RequestAborted);
+}
 <div class="table-wrap">
     <table class="results-table">
         <caption class="visually-hidden">@Model.Caption</caption>
@@ -33,8 +38,8 @@
                     <td class="who">
                         <span class="@Format.AvatarClass(p.Gender, p.EntityType)" aria-hidden="true">@Format.Initials(p.Name, p.EntityType)</span>
                         <span>
-                            <a href="/provider/@p.Npi" class="name">@p.Name@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</a>
-                            <span class="mono muted sub">@p.Npi@if (p.EntityType == 2){<span> · organization</span>}@if (p.OrganizationNpis is { } orgNpis){<span> · <a href="/organization/@p.Npi" title="One of @orgNpis NPIs of the same organization: see them all on its combined profile">@orgNpis NPIs</a></span>}</span>
+                            <a href="@links.Provider(p.Npi)" class="name">@p.Name@if (p.Credential is not null){<span class="muted">, @p.Credential</span>}</a>
+                            <span class="mono muted sub">@if (links.HasPage(p.Npi)){<a href="/provider/@p.Npi" title="This NPI's own record">@p.Npi</a>}else{@p.Npi}@if (p.EntityType == 2){<span> · organization</span>}@if (p.OrganizationNpis is { } orgNpis){<span> · <a href="/organization/@p.Npi" title="One of @orgNpis NPIs of the same organization: see them all on its combined profile">@orgNpis NPIs</a></span>}</span>
                         </span>
                     </td>
                     <td data-label="Specialty" title="@p.PrimarySpecialty">@(p.PlainSpecialty ?? p.PrimarySpecialty)</td>

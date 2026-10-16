@@ -1,3 +1,4 @@
+using System.Globalization;
 using Npi.Core.Search;
 
 namespace Npi.Web.Pages;
@@ -11,5 +12,21 @@ namespace Npi.Web.Pages;
 public sealed record ClinicianListView(string Title, ClinicianList List, string PagePath, string ExportLink, string Source, int? Limit = null,
     string? AllLink = null)
 {
-    public string PageLink(int page) => $"{PagePath}?page={page}#clinicians";
+    /// <summary>
+    /// An organization's list (step 3.9): a column saying where each clinician's tie comes from, sortable headers, and the summary of
+    /// the sources; null on a facility's or group's list.
+    /// </summary>
+    public OrganizationClinicianList? Organization { get; init; }
+
+    public string Sort => Organization?.Sort ?? OrganizationClinicians.DefaultSort;
+
+    public string PageLink(int page) => Organization is null || Sort == OrganizationClinicians.DefaultSort
+        ? $"{PagePath}?page={page.ToString(CultureInfo.InvariantCulture)}#clinicians"
+        : $"{PagePath}?page={page.ToString(CultureInfo.InvariantCulture)}&sort={Sort}#clinicians";
+
+    public string SortLink(string sort) =>
+        sort == OrganizationClinicians.DefaultSort ? $"{PagePath}#clinicians" : $"{PagePath}?sort={sort}#clinicians";
+
+    /// <summary>aria-sort for a sortable header: ascending when the list is sorted by it.</summary>
+    public string? AriaSort(string sort) => Sort == sort ? "ascending" : null;
 }
