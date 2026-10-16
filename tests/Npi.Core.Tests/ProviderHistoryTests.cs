@@ -84,4 +84,25 @@ public class ProviderHistoryTests
         Assert.Equal("moved", HistoryChangeKinds.Brief("address"));
         Assert.Equal("state license renewed", HistoryChangeKinds.Brief("license_renewed"));
     }
+
+    [Fact]
+    public void A_change_may_date_only_from_the_missing_months_after_the_last_file_before_it()
+    {
+        static DateOnly M(int year, int month) => new(year, month, 1);
+        var periods = new[]
+        {
+            (M(2011, 6), "Completed"), (M(2013, 4), "Completed"), (M(2013, 5), "Missing"), (M(2013, 6), "Completed"),
+            (M(2025, 8), "Completed"), (M(2025, 9), "Completed"),
+        };
+
+        // A version from June 2011 unchanged through the files of 2013 and August 2025, changed in September 2025: May 2013
+        // can't be when it changed (Jamaica Hospital's profile said so).
+        Assert.Empty(ProviderHistoryReader.MonthsWithoutFileBefore(periods, M(2011, 6), M(2025, 9)));
+        // Changed in June 2013 after April 2013's file: May 2013 may be when.
+        Assert.Equal([M(2013, 5)], ProviderHistoryReader.MonthsWithoutFileBefore(periods, M(2013, 4), M(2013, 6)));
+        // Several missing months in a row before the change, and none at all.
+        var gap = new[] { (M(2010, 2), "Completed"), (M(2010, 3), "Missing"), (M(2010, 4), "Missing"), (M(2011, 4), "Completed") };
+        Assert.Equal([M(2010, 3), M(2010, 4)], ProviderHistoryReader.MonthsWithoutFileBefore(gap, M(2010, 2), M(2011, 4)));
+        Assert.Empty(ProviderHistoryReader.MonthsWithoutFileBefore(periods, M(2025, 8), M(2025, 9)));
+    }
 }

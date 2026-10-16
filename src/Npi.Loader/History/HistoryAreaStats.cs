@@ -8,7 +8,7 @@ namespace Npi.Loader.History;
 /// <summary>
 /// The area figures of one archived month (docs/PRODUCT_PLAN.md step 3.4), from the versions that file started and the ones
 /// it closed, written to area_month_stat with basis 3 in one transaction with <c>history_period.stats_done</c>. Counted by
-/// every practice location from the first file that lists secondary ones (pl_pfile, September 2018: today's definition, the
+/// every practice location from the first file that lists secondary ones (pl_pfile, July 2018: today's definition, the
 /// one step 3.3 records), by the primary practice location before; in today's county boundaries (the HUD crosswalk; a ZIP
 /// counts in every county it overlaps).
 /// <list type="bullet">

@@ -265,7 +265,7 @@ public sealed class ProviderHistory
     /// <summary>True when the NPI was already in the archive's first file.</summary>
     public bool InFirstFile { get; set; }
 
-    /// <summary>The first file that listed secondary practice locations (September 2018).</summary>
+    /// <summary>The first file that listed secondary practice locations (July 2018).</summary>
     public DateTime? SecondaryFrom { get; set; }
 
     /// <summary>The versions, newest first.</summary>
@@ -289,7 +289,7 @@ public sealed class ProviderHistoryVersion
     /// <summary>The primary practice location.</summary>
     public HistoryPlace? Practice { get; set; }
 
-    /// <summary>Secondary practice locations (listed from September 2018).</summary>
+    /// <summary>Secondary practice locations (listed from July 2018).</summary>
     public IReadOnlyList<HistoryPlace> SecondaryLocations { get; set; } = [];
 
     public string? PrimaryTaxonomy { get; set; }
@@ -1885,7 +1885,7 @@ public sealed class AreaHistoryCoverage
     public DateTime? ArchiveTo { get; set; }
 
     /// <summary>
-    /// The first archive month counted by every practice location (the first file listing secondary ones, September 2018);
+    /// The first archive month counted by every practice location (the first file listing secondary ones, July 2018);
     /// earlier archive months count primary practice locations only.
     /// </summary>
     public DateTime? AnyLocationFrom { get; set; }
