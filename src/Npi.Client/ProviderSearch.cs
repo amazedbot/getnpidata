@@ -102,8 +102,8 @@ public sealed class ProviderSearch
     public int? UpdatedWithinDays { get; set; }
 
     /// <summary>
-    /// true: list every NPI of an organization. Default: one row per organization (a member is left out when its main NPI matches the
-    /// same filters; <see cref="ProviderSummary.OrganizationNpis"/> says how many it has). The CSV download always lists every NPI.
+    /// true: list every NPI of an organization. Default: one row per organization (its main NPI when that one matches the filters,
+    /// else its first matching NPI; <see cref="ProviderSummary.OrganizationNpis"/> says how many it has). The CSV download always lists every NPI.
     /// </summary>
     public bool? AllNpis { get; set; }
 

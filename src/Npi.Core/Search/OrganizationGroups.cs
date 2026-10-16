@@ -61,8 +61,12 @@ public static class OrganizationGroups
 
     /// <summary>How the main NPI is chosen, for the profile's note.</summary>
     public const string MainRule =
-        "The main NPI is the one CMS ties to a hospital (its CCN), else to any certified facility, else one enrolled in or billing " +
-        "Medicare, else one with another sign of current practice, else the most recently updated in NPPES.";
+        "The main NPI is the one CMS ties to a hospital (its CCN), else one registered as a hospital in NPPES with a sign of current " +
+        "practice, else one CMS ties to any certified facility, else one enrolled in or billing Medicare, else one with another sign " +
+        "of current practice, else the most recently updated in NPPES.";
+
+    /// <summary>A hospital's NUCC taxonomy (the 28 group: general acute care, psychiatric, rehabilitation, long-term care …; not the 27 units).</summary>
+    public static bool IsHospitalTaxonomy(string? code) => code is { Length: 10 } && code.StartsWith("28", StringComparison.Ordinal);
 
     /// <summary>
     /// The facility a CCN belongs to: a hospital unit's or swing beds' CCN (a letter in the third place: S psychiatric, T
@@ -350,12 +354,14 @@ public sealed class OrganizationGroupService(string connectionString)
 internal static class OrganizationSearchSql
 {
     /// <summary>
-    /// A member that isn't its organization's main NPI, on alias {0} (anything with an npi column), whose main NPI matches the same
-    /// conditions ({1}, written on alias <c>pm</c>): the search shows the main NPI instead. A member whose main NPI doesn't match
-    /// is listed itself.
+    /// A member that isn't its organization's main NPI, on alias {0} (anything with an npi column), with another member of its
+    /// organization before it that matches the same conditions ({1}, written on alias <c>pm</c>): the main NPI first, then the
+    /// others by NPI. So the search lists each organization once, as its main NPI when that one matches, else as its first member
+    /// that does (a hospital's dialysis center as main NPI and four hospital NPIs: a hospital search shows the first of the four).
     /// </summary>
     public static string HiddenMember(string alias, string mainConditions) =>
         string.Format(CultureInfo.InvariantCulture,
-            "EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM org_group_member og JOIN provider pm ON pm.npi = og.main_npi WHERE og.npi = {0}.npi AND og.is_main = 0{1})",
+            "EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM org_group_member og JOIN org_group_member oy ON oy.main_npi = og.main_npi AND oy.npi <> og.npi "
+            + "AND (oy.is_main = 1 OR oy.npi < og.npi) JOIN provider pm ON pm.npi = oy.npi WHERE og.npi = {0}.npi AND og.is_main = 0{1})",
             alias, mainConditions.Length == 0 ? "" : " AND " + mainConditions);
 }

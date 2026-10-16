@@ -24,15 +24,16 @@ public class SearchQueryTests
     }
 
     [Fact]
-    public void One_row_per_organization_leaves_out_members_whose_main_npi_matches_too()
+    public void One_row_per_organization_leaves_out_members_after_another_matching_member()
     {
         var filter = SearchValidation.Normalize(new SearchFilter { Classification = "Chiropractor", CountyFips = "36103" });
         var query = new SearchQuery(filter, ["111N00000X"], null);
 
         Assert.True(query.OneRowPerOrganization);
-        Assert.Contains("NOT (p.entity_type = 2 AND EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM org_group_member og JOIN provider pm ON pm.npi = og.main_npi "
+        Assert.Contains("NOT (p.entity_type = 2 AND EXISTS (SELECT /*+ NO_SEMIJOIN() */ 1 FROM org_group_member og JOIN org_group_member oy "
+            + "ON oy.main_npi = og.main_npi AND oy.npi <> og.npi AND (oy.is_main = 1 OR oy.npi < og.npi) JOIN provider pm ON pm.npi = oy.npi "
             + "WHERE og.npi = p.npi AND og.is_main = 0 AND ", query.PageSql, StringComparison.Ordinal);
-        // The main NPI must match the same filters: its specialty and its location, checked on pm.
+        // The member before it (the main NPI, else a lower NPI) must match the same filters: its specialty and location, checked on pm.
         Assert.Contains("ot.npi = pm.npi", query.PageSql, StringComparison.Ordinal);
         Assert.Contains("ol.npi = pm.npi", query.PageSql, StringComparison.Ordinal);
         // The total stays per NPI (cheap); a page past the end counts the collapsed rows.

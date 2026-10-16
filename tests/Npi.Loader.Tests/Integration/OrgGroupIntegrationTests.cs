@@ -203,5 +203,14 @@ public sealed class OrgGroupIntegrationTests
         // A person's search isn't collapsed; the CSV export lists every NPI.
         Assert.Single((await search.SearchAsync(new SearchFilter { State = "NY", LastName = "baker" }, _ct)).Items);
         Assert.Equal(9, await search.SearchAllAsync(new SearchFilter(), _ct).CountAsync(_ct));
+
+        // When the main NPI doesn't match but several members do, the organization is listed once, as its first matching member by
+        // NPI: the hospital moved to New Jersey, its duplicate and unit (and the same name elsewhere, another organization) in New York.
+        await db.ExecuteAsync("UPDATE provider_location SET state = 'NJ' WHERE npi = @Hospital", new { Hospital });
+        var withoutMain = await search.SearchAsync(new SearchFilter { State = "NY", OrgName = "saint example" }, _ct);
+        Assert.Equal([Duplicate, SameNameElsewhere], withoutMain.Items.Select(i => i.Npi).Order(StringComparer.Ordinal));
+        Assert.Equal(2, withoutMain.TotalCount);
+        Assert.Equal(4, withoutMain.Items.Single(i => i.Npi == Duplicate).OrganizationNpis);
+        Assert.Equal(3, (await search.SearchAsync(new SearchFilter { State = "NY", OrgName = "saint example", AllNpis = true }, _ct)).TotalCount);
     }
 }

@@ -41,7 +41,7 @@ public sealed class SearchQuery
     private string? _driverKind;
     private readonly List<string> _relevance = [];          // "similar" names: best matches first (default sort only)
     private readonly List<string> _conditionTemplates = []; // every condition on "{0}" (a provider alias), for an organization's main NPI
-    private readonly bool _oneRowPerOrganization;            // step 3.8: a member is left out when its main NPI matches too
+    private readonly bool _oneRowPerOrganization;            // step 3.8: a member is left out after another matching member
 
     /// <param name="taxonomyCodes">The codes the Classification/Specialization/TaxonomyCode filters resolved to, or null for no specialty filter.</param>
     /// <param name="radiusCenter">The ZIP centroid for a radius search.</param>
@@ -445,8 +445,8 @@ public sealed class SearchQuery
             }
         }
 
-        // One row per organization (docs/PRODUCT_PLAN.md step 3.8): every condition, on the main NPI's alias, so a member is left out
-        // only when its main NPI is in the same results. Not for an NPI search (that NPI is asked for), the map (a pin per address) or a
+        // One row per organization (docs/PRODUCT_PLAN.md step 3.8): every condition, on another member's alias, so a member is left out
+        // only when its main NPI, or a member before it by NPI, is in the same results. Not for an NPI search (that NPI is asked for), the map (a pin per address) or a
         // search only individuals can match (a person's name, gender, credential or Care Compare facts): it would cost a lookup per
         // candidate for nothing.
         var individualsOnly = filter.EntityType == 1 || filter.LastName is not null || filter.FirstName is not null || filter.Gender is not null
@@ -471,8 +471,8 @@ public sealed class SearchQuery
     private string Conditions(string alias) => string.Join(" AND ", _conditionTemplates.Select(t => Format(t, alias)));
 
     /// <summary>
-    /// "Not an organization's member whose main NPI matches too" on provider alias <paramref name="alias"/>, or null when every NPI is
-    /// listed. Only organizations are looked up (the entity type is on the provider row already read), one at a time (NO_SEMIJOIN):
+    /// "Not an organization's member after another matching member (the main NPI first)" on provider alias <paramref name="alias"/>,
+    /// or null when every NPI is listed. Only organizations are looked up (the entity type is on the provider row already read), one at a time (NO_SEMIJOIN):
     /// as an antijoin MySQL first checked every member's main NPI against the conditions (5 s for doctors in Suffolk County).
     /// </summary>
     private string? NotHiddenMember(string alias) =>
