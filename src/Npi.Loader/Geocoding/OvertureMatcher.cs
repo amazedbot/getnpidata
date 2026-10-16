@@ -447,9 +447,9 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
         return index;
     }
 
+    // matched_at is MySQL's clock when the row is written: MapBuilder compares it with its own start, read from MySQL too.
     private static async Task SaveAsync(MySqlConnection connection, List<(string Key, PointMatch Match)> matches, string release, CancellationToken ct)
     {
-        var now = DateTime.UtcNow;
         foreach (var chunk in matches.Chunk(1000))
         {
             var p = new DynamicParameters();
@@ -457,7 +457,7 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
             for (var i = 0; i < chunk.Length; i++)
             {
                 var (key, m) = chunk[i];
-                values.Add($"(@k{i}, @s{i}, @lat{i}, @lon{i}, @m{i}, @release, @now)");
+                values.Add($"(@k{i}, @s{i}, @lat{i}, @lon{i}, @m{i}, @release, UTC_TIMESTAMP())");
                 p.Add($"k{i}", key);
                 p.Add($"s{i}", m.Source);
                 p.Add($"lat{i}", Math.Round(m.Lat, 6));
@@ -466,7 +466,6 @@ public sealed partial class OvertureMatcher(Database database, HttpClient http, 
             }
 
             p.Add("release", release);
-            p.Add("now", now);
             await Database.ExecuteAsync(connection,
                 "INSERT INTO `address_point` (`addr_key`, `source`, `lat`, `lon`, `matched`, `release`, `matched_at`) VALUES " + string.Join(", ", values) +
                 " AS new ON DUPLICATE KEY UPDATE `source` = new.`source`, `lat` = new.`lat`, `lon` = new.`lon`, `matched` = new.`matched`, " +
