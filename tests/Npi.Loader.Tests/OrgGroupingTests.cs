@@ -120,6 +120,26 @@ public class OrgGroupingTests
     }
 
     [Fact]
+    public void Without_a_hospital_ccn_a_hospital_npi_with_a_sign_of_practice_beats_another_facility()
+    {
+        // A hospital whose CCN CMS lists under an NPI outside the group: its dialysis center holds the group's only CCN.
+        OrgGroupInput Member(string npi, string taxonomy) => Org(npi, "Brookhaven Memorial Hospital", "11772", "101 Hospital Rd", taxonomy);
+        var dialysis = Member("1000000001", "261QE0700X") with { Ccns = [("332332", FacilityTypes.Dialysis)], Active = true };
+
+        // The hospital NPI enrolled in Medicare is the main NPI, before the dialysis center and the hospital NPI with only a listing.
+        var groups = Group(dialysis, Member("1000000002", "282N00000X") with { Active = true }, Member("1000000003", "282N00000X") with { MedicareEnrolled = true });
+        Assert.All(groups.Values, m => Assert.Equal("1000000003", m.MainNpi));
+
+        // A hospital NPI with no sign of practice doesn't: it would be made stale by "another NPI of this organization is current".
+        Assert.Equal("1000000001", Group(dialysis, Member("1000000002", "282N00000X"))["1000000002"].MainNpi);
+
+        // A hospital's own CCN still comes first; a unit's taxonomy (27) isn't a hospital's.
+        Assert.Equal("1000000002", Group(Member("1000000001", "282N00000X") with { MedicareEnrolled = true },
+            Member("1000000002", "261QE0700X") with { Ccns = [("330141", FacilityTypes.Hospital)] })["1000000001"].MainNpi);
+        Assert.Equal("1000000001", Group(dialysis, Member("1000000002", "273R00000X") with { MedicareEnrolled = true })["1000000002"].MainNpi);
+    }
+
+    [Fact]
     public void The_stats_count_each_stage_and_size()
     {
         var (members, stats) = OrgGrouping.Build([

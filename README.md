@@ -111,7 +111,7 @@ Every filter is optional: none lists every active provider. Filters combine with
 | `quality` | Record quality: `notStale` (hide stale records), `current`, `check` or `stale` | `notStale` |
 | `newWithinDays` | New providers: NPI issued (enumerated) within the last this many days, 1–3650. With `sort=-enumeration`, a newest-first feed | `30` |
 | `updatedWithinDays` | NPPES record updated within the last this many days, 1–3650 | `7` |
-| `allNpis` | `true`: list every NPI of an organization. By default an organization with several NPIs shows once, under its main NPI, when the main NPI matches the same filters (`organizationNpis` on a result says how many it has). CSV downloads always list every NPI | `true` |
+| `allNpis` | `true`: list every NPI of an organization. By default an organization with several NPIs shows once: under its main NPI when that one matches the filters, else under its first matching NPI (`organizationNpis` on a result says how many it has). CSV downloads always list every NPI | `true` |
 | `sort` | `name` (default), `npi`, `credential`, `city`, `state`, `zip`, `lastUpdate`, `enumeration`; prefix `-` for descending | `-lastUpdate` |
 | `page`, `pageSize` | Page from 1; 1–200 results per page (default 50) | `2`, `100` |
 

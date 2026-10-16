@@ -321,15 +321,22 @@ public static partial class OrgGrouping
     }
 
     /// <summary>
-    /// Main NPI first: a hospital's own CCN (not a unit's), any CCN, a Medicare enrollment or Part B billing, another sign of current
-    /// practice (so the main NPI isn't one the "another NPI is current" reason makes stale), nothing.
+    /// Main NPI first: a hospital's own CCN (not a unit's); else a hospital's NUCC taxonomy with a sign of practice (2026-10-16: a
+    /// hospital whose CCN CMS lists under another NPI, outside the group, had its dialysis center as main NPI); then, within each,
+    /// any CCN, a Medicare enrollment or Part B billing, another sign of current practice (so the main NPI isn't one the "another
+    /// NPI is current" reason makes stale), nothing.
     /// </summary>
-    internal static int MainRank(OrgGroupInput o) =>
-        o.Ccns.Any(c => c.Kind == FacilityTypes.Hospital && !OrganizationGroups.IsUnitCcn(c.Ccn)) ? 4
-        : o.Ccns.Count > 0 ? 3
-        : o.MedicareEnrolled || o.PacIds.Count > 0 || o.MedicareBilling ? 2
-        : o.Active ? 1
-        : 0;
+    internal static int MainRank(OrgGroupInput o)
+    {
+        var basis = o.Ccns.Count > 0 ? 3
+            : o.MedicareEnrolled || o.PacIds.Count > 0 || o.MedicareBilling ? 2
+            : o.Active ? 1
+            : 0;
+        var tier = o.Ccns.Any(c => c.Kind == FacilityTypes.Hospital && !OrganizationGroups.IsUnitCcn(c.Ccn)) ? 2
+            : basis > 0 && OrganizationGroups.IsHospitalTaxonomy(o.Taxonomy) ? 1
+            : 0;
+        return tier * 4 + basis;
+    }
 
     // The CCN shown for a member: a hospital's own first, then any facility's own, then a unit's.
     private static (string Ccn, string Kind)? BestCcn(OrgGroupInput o) =>

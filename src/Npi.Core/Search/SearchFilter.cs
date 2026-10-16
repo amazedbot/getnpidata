@@ -125,8 +125,8 @@ public sealed record SearchFilter
     public string? NameMatch { get; init; }
 
     /// <summary>
-    /// List every NPI of an organization (docs/PRODUCT_PLAN.md step 3.8). False (the default): one row per organization, a member left
-    /// out when its organization's main NPI matches the same filters. Exports always list every NPI.
+    /// List every NPI of an organization (docs/PRODUCT_PLAN.md step 3.8). False (the default): one row per organization: its main NPI
+    /// when that one matches the filters, else its first matching member by NPI. Exports always list every NPI.
     /// </summary>
     public bool AllNpis { get; init; }
 

@@ -149,7 +149,7 @@ public static class SearchQueryString
         new("updatedWithinDays", ParameterType.WholeNumber, nameof(SearchFilter.UpdatedWithinDays),
             "NPPES record updated within the last this many days, 1-3650 (NPPES doesn't say what changed; see the provider's recorded changes)."),
         new("allNpis", ParameterType.TrueFalse, nameof(SearchFilter.AllNpis),
-            "true: list every NPI of an organization. Default: one row per organization (a hospital's units, pharmacy and duplicate registrations are left out when its main NPI matches the same filters; organizationNpis says how many it has). CSV exports always list every NPI."),
+            "true: list every NPI of an organization. Default: one row per organization (its main NPI when that one matches the filters, else its first matching NPI, so a hospital's units, pharmacy and duplicate registrations show once; organizationNpis says how many it has). CSV exports always list every NPI."),
         new("sort", ParameterType.Text, nameof(SearchFilter.Sort), "name (default), npi, credential, city, state, zip, lastUpdate or enumeration; prefix - for descending."),
         new("page", ParameterType.WholeNumber, nameof(SearchFilter.Page), "Page number, from 1. Paging stops at the first 10,000 matches; use the CSV beyond that."),
         new("pageSize", ParameterType.WholeNumber, nameof(SearchFilter.PageSize), "Results per page, 1-200 (default 50)."),
