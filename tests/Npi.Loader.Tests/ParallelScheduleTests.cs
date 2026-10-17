@@ -215,12 +215,12 @@ public sealed class ParallelScheduleTests
             Assert.All(source.After, name => Assert.True(position.TryGetValue(name, out var p) && p < i, $"{source.Name} waits for {name}"));
         }
 
-        // The ones that read another's tables (CLAUDE.md §7 Stage 5.5 items 19 parts 2–4).
+        // The ones that read another's tables (CLAUDE.md §7 Stage 5.5 items 19 parts 2–4; Medicaid's procedure names from Medicare's).
         Assert.Equal(
-            [("fda_products", "open_payments"), ("part_d_prescribers", "fda_products, open_payments"), ("product_adverse_events", "fda_products, open_payments"),
+            [("fda_products", "open_payments"), ("medicaid_spending", "cms_physician_by_service"), ("part_d_prescribers", "fda_products, open_payments"), ("product_adverse_events", "fda_products, open_payments"),
              ("product_trials", "fda_products, open_payments")],
             sources.Where(s => s.After.Count > 0).Select(s => (s.Name, string.Join(", ", s.After.Order(StringComparer.Ordinal)))).OrderBy(x => x.Name, StringComparer.Ordinal));
-        Assert.Equal(["cms_physician_by_service", "fema_structures", "medicare_history", "open_payments", "open_payments_companies", "open_payments_years", "part_d_prescribers"],
+        Assert.Equal(["cms_physician_by_service", "fema_structures", "medicaid_enrollment_segments", "medicaid_spending", "medicare_history", "open_payments", "open_payments_companies", "open_payments_years", "part_d_prescribers"],
             sources.Where(s => s.Heavy).Select(s => s.Name).Order(StringComparer.Ordinal));
     }
 
