@@ -109,6 +109,7 @@ public sealed class DatasetIntegrationTests : IDisposable
              ("hrsa_340b", Program340BSource.NoFiles),
              ("hrsa_health_center_sites", $"2026-10-08T11:47:41Z {new FileInfo(Fixtures.Path("datasets/hrsa_health_center_sites_sample.csv")).Length} bytes"),
              ("hrsa_hpsa", "HPSA 2026-10-08"),
+             ("medicaid_enrollment_segments", "2026-07-24 sha256 b70930a9a017"), ("medicaid_spending", "2026-02-09 sha256 3387c48ea960"),
              ("medicare_enrollment", "2026-09-30 PPEF_Enrollment_Extract_2026.07.17.csv | 2026-10-31 revalidation_clinic_group_practice_reassignment_pa_xref.csv"),
              ("medicare_history", MedicareHistoryVersion()),
              ("nadac", "2026 nadac-national-average-drug-acquisition-cost-10-07-2026.csv"),
@@ -122,7 +123,7 @@ public sealed class DatasetIntegrationTests : IDisposable
                  [("NY", "2026-10-02T20:04:24Z"), ("TX", "2026-10-02T20:04:24Z"), ("WA", "2026-10-02T20:04:24Z"), ("IL", "2026-10-02T20:04:24Z"), ("CO", "2026-10-02T20:04:24Z"), ("DE", "2026-10-02T20:04:24Z"),
                   ("DE", "2026-10-02T20:04:24Z"), ("CT", "2026-10-02T20:04:24Z"), ("MD", "2026-10-01T00:00:00Z"), ("MD", "2026-10-01T00:00:00Z"), ("FL", null), ("FL", null),
                   ("RI", Week), ("VT", Week), ("WV", "rosters 713 " + Week), ("AL", null), ("MI", null), ("CA", null)])),
-             ("state_medicaid", "NY 2026-10-02T20:04:24Z | CA 2026-10-12T20:02:55.387406")],
+             ("state_medicaid", "NY 2026-10-02T20:04:24Z | CA 2026-10-12T20:02:55.387406 | FL 2026-10-16T02:23:25Z")],
             await db.QueryAsync<(string, string)>("SELECT source, version FROM reference_data WHERE source NOT IN ('oig_cia', 'fema_structures', 'address_building', 'address_type') ORDER BY source"));
         Assert.StartsWith("3 agreements ", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'oig_cia'"));
         // FEMA structures (item 18): the listing's newest date and a hash of its files (new addresses don't reload it, speed item 4).
@@ -147,12 +148,36 @@ public sealed class DatasetIntegrationTests : IDisposable
             await db.QueryAsync<(string, string, string, string)>("SELECT group_pac_id, npi, record_type, group_name FROM medicare_reassignment ORDER BY npi"));
         Assert.Contains("PPEF_Enrollment_Extract_2026.07.17.csv", await db.ScalarAsync<string>("SELECT version FROM reference_data WHERE source = 'medicare_enrollment'"));
 
-        // State Medicaid lists (Phase 3): New York's grouped export and California's file, one row per NPI and state (the earliest
-        // enrollment; California's specialty, else its provider type), no row without an NPI.
+        // State Medicaid lists (Phase 3): New York's grouped export, California's file and Florida's Provider Master List (step 3.7),
+        // one row per NPI and state (the earliest enrollment; California's specialty, else its provider type; Florida gives none), no
+        // row without an NPI; Florida's registrations, order-and-refer-only and inactive enrollments aren't listed.
         Assert.Equal(
-            [("1000000004", "NY", new DateTime(1979, 2, 1), "PHYSICIAN"), ("1000000012", "CA", new DateTime(2002, 4, 1), "Family Nurse Practitioner"),
-             ("1000000012", "NY", new DateTime(2007, 10, 26), "NURSE PRACTITIONER"), ("1000000038", "CA", new DateTime(2019, 12, 5), "CLINICS")],
-            await db.QueryAsync<(string, string, DateTime, string)>("SELECT npi, state, enrolled_since, provider_type FROM state_medicaid ORDER BY npi, state"));
+            [("1000000004", "FL", new DateTime(2008, 6, 13), null), ("1000000004", "NY", new DateTime(1979, 2, 1), "PHYSICIAN"),
+             ("1000000012", "CA", new DateTime(2002, 4, 1), "Family Nurse Practitioner"), ("1000000012", "NY", new DateTime(2007, 10, 26), "NURSE PRACTITIONER"),
+             ("1000000020", "FL", new DateTime(2021, 3, 1), null), ("1000000038", "CA", new DateTime(2019, 12, 5), "CLINICS")],
+            await db.QueryAsync<(string, string, DateTime, string?)>("SELECT npi, state, enrolled_since, provider_type FROM state_medicaid ORDER BY npi, state"));
+
+        // Every state's Medicaid from T-MSIS (step 3.7): enrollment periods per NPI and state, billing per NPI and year, the newest
+        // year's top procedures (Medicare's description where it has the code), and the months each file covers.
+        Assert.Equal(
+            [("1000000004", "NY", (short)1, (DateTime?)new DateTime(2024, 8, 1), (DateTime?)null, (string?)null),
+             ("1000000004", "OH", (short)1, new DateTime(2015, 3, 1), new DateTime(2019, 6, 30), "TERM - LICENSE EXPIRED"),
+             ("1000000012", "CA", (short)1, null, new DateTime(2020, 12, 31), null),
+             ("1000000012", "CA", (short)2, new DateTime(2022, 1, 1), new DateTime(2023, 5, 31), null),
+             ("1000000038", "TX", (short)1, new DateTime(2018, 1, 1), new DateTime(2024, 11, 30), "TERM - STATE EXCLUSION/ DEBARMENT, ETC."),
+             ("1000000053", "FL", (short)1, new DateTime(2016, 5, 1), new DateTime(2020, 1, 31), "TERM - PROVIDER DECEASED")],
+            await db.QueryAsync<(string, string, short, DateTime?, DateTime?, string?)>(
+                "SELECT npi, state, period, enrolled_from, enrolled_until, ended_status FROM medicaid_enrollment_period ORDER BY npi, state, period"));
+        Assert.Equal(
+            [("1000000004", (short)2021, 14L, 700m), ("1000000004", (short)2024, 62L, 3450.25m), ("1000000012", (short)2019, 12L, 300m),
+             ("1000000038", (short)2023, 12L, 600m), ("1000000038", (short)2024, 462L, 15450.50m), ("1000000046", (short)2018, 12L, 120m)],
+            await db.QueryAsync<(string, short, long, decimal)>("SELECT npi, data_year, claim_lines, paid FROM medicaid_billing_year ORDER BY npi, data_year"));
+        Assert.Equal(
+            [("98940", (string?)"Chiropractic manipulative treatment, spinal, 98940", 2000m), ("99213", null, 1450.25m)],
+            await db.QueryAsync<(string, string?, decimal)>("SELECT hcpcs, description, paid FROM medicaid_top_procedure WHERE npi = '1000000004' ORDER BY procedure_rank"));
+        Assert.Equal(
+            [("medicaid_enrollment_segments", new DateTime(2019, 6, 1), new DateTime(2024, 12, 1)), ("medicaid_spending", new DateTime(2018, 1, 1), new DateTime(2024, 6, 1))],
+            await db.QueryAsync<(string, DateTime, DateTime)>("SELECT source, first_month, last_month FROM medicaid_data_period ORDER BY source"));
 
         // Three DAC rows for 1000000004 (two groups, two addresses) become one clinician row: accepts assignment
         // because one enrollment says Y, telehealth because one practice offers it.
@@ -1021,6 +1046,8 @@ public sealed class DatasetIntegrationTests : IDisposable
                 OigCiaUrl = "https://oig.test/browse-cias/",
                 MedicaidCatalogUrl = "https://medicaid.test/items",
                 MediCalPackageUrl = "https://chhs.test/package_show",
+                FloridaMedicaidListUrl = "https://flmmis.test/prw19002.zip",
+                HhsOpenDataUrl = "https://hhs.test/datasets/",
                 OpenFdaApiUrl = "https://openfda.test/",
                 ClinicalTrialsApiUrl = "https://ct.test/api/v2/studies",
                 FemaStructuresListingUrl = "https://fema.test/list",
@@ -1045,6 +1072,9 @@ public sealed class DatasetIntegrationTests : IDisposable
     private sealed class FakeSources : HttpMessageHandler
     {
         public bool LeieAvailable { get; init; } = true;
+
+        /// <summary>The Medicaid spending zip served (a test of a reload swaps in another).</summary>
+        public string SpendingFixture { get; set; } = "datasets/medicaid_spending_sample.csv.zip";
 
         public List<string> Requests { get; } = [];
 
@@ -1212,6 +1242,13 @@ public sealed class DatasetIntegrationTests : IDisposable
                 "https://medicaid.test/items" => "datasets/medicaid_catalog_sample.json",
                 "https://chhs.test/package_show" => "datasets/medi_cal_package_sample.json",
                 "https://chhs.test/medi-cal-ffs-provider-listing.csv" => "datasets/medi_cal_sample.csv",
+                "https://flmmis.test/prw19002.zip" => "datasets/fl_provider_master_list_sample.zip",
+                "https://hhs.test/datasets/medicaid-provider-enrollment-segments/" => "datasets/hhs_medicaid-provider-enrollment-segments_page_sample.html",
+                "https://hhs.test/datasets/medicaid-provider-spending/" => "datasets/hhs_medicaid-provider-spending_page_sample.html",
+                "https://stopendataprod.blob.core.windows.net/datasets/medicaid-provider-enrollment-segments/2026-07-24/dataset/medicaid-provider-enrollment-segments.csv.zip"
+                    => "datasets/medicaid_enrollment_segments_sample.csv.zip",
+                "https://stopendataprod.blob.core.windows.net/datasets/medicaid-provider-spending/2026-02-09/dataset/medicaid-provider-spending.csv.zip"
+                    => SpendingFixture,
                 "https://medicaid.test/nadac-national-average-drug-acquisition-cost-10-07-2026.csv" => "datasets/nadac_sample.csv",
                 "https://cms.test/files/OptOut_August2026.csv" => "datasets/optout_sample.csv",
                 "https://cms.test/files/OrderReferring_20261008.csv" => "datasets/orderref_sample.csv",
@@ -1328,6 +1365,10 @@ public sealed class DatasetIntegrationTests : IDisposable
             else if (url.StartsWith("https://www.mbp.state.md.us", StringComparison.Ordinal))
             {
                 content.Headers.LastModified = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+            }
+            else if (url.StartsWith("https://flmmis.test", StringComparison.Ordinal))
+            {
+                content.Headers.LastModified = new DateTimeOffset(2026, 10, 16, 2, 23, 25, TimeSpan.Zero);
             }
             else if (url.StartsWith("https://hrsa.test", StringComparison.Ordinal))
             {

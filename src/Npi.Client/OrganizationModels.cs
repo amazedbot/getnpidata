@@ -60,6 +60,9 @@ public sealed class OrganizationProfile
     /// <summary>Medicare billing of the organization's NPIs, largest first.</summary>
     public IReadOnlyList<OrganizationMedicareNpi> MedicareActivity { get; set; } = [];
 
+    /// <summary>Medicaid billing and enrollment of its NPIs (T-MSIS): the newest data year, the last year billed, the states enrolled in.</summary>
+    public IReadOnlyList<OrganizationMedicaidNpi> MedicaidActivity { get; set; } = [];
+
     /// <summary>The changes recorded for any of its NPIs, newest first (at most 200).</summary>
     public IReadOnlyList<OrganizationChange> Changes { get; set; } = [];
 
@@ -194,6 +197,29 @@ public sealed class OrganizationMedicareNpi
     public double? DrugCost { get; set; }
 
     public int? LastBilledYear { get; set; }
+}
+
+/// <summary>One of an organization's NPIs in the Medicaid data (T-MSIS).</summary>
+public sealed class OrganizationMedicaidNpi
+{
+    public string Npi { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string Role { get; set; } = "";
+
+    /// <summary>The newest data year, when the NPI billed Medicaid in it (else null, as are the two counts).</summary>
+    public int? Year { get; set; }
+
+    public long? ClaimLines { get; set; }
+
+    /// <summary>What Medicaid paid in dollars in <see cref="Year"/>.</summary>
+    public double? Paid { get; set; }
+
+    public int? LastBilledYear { get; set; }
+
+    /// <summary>The states whose Medicaid programs it was enrolled in, 2018 on.</summary>
+    public IReadOnlyList<string> EnrolledStates { get; set; } = [];
 }
 
 /// <summary>A change recorded for one of an organization's NPIs.</summary>

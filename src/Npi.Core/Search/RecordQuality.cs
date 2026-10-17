@@ -112,6 +112,12 @@ public enum QualityActivity
     EquipmentBilling = 4096,
     OpioidTreatment = 8192,
     MedicaidEnrollment = 16384,
+
+    /// <summary>
+    /// Billed Medicaid (or performed services Medicaid paid for) in a calendar year that ended within <see cref="RecordQuality.MedicaidYears"/>
+    /// years of the as-of date (T-MSIS, docs/PRODUCT_PLAN.md step 3.7). The first bit past a SMALLINT: the column is an INT since migration 120.
+    /// </summary>
+    MedicaidBilling = 32768,
 }
 
 /// <summary>One line of a record-quality explanation: <c>good</c>, <c>warn</c>, <c>bad</c> or <c>info</c>, and the text.</summary>
@@ -180,6 +186,12 @@ public static class RecordQuality
     /// </summary>
     public static string OtherNpiCurrentSql(string enumeration, string lastUpdate, string limit) =>
         $"COALESCE({enumeration} < {limit}, 1) AND COALESCE({lastUpdate} < {limit}, 1)";
+
+    /// <summary>
+    /// A T-MSIS Medicaid enrollment period still open at the end of the data or ended, or a year billed that ended, this many years
+    /// before the as-of date or later is a sign of current practice (step 3.7, as the owner approved it).
+    /// </summary>
+    public const int MedicaidYears = 2;
 
     /// <summary>A Care Compare practice this close to an NPPES practice location (ZIP centres) agrees with the record.</summary>
     public const int CareCompareMiles = 25;
@@ -305,6 +317,7 @@ public static class RecordQuality
         (QualityActivity.EquipmentBilling, "billed Medicare for equipment and supplies"),
         (QualityActivity.OpioidTreatment, "is a certified opioid treatment program"),
         (QualityActivity.MedicaidEnrollment, "enrolled in a state Medicaid program"),
+        (QualityActivity.MedicaidBilling, "billed Medicaid"),
         (QualityActivity.CurrentLicense, "holds a current state license"),
         (QualityActivity.MapListing, "is listed as an open business at its address (Overture Maps)"),
     ];

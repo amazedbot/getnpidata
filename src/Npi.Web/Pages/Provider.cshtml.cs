@@ -327,6 +327,11 @@ public class ProviderModel(ProviderDetailService details, OrganizationService or
                 yield return ("medicare", "Medicare");
             }
 
+            if (Provider.MedicaidHistory is not null)
+            {
+                yield return ("medicaid", "Medicaid");
+            }
+
             if (Provider.MipsScores.Count > 0)
             {
                 yield return ("quality", "Quality");

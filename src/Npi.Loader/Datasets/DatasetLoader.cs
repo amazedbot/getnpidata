@@ -191,6 +191,8 @@ public sealed class DatasetLoader(LoaderOptions options, Database database, Http
         new MedicareServicesSource(),
         new PartDPrescriberSource(),
         new MedicareHistorySource(),
+        new MedicaidEnrollmentSource(),
+        new MedicaidSpendingSource(),
         new ShortageAreaSource(),
         new CountyPopulationSource(),
         new OpenPaymentsSource(),

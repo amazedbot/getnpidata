@@ -1,0 +1,77 @@
+@using System.Globalization
+@using Npi.Core.Search
+@model Npi.Web.Pages.ProviderPart
+@*
+    An NPI's Medicaid enrollment periods and billing from T-MSIS (docs/PRODUCT_PLAN.md step 3.7): the provider page's "Medicaid
+    activity", and the main NPI's on an organization's page.
+*@
+@{
+    var m = Model.Provider.MedicaidHistory!;
+    static string Month(DateOnly d) => d.ToString("MMM yyyy", CultureInfo.InvariantCulture);
+    var through = m.EnrollmentThrough is { } t ? Month(t) : "the end of the data";
+}
+@if (m.Enrollments.Count > 0)
+{
+    <h3>Enrollment@(m.EnrollmentFrom is { } f && m.EnrollmentThrough is { } e ? $", {Month(f)} – {Month(e)}" : "")</h3>
+    <ul class="checks">
+        @foreach (var period in m.Enrollments)
+        {
+            var name = MedicaidNames.Program(period.State);
+            var from = period.From is { } start ? Month(start) : "an unrecorded date";
+            <li class="@(period.StillEnrolled ? "good" : "info")"><span aria-hidden="true">@(period.StillEnrolled ? "✓" : "i")</span>@name: @(period.StillEnrolled
+                ? $"enrolled from {from}, still enrolled in {through}"
+                : $"enrolled from {from} to {Month(period.Until!.Value)}")@if (period.EndedReason is { } why){<span class="muted"> · ended: @why</span>}</li>
+        }
+    </ul>
+}
+@if (m.Years.Count > 0 && m.FirstDataYear is { } first && m.NewestDataYear is { } newest)
+{
+    <h3>Medicaid by year</h3>
+    <p>@(m.Stopped ? $"Last billed Medicaid in {m.LastBilledYear}; none in the data for {m.LastBilledYear + 1}–{newest}." : $"Billed Medicaid in {m.Spans}.")</p>
+    <ol class="medicare-years" aria-label="Medicaid payments by calendar year">
+        @for (var y = first; y <= newest; y++)
+        {
+            var year = m.Years.FirstOrDefault(x => x.Year == y);
+            var detail = year is null ? "none" : $"{Format.ShortMoney(year.Paid)} paid for {year.ClaimLines.ToString("N0", CultureInfo.InvariantCulture)} claim lines";
+            <li class="@(year is null ? "off" : "on")" title="@y: @detail">
+                <span class="yr">@y</span>
+                <span class="parts" aria-hidden="true">@(year is null ? "–" : Format.ShortMoney(year.Paid))</span>
+                <span class="visually-hidden">: @detail</span>
+            </li>
+        }
+    </ol>
+    @if (m.Years.FirstOrDefault(y => y.Year == newest) is { } latest)
+    {
+        <dl class="facts">
+            <dt>Paid by Medicaid in @newest</dt><dd>@Format.Money(latest.Paid) for @Format.Number(latest.ClaimLines) claim lines</dd>
+            @if (latest.BillingLines > 0 && latest.ServicingLines > 0)
+            {
+                <dt>As billing provider</dt><dd>@Format.Money(latest.BillingPaid) · as the clinician who served: @Format.Money(latest.ServicingPaid)</dd>
+            }
+            else if (latest.ServicingLines > 0)
+            {
+                <dt>Billed</dt><dd>Through another NPI (a group or facility); this NPI is named on the claims as the one who served</dd>
+            }
+        </dl>
+    }
+    @if (m.TopProcedures.Count > 0)
+    {
+        <div class="table-wrap">
+            <table>
+                <caption class="visually-hidden">Procedures Medicaid paid most for in @m.TopProceduresYear</caption>
+                <thead><tr><th scope="col">Code</th><th scope="col">Procedure (@m.TopProceduresYear)</th><th scope="col">Claim lines</th><th scope="col">Paid by Medicaid</th></tr></thead>
+                <tbody>
+                    @foreach (var p in m.TopProcedures)
+                    {
+                        <tr><td class="mono">@p.Hcpcs</td><td>@(p.Description ?? "—")</td><td>@Format.Number(p.ClaimLines)</td><td>@Format.Money(p.Paid)</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+else if (m.FirstDataYear is { } f2 && m.NewestDataYear is { } n2)
+{
+    <p class="muted">No Medicaid claims in the spending data for @f2–@n2 (it leaves out procedures billed fewer than 12 times or for fewer than 12 patients in a month).</p>
+}
+<p class="src">HHS Open Data, from T-MSIS (what state Medicaid and CHIP programs report to CMS): “Medicaid Provider Enrollment Segments” and “Medicaid Provider Spending by HCPCS”@(m.FirstDataYear is { } a && m.NewestDataYear is { } b ? $", {a}–{b}" : ""); @(m.NewestDataYear ?? 2024) data are preliminary. Payments include fee-for-service, managed-care encounters and CHIP; HHS leaves out cells under 12 claim lines or 12 patients, and a claim line is one procedure on a claim. History, not a current list: the state Medicaid program is the authority on today's enrollment.</p>
