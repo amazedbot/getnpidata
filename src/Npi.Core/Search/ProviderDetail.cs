@@ -203,7 +203,15 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record PaymentCompanyRow(string Company, double Total, double General, double Research, double AssociatedResearch,
         double Ownership, int Records, string? CompanyId);
 
-    private sealed record QualityRow(sbyte Label, int Reasons, long Activity, string? OtherNpi);
+    // A class with properties, not a positional record: Dapper maps a constructor only on exact column types, and MySQL types
+    // CAST(activity AS SIGNED) as INT or BIGINT depending on the server (an INT column since migration 120); properties convert.
+    private sealed class QualityRow
+    {
+        public sbyte Label { get; init; }
+        public long Reasons { get; init; }
+        public long Activity { get; init; }
+        public string? OtherNpi { get; init; }
+    }
 
     private sealed record MedicaidRow(string State, DateTime? EnrolledSince, string? ProviderType);
 

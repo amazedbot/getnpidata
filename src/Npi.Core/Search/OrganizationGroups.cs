@@ -256,12 +256,29 @@ public sealed record OrganizationProfile(string MainNpi, string Name, IReadOnlyL
 /// <summary>Reads the organization groups the loader built (<c>org_group_member</c>, docs/PRODUCT_PLAN.md step 3.8).</summary>
 public sealed class OrganizationGroupService(string connectionString)
 {
-    private sealed record MemberRow(string Npi, string MainNpi, sbyte IsMain, string? Ccn, string? FacilityKind, short JoinedBy, sbyte EntityType,
-        string? OrgName, string? PrimaryTaxonomyCode, DateTime? LastUpdateDate, string? Address1, string? City, string? State, string? Zip5,
-        string? Zip4, string? PostalCode, sbyte? Label, long? Activity);
-
-    private sealed record SingleRow(string Npi, string? Ccn, string? FacilityKind, sbyte EntityType, string? OrgName, string? PrimaryTaxonomyCode,
-        DateTime? LastUpdateDate, string? Address1, string? City, string? State, string? Zip5, string? Zip4, string? PostalCode, sbyte? Label, long? Activity);
+    // Classes with properties, not positional records: Dapper maps a constructor only on exact column types, and MySQL types
+    // CAST(activity AS SIGNED) as INT or BIGINT depending on the server (an INT column since migration 120); properties convert.
+    private sealed class MemberRow
+    {
+        public string Npi { get; init; } = "";
+        public string MainNpi { get; init; } = "";
+        public sbyte IsMain { get; init; }
+        public string? Ccn { get; init; }
+        public string? FacilityKind { get; init; }
+        public short JoinedBy { get; init; }
+        public sbyte EntityType { get; init; }
+        public string? OrgName { get; init; }
+        public string? PrimaryTaxonomyCode { get; init; }
+        public DateTime? LastUpdateDate { get; init; }
+        public string? Address1 { get; init; }
+        public string? City { get; init; }
+        public string? State { get; init; }
+        public string? Zip5 { get; init; }
+        public string? Zip4 { get; init; }
+        public string? PostalCode { get; init; }
+        public sbyte? Label { get; init; }
+        public long? Activity { get; init; }
+    }
 
     /// <summary>
     /// The organization page of an NPI (main NPI, name, number of NPIs: 1 for an organization of one NPI, docs/PRODUCT_PLAN.md step
@@ -403,9 +420,9 @@ public sealed class OrganizationGroupService(string connectionString)
             // An organization of one NPI with a certified facility or a Medicare group (step 3.9): the NPI is its own main NPI, with
             // its first CCN (a hospital's first). The CCN subqueries name the NPI itself: correlated (b.npi = p.npi), MySQL builds the
             // whole union of billing NPIs for them (0.7 s).
-            rows = [.. (await connection.QueryAsync<SingleRow>(new CommandDefinition(
+            rows = [.. (await connection.QueryAsync<MemberRow>(new CommandDefinition(
                     $"""
-                    SELECT p.npi AS Npi,
+                    SELECT p.npi AS Npi, p.npi AS MainNpi, 1 AS IsMain,
                            (SELECT b.ccn FROM ({FacilityDirectory.BillingNpiSql}) b WHERE b.npi = @npi ORDER BY b.kind <> 'hospital', b.ccn LIMIT 1) AS Ccn,
                            (SELECT b.kind FROM ({FacilityDirectory.BillingNpiSql}) b WHERE b.npi = @npi ORDER BY b.kind <> 'hospital', b.ccn LIMIT 1) AS FacilityKind,
                            p.entity_type AS EntityType, p.org_name AS OrgName, p.primary_taxonomy_code AS PrimaryTaxonomyCode,
@@ -415,9 +432,7 @@ public sealed class OrganizationGroupService(string connectionString)
                     LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
                     LEFT JOIN provider_quality q ON q.npi = p.npi
                     WHERE p.npi = @npi AND {OrganizationGroups.HasPageSql("p")}
-                    """, new { npi }, cancellationToken: ct)))
-                .Select(r => new MemberRow(r.Npi, r.Npi, 1, r.Ccn, r.FacilityKind, 0, r.EntityType, r.OrgName, r.PrimaryTaxonomyCode, r.LastUpdateDate,
-                    r.Address1, r.City, r.State, r.Zip5, r.Zip4, r.PostalCode, r.Label, r.Activity))];
+                    """, new { npi }, cancellationToken: ct)))];
         }
         else
         {
