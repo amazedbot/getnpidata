@@ -236,6 +236,9 @@ public sealed class ProviderDetail
     /// <summary>Medicare Part B billing and Part D prescribing per data year since 2013; null when the NPI is in none of them.</summary>
     public MedicareHistory? MedicareHistory { get; set; }
 
+    /// <summary>Medicaid enrollment periods per state and billing per year in every state (T-MSIS, 2018 on); null when the NPI is in neither.</summary>
+    public MedicaidHistory? MedicaidHistory { get; set; }
+
     /// <summary>Open Payments general payments in the newest program year; null when none.</summary>
     public IndustryPayments? IndustryPayments { get; set; }
 
@@ -1347,6 +1350,86 @@ public sealed class MedicareHistoryYear
 
     /// <summary>Part D claims (null when suppressed by CMS or not prescribed).</summary>
     public int? Claims { get; set; }
+}
+
+/// <summary>
+/// Medicaid in every state from T-MSIS (HHS open data): the enrollment periods per state (the file covers <see cref="EnrollmentFrom"/>
+/// to <see cref="EnrollmentThrough"/>), the billing per calendar year and the top procedures of the newest year. History, not a current list.
+/// </summary>
+public sealed class MedicaidHistory
+{
+    public DateTime? EnrollmentFrom { get; set; }
+
+    public DateTime? EnrollmentThrough { get; set; }
+
+    /// <summary>The enrollment periods by state, oldest first within a state.</summary>
+    public IReadOnlyList<MedicaidEnrollmentPeriod> Enrollments { get; set; } = [];
+
+    /// <summary>The first and newest calendar years of the spending data.</summary>
+    public int? FirstDataYear { get; set; }
+
+    public int? NewestDataYear { get; set; }
+
+    /// <summary>The years with Medicaid claims, oldest first (years without any aren't listed).</summary>
+    public IReadOnlyList<MedicaidBillingYear> Years { get; set; } = [];
+
+    /// <summary>The procedures Medicaid paid most for in <see cref="TopProceduresYear"/>.</summary>
+    public IReadOnlyList<MedicaidProcedure> TopProcedures { get; set; } = [];
+
+    public int? TopProceduresYear { get; set; }
+
+    public int? LastBilledYear { get; set; }
+
+    /// <summary>True when the NPI billed Medicaid in an earlier year but not in the newest one.</summary>
+    public bool Stopped { get; set; }
+}
+
+/// <summary>An enrollment period in a state's Medicaid program.</summary>
+public sealed class MedicaidEnrollmentPeriod
+{
+    public string State { get; set; } = "";
+
+    /// <summary>Null when the state gave no real start date.</summary>
+    public DateTime? From { get; set; }
+
+    /// <summary>Null when still enrolled at the end of the data.</summary>
+    public DateTime? Until { get; set; }
+
+    /// <summary>The termination that ended the period, in T-MSIS's words (e.g. "TERM - LICENSE EXPIRED").</summary>
+    public string? EndedStatus { get; set; }
+
+    public bool StillEnrolled { get; set; }
+}
+
+/// <summary>Medicaid claims in one calendar year: claim lines and what Medicaid paid, in all and as billing and as servicing provider.</summary>
+public sealed class MedicaidBillingYear
+{
+    public int Year { get; set; }
+
+    public long ClaimLines { get; set; }
+
+    public double Paid { get; set; }
+
+    public long BillingLines { get; set; }
+
+    public double BillingPaid { get; set; }
+
+    public long ServicingLines { get; set; }
+
+    public double ServicingPaid { get; set; }
+}
+
+/// <summary>A procedure code Medicaid paid the NPI for.</summary>
+public sealed class MedicaidProcedure
+{
+    public string Hcpcs { get; set; } = "";
+
+    /// <summary>Medicare's description of the code, when it has one.</summary>
+    public string? Description { get; set; }
+
+    public long ClaimLines { get; set; }
+
+    public double Paid { get; set; }
 }
 
 /// <summary>What Medicare Care Compare publishes about a clinician.</summary>

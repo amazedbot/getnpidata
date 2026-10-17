@@ -356,7 +356,7 @@
             }
             @foreach (var m in compliance.Medicaid)
             {
-                <li class="good"><span aria-hidden="true">✓</span>Enrolled in @(m.State == "NY" ? "New York Medicaid" : m.State == "CA" ? "Medi-Cal (California Medicaid)" : m.State + " Medicaid")@if (m.EnrolledSince is { } since){<text> since @since.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</text>}@if (m.ProviderType is { Length: > 0 } kind){<span class="muted"> · @(kind == kind.ToUpperInvariant() ? CultureInfo.InvariantCulture.TextInfo.ToTitleCase(kind.ToLowerInvariant()) : kind)</span>}</li>
+                <li class="good"><span aria-hidden="true">✓</span>Enrolled in @MedicaidNames.Program(m.State)@if (m.EnrolledSince is { } since){<text> since @since.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</text>}@if (m.ProviderType is { Length: > 0 } kind){<span class="muted"> · @(kind == kind.ToUpperInvariant() ? CultureInfo.InvariantCulture.TextInfo.ToTitleCase(kind.ToLowerInvariant()) : kind)</span>}</li>
             }
             @if (Model.HasBoardAction)
             {
@@ -367,7 +367,7 @@
                 <li class="good"><span aria-hidden="true">✓</span>No board actions on record in @string.Join(", ", p.StateLicenses.Select(l => l.State).Concat(coveredLicenses.Select(t => t.LicenseState!)).Distinct())</li>
             }
         </ul>
-        <p class="src">HHS-OIG exclusion list (LEIE), CMS opt-out and order and refer lists, state licensing boards, the New York and California Medicaid enrolled-provider lists. Matched by NPI (licenses by state, number and name).</p>
+        <p class="src">HHS-OIG exclusion list (LEIE), CMS opt-out and order and refer lists, state licensing boards, the New York and California Medicaid enrolled-provider lists and Florida AHCA's Provider Master List (current enrollments). Matched by NPI (licenses by state, number and name).@if (p.MedicaidHistory?.Enrollments.Count > 0){<text> Medicaid enrollment in other years and states: <a href="#medicaid">Medicaid activity</a>.</text>}</p>
     </section>
 
     @if (p.Quality is { } quality)
@@ -387,7 +387,7 @@
                 }
             </ul>
             <p class="src">Our own check, rebuilt with each weekly load: the NPPES record's age and address, compared with Medicare (billing, enrollment,
-                Care Compare), state Medicaid lists (NY, CA), Open Payments, state licensing boards and building data. A label is a prompt to verify, not a finding.</p>
+                Care Compare), state Medicaid lists (NY, CA, FL) and Medicaid enrollment and billing in every state (T-MSIS), Open Payments, state licensing boards and building data. A label is a prompt to verify, not a finding.</p>
         </section>
     }
 
@@ -396,6 +396,14 @@
         <section class="card" id="medicare" aria-labelledby="med-h">
             <h2 id="med-h">Medicare activity</h2>
             <partial name="_MedicareActivity" model="new ProviderPart(p, Model.IsPerson)" />
+        </section>
+    }
+
+    @if (p.MedicaidHistory is not null)
+    {
+        <section class="card" id="medicaid" aria-labelledby="mcd-h">
+            <h2 id="mcd-h">Medicaid activity</h2>
+            <partial name="_MedicaidActivity" model="new ProviderPart(p, Model.IsPerson)" />
         </section>
     }
 

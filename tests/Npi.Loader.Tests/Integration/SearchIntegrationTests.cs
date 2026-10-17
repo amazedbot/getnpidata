@@ -1765,7 +1765,7 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(4L, await quality.BuildAsync(_ct));
         Assert.False(await quality.IsStaleAsync(_ct));
 
-        var rows = (await db.QueryAsync<(string, sbyte, int, short)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
+        var rows = (await db.QueryAsync<(string, sbyte, int, int)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
             .ToDictionary(r => r.Item1, r => (Label: (QualityLabel)r.Item2, Reasons: (QualityReason)r.Item3, Activity: (QualityActivity)r.Item4));
         Assert.Equal((QualityLabel.Stale, QualityReason.NotUpdated5Years | QualityReason.NotUpdated10Years | QualityReason.NoActivity, QualityActivity.None),
             rows[A]);
@@ -1810,7 +1810,7 @@ public sealed class SearchIntegrationTests : IDisposable
               ('330778', 'BAKER CLINIC', '21', '10 COURT ST', 'BROOKLYN', 'NY', '11201', 0, '07', '2025-03-01');
             """, new { B, D, E });
         await quality.BuildAsync(_ct, allowIncremental: false);
-        rows = (await db.QueryAsync<(string, sbyte, int, short)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
+        rows = (await db.QueryAsync<(string, sbyte, int, int)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
             .ToDictionary(r => r.Item1, r => (Label: (QualityLabel)r.Item2, Reasons: (QualityReason)r.Item3, Activity: (QualityActivity)r.Item4));
         Assert.Equal((QualityLabel.Stale, QualityReason.NoActivity | QualityReason.NotMapped | QualityReason.NoPhone | QualityReason.FacilityClosed
             | QualityReason.ListedClosed, QualityActivity.None), rows[D]);
@@ -1844,12 +1844,12 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.True(await quality.IsStaleAsync(_ct));
         Assert.Equal(4L, await quality.BuildAsync(_ct));
         Assert.False(await quality.IsStaleAsync(_ct));
-        var a = (await db.QueryAsync<(sbyte, int, short)>("SELECT label, reasons, activity FROM provider_quality WHERE npi = @A", new { A })).Single();
+        var a = (await db.QueryAsync<(sbyte, int, int)>("SELECT label, reasons, activity FROM provider_quality WHERE npi = @A", new { A })).Single();
         Assert.Equal(QualityActivity.CurrentLicense, (QualityActivity)a.Item3);
         Assert.NotEqual(QualityLabel.Stale, (QualityLabel)a.Item1);
         Assert.Equal(RecordQuality.Classify((QualityReason)a.Item2), (QualityLabel)a.Item1);
         Assert.Equal(QualityActivity.CareCompare | QualityActivity.MipsScore,
-            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
+            (QualityActivity)await db.ScalarAsync<int>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
         Assert.Equal(0L, await db.ScalarAsync<long>("SELECT COUNT(*) FROM quality_pending"));
         // The search rows follow A's new label: none left under the old one.
         Assert.Equal([a.Item1], await db.QueryAsync<sbyte>("SELECT DISTINCT label FROM quality_search WHERE npi = @A", new { A }));
@@ -1859,10 +1859,10 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.False(await quality.IsStaleAsync(_ct));
         await quality.BuildAsync(_ct);
         Assert.Equal(QualityActivity.CareCompare | QualityActivity.MipsScore,
-            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
+            (QualityActivity)await db.ScalarAsync<int>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
         await quality.BuildAsync(_ct, allowIncremental: false);
         Assert.Equal(QualityActivity.CareCompare,
-            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
+            (QualityActivity)await db.ScalarAsync<int>("SELECT activity FROM provider_quality WHERE npi = @B", new { B }));
 
         // An open listing counts only when a source that keeps up with the business backs it (owner, 2026-10-15): D's name listed
         // open on a business registration (BrightQuery) alone is no sign of operation; on Meta it is, but a record 10+ years old with
@@ -1870,7 +1870,7 @@ public sealed class SearchIntegrationTests : IDisposable
         async Task<(QualityReason Reasons, QualityActivity Activity)> DAsync()
         {
             await quality.BuildAsync(_ct, allowIncremental: false);
-            var d = (await db.QueryAsync<(int, short)>("SELECT reasons, activity FROM provider_quality WHERE npi = @D", new { D })).Single();
+            var d = (await db.QueryAsync<(int, int)>("SELECT reasons, activity FROM provider_quality WHERE npi = @D", new { D })).Single();
             return ((QualityReason)d.Item1, (QualityActivity)d.Item2);
         }
 
@@ -1927,7 +1927,7 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(full["provider_quality"], incremental["provider_quality"]);
         Assert.Equal(full["quality_search"], incremental["quality_search"]);
         Assert.Equal(QualityActivity.OrderRefer,
-            (QualityActivity)await db.ScalarAsync<short>("SELECT activity FROM provider_quality WHERE npi = @E", new { E }) & QualityActivity.OrderRefer);
+            (QualityActivity)await db.ScalarAsync<int>("SELECT activity FROM provider_quality WHERE npi = @E", new { E }) & QualityActivity.OrderRefer);
     }
 
     [Fact]
@@ -2046,6 +2046,96 @@ public sealed class SearchIntegrationTests : IDisposable
         Assert.Equal(before, await db.QueryAsync<(short, string, sbyte, int?, int?)>(rows));
         Assert.Equal("/files/2025-11/c/MUP_PHY_D16_Prov.csv", await db.ScalarAsync<string>(
             "SELECT version FROM medicare_history_version WHERE part = 'B' AND data_year = 2016"));
+    }
+
+    [Fact]
+    public async Task Medicaid_enrollment_and_billing_count_for_two_years_and_a_reload_relabels_only_its_changed_providers()
+    {
+        await using var db = await SeededAsync();
+        await new AreaCountBuilder(db.Database, Logger.None, 0.95).BuildAsync(_ct); // specialty_code_category
+        // A, B, D and E: not updated in 10+ years, so with no sign of practice they're stale. The data is as of 2026-10-11, so a
+        // Medicaid period or year counts when it ended on or after 2024-10-11 (the T-MSIS files end in December 2024).
+        await db.ExecuteAsync(
+            """
+            UPDATE provider SET last_update_date = '2012-01-01' WHERE npi IN (@A, @B, @D, @E);
+            UPDATE data_version SET as_of_date = '2026-10-11' WHERE id = 1;
+            INSERT INTO medicaid_data_period (source, first_month, last_month) VALUES
+              ('medicaid_enrollment_segments', '2018-01-01', '2024-12-01'), ('medicaid_spending', '2018-01-01', '2024-12-01');
+            INSERT INTO medicaid_enrollment_period (npi, state, period, enrolled_from, enrolled_until, ended_status) VALUES
+              (@A, 'NY', 1, '2024-08-01', NULL, NULL),
+              (@A, 'OH', 1, '2015-03-01', '2019-06-30', 'TERM - LICENSE EXPIRED'),
+              (@B, 'CA', 1, NULL, '2023-05-31', NULL),
+              (@E, 'TX', 1, '2018-01-01', '2024-11-30', 'TERM - VOLUNTARY TERMINATION');
+            INSERT INTO medicaid_billing_year (npi, data_year, claim_lines, paid, billing_lines, billing_paid, servicing_lines, servicing_paid) VALUES
+              (@A, 2021, 14, 700, 14, 700, 14, 700), (@B, 2024, 40, 1250.50, 0, 0, 40, 1250.50), (@D, 2019, 12, 300, 12, 300, 0, 0);
+            INSERT INTO medicaid_top_procedure (npi, procedure_rank, data_year, hcpcs, description, claim_lines, paid) VALUES
+              (@B, 1, 2024, '99213', 'Established patient office visit', 40, 1250.50);
+            """, new { A, B, D, E });
+        var quality = new QualityBuilder(db.Database, Logger.None, 0.95) { IncrementalShare = 10 };
+        await quality.BuildAsync(_ct, allowIncremental: false);
+        async Task<Dictionary<string, (QualityLabel Label, QualityReason Reasons, QualityActivity Activity)>> LabelsAsync() =>
+            (await db.QueryAsync<(string, sbyte, int, int)>("SELECT npi, label, reasons, activity FROM provider_quality ORDER BY npi"))
+            .ToDictionary(r => r.Item1, r => (Label: (QualityLabel)r.Item2, Reasons: (QualityReason)r.Item3, Activity: (QualityActivity)r.Item4));
+        var labels = await LabelsAsync();
+        // A: still enrolled in NY at the end of the data; E: enrolled in TX until November 2024; B: billed in 2024 (its CA period ended
+        // in 2023, too long ago); D: billed only in 2019, so still stale.
+        Assert.Equal(QualityActivity.MedicaidEnrollment, labels[A].Activity);
+        Assert.Equal(QualityActivity.MedicaidBilling, labels[B].Activity);
+        Assert.Equal(QualityActivity.MedicaidEnrollment, labels[E].Activity);
+        Assert.Equal((QualityLabel.Stale, QualityActivity.None), (labels[D].Label, labels[D].Activity));
+        Assert.All(new[] { A, B, E }, n => Assert.Equal(QualityReason.None, labels[n].Reasons & QualityReason.NoActivity));
+        Assert.All(labels.Values, l => Assert.Equal(RecordQuality.Classify(l.Reasons), l.Label)); // the SQL label = the C# rule
+        Assert.Equal(["billed Medicaid"], RecordQuality.SignTexts(labels[B].Activity));
+
+        // The profile: enrollment periods by state with why one ended, billing by year, the newest year's procedures; D billed once.
+        var a = (await new ProviderDetailService(db.ConnectionString).GetAsync(A, _ct))!.MedicaidHistory!;
+        Assert.Equal((new DateOnly(2018, 1, 1), new DateOnly(2024, 12, 31), 2018, 2024), (a.EnrollmentFrom!.Value, a.EnrollmentThrough!.Value, a.FirstDataYear!.Value, a.NewestDataYear!.Value));
+        Assert.Equal([new MedicaidEnrollmentPeriod("NY", new DateOnly(2024, 8, 1), null, null),
+                      new MedicaidEnrollmentPeriod("OH", new DateOnly(2015, 3, 1), new DateOnly(2019, 6, 30), "TERM - LICENSE EXPIRED")], a.Enrollments);
+        Assert.Equal("license expired", a.Enrollments[1].EndedReason);
+        Assert.Equal([new MedicaidBillingYear(2021, 14, 700, 14, 700, 14, 700)], a.Years);
+        Assert.True(a.Stopped);
+        var b = (await new ProviderDetailService(db.ConnectionString).GetAsync(B, _ct))!.MedicaidHistory!;
+        Assert.Equal([new MedicaidProcedure("99213", "Established patient office visit", 40, 1250.50)], b.TopProcedures);
+        Assert.Equal((2024, false), (b.TopProceduresYear!.Value, b.Stopped));
+        Assert.Empty((await new ProviderDetailService(db.ConnectionString).GetAsync(D, _ct))!.MedicaidHistory!.Enrollments);
+        Assert.Contains("billed Medicaid", (await new ProviderDetailService(db.ConnectionString).GetAsync(B, _ct))!.Quality!.Signs);
+
+        // The spending file reloads: B's 2024 is the same, D billed again in 2024. Only D is queued and relabelled.
+        await using (var connection = await db.Database.OpenAsync(_ct))
+        {
+            await Npi.Loader.Datasets.TableSwap.ReplaceAsync(connection, ["medicaid_billing_year"], 0, () => Npi.Loader.Db.Database.ExecuteAsync(connection,
+                """
+                INSERT INTO medicaid_billing_year_staging (npi, data_year, claim_lines, paid, billing_lines, billing_paid, servicing_lines, servicing_paid) VALUES
+                  (@D, 2024, 12, 360, 12, 360, 0, 0), (@D, 2019, 12, 300, 12, 300, 0, 0), (@A, 2021, 14, 700, 14, 700, 14, 700), (@B, 2024, 40, 1250.50, 0, 0, 40, 1250.50)
+                """, _ct, param: new { A, B, D }), _ct);
+        }
+
+        Assert.Equal([D], await db.QueryAsync<string>("SELECT npi FROM quality_pending ORDER BY npi"));
+        await db.ExecuteAsync(
+            """
+            INSERT INTO reference_data (source, version, source_url, rows_loaded, loaded_at, checked_at) VALUES ('medicaid_spending', 'v2', '', 4, @now, @now) AS new
+              ON DUPLICATE KEY UPDATE loaded_at = new.loaded_at
+            """, new { now = DateTime.UtcNow });
+        const string loadedAt = "SELECT CAST(loaded_at AS CHAR) FROM reference_data WHERE source = 'provider_quality'";
+        var labelledAt = await db.ScalarAsync<string>(loadedAt);
+        Assert.True(await quality.IsStaleAsync(_ct));
+        await quality.BuildAsync(_ct);
+        Assert.Equal(labelledAt, await db.ScalarAsync<string>(loadedAt)); // the queue only
+        Assert.Equal(QualityActivity.MedicaidBilling, (await LabelsAsync())[D].Activity);
+
+        // The as-of date moves past two years after the data's end: the Medicaid signs expire, and the providers they cleared are
+        // queued and relabelled like a full build would.
+        await db.ExecuteAsync("UPDATE data_version SET as_of_date = '2027-01-05' WHERE id = 1");
+        await quality.BuildAsync(_ct);
+        Assert.Equal(labelledAt, await db.ScalarAsync<string>(loadedAt));
+        var incremental = await ProjectionSnapshotAsync(db, ["provider_quality", "quality_search"]);
+        var expired = await LabelsAsync();
+        Assert.All(new[] { A, B, D, E }, n => Assert.Equal((QualityLabel.Stale, QualityActivity.None), (expired[n].Label, expired[n].Activity)));
+        await quality.BuildAsync(_ct, allowIncremental: false);
+        var full = await ProjectionSnapshotAsync(db, ["provider_quality", "quality_search"]);
+        Assert.Equal(full["provider_quality"], incremental["provider_quality"]);
+        Assert.Equal(full["quality_search"], incremental["quality_search"]);
     }
 
     [Fact]

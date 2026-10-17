@@ -27,7 +27,7 @@ Rules:
 | [`areas/`](areas/README.md) | Area facts: 7 files (037, 038, 039, 040 …) |
 | [`industry/`](industry/README.md) | Open Payments, companies and products: 16 files (041, 042, 043, 044 …) |
 | [`state-licenses/`](state-licenses/README.md) | State licenses: 3 files (063, 064, 088) |
-| [`quality/`](quality/README.md) | Record quality: 3 files (083, 084, 097) |
+| [`quality/`](quality/README.md) | Record quality and the Medicaid data behind it: 6 files (083, 084, 097, 118, 119, 120) |
 | [`incremental/`](incremental/README.md) | Incremental loading queues: 3 files (089, 091, 092) |
 | [`systems/`](systems/README.md) | Health systems, ACOs, health center sites and 340B covered entities: 5 files (112, 113, 114, 115, 116) |
 

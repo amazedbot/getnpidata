@@ -164,6 +164,11 @@ public class ClientTests
     [InlineData(typeof(Server.OrganizationChange), typeof(OrganizationChange))]
     [InlineData(typeof(Server.MedicareHistory), typeof(MedicareHistory))]
     [InlineData(typeof(Server.MedicareHistoryYear), typeof(MedicareHistoryYear))]
+    [InlineData(typeof(Server.MedicaidHistory), typeof(MedicaidHistory))]
+    [InlineData(typeof(Server.MedicaidEnrollmentPeriod), typeof(MedicaidEnrollmentPeriod))]
+    [InlineData(typeof(Server.MedicaidBillingYear), typeof(MedicaidBillingYear))]
+    [InlineData(typeof(Server.MedicaidProcedure), typeof(MedicaidProcedure))]
+    [InlineData(typeof(Server.OrganizationMedicaidNpi), typeof(OrganizationMedicaidNpi))]
     [InlineData(typeof(Npi.Web.Api.LookupResponse), typeof(LookupResponse))]
     [InlineData(typeof(Server.FacilityPage), typeof(FacilityPage))]
     [InlineData(typeof(Server.FacilitySummary), typeof(FacilitySummary))]
@@ -241,6 +246,7 @@ public class ClientTests
             Clinicians = new Server.OrganizationClinicianSummary(3, 2, 2, 0, 1, [new Server.SpecialtyCount("Cardiologist", 3)]),
             MedicareActivity = [new Server.OrganizationMedicareNpi("1245370717", "JAMAICA HOSPITAL", "Main NPI", 2024, 1200, 5000, 250000.5, null, null, null, 2024)],
             Changes = [new Server.OrganizationChange("1245370717", new DateOnly(2026, 10, 11), "phone", "7185550100", "7185550101")],
+            MedicaidActivity = [new Server.OrganizationMedicaidNpi("1245370717", "JAMAICA HOSPITAL", "Main NPI", 2024, 9000, 1234567.89, 2024, ["NY"])],
         };
         var json = JsonSerializer.Serialize(server, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var client = JsonSerializer.Deserialize<OrganizationProfile>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
@@ -252,6 +258,8 @@ public class ClientTests
         Assert.Equal("O20000000001", client.Ownership.Enrollments[0].EnrollmentId);
         Assert.Equal((3, 1), (client.Clinicians!.Total, client.Clinicians.InSeveral));
         Assert.Equal(250000.5, client.MedicareActivity[0].Payment);
+        Assert.Equal((2024, 9000L, 1234567.89, "NY"), (client.MedicaidActivity[0].Year!.Value, client.MedicaidActivity[0].ClaimLines!.Value,
+            client.MedicaidActivity[0].Paid!.Value, client.MedicaidActivity[0].EnrolledStates[0]));
         Assert.Equal(new DateTime(2026, 10, 11), client.Changes[0].RecordedOn);
     }
 

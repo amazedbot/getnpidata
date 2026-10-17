@@ -241,6 +241,43 @@
         </section>
     }
 
+    @if (o.MedicaidActivity.Count > 0 || main?.MedicaidHistory is not null)
+    {
+        <section class="card" id="medicaid" aria-labelledby="medicaid-h">
+            <h2 id="medicaid-h">Medicaid activity</h2>
+            @if (o.MedicaidActivity.Count > 0)
+            {
+                var year = o.MedicaidActivity.Select(x => x.Year).FirstOrDefault(y => y is not null);
+                <p class="lede">@(o.MedicaidActivity.Count == 1 ? "One of its NPIs is" : $"{o.MedicaidActivity.Count} of its NPIs are") in the Medicaid data (T-MSIS, every state).</p>
+                <div class="table-wrap">
+                    <table>
+                        <caption class="visually-hidden">Medicaid billing and enrollment of the organization's NPIs</caption>
+                        <thead><tr><th scope="col">NPI</th><th scope="col">Role</th><th scope="col">Claim lines@(year is null ? "" : $" ({year})")</th><th scope="col">Paid by Medicaid@(year is null ? "" : $" ({year})")</th><th scope="col">Last billed</th><th scope="col">Enrolled in</th></tr></thead>
+                        <tbody>
+                            @foreach (var m in o.MedicaidActivity)
+                            {
+                                <tr>
+                                    <td class="mono"><a href="/provider/@m.Npi#medicaid">@m.Npi</a></td>
+                                    <td>@m.Role</td>
+                                    <td>@(m.ClaimLines is { } lines ? Format.Number(lines) : "—")</td>
+                                    <td>@(m.Paid is { } paid ? Format.Money(paid) : "—")</td>
+                                    <td>@(m.LastBilledYear?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "—")</td>
+                                    <td>@(m.EnrolledStates.Count == 0 ? "—" : string.Join(", ", m.EnrolledStates))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="src">HHS Open Data from T-MSIS: Medicaid Provider Spending by HCPCS (claims billed or served under the NPI) and Medicaid Provider Enrollment Segments (the states it was enrolled in, 2018–2024). HHS leaves out cells under 12 claim lines or 12 patients.</p>
+            }
+            @if (main?.MedicaidHistory is not null)
+            {
+                <h3>The main NPI in detail</h3>
+                <partial name="_MedicaidActivity" model="new ProviderPart(main, false)" />
+            }
+        </section>
+    }
+
     <partial name="_FacilityOwnership" model="Model.Ownership" />
 
     <partial name="_ClinicianList" model="Model.ClinicianView" />

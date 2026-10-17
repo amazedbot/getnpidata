@@ -234,6 +234,12 @@ public sealed record OrganizationProfile(string MainNpi, string Name, IReadOnlyL
     /// <summary>Medicare billing of the organization's NPIs (newest data year, and the last year in the older years), largest first.</summary>
     public IReadOnlyList<OrganizationMedicareNpi> MedicareActivity { get; init; } = [];
 
+    /// <summary>
+    /// Medicaid billing and enrollment of the organization's NPIs (T-MSIS, step 3.7): the newest data year, the last year billed and
+    /// the states enrolled in, largest first.
+    /// </summary>
+    public IReadOnlyList<OrganizationMedicaidNpi> MedicaidActivity { get; init; } = [];
+
     /// <summary>The changes recorded for any of its NPIs, newest first (at most 200).</summary>
     public IReadOnlyList<OrganizationChange> Changes { get; init; } = [];
 
@@ -252,10 +258,10 @@ public sealed class OrganizationGroupService(string connectionString)
 {
     private sealed record MemberRow(string Npi, string MainNpi, sbyte IsMain, string? Ccn, string? FacilityKind, short JoinedBy, sbyte EntityType,
         string? OrgName, string? PrimaryTaxonomyCode, DateTime? LastUpdateDate, string? Address1, string? City, string? State, string? Zip5,
-        string? Zip4, string? PostalCode, sbyte? Label, short? Activity);
+        string? Zip4, string? PostalCode, sbyte? Label, long? Activity);
 
     private sealed record SingleRow(string Npi, string? Ccn, string? FacilityKind, sbyte EntityType, string? OrgName, string? PrimaryTaxonomyCode,
-        DateTime? LastUpdateDate, string? Address1, string? City, string? State, string? Zip5, string? Zip4, string? PostalCode, sbyte? Label, short? Activity);
+        DateTime? LastUpdateDate, string? Address1, string? City, string? State, string? Zip5, string? Zip4, string? PostalCode, sbyte? Label, long? Activity);
 
     /// <summary>
     /// The organization page of an NPI (main NPI, name, number of NPIs: 1 for an organization of one NPI, docs/PRODUCT_PLAN.md step
@@ -404,7 +410,7 @@ public sealed class OrganizationGroupService(string connectionString)
                            (SELECT b.kind FROM ({FacilityDirectory.BillingNpiSql}) b WHERE b.npi = @npi ORDER BY b.kind <> 'hospital', b.ccn LIMIT 1) AS FacilityKind,
                            p.entity_type AS EntityType, p.org_name AS OrgName, p.primary_taxonomy_code AS PrimaryTaxonomyCode,
                            p.last_update_date AS LastUpdateDate, l.address1 AS Address1, l.city AS City, l.state AS State, l.zip5 AS Zip5, l.zip4 AS Zip4,
-                           l.postal_code AS PostalCode, q.label AS Label, q.activity AS Activity
+                           l.postal_code AS PostalCode, q.label AS Label, CAST(q.activity AS SIGNED) AS Activity
                     FROM provider p
                     LEFT JOIN provider_location l ON l.npi = p.npi AND l.is_primary = 1
                     LEFT JOIN provider_quality q ON q.npi = p.npi
@@ -420,7 +426,7 @@ public sealed class OrganizationGroupService(string connectionString)
                 SELECT g.npi AS Npi, g.main_npi AS MainNpi, g.is_main AS IsMain, g.ccn AS Ccn, g.facility_kind AS FacilityKind, g.joined_by AS JoinedBy,
                        p.entity_type AS EntityType, p.org_name AS OrgName, p.primary_taxonomy_code AS PrimaryTaxonomyCode, p.last_update_date AS LastUpdateDate,
                        l.address1 AS Address1, l.city AS City, l.state AS State, l.zip5 AS Zip5, l.zip4 AS Zip4, l.postal_code AS PostalCode,
-                       q.label AS Label, q.activity AS Activity
+                       q.label AS Label, CAST(q.activity AS SIGNED) AS Activity
                 FROM org_group_member g
                 JOIN provider p ON p.npi = g.npi
                 LEFT JOIN provider_location l ON l.npi = g.npi AND l.is_primary = 1

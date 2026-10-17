@@ -96,6 +96,12 @@ public sealed record ProviderDetail(
     /// </summary>
     public MedicareHistory? MedicareHistory { get; init; }
 
+    /// <summary>
+    /// Medicaid in every state from T-MSIS (docs/PRODUCT_PLAN.md step 3.7): enrollment periods per state and billing per year, 2018 to
+    /// the newest data year; null when the files aren't loaded or don't list the NPI.
+    /// </summary>
+    public MedicaidHistory? MedicaidHistory { get; init; }
+
     /// <summary>Open Payments general payments in the newest program year; null when none (Stage 5.5 item 6).</summary>
     public IndustryPayments? IndustryPayments { get; init; }
 
@@ -197,7 +203,7 @@ public sealed class ProviderDetailService(string connectionString)
     private sealed record PaymentCompanyRow(string Company, double Total, double General, double Research, double AssociatedResearch,
         double Ownership, int Records, string? CompanyId);
 
-    private sealed record QualityRow(sbyte Label, int Reasons, short Activity, string? OtherNpi);
+    private sealed record QualityRow(sbyte Label, int Reasons, long Activity, string? OtherNpi);
 
     private sealed record MedicaidRow(string State, DateTime? EnrolledSince, string? ProviderType);
 
@@ -377,6 +383,7 @@ public sealed class ProviderDetailService(string connectionString)
             """, new { npi }, cancellationToken: ct));
 
         var medicareHistory = await MedicareHistoryAsync(connection, npi, utilization, partD, ct);
+        var medicaidHistory = await MedicaidHistoryReader.ReadAsync(connection, npi, ct);
 
         var payments = await connection.QuerySingleOrDefaultAsync<PaymentSummaryRow>(new CommandDefinition(
             "SELECT program_year AS ProgramYear, total_amount AS TotalAmount, records AS Records, payers AS Payers FROM open_payments_summary WHERE npi = @npi",
@@ -474,7 +481,7 @@ public sealed class ProviderDetailService(string connectionString)
             new { npi }, cancellationToken: ct));
 
         var quality = await connection.QuerySingleOrDefaultAsync<QualityRow>(new CommandDefinition(
-            "SELECT label AS Label, reasons AS Reasons, activity AS Activity, other_npi AS OtherNpi FROM provider_quality WHERE npi = @npi", new { npi }, cancellationToken: ct));
+            "SELECT label AS Label, reasons AS Reasons, CAST(activity AS SIGNED) AS Activity, other_npi AS OtherNpi FROM provider_quality WHERE npi = @npi", new { npi }, cancellationToken: ct));
         List<QualityCareCompareLocation> ccLocations = clinician is null ? [] : (await connection.QueryAsync<QualityCareCompareLocation>(new CommandDefinition(
             "SELECT address1 AS Address1, city AS City, state AS State, zip5 AS Zip5 FROM cc_clinician_location WHERE npi = @npi ORDER BY zip5",
             new { npi }, cancellationToken: ct))).ToList();
@@ -529,6 +536,7 @@ public sealed class ProviderDetailService(string connectionString)
             MedicarePrescribing = partD is null ? null : new MedicarePrescribing(partD.DataYear, partD.PrescriberType, partD.Claims, partD.DrugCost,
                 partD.Beneficiaries, partD.BrandClaims, partD.GenericClaims, partD.OpioidClaims, partD.OpioidRate, partD.AntibioticClaims),
             MedicareHistory = medicareHistory,
+            MedicaidHistory = medicaidHistory,
             History = history,
             Facilities = facilities,
             StateLicenses = stateLicenses,

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Npi.Loader.Db;
 
@@ -7,9 +8,10 @@ namespace Npi.Loader.Datasets;
 /// State Medicaid enrolled-provider lists (docs/PRODUCT_PLAN.md Phase 3; owner's OK 2026-10-13), a sign of current practice for
 /// the record-quality label and a line on the profile: New York's Medicaid Enrolled Provider Listing (health.data.ny.gov
 /// <c>keti-qx5t</c>, ~1.1M rows, one per enrollment and service address; exported grouped by NPI, ~236k rows) and California's
-/// Enrolled Medi-Cal Fee-for-Service Providers (data.chhs.ca.gov, a ~120 MB CSV, ~380k rows). Both list current enrollments
-/// only and are updated about weekly. Into <c>state_medicaid</c>, one row per NPI and state, replaced together (staging +
-/// RENAME); the version is both lists' update times.
+/// Enrolled Medi-Cal Fee-for-Service Providers (data.chhs.ca.gov, a ~120 MB CSV, ~380k rows), and since step 3.7 (owner,
+/// 2026-10-17) Florida AHCA's Provider Master List (<see cref="FloridaMedicaidList"/>, a ~17 MB zip). All three list current
+/// enrollments only and are updated about weekly. Into <c>state_medicaid</c>, one row per NPI and state, replaced together
+/// (staging + RENAME); the version is the three lists' update times (Florida's: the zip's Last-Modified).
 /// </summary>
 public sealed class StateMedicaidSource : DatasetSource
 {
@@ -44,19 +46,32 @@ public sealed class StateMedicaidSource : DatasetSource
     public override async Task<DatasetRelease> FindLatestAsync(DatasetContext context, CancellationToken ct)
     {
         var (newYork, california) = await FindBothAsync(context, ct);
-        return new DatasetRelease($"NY {newYork} | CA {california.Version}", california.Url);
+        var florida = await FloridaVersionAsync(context, ct);
+        return new DatasetRelease($"NY {newYork} | CA {california.Version} | FL {florida}", california.Url);
+    }
+
+    // The Provider Master List's Last-Modified (AHCA replaces the file in place), else its ETag or size.
+    private static async Task<string> FloridaVersionAsync(DatasetContext context, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Head, context.Options.FloridaMedicaidListUrl);
+        using var response = await context.Http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        var content = response.Content.Headers;
+        return content.LastModified?.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)
+               ?? response.Headers.ETag?.Tag ?? $"{content.ContentLength} bytes";
     }
 
     public override async Task<long> LoadAsync(DatasetContext context, DatasetRelease release, CancellationToken ct)
     {
         var (newYork, california) = await FindBothAsync(context, ct);
         var newYorkPath = await context.DownloadAsync(new DatasetRelease(newYork, NewYorkExportUrl), "state_medicaid_ny.csv", ct);
-        string? californiaPath = null;
+        string? californiaPath = null, floridaPath = null;
         var loaded = false;
         const string raw = "state_medicaid_raw_staging";
         try
         {
             californiaPath = await context.DownloadAsync(california, "state_medicaid_ca.csv", ct);
+            floridaPath = await context.DownloadAsync(new DatasetRelease("FL", new Uri(context.Options.FloridaMedicaidListUrl)), "state_medicaid_fl.zip", ct);
             await using var connection = await context.Database.OpenAsync(ct);
             try
             {
@@ -73,6 +88,9 @@ public sealed class StateMedicaidSource : DatasetSource
                     await Database.ExecuteAsync(connection, $"TRUNCATE TABLE `{raw}`", ct);
                     await CsvTableLoader.LoadAsync(connection, californiaPath, raw, CaliforniaColumns, ct);
                     await InsertAsync(connection, raw, "CA", ct);
+                    await Database.ExecuteAsync(connection, $"TRUNCATE TABLE `{raw}`", ct);
+                    await LoadFloridaAsync(context, connection, floridaPath, raw, ct);
+                    await InsertAsync(connection, raw, "FL", ct);
                 }, ct, log: context.Log);
                 loaded = true;
                 return counts["state_medicaid"];
@@ -89,8 +107,30 @@ public sealed class StateMedicaidSource : DatasetSource
             {
                 FileDownloader.Delete(newYorkPath);
                 FileDownloader.Delete(californiaPath!);
+                FileDownloader.Delete(floridaPath!);
             }
         }
+    }
+
+    // Florida's current enrollments into the raw table (no kind of provider: the list gives only AHCA's numeric type codes).
+    private static async Task LoadFloridaAsync(DatasetContext context, MySqlConnector.MySqlConnection connection, string path, string raw, CancellationToken ct)
+    {
+        await using var rows = new TsvRows(Path.Combine(context.Options.ResolvedWorkFolder, "datasets"), "state_medicaid_fl");
+        await using (var file = File.OpenRead(path))
+        {
+            foreach (var e in FloridaMedicaidList.Read(file, DateOnly.FromDateTime(DateTime.UtcNow)))
+            {
+                rows.Add(e.Npi, e.Since, null, null);
+            }
+        }
+
+        if (rows.Rows == 0)
+        {
+            throw new InvalidDataException("The Florida Provider Master List has no current enrollments.");
+        }
+
+        await rows.LoadAsync(connection, raw, ["npi", "since", "kind", "kind2"], ct);
+        context.Log.Information("Florida Provider Master List: {Rows:N0} current enrollments", rows.Rows);
     }
 
     // One row per NPI: the earliest enrollment and the kind of provider (California's specialty, else its provider type).

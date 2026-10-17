@@ -252,6 +252,7 @@ public sealed class OrganizationPageService(string connectionString, Organizatio
             Ownership = combinedOwnership,
             Clinicians = OrganizationClinicians.Summarize(clinicians),
             MedicareActivity = await MedicareAsync(connection, npis, roles, ct),
+            MedicaidActivity = await MedicaidHistoryReader.ForNpisAsync(connection, npis, roles, ct),
             Changes = await ChangesAsync(connection, npis, ct),
             HealthSystems = await SystemsAsync(connection, npis, pacIds, ct),
             Acos = (await AcoService.MembershipsAsync(connection, "m.npi IN @npis", new { npis }, ct)).DistinctBy(a => a.AcoId).ToList(),

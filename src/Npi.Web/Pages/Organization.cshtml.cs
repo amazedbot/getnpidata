@@ -160,6 +160,11 @@ public class OrganizationModel(OrganizationGroupService groups, OrganizationPage
                 yield return ("medicare", "Medicare activity");
             }
 
+            if (Profile.MedicaidActivity.Count > 0 || Profile.Main?.MedicaidHistory is not null)
+            {
+                yield return ("medicaid", "Medicaid activity");
+            }
+
             if (Profile.Ownership is not null || Ownership.OwnersPublished)
             {
                 yield return ("owners", "Who owns it");

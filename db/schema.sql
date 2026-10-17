@@ -1167,6 +1167,46 @@ CREATE TABLE `hrsa_shortage_raw` (
   `county_fips` varchar(5) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `medicaid_billing_year` (
+  `npi` char(10) NOT NULL,
+  `data_year` smallint NOT NULL,
+  `claim_lines` bigint NOT NULL,
+  `paid` decimal(15,2) NOT NULL,
+  `billing_lines` bigint NOT NULL,
+  `billing_paid` decimal(15,2) NOT NULL,
+  `servicing_lines` bigint NOT NULL,
+  `servicing_paid` decimal(15,2) NOT NULL,
+  PRIMARY KEY (`npi`,`data_year`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `medicaid_data_period` (
+  `source` varchar(40) NOT NULL,
+  `first_month` date NOT NULL,
+  `last_month` date NOT NULL,
+  PRIMARY KEY (`source`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `medicaid_enrollment_period` (
+  `npi` char(10) NOT NULL,
+  `state` char(2) NOT NULL,
+  `period` smallint NOT NULL,
+  `enrolled_from` date DEFAULT NULL,
+  `enrolled_until` date DEFAULT NULL,
+  `ended_status` varchar(80) DEFAULT NULL,
+  PRIMARY KEY (`npi`,`state`,`period`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `medicaid_top_procedure` (
+  `npi` char(10) NOT NULL,
+  `procedure_rank` tinyint NOT NULL,
+  `data_year` smallint NOT NULL,
+  `hcpcs` varchar(12) NOT NULL,
+  `description` varchar(300) DEFAULT NULL,
+  `claim_lines` bigint NOT NULL,
+  `paid` decimal(15,2) NOT NULL,
+  PRIMARY KEY (`npi`,`procedure_rank`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `medicare_activity_year` (
   `data_year` smallint NOT NULL,
   `npi` char(10) NOT NULL,
@@ -2493,7 +2533,7 @@ CREATE TABLE `provider_quality` (
   `npi` char(10) NOT NULL,
   `label` tinyint NOT NULL,
   `reasons` int NOT NULL,
-  `activity` smallint NOT NULL,
+  `activity` int NOT NULL,
   `other_npi` char(10) DEFAULT NULL,
   PRIMARY KEY (`npi`),
   KEY `ix_provider_quality_label` (`label`,`npi`)

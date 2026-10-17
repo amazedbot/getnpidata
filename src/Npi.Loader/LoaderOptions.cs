@@ -100,6 +100,15 @@ public sealed class LoaderOptions
     /// <summary>data.chhs.ca.gov's CKAN package of the enrolled Medi-Cal fee-for-service providers (state Medicaid lists, Phase 3).</summary>
     public string MediCalPackageUrl { get; set; } = "https://data.chhs.ca.gov/api/3/action/package_show?id=profile-of-enrolled-medi-cal-fee-for-service-ffs-providers";
 
+    /// <summary>
+    /// Florida AHCA's Provider Master List, the pipe-delimited zip (portal.flmmis.com, Managed Care › Registration › Provider Information
+    /// Reports; state Medicaid lists, step 3.7). AHCA replaces the file in place.
+    /// </summary>
+    public string FloridaMedicaidListUrl { get; set; } = "https://portal.flmmis.com/FLPublic/Portals/0/StaticContent/Public/Managed%20Care/prw19002.zip";
+
+    /// <summary>HHS's open-data platform: each dataset's page lists its releases (T-MSIS Medicaid enrollment and spending, step 3.7).</summary>
+    public string HhsOpenDataUrl { get; set; } = "https://opendata.hhs.gov/datasets/";
+
     /// <summary>openFDA's API (adverse event counts).</summary>
     public string OpenFdaApiUrl { get; set; } = "https://api.fda.gov/";
 

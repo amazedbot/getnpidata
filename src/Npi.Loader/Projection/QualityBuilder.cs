@@ -47,7 +47,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     {
         "medicare_utilization", "medicare_part_d", "cc_clinician", "cc_clinician_location", "medicare_enrollment", "medicare_reassignment",
         "medicare_revalidation", "medicare_order_referring", "cc_mips", "cc_facility_affiliation", "cms_facility_npi", "medicare_dme_supplier",
-        "cms_otp_provider", "state_medicaid", "cms_dialysis_npi", "cms_asc",
+        "cms_otp_provider", "state_medicaid", "cms_dialysis_npi", "cms_asc", "medicaid_enrollment_period", "medicaid_billing_year",
     };
 
     // The inputs whose changes are queued per NPI: the sources of QueuedTables (every table of theirs that the label reads is
@@ -58,7 +58,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
     [
         "state_licenses", "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring",
         "cms_facility_enrollments", "cc_mips", "cc_facility_affiliations", "cms_otp_providers", "cms_revalidation", "cms_dme_suppliers",
-        "state_medicaid", "medicare_history", "cms_dialysis_npis", "cc_surgery_centers",
+        "state_medicaid", "medicare_history", "cms_dialysis_npis", "cc_surgery_centers", "medicaid_enrollment_segments", "medicaid_spending",
     ];
 
     /// <summary>Above this share of the providers queued, relabelling everyone is quicker.</summary>
@@ -73,7 +73,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         "cc_clinicians", "cms_physician_by_provider", "cms_part_d_by_provider", "medicare_enrollment", "cms_order_referring", "open_payments_years",
         "cms_facility_enrollments", "state_licenses", "provider_map", "address_type", "cc_mips", "cc_facility_affiliations", "cms_otp_providers",
         "cms_revalidation", "cms_dme_suppliers", "cms_provider_of_services", "overture", "state_medicaid", "medicare_history",
-        "cms_dialysis_npis", "cc_surgery_centers",
+        "cms_dialysis_npis", "cc_surgery_centers", "medicaid_enrollment_segments", "medicaid_spending",
     ];
 
     // A state license status that means the license can't be used (the states' own wording; matched case-insensitively).
@@ -99,6 +99,20 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
         WHERE NOT EXISTS (SELECT 1 FROM `medicare_utilization` u WHERE u.`npi` = h.`npi`)
           AND NOT EXISTS (SELECT 1 FROM `medicare_part_d` d WHERE d.`npi` = h.`npi`)
         """;
+
+    /// <summary>The earliest end of a Medicaid enrollment period, or of a year billed, that still counts as a sign of practice.</summary>
+    internal static DateTime MedicaidSince(DateTime asOf) => asOf.AddYears(-RecordQuality.MedicaidYears);
+
+    // The end of the T-MSIS enrollment data (an open period runs to it, so the sign doesn't outlive an old file).
+    private const string MedicaidDataEnd =
+        "(SELECT LAST_DAY(`last_month`) FROM `medicaid_data_period` WHERE `source` = 'medicaid_enrollment_segments')";
+
+    /// <summary>
+    /// The NPIs with a T-MSIS Medicaid enrollment period (<see cref="Datasets.MedicaidEnrollmentSource"/>) still open at the end of the
+    /// data, or that ended, on or after @medicaidSince.
+    /// </summary>
+    internal const string MedicaidEnrollmentSql =
+        $"SELECT DISTINCT e.`npi` FROM `medicaid_enrollment_period` e WHERE COALESCE(e.`enrolled_until`, {MedicaidDataEnd}) >= @medicaidSince";
 
     // A PO box in the street line ("PO BOX 12", "P.O. Box", "POST OFFICE BOX").
     internal const string PoBox = "(^|[^A-Z])(P[ .]*O[ .]*BOX|POST OFFICE BOX)([^A-Z]|$)";
@@ -275,6 +289,16 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 new { from = from.AddYears(-years), to = to.AddYears(-years) }, commandTimeout: 0, cancellationToken: ct));
         }
 
+        // A T-MSIS Medicaid enrollment period or a billed year whose end crossed the two years of its sign.
+        var medicaid = new { from = MedicaidSince(from), to = MedicaidSince(to) };
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"INSERT IGNORE INTO `{Pending}` (`npi`) SELECT DISTINCT e.`npi` FROM `medicaid_enrollment_period` e " +
+            $"WHERE COALESCE(e.`enrolled_until`, {MedicaidDataEnd}) >= @from AND COALESCE(e.`enrolled_until`, {MedicaidDataEnd}) < @to",
+            medicaid, commandTimeout: 0, cancellationToken: ct));
+        await connection.ExecuteAsync(new CommandDefinition(
+            $"INSERT IGNORE INTO `{Pending}` (`npi`) SELECT DISTINCT `npi` FROM `medicaid_billing_year` WHERE `data_year` >= YEAR(@from) AND `data_year` < YEAR(@to)",
+            medicaid, commandTimeout: 0, cancellationToken: ct));
+
         // An organization's member crossing the two years of the "another NPI is current" reason (issued or updated then).
         await connection.ExecuteAsync(new CommandDefinition(
             $"""
@@ -372,7 +396,7 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 await RunAsync($"DROP TABLE IF EXISTS `{table}`");
             }
 
-            await RunAsync($"CREATE TABLE `{activity}` (`npi` CHAR(10) NOT NULL PRIMARY KEY, `bits` SMALLINT NOT NULL) ENGINE=InnoDB");
+            await RunAsync($"CREATE TABLE `{activity}` (`npi` CHAR(10) NOT NULL PRIMARY KEY, `bits` INT NOT NULL) ENGINE=InnoDB");
             await RunAsync($"CREATE TABLE `{flags}` (`npi` CHAR(10) NOT NULL PRIMARY KEY, `bits` INT NOT NULL) ENGINE=InnoDB");
             await RunAsync($"""
                 CREATE TABLE `{specialties}` (`specialty` VARCHAR(100) NOT NULL, `category` VARCHAR(80) NOT NULL, PRIMARY KEY (`specialty`, `category`))
@@ -410,9 +434,16 @@ public sealed class QualityBuilder(Database database, ILogger log, double minRow
                 (QualityActivity.EquipmentBilling, "SELECT `npi` FROM `medicare_dme_supplier`"),
                 (QualityActivity.OpioidTreatment, "SELECT `npi` FROM `cms_otp_provider`"),
                 (QualityActivity.MedicaidEnrollment, "SELECT DISTINCT `npi` FROM `state_medicaid`"),
+                // T-MSIS enrollment periods and billing (step 3.7): a period still open at the end of the data or ended, and a year
+                // billed that ended, within two years of the as-of date.
+                (QualityActivity.MedicaidEnrollment, MedicaidEnrollmentSql),
+                (QualityActivity.MedicaidBilling, "SELECT DISTINCT `npi` FROM `medicaid_billing_year` WHERE `data_year` >= @medicaidYear"),
                 (QualityActivity.CurrentLicense, $"SELECT DISTINCT l.`npi` FROM `provider_state_license` l WHERE {currentLicense}"),
             ];
-            var statuses = new { dates.asOf, inactive = InactiveStatus, active = ActiveStatus };
+            var statuses = new
+            {
+                dates.asOf, inactive = InactiveStatus, active = ActiveStatus, medicaidSince = MedicaidSince(asOf), medicaidYear = MedicaidSince(asOf).Year,
+            };
             foreach (var (bit, select) in signs)
             {
                 await RunAsync($"INSERT INTO `{activity}` (`npi`, `bits`) SELECT x.`npi`, {(int)bit} FROM ({select}) x{scope} " +
