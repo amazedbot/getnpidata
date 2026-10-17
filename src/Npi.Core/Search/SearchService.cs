@@ -20,10 +20,23 @@ public sealed class SearchService(string connectionString, TaxonomyCatalog taxon
 
     private sealed record ZipCountyRow(string Zip5, string CountyName);
 
-    // EXISTS yields a BIGINT; CAST keeps the type fixed for Dapper.
-    private sealed record FlagRow(string Npi, long Excluded, long OptedOut, long OrderRefer, long AcceptsAssignment, long Telehealth, long BilledMedicare,
-        long QualityLabelCode, long QualityReasonBits, long QualityActivityBits, string? QualityOtherNpi, long OrganizationNpis)
+    // A class with properties, not a positional record: Dapper maps a constructor only on exact column types, and MySQL types a
+    // CAST(… AS SIGNED) as INT or BIGINT depending on the argument and the server (activity is an INT since migration 120); properties convert.
+    private sealed class FlagRow
     {
+        public string Npi { get; init; } = "";
+        public long Excluded { get; init; }
+        public long OptedOut { get; init; }
+        public long OrderRefer { get; init; }
+        public long AcceptsAssignment { get; init; }
+        public long Telehealth { get; init; }
+        public long BilledMedicare { get; init; }
+        public long QualityLabelCode { get; init; }
+        public long QualityReasonBits { get; init; }
+        public long QualityActivityBits { get; init; }
+        public string? QualityOtherNpi { get; init; }
+        public long OrganizationNpis { get; init; }
+
         public ProviderQuality? Quality => QualityLabelCode == 0 ? null
             : new ProviderQuality((QualityLabel)QualityLabelCode, (QualityReason)QualityReasonBits, (QualityActivity)QualityActivityBits) { OtherCurrentNpi = QualityOtherNpi };
     }
